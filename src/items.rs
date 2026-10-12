@@ -25,7 +25,20 @@ pub enum ItemKind {
     Helm,
     Breastplate,
     Shield,
+    Seed,
+    Meat,
+    Meal,
+    Bone,
+    Leather,
+    Charcoal,
+    Bar,
+    Bin,
+    Craft,
+    Gem,
 }
+
+/// Items that fit in a barrel or a bin, ten to a container.
+pub const CONTAINER_CAP: usize = 10;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Slot {
@@ -36,7 +49,41 @@ pub enum Slot {
 
 impl ItemKind {
     pub fn is_food(self) -> bool {
-        self == ItemKind::Mushroom
+        matches!(self, ItemKind::Mushroom | ItemKind::Meat | ItemKind::Meal)
+    }
+
+    pub fn is_container(self) -> bool {
+        matches!(self, ItemKind::Barrel | ItemKind::Bin)
+    }
+
+    /// Which container (if any) this kind of item can be stored in.
+    pub fn stored_in(self) -> Option<ItemKind> {
+        use ItemKind::*;
+        match self {
+            Mushroom | Drink | Seed | Meat | Meal => Some(Barrel),
+            Bar | Charcoal | Craft | Gem | Bone | Leather | Block => Some(Bin),
+            k if k.is_equipment() => Some(Bin),
+            _ => None,
+        }
+    }
+
+    pub fn base_value(self) -> u32 {
+        use ItemKind::*;
+        match self {
+            Boulder | Log | Bone | Charcoal => 1,
+            Seed | Corpse | Carcass => 0,
+            Mushroom | Drink | Meat => 2,
+            Block | Leather => 3,
+            Barrel | Bin => 5,
+            Meal => 6,
+            Bed | Table | Chair | Door => 10,
+            Bar => 10,
+            Craft => 20,
+            Pick | Axe | Sword | Spear | Hammer => 25,
+            Helm | Shield => 25,
+            Breastplate => 40,
+            Gem => 40,
+        }
     }
 
     /// Base damage when swung, for anything usable as a weapon.
@@ -89,16 +136,20 @@ pub enum StockFilter {
     Food,
     Furniture,
     Refuse,
+    Metal,
+    Goods,
 }
 
 impl StockFilter {
-    pub const ALL: [StockFilter; 7] = [
+    pub const ALL: [StockFilter; 9] = [
         StockFilter::All,
         StockFilter::Stone,
         StockFilter::Wood,
         StockFilter::Food,
         StockFilter::Furniture,
         StockFilter::Equipment,
+        StockFilter::Metal,
+        StockFilter::Goods,
         StockFilter::Refuse,
     ];
 
@@ -111,6 +162,8 @@ impl StockFilter {
             StockFilter::Food => "food & drink",
             StockFilter::Furniture => "furniture",
             StockFilter::Refuse => "refuse",
+            StockFilter::Metal => "bars & fuel",
+            StockFilter::Goods => "finished goods",
         }
     }
 
@@ -123,6 +176,8 @@ impl StockFilter {
             StockFilter::Food => 'f',
             StockFilter::Furniture => 'u',
             StockFilter::Refuse => 'r',
+            StockFilter::Metal => 'm',
+            StockFilter::Goods => 'g',
         }
     }
 
@@ -132,8 +187,10 @@ impl StockFilter {
             StockFilter::All => true,
             StockFilter::Stone => matches!(k, Boulder | Block),
             StockFilter::Wood => k == Log,
-            StockFilter::Food => matches!(k, Mushroom | Drink),
-            StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel),
+            StockFilter::Food => matches!(k, Mushroom | Drink | Seed | Meat | Meal),
+            StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin),
+            StockFilter::Metal => matches!(k, Bar | Charcoal),
+            StockFilter::Goods => matches!(k, Craft | Gem | Bone | Leather),
             StockFilter::Refuse => matches!(k, Corpse | Carcass),
             StockFilter::Equipment => k.is_equipment(),
         }
@@ -149,6 +206,9 @@ pub struct Item {
     pub carried_by: Option<u32>,
     pub claimed_by: Option<u32>,
     pub label: Option<String>,
+    /// Barrel or bin this item is stored in.
+    #[serde(default)]
+    pub container: Option<u32>,
 }
 
 impl Item {
@@ -178,7 +238,21 @@ impl Item {
             Helm => format!("{} helm", m.adj()),
             Breastplate => format!("{} breastplate", m.adj()),
             Shield => format!("{} shield", m.adj()),
+            Seed => "stoutcap spawn".into(),
+            Meat => format!("{} meat", self.label.as_deref().unwrap_or("animal")),
+            Meal => "prepared meal".into(),
+            Bone => format!("{} bone", self.label.as_deref().unwrap_or("animal")),
+            Leather => format!("{} leather", self.label.as_deref().unwrap_or("animal")),
+            Charcoal => "charcoal".into(),
+            Bar => format!("{} bar", m.name()),
+            Bin => format!("{} bin", m.adj()),
+            Craft => format!("{} figurine", m.adj()),
+            Gem => format!("cut {}", m.name()),
         }
+    }
+
+    pub fn value(&self) -> u32 {
+        self.kind.base_value() * self.mat.value()
     }
 
     pub fn glyph(&self) -> (char, Color) {
@@ -200,11 +274,26 @@ impl Item {
             Pick | Axe | Sword | Spear | Hammer => '/',
             Helm | Breastplate => '[',
             Shield => ')',
+            Seed => ':',
+            Meat => '%',
+            Meal => '%',
+            Bone => '~',
+            Leather => '~',
+            Charcoal => '*',
+            Bar => '=',
+            Bin => '■',
+            Craft => '☼',
+            Gem => '☼',
         };
         let col = match self.kind {
             Drink => Color::Rgb(230, 170, 60),
             Corpse => Color::Rgb(200, 60, 60),
             Carcass => Color::Rgb(190, 120, 90),
+            Meat => Color::Rgb(220, 90, 90),
+            Meal => Color::Rgb(250, 200, 110),
+            Seed => Color::Rgb(160, 120, 170),
+            Charcoal => Color::Rgb(90, 90, 90),
+            Bin | Barrel => Mat::Wood.color(),
             _ => self.mat.color(),
         };
         (c, col)

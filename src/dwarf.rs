@@ -107,10 +107,12 @@ pub enum Task {
     Idle,
     Wander { target: Pos },
     Dig { target: Pos, stand: Pos },
-    Haul { item: u32, dest: Pos },
+    /// Carry an item to a stockpile tile, optionally into a barrel or bin there.
+    Haul { item: u32, dest: Pos, into: Option<u32> },
     Construct { bld: u32, item: u32 },
-    Craft { bld: u32, item: u32 },
-    Plant { pos: Pos },
+    /// Bring every input to the workshop, then work.
+    Craft { bld: u32, items: Vec<u32>, delivered: usize },
+    Plant { pos: Pos, seed: u32 },
     Harvest { pos: Pos },
     Eat { item: u32 },
     DrinkItem { item: u32 },

@@ -10,6 +10,12 @@ pub enum BuildingKind {
     Carpenter,
     Mason,
     Still,
+    Kitchen,
+    Butcher,
+    WoodFurnace,
+    Smelter,
+    Forge,
+    Craftsdwarf,
     Bed,
     Table,
     Chair,
@@ -17,10 +23,16 @@ pub enum BuildingKind {
 }
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 7] = [
+    pub const ALL: [BuildingKind; 13] = [
         BuildingKind::Carpenter,
         BuildingKind::Mason,
         BuildingKind::Still,
+        BuildingKind::Kitchen,
+        BuildingKind::Butcher,
+        BuildingKind::WoodFurnace,
+        BuildingKind::Smelter,
+        BuildingKind::Forge,
+        BuildingKind::Craftsdwarf,
         BuildingKind::Bed,
         BuildingKind::Table,
         BuildingKind::Chair,
@@ -32,6 +44,12 @@ impl BuildingKind {
             BuildingKind::Carpenter => "Carpenter's workshop",
             BuildingKind::Mason => "Mason's workshop",
             BuildingKind::Still => "Still",
+            BuildingKind::Kitchen => "Kitchen",
+            BuildingKind::Butcher => "Butcher's shop",
+            BuildingKind::WoodFurnace => "Wood furnace",
+            BuildingKind::Smelter => "Smelter",
+            BuildingKind::Forge => "Metalsmith's forge",
+            BuildingKind::Craftsdwarf => "Craftsdwarf's workshop",
             BuildingKind::Bed => "Bed",
             BuildingKind::Table => "Table",
             BuildingKind::Chair => "Chair",
@@ -44,6 +62,12 @@ impl BuildingKind {
             BuildingKind::Carpenter => 'c',
             BuildingKind::Mason => 'm',
             BuildingKind::Still => 's',
+            BuildingKind::Kitchen => 'k',
+            BuildingKind::Butcher => 'u',
+            BuildingKind::WoodFurnace => 'w',
+            BuildingKind::Smelter => 'e',
+            BuildingKind::Forge => 'f',
+            BuildingKind::Craftsdwarf => 'r',
             BuildingKind::Bed => 'b',
             BuildingKind::Table => 't',
             BuildingKind::Chair => 'h',
@@ -52,7 +76,7 @@ impl BuildingKind {
     }
 
     pub fn is_workshop(self) -> bool {
-        matches!(self, BuildingKind::Carpenter | BuildingKind::Mason | BuildingKind::Still)
+        !matches!(self, BuildingKind::Bed | BuildingKind::Table | BuildingKind::Chair | BuildingKind::Door)
     }
 
     pub fn size(self) -> i32 {
@@ -66,44 +90,47 @@ impl BuildingKind {
     /// The item consumed to construct this building.
     pub fn needs(self, item: &Item) -> bool {
         match self {
-            BuildingKind::Carpenter => item.kind == ItemKind::Log,
-            BuildingKind::Mason | BuildingKind::Still => {
-                item.kind == ItemKind::Boulder && item.mat.is_building_stone()
-            }
+            BuildingKind::Carpenter | BuildingKind::Butcher => item.kind == ItemKind::Log,
             BuildingKind::Bed => item.kind == ItemKind::Bed,
             BuildingKind::Table => item.kind == ItemKind::Table,
             BuildingKind::Chair => item.kind == ItemKind::Chair,
             BuildingKind::Door => item.kind == ItemKind::Door,
+            _ => item.kind == ItemKind::Boulder && item.mat.is_building_stone(),
         }
     }
 
     pub fn needs_desc(self) -> &'static str {
         match self {
-            BuildingKind::Carpenter => "a log",
-            BuildingKind::Mason | BuildingKind::Still => "a stone boulder",
+            BuildingKind::Carpenter | BuildingKind::Butcher => "a log",
             BuildingKind::Bed => "a bed",
             BuildingKind::Table => "a table",
             BuildingKind::Chair => "a chair",
             BuildingKind::Door => "a door",
+            _ => "a stone boulder",
         }
     }
 
     pub fn recipes(self) -> &'static [Recipe] {
+        use Recipe::*;
         match self {
-            BuildingKind::Carpenter => &[
-                Recipe::WoodBed,
-                Recipe::WoodTable,
-                Recipe::WoodChair,
-                Recipe::WoodDoor,
-                Recipe::Barrel,
+            BuildingKind::Carpenter => &[WoodBed, WoodTable, WoodChair, WoodDoor, Barrel, Bin],
+            BuildingKind::Mason => &[Blocks, StoneTable, StoneChair, StoneDoor],
+            BuildingKind::Still => &[Brew],
+            BuildingKind::Kitchen => &[Cook],
+            BuildingKind::Butcher => &[Butcher],
+            BuildingKind::WoodFurnace => &[Charcoal],
+            BuildingKind::Smelter => &[SmeltOre, MakeSteel],
+            BuildingKind::Forge => &[
+                ForgePick,
+                ForgeAxe,
+                ForgeSword,
+                ForgeSpear,
+                ForgeHammer,
+                ForgeHelm,
+                ForgeBreastplate,
+                ForgeShield,
             ],
-            BuildingKind::Mason => &[
-                Recipe::Blocks,
-                Recipe::StoneTable,
-                Recipe::StoneChair,
-                Recipe::StoneDoor,
-            ],
-            BuildingKind::Still => &[Recipe::Brew],
+            BuildingKind::Craftsdwarf => &[StoneCraft, BoneCraft, CutGem],
             _ => &[],
         }
     }
@@ -113,6 +140,12 @@ impl BuildingKind {
             BuildingKind::Carpenter => Color::Rgb(190, 130, 60),
             BuildingKind::Mason => Color::Rgb(185, 185, 195),
             BuildingKind::Still => Color::Rgb(200, 120, 220),
+            BuildingKind::Kitchen => Color::Rgb(240, 200, 120),
+            BuildingKind::Butcher => Color::Rgb(220, 90, 90),
+            BuildingKind::WoodFurnace => Color::Rgb(230, 120, 40),
+            BuildingKind::Smelter => Color::Rgb(255, 150, 50),
+            BuildingKind::Forge => Color::Rgb(255, 90, 40),
+            BuildingKind::Craftsdwarf => Color::Rgb(120, 200, 220),
             _ => Color::Rgb(200, 200, 200),
         }
     }
@@ -122,10 +155,69 @@ impl BuildingKind {
             BuildingKind::Carpenter => 'C',
             BuildingKind::Mason => 'M',
             BuildingKind::Still => 'S',
+            BuildingKind::Kitchen => 'K',
+            BuildingKind::Butcher => 'B',
+            BuildingKind::WoodFurnace => 'W',
+            BuildingKind::Smelter => 'E',
+            BuildingKind::Forge => 'F',
+            BuildingKind::Craftsdwarf => 'R',
             BuildingKind::Bed => 'Θ',
             BuildingKind::Table => '╥',
             BuildingKind::Chair => 'h',
             BuildingKind::Door => '+',
+        }
+    }
+}
+
+/// One ingredient slot of a recipe.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Input {
+    Log,
+    Stone,
+    Mushroom,
+    Edible,
+    Carcass,
+    Ore,
+    Fuel,
+    Bar,
+    IronBar,
+    Flux,
+    Bone,
+    RoughGem,
+}
+
+impl Input {
+    pub fn accepts(self, it: &Item) -> bool {
+        match self {
+            Input::Log => it.kind == ItemKind::Log,
+            Input::Stone => it.kind == ItemKind::Boulder && it.mat.is_building_stone(),
+            Input::Mushroom => it.kind == ItemKind::Mushroom,
+            Input::Edible => matches!(it.kind, ItemKind::Mushroom | ItemKind::Meat),
+            Input::Carcass => it.kind == ItemKind::Carcass,
+            Input::Ore => it.kind == ItemKind::Boulder && it.mat.smelts_to().is_some(),
+            Input::Fuel => it.kind == ItemKind::Charcoal || (it.kind == ItemKind::Boulder && it.mat == Mat::Coal),
+            Input::Bar => it.kind == ItemKind::Bar,
+            Input::IronBar => it.kind == ItemKind::Bar && it.mat == Mat::Iron,
+            Input::Flux => it.kind == ItemKind::Boulder && it.mat == Mat::Limestone,
+            Input::Bone => it.kind == ItemKind::Bone,
+            Input::RoughGem => it.kind == ItemKind::Boulder && it.mat.is_gem(),
+        }
+    }
+
+    pub fn desc(self) -> &'static str {
+        match self {
+            Input::Log => "log",
+            Input::Stone => "stone boulder",
+            Input::Mushroom => "stoutcap",
+            Input::Edible => "mushroom or meat",
+            Input::Carcass => "carcass",
+            Input::Ore => "metal ore",
+            Input::Fuel => "fuel (charcoal or coal)",
+            Input::Bar => "metal bar",
+            Input::IronBar => "iron bar",
+            Input::Flux => "limestone (flux)",
+            Input::Bone => "bone",
+            Input::RoughGem => "rough gem",
         }
     }
 }
@@ -137,82 +229,188 @@ pub enum Recipe {
     WoodChair,
     WoodDoor,
     Barrel,
+    Bin,
     Blocks,
     StoneTable,
     StoneChair,
     StoneDoor,
     Brew,
+    Cook,
+    Butcher,
+    Charcoal,
+    SmeltOre,
+    MakeSteel,
+    ForgePick,
+    ForgeAxe,
+    ForgeSword,
+    ForgeSpear,
+    ForgeHammer,
+    ForgeHelm,
+    ForgeBreastplate,
+    ForgeShield,
+    StoneCraft,
+    BoneCraft,
+    CutGem,
 }
 
 impl Recipe {
     pub fn name(self) -> &'static str {
+        use Recipe::*;
         match self {
-            Recipe::WoodBed => "Make wooden bed",
-            Recipe::WoodTable => "Make wooden table",
-            Recipe::WoodChair => "Make wooden chair",
-            Recipe::WoodDoor => "Make wooden door",
-            Recipe::Barrel => "Make barrel",
-            Recipe::Blocks => "Cut stone blocks",
-            Recipe::StoneTable => "Carve stone table",
-            Recipe::StoneChair => "Carve stone chair",
-            Recipe::StoneDoor => "Carve stone door",
-            Recipe::Brew => "Brew stoutcap ale",
+            WoodBed => "Make wooden bed",
+            WoodTable => "Make wooden table",
+            WoodChair => "Make wooden chair",
+            WoodDoor => "Make wooden door",
+            Barrel => "Make barrel",
+            Bin => "Make bin",
+            Blocks => "Cut stone blocks",
+            StoneTable => "Carve stone table",
+            StoneChair => "Carve stone chair",
+            StoneDoor => "Carve stone door",
+            Brew => "Brew stoutcap ale",
+            Cook => "Prepare meal",
+            Butcher => "Butcher a carcass",
+            Charcoal => "Make charcoal",
+            SmeltOre => "Smelt ore",
+            MakeSteel => "Make steel",
+            ForgePick => "Forge pick",
+            ForgeAxe => "Forge battle axe",
+            ForgeSword => "Forge short sword",
+            ForgeSpear => "Forge spear",
+            ForgeHammer => "Forge war hammer",
+            ForgeHelm => "Forge helm",
+            ForgeBreastplate => "Forge breastplate",
+            ForgeShield => "Forge shield",
+            StoneCraft => "Make stone crafts",
+            BoneCraft => "Make bone crafts",
+            CutGem => "Cut a gem",
         }
     }
 
     pub fn key(self) -> char {
+        use Recipe::*;
         match self {
-            Recipe::WoodBed | Recipe::Brew => 'b',
-            Recipe::WoodTable | Recipe::StoneTable => 't',
-            Recipe::WoodChair | Recipe::StoneChair => 'h',
-            Recipe::WoodDoor | Recipe::StoneDoor => 'd',
-            Recipe::Barrel => 'r',
-            Recipe::Blocks => 'k',
+            WoodBed | Brew | Cook | Butcher | Charcoal | BoneCraft => 'b',
+            WoodTable | StoneTable => 't',
+            WoodChair | StoneChair => 'h',
+            WoodDoor | StoneDoor => 'd',
+            Barrel => 'r',
+            Bin => 'n',
+            Blocks => 'k',
+            SmeltOre => 'o',
+            MakeSteel => 's',
+            ForgePick => 'p',
+            ForgeAxe => 'a',
+            ForgeSword => 'w',
+            ForgeSpear => 's',
+            ForgeHammer => 'h',
+            ForgeHelm => 'e',
+            ForgeBreastplate => 'b',
+            ForgeShield => 'i',
+            StoneCraft => 'c',
+            CutGem => 'g',
         }
     }
 
     pub fn labor(self) -> Labor {
+        use Recipe::*;
         match self {
-            Recipe::WoodBed | Recipe::WoodTable | Recipe::WoodChair | Recipe::WoodDoor | Recipe::Barrel => {
-                Labor::Carpentry
+            WoodBed | WoodTable | WoodChair | WoodDoor | Barrel | Bin => Labor::Carpentry,
+            Blocks | StoneTable | StoneChair | StoneDoor => Labor::Masonry,
+            Brew => Labor::Brewing,
+            Cook => Labor::Cooking,
+            Butcher => Labor::Butchery,
+            Charcoal | SmeltOre | MakeSteel => Labor::Smelting,
+            ForgePick | ForgeAxe | ForgeSword | ForgeSpear | ForgeHammer | ForgeHelm | ForgeBreastplate
+            | ForgeShield => Labor::Smithing,
+            StoneCraft | BoneCraft | CutGem => Labor::Crafting,
+        }
+    }
+
+    pub fn inputs(self) -> &'static [Input] {
+        use Recipe::*;
+        match self {
+            WoodBed | WoodTable | WoodChair | WoodDoor | Barrel | Bin | Charcoal => &[Input::Log],
+            Blocks | StoneTable | StoneChair | StoneDoor | StoneCraft => &[Input::Stone],
+            Brew => &[Input::Mushroom],
+            Cook => &[Input::Edible],
+            Butcher => &[Input::Carcass],
+            SmeltOre => &[Input::Ore, Input::Fuel],
+            MakeSteel => &[Input::IronBar, Input::Fuel, Input::Flux],
+            ForgeBreastplate => &[Input::Bar, Input::Bar, Input::Fuel],
+            ForgePick | ForgeAxe | ForgeSword | ForgeSpear | ForgeHammer | ForgeHelm | ForgeShield => {
+                &[Input::Bar, Input::Fuel]
             }
-            Recipe::Blocks | Recipe::StoneTable | Recipe::StoneChair | Recipe::StoneDoor => Labor::Masonry,
-            Recipe::Brew => Labor::Brewing,
+            BoneCraft => &[Input::Bone],
+            CutGem => &[Input::RoughGem],
         }
     }
 
-    pub fn accepts(self, item: &Item) -> bool {
-        match self.labor() {
-            Labor::Carpentry => item.kind == ItemKind::Log,
-            Labor::Masonry => item.kind == ItemKind::Boulder && item.mat.is_building_stone(),
-            _ => item.kind == ItemKind::Mushroom,
-        }
+    pub fn input_desc(self) -> String {
+        self.inputs().iter().map(|i| i.desc()).collect::<Vec<_>>().join(" + ")
     }
 
-    pub fn input_desc(self) -> &'static str {
-        match self.labor() {
-            Labor::Carpentry => "log",
-            Labor::Masonry => "stone boulder",
-            _ => "stoutcap mushroom",
-        }
-    }
-
-    pub fn output(self) -> (ItemKind, u32) {
+    /// What comes out, given the consumed inputs (in recipe order).
+    pub fn produce(self, inputs: &[Item]) -> Vec<(ItemKind, Mat, Option<String>)> {
+        use Recipe::*;
+        let m = inputs.first().map_or(Mat::Wood, |i| i.mat);
+        let one = |k: ItemKind| vec![(k, m, None)];
         match self {
-            Recipe::WoodBed => (ItemKind::Bed, 1),
-            Recipe::WoodTable | Recipe::StoneTable => (ItemKind::Table, 1),
-            Recipe::WoodChair | Recipe::StoneChair => (ItemKind::Chair, 1),
-            Recipe::WoodDoor | Recipe::StoneDoor => (ItemKind::Door, 1),
-            Recipe::Barrel => (ItemKind::Barrel, 1),
-            Recipe::Blocks => (ItemKind::Block, 4),
-            Recipe::Brew => (ItemKind::Drink, 4),
+            WoodBed => one(ItemKind::Bed),
+            WoodTable | StoneTable => one(ItemKind::Table),
+            WoodChair | StoneChair => one(ItemKind::Chair),
+            WoodDoor | StoneDoor => one(ItemKind::Door),
+            Barrel => one(ItemKind::Barrel),
+            Bin => one(ItemKind::Bin),
+            Blocks => vec![(ItemKind::Block, m, None); 4],
+            Brew => {
+                let mut v = vec![(ItemKind::Drink, Mat::Stoutcap, None); 4];
+                v.push((ItemKind::Seed, Mat::Stoutcap, None));
+                v
+            }
+            Cook => vec![(ItemKind::Meal, m, None); 2],
+            Butcher => {
+                let label = inputs.first().and_then(|i| i.label.clone());
+                let meat = match label.as_deref() {
+                    Some("bear") => 7,
+                    Some("deer") => 4,
+                    _ => 3,
+                };
+                let mut v = vec![(ItemKind::Meat, Mat::Flesh, label.clone()); meat];
+                v.push((ItemKind::Bone, Mat::Bone, label.clone()));
+                v.push((ItemKind::Bone, Mat::Bone, label.clone()));
+                v.push((ItemKind::Leather, Mat::Leather, label));
+                v
+            }
+            Charcoal => vec![(ItemKind::Charcoal, Mat::Coal, None)],
+            SmeltOre => {
+                let metal = m.smelts_to().unwrap_or(Mat::Iron);
+                vec![(ItemKind::Bar, metal, None); 2]
+            }
+            MakeSteel => vec![(ItemKind::Bar, Mat::Steel, None)],
+            ForgePick => one(ItemKind::Pick),
+            ForgeAxe => one(ItemKind::Axe),
+            ForgeSword => one(ItemKind::Sword),
+            ForgeSpear => one(ItemKind::Spear),
+            ForgeHammer => one(ItemKind::Hammer),
+            ForgeHelm => one(ItemKind::Helm),
+            ForgeBreastplate => one(ItemKind::Breastplate),
+            ForgeShield => one(ItemKind::Shield),
+            StoneCraft | BoneCraft => one(ItemKind::Craft),
+            CutGem => one(ItemKind::Gem),
         }
     }
 
     pub fn work(self) -> u32 {
+        use Recipe::*;
         match self {
-            Recipe::Blocks => 90,
-            Recipe::Brew => 110,
+            Blocks | Charcoal => 90,
+            Brew | Cook => 110,
+            Butcher => 120,
+            SmeltOre | MakeSteel => 160,
+            ForgeBreastplate => 260,
+            ForgePick | ForgeAxe | ForgeSword | ForgeSpear | ForgeHammer | ForgeHelm | ForgeShield => 200,
+            CutGem => 180,
             _ => 150,
         }
     }

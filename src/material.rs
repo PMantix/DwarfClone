@@ -29,6 +29,7 @@ pub enum Mat {
     Steel,
     Bone,
     Leather,
+    Gold,
 }
 
 impl Mat {
@@ -59,6 +60,7 @@ impl Mat {
             Mat::Steel => "steel",
             Mat::Bone => "bone",
             Mat::Leather => "leather",
+            Mat::Gold => "gold",
         }
     }
 
@@ -97,6 +99,7 @@ impl Mat {
             Mat::Steel => (200, 210, 230),
             Mat::Bone => (230, 225, 200),
             Mat::Leather => (160, 110, 70),
+            Mat::Gold => (255, 215, 60),
         };
         Color::Rgb(r, g, b)
     }
@@ -121,8 +124,27 @@ impl Mat {
         )
     }
 
-    pub fn is_metal(self) -> bool {
-        matches!(self, Mat::Copper | Mat::Bronze | Mat::Iron | Mat::Steel | Mat::NativeGold)
+    /// The metal an ore boulder yields at the smelter.
+    pub fn smelts_to(self) -> Option<Mat> {
+        match self {
+            Mat::Hematite => Some(Mat::Iron),
+            Mat::Malachite => Some(Mat::Copper),
+            Mat::NativeGold => Some(Mat::Gold),
+            _ => None,
+        }
+    }
+
+    /// Value multiplier for goods made of this material.
+    pub fn value(self) -> u32 {
+        match self {
+            Mat::Gold => 12,
+            Mat::Amethyst => 10,
+            Mat::Steel => 6,
+            Mat::Iron | Mat::Bronze => 4,
+            Mat::Copper => 3,
+            Mat::Marble => 2,
+            _ => 1,
+        }
     }
 
     /// Damage multiplier for weapons made of this material.

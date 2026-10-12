@@ -195,8 +195,12 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
         beasts.insert((c.pos.x, c.pos.y), (info.glyph, rgb(info.color), c.hostile()));
     }
     let mut items: HashMap<(i32, i32), (char, Color)> = HashMap::new();
-    for it in g.items.values().filter(|it| it.pos.z == z && it.carried_by.is_none()) {
-        items.insert((it.pos.x, it.pos.y), it.glyph());
+    for it in g.items.values().filter(|it| it.pos.z == z && it.carried_by.is_none() && it.container.is_none()) {
+        // Containers win the tile so stockpiles read as rows of barrels and bins.
+        let key = (it.pos.x, it.pos.y);
+        if it.kind.is_container() || !items.contains_key(&key) {
+            items.insert(key, it.glyph());
+        }
     }
     let sel = selection_box(app);
     let placing = match app.mode {
@@ -257,7 +261,7 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
             }
             if t.revealed {
                 if let Some(&(ic, icol)) = items.get(&(wx, wy)) {
-                    if t.building == 0 || !matches!(ch, 'C' | 'M' | 'S') {
+                    if t.building == 0 || !ch.is_ascii_uppercase() {
                         ch = ic;
                         fg = icol;
                     }
@@ -433,13 +437,29 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
             Span::styled(format!("{} — {}", d.name, task_desc(g, d)), Style::default().fg(TEXT)),
         ]));
     }
-    let here: Vec<_> = g.items.values().filter(|it| it.pos == p && it.carried_by.is_none()).collect();
+    let here: Vec<_> = g
+        .items
+        .values()
+        .filter(|it| it.pos == p && it.carried_by.is_none() && it.container.is_none())
+        .collect();
     for it in here.iter().take(5) {
         let (c, col) = it.glyph();
+        let extra = if it.kind.is_container() { format!(" ({}/10)", g.contents(it.id)) } else { String::new() };
         v.push(Line::from(vec![
             Span::styled(format!("{} ", c), Style::default().fg(col)),
-            Span::styled(it.name(), Style::default().fg(TEXT)),
+            Span::styled(format!("{}{}", it.name(), extra), Style::default().fg(TEXT)),
         ]));
+        if it.kind.is_container() {
+            let mut inside: HashMap<String, usize> = HashMap::new();
+            for c in g.items.values().filter(|c| c.container == Some(it.id)) {
+                *inside.entry(c.name()).or_default() += 1;
+            }
+            let mut inside: Vec<_> = inside.into_iter().collect();
+            inside.sort();
+            for (name, n) in inside.into_iter().take(4) {
+                v.push(plain(format!("    {} x{}", name, n), MUTED));
+            }
+        }
     }
     if here.len() > 5 {
         v.push(plain(format!("...and {} more", here.len() - 5), MUTED));
@@ -454,12 +474,18 @@ fn stocks(g: &Game) -> Vec<Line<'static>> {
     }
     let c = |k| counts.get(&k).copied().unwrap_or(0);
     let stone = g.items.values().filter(|it| it.kind == ItemKind::Boulder && it.mat.is_building_stone()).count();
+    let food = c(ItemKind::Mushroom) + c(ItemKind::Meat) + c(ItemKind::Meal);
     vec![
         header("Fortress"),
         Line::from(vec![
             Span::styled(format!("Dwarves {:<4}", g.alive_count()), Style::default().fg(TEXT)),
-            Span::styled(format!("Food {:<4}", c(ItemKind::Mushroom)), Style::default().fg(Mat::Stoutcap.color())),
+            Span::styled(format!("Food {:<4}", food), Style::default().fg(Mat::Stoutcap.color())),
             Span::styled(format!("Drink {}", c(ItemKind::Drink)), Style::default().fg(Color::Rgb(230, 170, 60))),
+        ]),
+        Line::from(vec![
+            Span::styled(format!("Meals {:<5}", c(ItemKind::Meal)), Style::default().fg(Color::Rgb(250, 200, 110))),
+            Span::styled(format!("Seed {:<4}", c(ItemKind::Seed)), Style::default().fg(Color::Rgb(160, 120, 170))),
+            Span::styled(format!("Bars {}", c(ItemKind::Bar)), Style::default().fg(Mat::Iron.color())),
         ]),
         Line::from(vec![
             Span::styled(format!("Logs {:<6}", c(ItemKind::Log)), Style::default().fg(Mat::Wood.color())),
@@ -627,6 +653,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             title = "Military".to_string();
             let alert = if g.alert { "ENGAGE hostiles" } else { "Stand down" };
             v.push(key_line("a", &format!("Orders: {}", alert), g.alert));
+            v.push(key_line("h", if g.hunt { "Hunting game: ON" } else { "Hunting game: off" }, g.hunt));
             v.push(key_line("s", "Station soldiers at cursor", false));
             v.push(key_line("x", "Clear station", false));
             if let Some(st) = g.station {
@@ -772,6 +799,8 @@ fn help_text() -> Vec<Line<'static>> {
         plain("    across several z-levels, then mine rooms.".into(), TEXT),
         plain(" 3. Make food and stone stockpiles (p).".into(), TEXT),
         plain(" 4. Farm stoutcaps (z), build a Still, brew ale.".into(), TEXT),
+        plain("    A Kitchen turns food into better meals.".into(), TEXT),
+        plain("    Ore -> Smelter (+fuel) -> bars -> Forge -> arms.".into(), TEXT),
         plain(" 5. Carpenter's workshop -> beds. Dwarves sleep".into(), TEXT),
         plain("    better in beds; drinking water makes them sad.".into(), TEXT),
         plain(" 6. Wolves, cave beasts and goblins will come.".into(), TEXT),
@@ -850,7 +879,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     );
 
     match app.mode {
-        Mode::Help => popup(f, area, 60, 37, " Help ", help_text()),
+        Mode::Help => popup(f, area, 60, 39, " Help ", help_text()),
         Mode::ConfirmQuit => popup(
             f,
             area,

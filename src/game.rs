@@ -1,7 +1,7 @@
 use crate::buildings::{Building, BuildingKind, Order, Recipe};
 use crate::dwarf::{self, Dwarf, Labor, Task};
 use crate::geom::{box_iter, Pos, DIRS4, DIRS8};
-use crate::items::{Item, ItemKind, StockFilter};
+use crate::items::{Item, ItemKind, StockFilter, CONTAINER_CAP};
 use crate::material::Mat;
 use crate::path;
 use crate::rng::Rng;
@@ -12,6 +12,8 @@ use crate::world::{DOOR_LOCKED, DOOR_OPEN};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 mod combat;
+#[cfg(test)]
+mod industry_tests;
 
 pub const DAY: u64 = 1200;
 pub const MONTH: u64 = DAY * 28;
@@ -85,6 +87,9 @@ pub struct Game {
     pub station: Option<Pos>,
     /// Soldiers hunt down hostiles when set.
     pub alert: bool,
+    /// Idle soldiers hunt game animals for the butcher.
+    #[serde(default)]
+    pub hunt: bool,
     siege_size: u32,
     siege_routed: bool,
     #[serde(skip)]
@@ -126,18 +131,19 @@ impl Game {
             creatures: BTreeMap::new(),
             station: None,
             alert: true,
+            hunt: false,
             siege_size: 0,
             siege_routed: false,
             dig_version: 0,
             dig_fail: [None, None],
         };
         let crews: [&[Labor]; 7] = [
-            &[Labor::Mining],
-            &[Labor::Mining],
+            &[Labor::Mining, Labor::Crafting],
+            &[Labor::Mining, Labor::Smelting],
             &[Labor::Woodcutting, Labor::Carpentry],
-            &[Labor::Carpentry, Labor::Woodcutting],
-            &[Labor::Masonry],
-            &[Labor::Farming, Labor::Brewing],
+            &[Labor::Carpentry, Labor::Butchery],
+            &[Labor::Masonry, Labor::Smithing],
+            &[Labor::Farming, Labor::Cooking],
             &[Labor::Brewing, Labor::Farming],
         ];
         for crew in crews {
@@ -164,6 +170,8 @@ impl Game {
             (ItemKind::Log, Mat::Wood, 6),
             (ItemKind::Axe, Mat::Copper, 1),
             (ItemKind::Pick, Mat::Copper, 1),
+            (ItemKind::Seed, Mat::Stoutcap, 15),
+            (ItemKind::Barrel, Mat::Wood, 2),
         ];
         for (kind, mat, n) in supplies {
             for _ in 0..n {
@@ -187,7 +195,7 @@ impl Game {
 
     pub fn msg(&mut self, text: &str, color: (u8, u8, u8)) {
         self.log.push(LogEntry { text: text.to_string(), color, tick: self.tick });
-        if self.log.len() > 300 {
+        if self.log.len() > 500 {
             self.log.remove(0);
         }
     }
@@ -221,7 +229,7 @@ impl Game {
         let pos = self.world.settle(pos);
         self.items.insert(
             id,
-            Item { id, kind, mat, pos, carried_by: None, claimed_by: None, label: None },
+            Item { id, kind, mat, pos, carried_by: None, claimed_by: None, label: None, container: None },
         );
         id
     }
@@ -390,9 +398,9 @@ impl Game {
     pub fn remove_building(&mut self, id: u32) {
         let Some(b) = self.buildings.get(&id).cloned() else { return };
         for i in 0..self.dwarves.len() {
-            let uses = match self.dwarves[i].task {
-                Task::Construct { bld, .. } | Task::Craft { bld, .. } => bld == id,
-                Task::Sleep { bed: Some(bed), .. } | Task::Rest { bed: Some(bed), .. } => bed == id,
+            let uses = match &self.dwarves[i].task {
+                Task::Construct { bld, .. } | Task::Craft { bld, .. } => *bld == id,
+                Task::Sleep { bed: Some(bed), .. } | Task::Rest { bed: Some(bed), .. } => *bed == id,
                 _ => false,
             };
             if uses {
@@ -409,12 +417,12 @@ impl Game {
         self.buildings.remove(&id);
         if b.built {
             let kind = match b.kind {
-                BuildingKind::Carpenter => ItemKind::Log,
-                BuildingKind::Mason | BuildingKind::Still => ItemKind::Boulder,
+                BuildingKind::Carpenter | BuildingKind::Butcher => ItemKind::Log,
                 BuildingKind::Bed => ItemKind::Bed,
                 BuildingKind::Table => ItemKind::Table,
                 BuildingKind::Chair => ItemKind::Chair,
                 BuildingKind::Door => ItemKind::Door,
+                _ => ItemKind::Boulder,
             };
             self.spawn_item(kind, b.mat, b.center());
         }
@@ -605,6 +613,11 @@ impl Game {
             Labor::Masonry,
             Labor::Farming,
             Labor::Brewing,
+            Labor::Cooking,
+            Labor::Butchery,
+            Labor::Smelting,
+            Labor::Smithing,
+            Labor::Crafting,
         ];
         for _ in 0..n {
             let id = self.new_id();
@@ -754,17 +767,29 @@ impl Game {
             Task::Dig { target, .. } => {
                 self.claimed.remove(&target);
             }
-            Task::Haul { item, dest } => {
+            Task::Haul { item, dest, .. } => {
                 self.unclaim(item);
                 self.reserved.remove(&dest);
             }
-            Task::Construct { bld, item } | Task::Craft { bld, item } => {
+            Task::Construct { bld, item } => {
                 self.unclaim(item);
                 if let Some(b) = self.buildings.get_mut(&bld) {
                     b.worker = None;
                 }
             }
-            Task::Plant { pos } | Task::Harvest { pos } => {
+            Task::Craft { bld, items, .. } => {
+                for item in items {
+                    self.unclaim(item);
+                }
+                if let Some(b) = self.buildings.get_mut(&bld) {
+                    b.worker = None;
+                }
+            }
+            Task::Plant { pos, seed } => {
+                self.claimed.remove(&pos);
+                self.unclaim(seed);
+            }
+            Task::Harvest { pos } => {
                 self.claimed.remove(&pos);
             }
             Task::Eat { item } | Task::DrinkItem { item } | Task::Equip { item } => self.unclaim(item),
@@ -842,6 +867,7 @@ impl Game {
             Travel::Arrived => {
                 if let Some(it) = self.items.get_mut(&item) {
                     it.carried_by = Some(d.id);
+                    it.container = None;
                 }
                 d.carrying = Some(item);
                 Some(true)
@@ -983,7 +1009,8 @@ impl Game {
     }
 
     fn find_food(&mut self, d: &mut Dwarf) -> bool {
-        if let Some((item, path)) = self.find_item(d.pos, |it| it.kind.is_food()) {
+        let meal = self.find_item(d.pos, |it| it.kind == ItemKind::Meal);
+        if let Some((item, path)) = meal.or_else(|| self.find_item(d.pos, |it| it.kind.is_food())) {
             self.claim_item(item, d.id);
             d.task = Task::Eat { item };
             Self::set_path(d, path);
@@ -1001,7 +1028,7 @@ impl Game {
             let at: HashMap<Pos, u32> = self
                 .creatures
                 .values()
-                .filter(|c| c.hostile() && self.creature_active(c))
+                .filter(|c| (c.hostile() || self.hunt) && !c.leaving && self.creature_active(c))
                 .map(|c| (c.pos, c.id))
                 .collect();
             if !at.is_empty() {
@@ -1086,18 +1113,27 @@ impl Game {
             .collect();
         for bid in shops {
             let recipe = self.buildings[&bid].orders[0].recipe;
-            if let Some((item, path)) = self.find_item(d.pos, |it| recipe.accepts(it)) {
-                self.claim_item(item, d.id);
+            let site = self.buildings[&bid].center();
+            let mut chosen: Vec<u32> = Vec::new();
+            for input in recipe.inputs() {
+                match self.find_item(site, |it| input.accepts(it) && !chosen.contains(&it.id)) {
+                    Some((id, _)) => chosen.push(id),
+                    None => break,
+                }
+            }
+            if chosen.len() == recipe.inputs().len() {
+                for &id in &chosen {
+                    self.claim_item(id, d.id);
+                }
                 self.buildings.get_mut(&bid).unwrap().worker = Some(d.id);
-                d.task = Task::Craft { bld: bid, item };
-                Self::set_path(d, path);
+                d.task = Task::Craft { bld: bid, items: chosen, delivered: 0 };
                 return true;
             }
             let shop_name = self.buildings[&bid].kind.name();
             self.buildings.get_mut(&bid).unwrap().retry_tick = self.tick + 300;
             self.warn(
                 &format!("craft{}", bid),
-                &format!("{}: \"{}\" needs a {}.", shop_name, recipe.name(), recipe.input_desc()),
+                &format!("{}: \"{}\" needs {}.", shop_name, recipe.name(), recipe.input_desc()),
                 (230, 200, 90),
             );
         }
@@ -1178,10 +1214,25 @@ impl Game {
         if plots.is_empty() {
             return false;
         }
+        // Planting needs seed; without any, only ripe plots are worth visiting.
+        let seed = self.find_item(d.pos, |it| it.kind == ItemKind::Seed).map(|(id, _)| id);
+        if seed.is_none() {
+            plots.retain(|_, harvest| *harvest);
+            if plots.is_empty() {
+                self.warn("noseed", "Farmers have no stoutcap spawn to plant.", (230, 200, 90));
+                return false;
+            }
+        }
         if let Some((p, path)) = path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| plots.contains_key(&p)) {
             self.claimed.insert(p);
-            d.task = if plots[&p] { Task::Harvest { pos: p } } else { Task::Plant { pos: p } };
-            Self::set_path(d, path);
+            if plots[&p] {
+                d.task = Task::Harvest { pos: p };
+                Self::set_path(d, path);
+            } else {
+                let seed = seed.unwrap();
+                self.claim_item(seed, d.id);
+                d.task = Task::Plant { pos: p, seed };
+            }
             return true;
         }
         false
@@ -1190,9 +1241,13 @@ impl Game {
     fn stockpile_accepts(&self, p: Pos, kind: ItemKind) -> bool {
         let zid = self.world.t(p).zone;
         match self.zones.get(&zid).map(|z| z.kind) {
-            Some(ZoneKind::Stockpile(f)) => f.accepts(kind),
+            Some(ZoneKind::Stockpile(f)) => stock_ok(f, kind),
             _ => false,
         }
+    }
+
+    pub fn contents(&self, container: u32) -> usize {
+        self.items.values().filter(|it| it.container == Some(container)).count()
     }
 
     fn find_haul(&mut self, d: &mut Dwarf) -> bool {
@@ -1202,6 +1257,24 @@ impl Game {
             .filter(|it| it.carried_by.is_none())
             .map(|it| it.pos)
             .collect();
+        // Containers sitting in stockpiles, with how many more items they take.
+        let mut fill: HashMap<u32, usize> = HashMap::new();
+        for it in self.items.values() {
+            if let Some(c) = it.container {
+                *fill.entry(c).or_default() += 1;
+            }
+        }
+        let mut boxes: HashMap<Pos, (u32, ItemKind)> = HashMap::new();
+        for it in self.items.values() {
+            if it.kind.is_container()
+                && it.carried_by.is_none()
+                && it.container.is_none()
+                && self.world.t(it.pos).zone != 0
+                && fill.get(&it.id).copied().unwrap_or(0) < CONTAINER_CAP
+            {
+                boxes.insert(it.pos, (it.id, it.kind));
+            }
+        }
         let mut free: Vec<(Pos, StockFilter)> = Vec::new();
         for z in self.zones.values() {
             if let ZoneKind::Stockpile(f) = z.kind {
@@ -1212,24 +1285,45 @@ impl Game {
                 }
             }
         }
-        if free.is_empty() {
+        let filter_at = |p: Pos| match self.zones.get(&self.world.t(p).zone).map(|z| z.kind) {
+            Some(ZoneKind::Stockpile(f)) => Some(f),
+            _ => None,
+        };
+        let box_for = |kind: ItemKind| {
+            boxes
+                .iter()
+                .filter(move |(p, (_, ck))| kind.stored_in() == Some(*ck) && filter_at(**p).map_or(false, |f| f.accepts(kind)))
+                .map(|(p, (id, _))| (*p, *id))
+        };
+        if free.is_empty() && boxes.is_empty() {
             return false;
         }
         let haulable = |it: &Item| {
-            !self.stockpile_accepts(it.pos, it.kind) && free.iter().any(|(_, f)| f.accepts(it.kind))
+            if it.container.is_some() || (it.kind.is_container() && fill.contains_key(&it.id)) {
+                return false;
+            }
+            let stored = self.stockpile_accepts(it.pos, it.kind);
+            // Loose goods already in their stockpile still move into a container if one has room.
+            let could_box = it.kind.stored_in().is_some() && box_for(it.kind).next().is_some();
+            (!stored && (free.iter().any(|(_, f)| stock_ok(*f, it.kind)) || could_box)) || (stored && could_box)
         };
         let Some((item, path)) = self.find_item(d.pos, haulable) else { return false };
         let (ipos, kind) = {
             let it = &self.items[&item];
             (it.pos, it.kind)
         };
-        let dests: HashSet<Pos> = free.iter().filter(|(_, f)| f.accepts(kind)).map(|(p, _)| *p).collect();
-        let Some((dest, _)) = path::search(&self.world, ipos, SEARCH_LIMIT, Mover::Dwarf, |p| dests.contains(&p)) else {
-            return false;
-        };
+        let into: HashMap<Pos, u32> = box_for(kind).collect();
+        let dests: HashSet<Pos> = free.iter().filter(|(_, f)| stock_ok(*f, kind)).map(|(p, _)| *p).collect();
+        let found = path::search(&self.world, ipos, SEARCH_LIMIT, Mover::Dwarf, |p| {
+            into.contains_key(&p) || (!self.stockpile_accepts(ipos, kind) && dests.contains(&p))
+        });
+        let Some((dest, _)) = found else { return false };
+        let target = into.get(&dest).copied();
         self.claim_item(item, d.id);
-        self.reserved.insert(dest);
-        d.task = Task::Haul { item, dest };
+        if target.is_none() {
+            self.reserved.insert(dest);
+        }
+        d.task = Task::Haul { item, dest, into: target };
         Self::set_path(d, path);
         true
     }
@@ -1271,7 +1365,7 @@ impl Game {
                     }
                 }
             }
-            Task::Haul { item, dest } => match self.fetch(d, item) {
+            Task::Haul { item, dest, into } => match self.fetch(d, item) {
                 None => self.release_task(d),
                 Some(false) => {}
                 Some(true) => match self.travel(d, dest) {
@@ -1279,10 +1373,15 @@ impl Game {
                     Travel::Failed => self.release_task(d),
                     Travel::Arrived => {
                         d.carrying = None;
+                        let boxed = into.filter(|c| {
+                            self.items.get(c).map_or(false, |b| b.pos == dest && b.carried_by.is_none())
+                                && self.contents(*c) < CONTAINER_CAP
+                        });
                         if let Some(it) = self.items.get_mut(&item) {
                             it.carried_by = None;
                             it.claimed_by = None;
                             it.pos = dest;
+                            it.container = boxed;
                         }
                         self.reserved.remove(&dest);
                         d.gain_xp(Labor::Hauling, 5);
@@ -1328,56 +1427,89 @@ impl Game {
                     },
                 }
             }
-            Task::Craft { bld, item } => {
+            Task::Craft { bld, items, delivered } => {
                 let Some(site) = self.buildings.get(&bld).map(|b| b.center()) else {
                     self.release_task(d);
                     return;
                 };
-                match self.fetch(d, item) {
-                    None => self.release_task(d),
-                    Some(false) => {}
-                    Some(true) => match self.travel(d, site) {
-                        Travel::Moving => {}
-                        Travel::Failed => self.release_task(d),
-                        Travel::Arrived => {
-                            let Some(order) = self.buildings[&bld].orders.first().copied() else {
-                                self.release_task(d);
-                                return;
-                            };
-                            let recipe = order.recipe;
-                            if Self::labor(d, recipe.work(), d.skill(recipe.labor())) {
-                                let in_mat = self.items.remove(&item).map_or(Mat::Wood, |it| it.mat);
+                if delivered < items.len() {
+                    let item = items[delivered];
+                    match self.fetch(d, item) {
+                        None => self.release_task(d),
+                        Some(false) => {}
+                        Some(true) => match self.travel(d, site) {
+                            Travel::Moving => {}
+                            Travel::Failed => self.release_task(d),
+                            Travel::Arrived => {
+                                // Set it down at the workshop (still claimed) and go for the next.
                                 d.carrying = None;
-                                d.gain_xp(recipe.labor(), 30);
-                                d.task = Task::Idle;
-                                let (kind, count) = recipe.output();
-                                let mat = if recipe == Recipe::Brew { Mat::Stoutcap } else { in_mat };
-                                let mut made = String::new();
-                                for _ in 0..count {
-                                    let id = self.spawn_item(kind, mat, site);
-                                    made = self.items[&id].name();
+                                if let Some(it) = self.items.get_mut(&item) {
+                                    it.carried_by = None;
+                                    it.pos = site;
                                 }
-                                if let Some(b) = self.buildings.get_mut(&bld) {
-                                    b.worker = None;
-                                    if !order.repeat {
-                                        b.orders.remove(0);
-                                    }
-                                }
-                                let n = if count > 1 { format!("{} x{}", made, count) } else { made };
-                                let who = d.name.clone();
-                                self.msg(&format!("{} has made {}.", who, n), (190, 190, 190));
+                                d.task = Task::Craft { bld, items, delivered: delivered + 1 };
                             }
+                        },
+                    }
+                    return;
+                }
+                match self.travel(d, site) {
+                    Travel::Moving => return,
+                    Travel::Failed => {
+                        self.release_task(d);
+                        return;
+                    }
+                    Travel::Arrived => {}
+                }
+                let Some(order) = self.buildings[&bld].orders.first().copied() else {
+                    self.release_task(d);
+                    return;
+                };
+                let recipe = order.recipe;
+                let level = d.skill(recipe.labor());
+                if Self::labor(d, recipe.work(), level) {
+                    let used: Vec<Item> = items.iter().filter_map(|id| self.items.remove(id)).collect();
+                    d.gain_xp(recipe.labor(), 30);
+                    d.task = Task::Idle;
+                    let mut made: Vec<String> = Vec::new();
+                    for (kind, mat, label) in recipe.produce(&used) {
+                        let id = self.spawn_item(kind, mat, site);
+                        let it = self.items.get_mut(&id).unwrap();
+                        it.label = label;
+                        made.push(it.name());
+                    }
+                    if let Some(b) = self.buildings.get_mut(&bld) {
+                        b.worker = None;
+                        if !order.repeat {
+                            b.orders.remove(0);
                         }
-                    },
+                    }
+                    let n = match made.len() {
+                        0 => "nothing".to_string(),
+                        1 => made[0].clone(),
+                        k => format!("{} x{}", made[0], k),
+                    };
+                    let who = d.name.clone();
+                    self.msg(&format!("{} has made {}.", who, n), (190, 190, 190));
                 }
             }
-            Task::Plant { pos } | Task::Harvest { pos } => {
+            Task::Plant { pos, .. } | Task::Harvest { pos } => {
                 let harvest = matches!(d.task, Task::Harvest { .. });
                 let f = self.world.t(pos).farm;
                 let still_valid = self.world.t(pos).zone != 0 && if harvest { f >= RIPE } else { f == 0 };
                 if !still_valid {
                     self.release_task(d);
                     return;
+                }
+                if let Task::Plant { seed, .. } = d.task {
+                    match self.fetch(d, seed) {
+                        None => {
+                            self.release_task(d);
+                            return;
+                        }
+                        Some(false) => return,
+                        Some(true) => {}
+                    }
                 }
                 match self.travel(d, pos) {
                     Travel::Moving => {}
@@ -1394,6 +1526,9 @@ impl Game {
                                     self.spawn_item(ItemKind::Mushroom, Mat::Stoutcap, pos);
                                 }
                             } else {
+                                if let Some(seed) = d.carrying.take() {
+                                    self.items.remove(&seed);
+                                }
                                 self.world.t_mut(pos).farm = 1;
                             }
                         }
@@ -1405,11 +1540,20 @@ impl Game {
                 Some(false) => {}
                 Some(true) => {
                     if Self::labor(d, 40, 0) {
-                        self.items.remove(&item);
+                        let kind = self.items.remove(&item).map_or(ItemKind::Mushroom, |it| it.kind);
                         d.carrying = None;
                         d.hunger = 0;
                         d.task = Task::Idle;
-                        d.think("ate a meal of stoutcaps", -5, self.tick);
+                        match kind {
+                            ItemKind::Meal => d.think("enjoyed a fine prepared meal", -12, self.tick),
+                            ItemKind::Meat => d.think("ate some roasted meat", -4, self.tick),
+                            _ => {
+                                d.think("ate raw stoutcaps", 0, self.tick);
+                                if self.rng.chance(0.5) {
+                                    self.spawn_item(ItemKind::Seed, Mat::Stoutcap, d.pos);
+                                }
+                            }
+                        }
                     }
                 }
             },
@@ -1588,6 +1732,17 @@ impl Game {
             }
         }
     }
+}
+
+/// Whether a stockpile with this filter wants the item, counting containers
+/// as belonging wherever their contents do.
+fn stock_ok(f: StockFilter, kind: ItemKind) -> bool {
+    f.accepts(kind)
+        || match kind {
+            ItemKind::Barrel => f.accepts(ItemKind::Mushroom),
+            ItemKind::Bin => f.accepts(ItemKind::Bar) || f.accepts(ItemKind::Craft) || f.accepts(ItemKind::Pick),
+            _ => false,
+        }
 }
 
 fn day_ordinal(d: u64) -> String {

@@ -257,6 +257,7 @@ impl App {
                     self.flash = Some("Station cleared; soldiers train where they stand.".into());
                 }
                 KeyCode::Char('a') => self.game.alert = !self.game.alert,
+                KeyCode::Char('h') => self.game.hunt = !self.game.hunt,
                 _ => {}
             },
             Mode::Help => self.mode = Mode::Normal,
