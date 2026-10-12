@@ -424,8 +424,8 @@ mod tests {
 
         // Take one of our walls down: the path opens and the material comes back.
         let logs_before = g.items.values().filter(|it| it.kind == ItemKind::Log || it.kind == ItemKind::Boulder || it.kind == ItemKind::Block).count();
-        // An edge wall, not a corner: diagonal steps can't squeeze between two walls.
-        let w = *built.iter().find(|p| p.x == start.x || p.y == start.y).expect("no edge wall was built");
+        // A corner wall: once it's gone, a diagonal step between the two walls beside it gets in.
+        let w = *built.iter().find(|p| p.x != start.x && p.y != start.y).unwrap_or(&built[0]);
         assert_eq!(g.plan_constructions(w, w, ConstructKind::Remove, BuildMat::Any), 1);
         finish_all(&mut g, 2);
         assert_eq!(g.world.t(w).kind, TileKind::Floor);

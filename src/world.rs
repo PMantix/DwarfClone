@@ -230,10 +230,8 @@ impl World {
         for &(dx, dy) in DIRS8.iter() {
             let q = p.offset(dx, dy, 0);
             if self.passable(q, m) {
+                // Diagonal steps are allowed even between two walls, as in DF.
                 let diag = dx != 0 && dy != 0;
-                if diag && self.solid(p.offset(dx, 0, 0)) && self.solid(p.offset(0, dy, 0)) {
-                    continue;
-                }
                 out.push((q, if diag { 14 } else { 10 }));
             }
         }

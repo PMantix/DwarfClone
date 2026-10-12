@@ -202,9 +202,8 @@ impl Game {
             ItemKind::Meat => d.think("ate some roasted meat", -4, tick),
             _ => {
                 d.think("ate raw stoutcaps", 0, tick);
-                if self.rng.chance(0.5) {
-                    self.spawn_item(ItemKind::Seed, Mat::Stoutcap, d.pos);
-                }
+                // Eating a plant leaves its spawn behind, as in DF.
+                self.spawn_item(ItemKind::Seed, Mat::Stoutcap, d.pos);
             }
         }
         if d.likes_food == Some(kind) {
