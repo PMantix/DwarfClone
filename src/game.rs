@@ -1363,6 +1363,17 @@ impl Game {
                 }
             }
         }
+        // Stockpile tiles a container could be set down on, swallowing the loose goods there.
+        let mut on_tile: HashMap<Pos, Vec<&Item>> = HashMap::new();
+        for it in self.items.values().filter(|it| it.carried_by.is_none() && it.container.is_none()) {
+            on_tile.entry(it.pos).or_default().push(it);
+        }
+        let absorb_ok = |p: Pos, ck: ItemKind| {
+            !self.reserved.contains(&p)
+                && on_tile.get(&p).map_or(false, |v| {
+                    v.len() < CONTAINER_CAP && v.iter().all(|it| it.claimed_by.is_none() && it.kind.stored_in() == Some(ck))
+                })
+        };
         let filter_at = |p: Pos| match self.zones.get(&self.world.t(p).zone).map(|z| z.kind) {
             Some(ZoneKind::Stockpile(f)) => Some(f),
             _ => None,
@@ -1373,7 +1384,8 @@ impl Game {
                 .filter(move |(p, (_, ck))| kind.stored_in() == Some(*ck) && filter_at(**p).map_or(false, |f| f.accepts(kind)))
                 .map(|(p, (id, _))| (*p, *id))
         };
-        if free.is_empty() && boxes.is_empty() {
+        let spare_box = self.items.values().any(|it| it.kind.is_container() && it.carried_by.is_none() && !fill.contains_key(&it.id));
+        if free.is_empty() && boxes.is_empty() && !spare_box {
             return false;
         }
         let haulable = |it: &Item| {
@@ -1383,7 +1395,8 @@ impl Game {
             let stored = self.stockpile_accepts(it.pos, it.kind);
             // Loose goods already in their stockpile still move into a container if one has room.
             let could_box = it.kind.stored_in().is_some() && box_for(it.kind).next().is_some();
-            (!stored && (free.iter().any(|(_, f)| stock_ok(*f, it.kind)) || could_box)) || (stored && could_box)
+            let room_for_box = it.kind.is_container() && on_tile.keys().any(|p| absorb_ok(*p, it.kind) && filter_at(*p).map_or(false, |f| stock_ok(f, it.kind)));
+            (!stored && (free.iter().any(|(_, f)| stock_ok(*f, it.kind)) || could_box || room_for_box)) || (stored && could_box)
         };
         let Some((item, path)) = self.find_item(d.pos, haulable) else { return false };
         let (ipos, kind) = {
@@ -1392,8 +1405,14 @@ impl Game {
         };
         let into: HashMap<Pos, u32> = box_for(kind).collect();
         let dests: HashSet<Pos> = free.iter().filter(|(_, f)| stock_ok(*f, kind)).map(|(p, _)| *p).collect();
+        let stored_now = self.stockpile_accepts(ipos, kind);
         let found = path::search(&self.world, ipos, SEARCH_LIMIT, Mover::Dwarf, |p| {
-            into.contains_key(&p) || (!self.stockpile_accepts(ipos, kind) && dests.contains(&p))
+            into.contains_key(&p)
+                || (!stored_now && dests.contains(&p))
+                || (!stored_now
+                    && kind.is_container()
+                    && absorb_ok(p, kind)
+                    && filter_at(p).map_or(false, |f| stock_ok(f, kind)))
         });
         let Some((dest, _)) = found else { return false };
         let target = into.get(&dest).copied();
@@ -1460,6 +1479,23 @@ impl Game {
                             it.claimed_by = None;
                             it.pos = dest;
                             it.container = boxed;
+                        }
+                        // A barrel or bin set down on loose goods gathers them up.
+                        let kind = self.items.get(&item).map(|it| it.kind);
+                        if kind.map_or(false, |k| k.is_container()) {
+                            let ck = kind.unwrap();
+                            let mut room = CONTAINER_CAP - self.contents(item);
+                            for it in self.items.values_mut() {
+                                if room == 0 {
+                                    break;
+                                }
+                                if it.pos == dest && it.id != item && it.carried_by.is_none() && it.container.is_none()
+                                    && it.claimed_by.is_none() && it.kind.stored_in() == Some(ck)
+                                {
+                                    it.container = Some(item);
+                                    room -= 1;
+                                }
+                            }
                         }
                         self.reserved.remove(&dest);
                         d.gain_xp(Labor::Hauling, 5);

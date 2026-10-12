@@ -112,3 +112,4 @@ fn goods_go_into_barrels_and_seeds_get_planted() {
     assert!(full <= CONTAINER_CAP);
 }
 
+
