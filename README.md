@@ -1,9 +1,9 @@
 # DwarfClone
 
 A Dwarf Fortress-style colony simulator for the terminal, written in Rust with ratatui.
-Fortress mode only (for now): you don't control dwarves directly — you designate work,
-lay out zones and queue orders, and the dwarves get on with it according to their labors,
-needs and moods.
+You don't control dwarves directly: you pick a site in a generated world, designate work,
+lay out zones, queue orders and draft a militia, and the dwarves get on with it according
+to their labors, needs, personalities and moods.
 
 ## Run
 
@@ -13,39 +13,71 @@ cargo run --release -- 12345   # specific seed
 ```
 
 Use Windows Terminal (or any truecolor + Unicode terminal) at 130x40 or larger.
-
-## What's in v0.1
-
-- **World**: 96×64×32 generated region — hills with natural ramps, lakes, forests, soil
-  over sedimentary / igneous rock layers, ore veins, gems, and a hidden cavern layer with
-  pools and tower mushrooms. Unexplored rock stays hidden until dug into.
-- **Designations**: mine, channel, up / down / up-down stairs, ramps, chop trees.
-  Boxes can span z-levels (dig a staircase in one go).
-- **Dwarves**: labors and skills (8 labors, 11 skill ranks), thirst / hunger / sleep,
-  thoughts and stress, tantrums, death by starvation, thirst or drowning.
-- **Economy**: stockpiles with categories, hauling, farm plots (stoutcap mushrooms),
-  Still (brew ale), Carpenter's and Mason's workshops with repeatable work orders,
-  furniture placement (beds are slept in). Dwarves dislike drinking plain water.
-- **Simulation**: 3D A* pathfinding over stairs and ramps, cellular water that falls and
-  levels out (channel next to a lake and watch), seasons, migrant waves.
-- **Save / load**: F5 / F9 (`dwarfclone_save.json`).
-
 Press `?` in game for keys.
+
+## Features
+
+**World & history.** A 64×32 continent of biomes (mountains, hills, forests, grassland,
+desert, tundra, swamp, evil-tainted land) with dwarven, human, elven and goblin
+civilizations. Two centuries of history are simulated before you arrive: settlements are
+founded, wars declared, sites sacked or conquered, rulers succeed one another, megabeasts
+ravage towns and heroes slay them. Browse it all in the legends viewer (`L`). You choose
+your embark site; the biome shapes the map (relief, forest, lakes, savage wildlife) and
+nearby goblins decide how often sieges come.
+
+**Fortress.** 96×64×32 region: soil over sedimentary and igneous rock, ore veins, gems,
+and a hidden cavern layer with pools, tower mushrooms and things that wake when you
+break in. Designate mining, channels, stairs, ramps and tree felling. Water falls and
+levels out.
+
+**Industry.** Farming with seeds, brewing, cooking, butchery, charcoal, ore smelting,
+steel (with limestone flux), a forge for tools, weapons and armor, stone and bone crafts,
+gem cutting, furniture, barrels and bins that store goods. Multi-input recipes, repeating
+work orders, item quality from skill.
+
+**Dwarves.** Thirst, hunger, sleep, 13 labors and skills, personalities (anxiety,
+sociability, temper, diligence, artistry), favorite materials and foods, friendships and
+grudges, thoughts and stress, tantrums that punch dwarves and topple furniture, and
+melancholy when misery drags on.
+
+**Rooms & nobles.** Dug, enclosed rooms are valued by size, furniture and walls; beds are
+assigned to owners (nobles first) and dining at tables beats eating on the floor. An
+expedition leader, later an elected mayor, demands good quarters and issues production
+mandates.
+
+**Strange moods.** A dwarf may be seized by a fey mood, claim a workshop, demand
+materials and produce a named artifact, or go mad if thwarted.
+
+**Danger.** Wildlife, cavern dwellers and goblin sieges. Body-part wounds, bleeding,
+severed limbs, limping, unconsciousness and bed rest. Draft soldiers who equip the best
+gear, train, station and engage; civilians flee. Doors keep animals out; locked doors stop
+everyone until goblins batter them down.
+
+**Trade.** Build a trade depot. Elves come in spring, humans in summer and your own
+civilization in autumn, if they are at peace with you. Haul goods to the depot and barter
+(they want a tenth on top).
+
+**Save / load** with F5 / F9 (`dwarfclone_save.json`).
 
 ## Tests
 
 ```
 cargo test --release
-cargo test --release one_year_timing -- --ignored --nocapture   # simulate a full year
+cargo test --release one_year_timing -- --ignored --nocapture
+cargo test --release profile_year -- --ignored --nocapture
 ```
 
 ## Layout
 
 | File | Role |
 | --- | --- |
-| `world.rs` | tiles, movement rules, reveal, world generation |
-| `game.rs` | simulation: jobs, needs, fluids, farms, migrants, player commands |
-| `dwarf.rs` | dwarves, labors, skills, tasks, names |
-| `buildings.rs`, `items.rs`, `material.rs` | data definitions |
+| `overworld.rs` | world map, civilizations, history, legends data |
+| `world.rs` | fortress tiles, movement rules, reveal, embark generation |
+| `game.rs` | core simulation: jobs, needs, fluids, farms, hauling, player commands |
+| `game/combat.rs` | creatures, fighting, wildlife, sieges |
+| `game/psyche.rs` | relationships, rooms, nobles, mandates, moods, insanity |
+| `game/trade.rs` | caravans, depot, bartering |
+| `dwarf.rs`, `body.rs`, `creature.rs` | units |
+| `buildings.rs`, `items.rs`, `material.rs` | data definitions and recipes |
 | `path.rs` | A* and nearest-goal Dijkstra search |
 | `app.rs`, `ui.rs` | input modes and rendering |
