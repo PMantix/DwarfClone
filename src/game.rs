@@ -5,9 +5,13 @@ use crate::items::{Item, ItemKind, StockFilter};
 use crate::material::Mat;
 use crate::path;
 use crate::rng::Rng;
-use crate::world::{self, Desig, TileKind, World};
+use crate::world::{self, Desig, Mover, TileKind, World};
 use serde::{Deserialize, Serialize};
+use crate::creature::Creature;
+use crate::world::{DOOR_LOCKED, DOOR_OPEN};
 use std::collections::{BTreeMap, HashMap, HashSet};
+
+mod combat;
 
 pub const DAY: u64 = 1200;
 pub const MONTH: u64 = DAY * 28;
@@ -76,8 +80,21 @@ pub struct Game {
     /// Stockpile tiles a hauler is bringing something to.
     pub reserved: HashSet<Pos>,
     warns: BTreeMap<String, u64>,
+    pub creatures: BTreeMap<u32, Creature>,
+    /// Where idle soldiers gather.
+    pub station: Option<Pos>,
+    /// Soldiers hunt down hostiles when set.
+    pub alert: bool,
+    siege_size: u32,
+    siege_routed: bool,
     #[serde(skip)]
     pub pause_request: bool,
+    /// Bumped whenever designations or dug terrain change.
+    #[serde(skip)]
+    dig_version: u64,
+    /// Last failed dig search per kind (mine, chop): (version, tick).
+    #[serde(skip)]
+    dig_fail: [Option<(u64, u64)>; 2],
     /// Cells holding water, rebuilt from the map when missing (e.g. after loading).
     #[serde(skip)]
     water_cells: Option<Vec<usize>>,
@@ -106,6 +123,13 @@ impl Game {
             warns: BTreeMap::new(),
             pause_request: false,
             water_cells: None,
+            creatures: BTreeMap::new(),
+            station: None,
+            alert: true,
+            siege_size: 0,
+            siege_routed: false,
+            dig_version: 0,
+            dig_fail: [None, None],
         };
         let crews: [&[Labor]; 7] = [
             &[Labor::Mining],
@@ -119,13 +143,27 @@ impl Game {
         for crew in crews {
             let pos = g.random_spot_near(embark, 3);
             let id = g.new_id();
-            let d = dwarf::new_dwarf(id, pos, &mut g.rng, crew);
+            let mut d = dwarf::new_dwarf(id, pos, &mut g.rng, crew);
+            // Miners start with a pick, woodcutters with an axe.
+            let tool = match crew[0] {
+                Labor::Mining => Some(ItemKind::Pick),
+                Labor::Woodcutting => Some(ItemKind::Axe),
+                _ => None,
+            };
+            if let Some(k) = tool {
+                let iid = g.spawn_item(k, Mat::Copper, pos);
+                g.items.get_mut(&iid).unwrap().carried_by = Some(id);
+                d.held = Some(iid);
+            }
             g.dwarves.push(d);
         }
+        g.populate_caverns();
         let supplies = [
             (ItemKind::Mushroom, Mat::Stoutcap, 30),
             (ItemKind::Drink, Mat::Stoutcap, 40),
             (ItemKind::Log, Mat::Wood, 6),
+            (ItemKind::Axe, Mat::Copper, 1),
+            (ItemKind::Pick, Mat::Copper, 1),
         ];
         for (kind, mat, n) in supplies {
             for _ in 0..n {
@@ -230,6 +268,7 @@ impl Game {
 
     /// Designate (or with `Desig::None`, clear) every tile in a box. Returns how many changed.
     pub fn designate(&mut self, a: Pos, b: Pos, d: Desig) -> usize {
+        self.dig_version += 1;
         let mut n = 0;
         for p in box_iter(a, b) {
             if !self.world.in_bounds(p) {
@@ -335,6 +374,7 @@ impl Game {
             worker: None,
             occupant: None,
             retry_tick: 0,
+            locked: false,
         };
         for p in b.tiles() {
             let t = self.world.t_mut(p);
@@ -352,7 +392,7 @@ impl Game {
         for i in 0..self.dwarves.len() {
             let uses = match self.dwarves[i].task {
                 Task::Construct { bld, .. } | Task::Craft { bld, .. } => bld == id,
-                Task::Sleep { bed: Some(bed), .. } => bed == id,
+                Task::Sleep { bed: Some(bed), .. } | Task::Rest { bed: Some(bed), .. } => bed == id,
                 _ => false,
             };
             if uses {
@@ -362,7 +402,9 @@ impl Game {
             }
         }
         for p in b.tiles() {
-            self.world.t_mut(p).building = 0;
+            let t = self.world.t_mut(p);
+            t.building = 0;
+            t.door = world::DOOR_NONE;
         }
         self.buildings.remove(&id);
         if b.built {
@@ -381,6 +423,28 @@ impl Game {
     pub fn add_order(&mut self, bld: u32, recipe: Recipe) {
         if let Some(b) = self.buildings.get_mut(&bld) {
             b.orders.push(Order { recipe, repeat: false });
+        }
+    }
+
+    pub fn toggle_lock(&mut self, bld: u32) {
+        let Some(b) = self.buildings.get_mut(&bld) else { return };
+        if b.kind != BuildingKind::Door || !b.built {
+            return;
+        }
+        b.locked = !b.locked;
+        let state = if b.locked { DOOR_LOCKED } else { DOOR_OPEN };
+        let pos = b.pos;
+        self.world.t_mut(pos).door = state;
+    }
+
+    pub fn toggle_soldier(&mut self, dwarf_id: u32) {
+        if let Some(i) = self.dwarves.iter().position(|d| d.id == dwarf_id) {
+            let mut d = std::mem::take(&mut self.dwarves[i]);
+            d.soldier = !d.soldier;
+            if !d.task.is_need() {
+                self.release_task(&mut d);
+            }
+            self.dwarves[i] = d;
         }
     }
 
@@ -417,13 +481,18 @@ impl Game {
                 self.dwarves[i] = d;
             }
         }
+        self.update_creatures();
+        if self.tick % DAY == DAY / 2 {
+            self.wildlife();
+        }
         if self.tick % SEASON == 0 {
             let season = (self.tick / SEASON) % 4;
+            let s = SEASONS[season as usize];
+            self.msg(&format!("{} has arrived.", s), (200, 200, 255));
             if season == 1 || season == 2 {
                 self.migrants();
             }
-            let s = SEASONS[season as usize];
-            self.msg(&format!("{} has arrived.", s), (200, 200, 255));
+            self.maybe_siege();
         }
     }
 
@@ -574,6 +643,30 @@ impl Game {
                 return;
             }
         }
+        if self.tick % 10 == 0 {
+            d.body.tick();
+            if d.body.dead {
+                self.kill(d, "has bled to death");
+                return;
+            }
+        }
+        if self.tick % 200 == 0 {
+            let in_bed = d.asleep
+                && matches!(d.task, Task::Rest { bed: Some(_), .. } | Task::Sleep { bed: Some(_), .. });
+            d.body.heal(if in_bed { 3 } else { 1 });
+        }
+        if d.body.unconscious() {
+            if d.task != Task::Idle {
+                self.release_task(d);
+            }
+            self.carry_follow(d);
+            return;
+        }
+        d.attack_cd = d.attack_cd.saturating_sub(1);
+        if self.tick % 5 == 0 {
+            self.combat_awareness(d);
+        }
+
         if self.world.t(d.pos).water >= 6 {
             d.drown += 1;
             if d.drown > 400 {
@@ -628,8 +721,8 @@ impl Game {
     }
 
     fn carry_follow(&mut self, d: &Dwarf) {
-        if let Some(id) = d.carrying {
-            if let Some(it) = self.items.get_mut(&id) {
+        for id in d.carrying.iter().chain(d.held.iter()).chain(d.armor.iter()) {
+            if let Some(it) = self.items.get_mut(id) {
                 it.pos = d.pos;
             }
         }
@@ -639,6 +732,9 @@ impl Game {
         self.release_task(d);
         d.alive = false;
         let pos = d.pos;
+        for id in d.held.take().into_iter().chain(d.armor.drain(..)) {
+            self.drop_item(id, pos);
+        }
         let id = self.spawn_item(ItemKind::Corpse, Mat::Flesh, pos);
         if let Some(it) = self.items.get_mut(&id) {
             it.label = Some(d.name.clone());
@@ -671,8 +767,8 @@ impl Game {
             Task::Plant { pos } | Task::Harvest { pos } => {
                 self.claimed.remove(&pos);
             }
-            Task::Eat { item } | Task::DrinkItem { item } => self.unclaim(item),
-            Task::Sleep { bed: Some(bed), .. } => {
+            Task::Eat { item } | Task::DrinkItem { item } | Task::Equip { item } => self.unclaim(item),
+            Task::Sleep { bed: Some(bed), .. } | Task::Rest { bed: Some(bed), .. } => {
                 if let Some(b) = self.buildings.get_mut(&bed) {
                     b.occupant = None;
                 }
@@ -708,7 +804,7 @@ impl Game {
             return Travel::Moving;
         }
         if d.path.first() != Some(&dest) {
-            match path::astar(&self.world, d.pos, dest, SEARCH_LIMIT) {
+            match path::astar(&self.world, d.pos, dest, SEARCH_LIMIT, Mover::Dwarf) {
                 Some(mut p) => {
                     p.reverse();
                     d.path = p;
@@ -718,14 +814,14 @@ impl Game {
         }
         let Some(next) = d.path.pop() else { return Travel::Failed };
         let mut nb = Vec::new();
-        self.world.neighbors(d.pos, &mut nb);
+        self.world.neighbors(d.pos, &mut nb, Mover::Dwarf);
         if !nb.iter().any(|&(q, _)| q == next) {
             // The world changed under us; replan next tick.
             d.path.clear();
             return Travel::Moving;
         }
         d.pos = next;
-        d.move_cd = MOVE_DELAY + if d.carrying.is_some() { 1 } else { 0 };
+        d.move_cd = MOVE_DELAY + if d.carrying.is_some() { 1 } else { 0 } + d.body.limp();
         if d.pos == dest {
             Travel::Arrived
         } else {
@@ -795,12 +891,20 @@ impl Game {
         if d.hunger > HUNGRY && self.find_food(d) {
             return;
         }
+        if d.body.needs_rest() {
+            self.start_bed(d, true);
+            return;
+        }
         if d.fatigue > TIRED {
-            self.start_sleep(d);
+            self.start_bed(d, false);
             return;
         }
         if d.tantrum > 0 {
             self.start_wander(d);
+            return;
+        }
+        if d.soldier {
+            self.choose_military(d);
             return;
         }
         if d.has(Labor::Building) && self.find_construct(d) {
@@ -838,7 +942,7 @@ impl Game {
         if at.is_empty() {
             return None;
         }
-        let (p, path) = path::search(&self.world, from, SEARCH_LIMIT, |p| at.contains_key(&p))?;
+        let (p, path) = path::search(&self.world, from, SEARCH_LIMIT, Mover::Dwarf, |p| at.contains_key(&p))?;
         Some((at[&p], path))
     }
 
@@ -869,7 +973,7 @@ impl Game {
                     || (w.kind(q) == Some(TileKind::Open) && w.get(below).map_or(false, |t| t.water > 0))
             })
         };
-        if let Some((stand, path)) = path::search(w, d.pos, SEARCH_LIMIT, |p| water_near(p)) {
+        if let Some((stand, path)) = path::search(w, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| water_near(p)) {
             d.task = Task::DrinkWater { stand };
             Self::set_path(d, path);
             return true;
@@ -889,7 +993,43 @@ impl Game {
         false
     }
 
-    fn start_sleep(&mut self, d: &mut Dwarf) {
+    fn choose_military(&mut self, d: &mut Dwarf) {
+        if self.equip_soldier(d) {
+            return;
+        }
+        if self.alert {
+            let at: HashMap<Pos, u32> = self
+                .creatures
+                .values()
+                .filter(|c| c.hostile() && self.creature_active(c))
+                .map(|c| (c.pos, c.id))
+                .collect();
+            if !at.is_empty() {
+                let found = path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, |q| {
+                    at.contains_key(&q) || DIRS8.iter().any(|&(dx, dy)| at.contains_key(&q.offset(dx, dy, 0)))
+                });
+                if let Some((p, _)) = found {
+                    let target = at.get(&p).copied().or_else(|| {
+                        DIRS8.iter().find_map(|&(dx, dy)| at.get(&p.offset(dx, dy, 0)).copied())
+                    });
+                    if let Some(target) = target {
+                        d.task = Task::Attack { target };
+                        return;
+                    }
+                }
+            }
+        }
+        if let Some(st) = self.station {
+            if (st.x - d.pos.x).abs() > 3 || (st.y - d.pos.y).abs() > 3 || st.z != d.pos.z {
+                d.task = Task::Station { pos: st };
+                return;
+            }
+        }
+        d.task = Task::Train;
+    }
+
+    fn start_bed(&mut self, d: &mut Dwarf, rest: bool) {
+        let task = |bed, stand| if rest { Task::Rest { bed, stand } } else { Task::Sleep { bed, stand } };
         let beds: HashMap<Pos, u32> = self
             .buildings
             .values()
@@ -897,17 +1037,17 @@ impl Game {
             .map(|b| (b.pos, b.id))
             .collect();
         if !beds.is_empty() {
-            if let Some((p, path)) = path::search(&self.world, d.pos, SEARCH_LIMIT, |p| beds.contains_key(&p)) {
+            if let Some((p, path)) = path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| beds.contains_key(&p)) {
                 let bed = beds[&p];
                 if let Some(b) = self.buildings.get_mut(&bed) {
                     b.occupant = Some(d.id);
                 }
-                d.task = Task::Sleep { bed: Some(bed), stand: p };
+                d.task = task(Some(bed), p);
                 Self::set_path(d, path);
                 return;
             }
         }
-        d.task = Task::Sleep { bed: None, stand: d.pos };
+        d.task = task(None, d.pos);
     }
 
     fn find_construct(&mut self, d: &mut Dwarf) -> bool {
@@ -991,8 +1131,17 @@ impl Game {
         if open.is_empty() {
             return false;
         }
+        let kind = chop as usize;
+        if let Some((v, t)) = self.dig_fail[kind] {
+            if v == self.dig_version && self.tick < t + 600 {
+                return false;
+            }
+        }
+        if let Some(started) = self.need_tool(d, if chop { ItemKind::Axe } else { ItemKind::Pick }) {
+            return started;
+        }
         let mut target = None;
-        let found = path::search(&self.world, d.pos, SEARCH_LIMIT, |p| {
+        let found = path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| {
             for q in self.work_targets(p) {
                 if open.contains(&q) && self.desig_valid(q, self.world.t(q).desig) {
                     target = Some(q);
@@ -1007,6 +1156,7 @@ impl Game {
             Self::set_path(d, path);
             return true;
         }
+        self.dig_fail[kind] = Some((self.dig_version, self.tick));
         false
     }
 
@@ -1028,7 +1178,7 @@ impl Game {
         if plots.is_empty() {
             return false;
         }
-        if let Some((p, path)) = path::search(&self.world, d.pos, SEARCH_LIMIT, |p| plots.contains_key(&p)) {
+        if let Some((p, path)) = path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| plots.contains_key(&p)) {
             self.claimed.insert(p);
             d.task = if plots[&p] { Task::Harvest { pos: p } } else { Task::Plant { pos: p } };
             Self::set_path(d, path);
@@ -1074,7 +1224,7 @@ impl Game {
             (it.pos, it.kind)
         };
         let dests: HashSet<Pos> = free.iter().filter(|(_, f)| f.accepts(kind)).map(|(p, _)| *p).collect();
-        let Some((dest, _)) = path::search(&self.world, ipos, SEARCH_LIMIT, |p| dests.contains(&p)) else {
+        let Some((dest, _)) = path::search(&self.world, ipos, SEARCH_LIMIT, Mover::Dwarf, |p| dests.contains(&p)) else {
             return false;
         };
         self.claim_item(item, d.id);
@@ -1166,6 +1316,10 @@ impl Game {
                                     b.built = true;
                                     b.mat = mat;
                                     b.worker = None;
+                                    if b.kind == BuildingKind::Door {
+                                        let pos = b.pos;
+                                        self.world.t_mut(pos).door = DOOR_OPEN;
+                                    }
                                 }
                                 let name = self.buildings[&bld].name();
                                 self.msg(&format!("{} has been completed.", name), (160, 220, 255));
@@ -1313,10 +1467,49 @@ impl Game {
                     }
                 }
             }
+            Task::Rest { stand, .. } => {
+                if !d.asleep {
+                    match self.travel(d, stand) {
+                        Travel::Moving => return,
+                        Travel::Failed => {
+                            self.release_task(d);
+                            d.task = Task::Rest { bed: None, stand: d.pos };
+                            return;
+                        }
+                        Travel::Arrived => d.asleep = true,
+                    }
+                }
+                d.fatigue = d.fatigue.saturating_sub(2);
+                if self.tick % 50 == 0 {
+                    d.body.heal(1);
+                }
+                if d.body.healed() || d.thirst > THIRSTY + 1000 || d.hunger > HUNGRY + 2000 {
+                    self.release_task(d);
+                }
+            }
+            Task::Equip { item } => self.do_equip(d, item),
+            Task::Attack { target } => self.do_attack(d, target),
+            Task::Flee => self.do_flee(d),
+            Task::Station { pos } => match self.travel(d, pos) {
+                Travel::Moving => {}
+                Travel::Failed => {
+                    d.task = Task::Idle;
+                    d.idle_cd = 60;
+                }
+                Travel::Arrived => d.task = Task::Idle,
+            },
+            Task::Train => {
+                if Self::labor(d, 300, 0) {
+                    d.task = Task::Idle;
+                } else if d.work % 2 == 0 {
+                    d.fight_xp += 1;
+                }
+            }
         }
     }
 
     fn complete_dig(&mut self, q: Pos) {
+        self.dig_version += 1;
         let t = *self.world.t(q);
         let was_wall = t.kind == TileKind::Wall;
         let mut drop_at = q;

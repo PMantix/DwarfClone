@@ -32,7 +32,8 @@ pub enum Mode {
     Place(BuildingKind),
     Query { bld: u32, adding: bool },
     Units { sel: usize },
-    Unit { id: u32 },
+    Unit { id: u32, sel: usize },
+    Military,
     Help,
     ConfirmQuit,
 }
@@ -82,7 +83,12 @@ impl App {
     fn uses_map_cursor(&self) -> bool {
         matches!(
             self.mode,
-            Mode::Normal | Mode::Designate { .. } | Mode::Stockpile { .. } | Mode::Farm { .. } | Mode::Place(_)
+            Mode::Normal
+                | Mode::Designate { .. }
+                | Mode::Stockpile { .. }
+                | Mode::Farm { .. }
+                | Mode::Place(_)
+                | Mode::Military
         )
     }
 
@@ -214,7 +220,7 @@ impl App {
                     KeyCode::Down => self.mode = Mode::Units { sel: (sel + 1).min(n.saturating_sub(1)) },
                     KeyCode::Enter => {
                         if let Some(d) = self.game.dwarves.get(sel) {
-                            self.mode = Mode::Unit { id: d.id };
+                            self.mode = Mode::Unit { id: d.id, sel: 0 };
                         }
                     }
                     KeyCode::Char('c') => {
@@ -226,7 +232,7 @@ impl App {
                     _ => {}
                 }
             }
-            Mode::Unit { id } => match k.code {
+            Mode::Unit { id, sel } => match k.code {
                 KeyCode::Esc => self.mode = Mode::Normal,
                 KeyCode::Char('c') => {
                     if let Some(d) = self.game.dwarves.iter().find(|d| d.id == id) {
@@ -234,12 +240,23 @@ impl App {
                     }
                     self.mode = Mode::Normal;
                 }
-                KeyCode::Char(c) if c.is_ascii_digit() => {
-                    let i = c as usize - '1' as usize;
-                    if let Some(&l) = LABORS.get(i) {
-                        self.game.toggle_labor(id, l);
-                    }
+                KeyCode::Up => self.mode = Mode::Unit { id, sel: sel.saturating_sub(1) },
+                KeyCode::Down => self.mode = Mode::Unit { id, sel: (sel + 1).min(LABORS.len() - 1) },
+                KeyCode::Enter => self.game.toggle_labor(id, LABORS[sel]),
+                KeyCode::Char('m') => self.game.toggle_soldier(id),
+                _ => {}
+            },
+            Mode::Military => match k.code {
+                KeyCode::Esc => self.mode = Mode::Normal,
+                KeyCode::Char('s') => {
+                    self.game.station = Some(self.cursor);
+                    self.flash = Some("Soldiers will station here.".into());
                 }
+                KeyCode::Char('x') => {
+                    self.game.station = None;
+                    self.flash = Some("Station cleared; soldiers train where they stand.".into());
+                }
+                KeyCode::Char('a') => self.game.alert = !self.game.alert,
                 _ => {}
             },
             Mode::Help => self.mode = Mode::Normal,
@@ -268,10 +285,11 @@ impl App {
                 }
             }
             KeyCode::Char('u') => self.mode = Mode::Units { sel: 0 },
+            KeyCode::Char('m') => self.mode = Mode::Military,
             KeyCode::Char('v') => {
                 let c = self.cursor;
                 if let Some(d) = self.game.dwarves.iter().find(|d| d.alive && d.pos == c) {
-                    self.mode = Mode::Unit { id: d.id };
+                    self.mode = Mode::Unit { id: d.id, sel: 0 };
                 } else {
                     self.flash = Some("No dwarf under the cursor.".into());
                 }
@@ -312,6 +330,7 @@ impl App {
             KeyCode::Char('a') if b.built && !kind.recipes().is_empty() => {
                 self.mode = Mode::Query { bld, adding: true };
             }
+            KeyCode::Char('l') => self.game.toggle_lock(bld),
             KeyCode::Char('r') => {
                 if let Some(o) = self.game.buildings.get_mut(&bld).and_then(|b| b.orders.last_mut()) {
                     o.repeat = !o.repeat;

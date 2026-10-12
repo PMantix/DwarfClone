@@ -23,6 +23,12 @@ pub enum Mat {
     Wood,
     Stoutcap,
     Flesh,
+    Copper,
+    Bronze,
+    Iron,
+    Steel,
+    Bone,
+    Leather,
 }
 
 impl Mat {
@@ -47,6 +53,12 @@ impl Mat {
             Mat::Wood => "wood",
             Mat::Stoutcap => "stoutcap",
             Mat::Flesh => "flesh",
+            Mat::Copper => "copper",
+            Mat::Bronze => "bronze",
+            Mat::Iron => "iron",
+            Mat::Steel => "steel",
+            Mat::Bone => "bone",
+            Mat::Leather => "leather",
         }
     }
 
@@ -79,6 +91,12 @@ impl Mat {
             Mat::Wood => (160, 110, 50),
             Mat::Stoutcap => (180, 110, 200),
             Mat::Flesh => (200, 140, 140),
+            Mat::Copper => (220, 120, 60),
+            Mat::Bronze => (200, 150, 70),
+            Mat::Iron => (170, 170, 185),
+            Mat::Steel => (200, 210, 230),
+            Mat::Bone => (230, 225, 200),
+            Mat::Leather => (160, 110, 70),
         };
         Color::Rgb(r, g, b)
     }
@@ -101,6 +119,35 @@ impl Mat {
             self,
             Mat::Sandstone | Mat::Limestone | Mat::Granite | Mat::Marble | Mat::Basalt
         )
+    }
+
+    pub fn is_metal(self) -> bool {
+        matches!(self, Mat::Copper | Mat::Bronze | Mat::Iron | Mat::Steel | Mat::NativeGold)
+    }
+
+    /// Damage multiplier for weapons made of this material.
+    pub fn weapon_mult(self) -> f32 {
+        match self {
+            Mat::Steel => 1.5,
+            Mat::Iron => 1.25,
+            Mat::Bronze => 1.15,
+            Mat::Copper => 1.0,
+            Mat::Bone => 0.8,
+            Mat::Wood => 0.6,
+            _ => 0.7,
+        }
+    }
+
+    /// Damage absorbed by armor made of this material.
+    pub fn armor_value(self) -> i32 {
+        match self {
+            Mat::Steel => 7,
+            Mat::Iron => 5,
+            Mat::Bronze => 4,
+            Mat::Copper => 3,
+            Mat::Bone | Mat::Leather => 2,
+            _ => 1,
+        }
     }
 
     pub fn diggable(self) -> bool {

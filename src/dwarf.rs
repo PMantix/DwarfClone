@@ -1,3 +1,4 @@
+use crate::body::Body;
 use crate::geom::Pos;
 use crate::rng::Rng;
 use serde::{Deserialize, Serialize};
@@ -10,17 +11,29 @@ pub enum Labor {
     Masonry,
     Farming,
     Brewing,
+    Cooking,
+    Butchery,
+    Smelting,
+    Smithing,
+    Crafting,
     Hauling,
     Building,
 }
 
-pub const LABORS: [Labor; 8] = [
+pub const NUM_LABORS: usize = 13;
+
+pub const LABORS: [Labor; NUM_LABORS] = [
     Labor::Mining,
     Labor::Woodcutting,
     Labor::Carpentry,
     Labor::Masonry,
     Labor::Farming,
     Labor::Brewing,
+    Labor::Cooking,
+    Labor::Butchery,
+    Labor::Smelting,
+    Labor::Smithing,
+    Labor::Crafting,
     Labor::Hauling,
     Labor::Building,
 ];
@@ -38,6 +51,11 @@ impl Labor {
             Labor::Masonry => "Masonry",
             Labor::Farming => "Farming",
             Labor::Brewing => "Brewing",
+            Labor::Cooking => "Cooking",
+            Labor::Butchery => "Butchery",
+            Labor::Smelting => "Smelting",
+            Labor::Smithing => "Smithing",
+            Labor::Crafting => "Stonecrafting",
             Labor::Hauling => "Hauling",
             Labor::Building => "Construction",
         }
@@ -51,6 +69,11 @@ impl Labor {
             Labor::Masonry => "Mason",
             Labor::Farming => "Farmer",
             Labor::Brewing => "Brewer",
+            Labor::Cooking => "Cook",
+            Labor::Butchery => "Butcher",
+            Labor::Smelting => "Furnace operator",
+            Labor::Smithing => "Smith",
+            Labor::Crafting => "Craftsdwarf",
             Labor::Hauling | Labor::Building => "Peasant",
         }
     }
@@ -93,13 +116,26 @@ pub enum Task {
     DrinkItem { item: u32 },
     DrinkWater { stand: Pos },
     Sleep { bed: Option<u32>, stand: Pos },
+    /// Recover from wounds, in a bed if one is free.
+    Rest { bed: Option<u32>, stand: Pos },
+    /// Pick up a tool, weapon or piece of armor and keep it.
+    Equip { item: u32 },
+    Attack { target: u32 },
+    Station { pos: Pos },
+    Train,
+    Flee,
 }
 
 impl Task {
     pub fn is_need(&self) -> bool {
         matches!(
             self,
-            Task::Eat { .. } | Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Sleep { .. }
+            Task::Eat { .. }
+                | Task::DrinkItem { .. }
+                | Task::DrinkWater { .. }
+                | Task::Sleep { .. }
+                | Task::Rest { .. }
+                | Task::Flee
         )
     }
 }
@@ -117,8 +153,8 @@ pub struct Dwarf {
     pub name: String,
     pub pos: Pos,
     pub alive: bool,
-    pub labors: [bool; 8],
-    pub skills: [u32; 8],
+    pub labors: [bool; NUM_LABORS],
+    pub skills: [u32; NUM_LABORS],
     pub hunger: u32,
     pub thirst: u32,
     pub fatigue: u32,
@@ -136,6 +172,15 @@ pub struct Dwarf {
     pub tantrum: u32,
     pub asleep: bool,
     pub drown: u32,
+    pub body: Body,
+    /// Tool or weapon in hand.
+    pub held: Option<u32>,
+    pub armor: Vec<u32>,
+    pub soldier: bool,
+    pub fight_xp: u32,
+    pub attack_cd: u32,
+    /// Creature that last hit this dwarf, and when.
+    pub attacker: Option<(u32, u64)>,
 }
 
 impl Dwarf {
@@ -162,11 +207,20 @@ impl Dwarf {
                 best = Some((xp, l));
             }
         }
+        if self.soldier {
+            return if self.fight_xp >= 1200 { "Veteran" } else { "Recruit" };
+        }
         best.map_or("Peasant", |(_, l)| l.profession())
     }
 
+    pub fn fight_level(&self) -> u32 {
+        skill_level(self.fight_xp)
+    }
+
     pub fn mood(&self) -> (&'static str, (u8, u8, u8)) {
-        if self.tantrum > 0 {
+        if self.body.unconscious() {
+            ("Unconscious", (255, 60, 60))
+        } else if self.tantrum > 0 {
             ("Throwing a tantrum", (255, 60, 60))
         } else if self.stress < -150 {
             ("Ecstatic", (80, 255, 255))
@@ -226,8 +280,8 @@ pub fn fortress_name(rng: &mut Rng) -> String {
 }
 
 pub fn new_dwarf(id: u32, pos: Pos, rng: &mut Rng, specialties: &[Labor]) -> Dwarf {
-    let mut labors = [false; 8];
-    let mut skills = [0u32; 8];
+    let mut labors = [false; NUM_LABORS];
+    let mut skills = [0u32; NUM_LABORS];
     labors[Labor::Hauling.idx()] = true;
     labors[Labor::Building.idx()] = true;
     for (i, &l) in specialties.iter().enumerate() {

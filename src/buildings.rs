@@ -236,6 +236,8 @@ pub struct Building {
     pub worker: Option<u32>,
     pub occupant: Option<u32>,
     pub retry_tick: u64,
+    #[serde(default)]
+    pub locked: bool,
 }
 
 impl Building {

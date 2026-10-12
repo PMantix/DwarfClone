@@ -47,6 +47,18 @@ impl TileKind {
     }
 }
 
+/// Who is moving: animals can't open doors, nobody passes a locked one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Mover {
+    Dwarf,
+    Beast,
+    Goblin,
+}
+
+pub const DOOR_NONE: u8 = 0;
+pub const DOOR_OPEN: u8 = 1;
+pub const DOOR_LOCKED: u8 = 2;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Desig {
     None,
@@ -87,6 +99,9 @@ pub struct Tile {
     pub building: u32,
     /// Farm growth: 0 = fallow, otherwise ticks of growth.
     pub farm: u16,
+    /// DOOR_NONE / DOOR_OPEN / DOOR_LOCKED.
+    #[serde(default)]
+    pub door: u8,
 }
 
 impl Default for Tile {
@@ -100,6 +115,7 @@ impl Default for Tile {
             zone: 0,
             building: 0,
             farm: 0,
+            door: DOOR_NONE,
         }
     }
 }
@@ -158,6 +174,17 @@ impl World {
             .map_or(false, |t| t.kind.has_floor() && t.water <= 3)
     }
 
+    pub fn passable(&self, p: Pos, m: Mover) -> bool {
+        match self.get(p) {
+            Some(t) if t.kind.has_floor() && t.water <= 3 => match t.door {
+                DOOR_LOCKED => false,
+                DOOR_OPEN => m != Mover::Beast,
+                _ => true,
+            },
+            _ => false,
+        }
+    }
+
     pub fn surface_z(&self, x: i32, y: i32) -> i32 {
         self.surface[(y * self.w + x) as usize]
     }
@@ -175,7 +202,7 @@ impl World {
     }
 
     /// Legal single moves from `p`, with costs (10 = orthogonal step).
-    pub fn neighbors(&self, p: Pos, out: &mut Vec<(Pos, u32)>) {
+    pub fn neighbors(&self, p: Pos, out: &mut Vec<(Pos, u32)>, m: Mover) {
         out.clear();
         let here = match self.get(p) {
             Some(t) => t.kind,
@@ -183,7 +210,7 @@ impl World {
         };
         for &(dx, dy) in DIRS8.iter() {
             let q = p.offset(dx, dy, 0);
-            if self.walkable(q) {
+            if self.passable(q, m) {
                 let diag = dx != 0 && dy != 0;
                 if diag && self.solid(p.offset(dx, 0, 0)) && self.solid(p.offset(0, dy, 0)) {
                     continue;
@@ -193,13 +220,13 @@ impl World {
         }
         if matches!(here, TileKind::StairUp | TileKind::StairUD) {
             let q = p.up();
-            if matches!(self.kind(q), Some(TileKind::StairDown | TileKind::StairUD)) && self.walkable(q) {
+            if matches!(self.kind(q), Some(TileKind::StairDown | TileKind::StairUD)) && self.passable(q, m) {
                 out.push((q, 12));
             }
         }
         if matches!(here, TileKind::StairDown | TileKind::StairUD) {
             let q = p.down();
-            if matches!(self.kind(q), Some(TileKind::StairUp | TileKind::StairUD)) && self.walkable(q) {
+            if matches!(self.kind(q), Some(TileKind::StairUp | TileKind::StairUD)) && self.passable(q, m) {
                 out.push((q, 12));
             }
         }
@@ -207,7 +234,7 @@ impl World {
         if here == TileKind::Ramp && self.kind(p.up()) == Some(TileKind::Open) {
             for &(dx, dy) in DIRS8.iter() {
                 let q = p.offset(dx, dy, 1);
-                if self.solid(p.offset(dx, dy, 0)) && self.walkable(q) {
+                if self.solid(p.offset(dx, dy, 0)) && self.passable(q, m) {
                     out.push((q, 14));
                 }
             }
@@ -218,7 +245,7 @@ impl World {
                 let r = p.offset(dx, dy, -1);
                 if self.kind(r) == Some(TileKind::Ramp)
                     && self.kind(p.offset(dx, dy, 0)) == Some(TileKind::Open)
-                    && self.walkable(r)
+                    && self.passable(r, m)
                 {
                     out.push((r, 14));
                 }

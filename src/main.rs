@@ -1,5 +1,7 @@
 mod app;
+mod body;
 mod buildings;
+mod creature;
 mod dwarf;
 mod game;
 mod geom;

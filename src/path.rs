@@ -1,5 +1,5 @@
 use crate::geom::Pos;
-use crate::world::World;
+use crate::world::{Mover, World};
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
 
@@ -20,6 +20,7 @@ pub fn search<F: FnMut(Pos) -> bool>(
     world: &World,
     start: Pos,
     limit: usize,
+    m: Mover,
     mut goal: F,
 ) -> Option<(Pos, Vec<Pos>)> {
     let mut came: HashMap<Pos, (u32, Pos)> = HashMap::new();
@@ -39,7 +40,7 @@ pub fn search<F: FnMut(Pos) -> bool>(
         if expanded > limit {
             return None;
         }
-        world.neighbors(p, &mut nb);
+        world.neighbors(p, &mut nb, m);
         for &(q, c) in &nb {
             let nc = cost + c;
             if came.get(&q).map_or(true, |&(oc, _)| nc < oc) {
@@ -59,7 +60,7 @@ fn heuristic(a: Pos, b: Pos) -> u32 {
 }
 
 /// A* from `start` to `goal`. Returns the path excluding `start`.
-pub fn astar(world: &World, start: Pos, goal: Pos, limit: usize) -> Option<Vec<Pos>> {
+pub fn astar(world: &World, start: Pos, goal: Pos, limit: usize, m: Mover) -> Option<Vec<Pos>> {
     if start == goal {
         return Some(Vec::new());
     }
@@ -78,7 +79,7 @@ pub fn astar(world: &World, start: Pos, goal: Pos, limit: usize) -> Option<Vec<P
             return None;
         }
         let cost = came[&p].0;
-        world.neighbors(p, &mut nb);
+        world.neighbors(p, &mut nb, m);
         for &(q, c) in &nb {
             let nc = cost + c;
             if came.get(&q).map_or(true, |&(oc, _)| nc < oc) {

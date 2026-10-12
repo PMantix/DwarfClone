@@ -1,4 +1,5 @@
 use crate::app::{App, Mode, DESIG_KEYS};
+use crate::body::PARTS;
 use crate::buildings::BuildingKind;
 use crate::dwarf::{skill_rank, Dwarf, Task, LABORS};
 use crate::game::{Game, ZoneKind, HUNGRY, RIPE, THIRSTY, TIRED};
@@ -188,6 +189,11 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
     for d in g.dwarves.iter().filter(|d| d.alive && d.pos.z == z) {
         units.insert((d.pos.x, d.pos.y), d);
     }
+    let mut beasts: HashMap<(i32, i32), (char, Color, bool)> = HashMap::new();
+    for c in g.creatures.values().filter(|c| c.alive && c.pos.z == z && g.world.t(c.pos).revealed) {
+        let info = c.species.info();
+        beasts.insert((c.pos.x, c.pos.y), (info.glyph, rgb(info.color), c.hostile()));
+    }
     let mut items: HashMap<(i32, i32), (char, Color)> = HashMap::new();
     for it in g.items.values().filter(|it| it.pos.z == z && it.carried_by.is_none()) {
         items.insert((it.pos.x, it.pos.y), it.glyph());
@@ -257,9 +263,19 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                     }
                 }
             }
+            if let Some(&(bc, bcol, hostile)) = beasts.get(&(wx, wy)) {
+                ch = bc;
+                fg = bcol;
+                if hostile {
+                    bg = Color::Rgb(90, 0, 0);
+                }
+            }
             if let Some(d) = units.get(&(wx, wy)) {
-                ch = '☺';
-                fg = if d.asleep { dim(rgb(d.color), 0.5) } else { rgb(d.color) };
+                ch = if d.soldier { '☻' } else { '☺' };
+                fg = if d.asleep || d.body.unconscious() { dim(rgb(d.color), 0.5) } else { rgb(d.color) };
+                if d.body.bleeding > 0 {
+                    bg = Color::Rgb(70, 0, 0);
+                }
             }
             if t.desig != Desig::None {
                 bg = Color::Rgb(110, 85, 0);
@@ -342,6 +358,14 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
         Task::Eat { .. } => "Eating".into(),
         Task::DrinkItem { .. } | Task::DrinkWater { .. } => "Drinking".into(),
         Task::Sleep { .. } => if d.asleep { "Sleeping".into() } else { "Going to sleep".into() },
+        Task::Rest { .. } => "Resting injury".into(),
+        Task::Equip { item } => format!("Picking up {}", iname(*item)),
+        Task::Attack { target } => {
+            format!("Fighting the {}", g.creatures.get(target).map_or("enemy", |c| c.name()))
+        }
+        Task::Station { .. } => "Going to station".into(),
+        Task::Train => "Combat drill".into(),
+        Task::Flee => "Fleeing!".into(),
     }
 }
 
@@ -386,6 +410,22 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
     if let Some(b) = g.buildings.get(&t.building) {
         let st = if b.built { "" } else { " (awaiting construction)" };
         v.push(plain(format!("{}{}", b.name(), st), b.kind.color()));
+    }
+    for c in g.creatures.values().filter(|c| c.alive && c.pos == p) {
+        let info = c.species.info();
+        let state = if c.body.unconscious() {
+            "unconscious"
+        } else if c.leaving {
+            "leaving"
+        } else if c.hostile() {
+            "hostile"
+        } else {
+            "peaceful"
+        };
+        v.push(Line::from(vec![
+            Span::styled(format!("{} ", info.glyph), Style::default().fg(rgb(info.color))),
+            Span::styled(format!("{} ({})", info.name, state), Style::default().fg(TEXT)),
+        ]));
     }
     for d in g.dwarves.iter().filter(|d| d.alive && d.pos == p) {
         v.push(Line::from(vec![
@@ -445,6 +485,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(key_line("b", "Build", false));
             v.push(key_line("q", "Query building", false));
             v.push(key_line("u", "Unit list", false));
+            v.push(key_line("m", "Military", false));
             v.push(key_line("v", "View dwarf at cursor", false));
             v.push(key_line("Tab", "Jump to next dwarf", false));
             v.push(key_line("?", "Help", false));
@@ -548,6 +589,9 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                         v.push(key_line("x", "Remove last order", false));
                     }
                 }
+                if b.kind == BuildingKind::Door && b.built {
+                    v.push(key_line("l", if b.locked { "Unlock door (locked)" } else { "Lock door" }, b.locked));
+                }
                 v.push(key_line("X", "Remove building", false));
                 v.push(plain("Esc: back".into(), MUTED));
             }
@@ -573,10 +617,40 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(Line::default());
             v.push(plain("Up/Down select · Enter view · c center".into(), MUTED));
         }
-        Mode::Unit { id } => {
+        Mode::Unit { id, sel } => {
             title = "Dwarf".to_string();
             if let Some(d) = g.dwarves.iter().find(|d| d.id == *id) {
-                v.extend(unit_view(g, d));
+                v.extend(unit_view(g, d, *sel));
+            }
+        }
+        Mode::Military => {
+            title = "Military".to_string();
+            let alert = if g.alert { "ENGAGE hostiles" } else { "Stand down" };
+            v.push(key_line("a", &format!("Orders: {}", alert), g.alert));
+            v.push(key_line("s", "Station soldiers at cursor", false));
+            v.push(key_line("x", "Clear station", false));
+            if let Some(st) = g.station {
+                v.push(plain(format!("Station: ({}, {}, {})", st.x, st.y, st.z), MUTED));
+            }
+            v.push(Line::default());
+            v.push(header("Soldiers"));
+            let soldiers: Vec<&Dwarf> = g.dwarves.iter().filter(|d| d.alive && d.soldier).collect();
+            if soldiers.is_empty() {
+                v.push(plain("None. Draft dwarves from their".into(), MUTED));
+                v.push(plain("unit screen (v or u, then m).".into(), MUTED));
+            }
+            for d in soldiers {
+                let weapon = d.held.and_then(|id| g.items.get(&id)).map_or("unarmed".into(), |it| it.name());
+                v.push(Line::from(vec![
+                    Span::styled("☻ ", Style::default().fg(rgb(d.color))),
+                    Span::styled(d.name.clone(), Style::default().fg(TEXT)),
+                ]));
+                v.push(plain(format!("   {} · {}", weapon, task_desc(g, d)), MUTED));
+            }
+            let hostiles = g.hostile_count();
+            if hostiles > 0 {
+                v.push(Line::default());
+                v.push(plain(format!("⚠ {} hostile creatures active", hostiles), Color::Rgb(255, 90, 90)));
             }
         }
     }
@@ -604,7 +678,7 @@ fn bar(label: &str, value: u32, warn: u32) -> Line<'static> {
     ])
 }
 
-fn unit_view(g: &Game, d: &Dwarf) -> Vec<Line<'static>> {
+fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
     let (mood, mc) = d.mood();
     let mut v = vec![
         Line::from(Span::styled(d.name.clone(), Style::default().fg(rgb(d.color)).add_modifier(Modifier::BOLD))),
@@ -618,17 +692,38 @@ fn unit_view(g: &Game, d: &Dwarf) -> Vec<Line<'static>> {
         bar("Thirst", d.thirst, THIRSTY),
         bar("Hunger", d.hunger, HUNGRY),
         bar("Fatigue", d.fatigue, TIRED),
-        Line::default(),
-        header("Labors (number to toggle)"),
     ];
+    let hurt: Vec<Line> = PARTS
+        .iter()
+        .filter(|p| d.body.part_status(**p) != "fine")
+        .map(|p| plain(format!("  {}: {}", p.name(), d.body.part_status(*p)), Color::Rgb(240, 130, 100)))
+        .collect();
+    if !hurt.is_empty() || d.body.bleeding > 0 {
+        v.push(Line::default());
+        v.push(header("Health"));
+        if d.body.bleeding > 0 {
+            v.push(plain(format!("  Bleeding (blood {}%)", d.body.blood * 100 / d.body.max_blood), Color::Rgb(255, 60, 60)));
+        }
+        v.extend(hurt);
+    }
+    v.push(Line::default());
+    v.push(header(if d.soldier { "Soldier (m: discharge)" } else { "Civilian (m: draft)" }));
+    let held = d.held.and_then(|id| g.items.get(&id)).map_or("nothing".to_string(), |it| it.name());
+    v.push(plain(format!("  Holds {}", held), TEXT));
+    for it in d.armor.iter().filter_map(|id| g.items.get(id)) {
+        v.push(plain(format!("  Wears {}", it.name()), TEXT));
+    }
+    v.push(plain(format!("  Fighter: {}", skill_rank(d.fight_xp)), MUTED));
+    v.push(Line::default());
+    v.push(header("Labors (Up/Down, Enter toggles)"));
     for (i, l) in LABORS.iter().enumerate() {
         let on = d.labors[i];
         let xp = d.skills[i];
+        let style = if i == sel { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
         v.push(Line::from(vec![
-            Span::styled(format!(" {} ", i + 1), Style::default().fg(KEY)),
-            Span::styled(if on { "[x] " } else { "[ ] " }, Style::default().fg(if on { Color::Rgb(90, 220, 90) } else { MUTED })),
-            Span::styled(format!("{:<13}", l.name()), Style::default().fg(TEXT)),
-            Span::styled(if xp > 0 { skill_rank(xp) } else { "" }, Style::default().fg(MUTED)),
+            Span::styled(if on { " [x] " } else { " [ ] " }, style.fg(if on { Color::Rgb(90, 220, 90) } else { MUTED })),
+            Span::styled(format!("{:<14}", l.name()), style.fg(TEXT)),
+            Span::styled(if xp > 0 { skill_rank(xp) } else { "" }, style.fg(MUTED)),
         ]));
     }
     v.push(Line::default());
@@ -664,7 +759,8 @@ fn help_text() -> Vec<Line<'static>> {
         k("z", "farm plots (on soil)"),
         k("b", "build workshops and furniture"),
         k("q", "query building: queue work orders"),
-        k("u / v", "unit list / view dwarf at cursor"),
+        k("u / v", "unit list / view dwarf (m drafts)"),
+        k("m", "military: station point, engage orders"),
         k("Tab", "jump to next dwarf"),
         k("H", "jump back to the wagon"),
         k("F5 / F9", "save / load"),
@@ -678,6 +774,8 @@ fn help_text() -> Vec<Line<'static>> {
         plain(" 4. Farm stoutcaps (z), build a Still, brew ale.".into(), TEXT),
         plain(" 5. Carpenter's workshop -> beds. Dwarves sleep".into(), TEXT),
         plain("    better in beds; drinking water makes them sad.".into(), TEXT),
+        plain(" 6. Wolves, cave beasts and goblins will come.".into(), TEXT),
+        plain("    Draft soldiers, arm them, lock doors (q, l).".into(), TEXT),
         Line::default(),
         plain("Mouse: click to move cursor / set corners; wheel".into(), MUTED),
         plain("changes z-level. Press any key to continue.".into(), MUTED),
@@ -706,6 +804,12 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Span::styled(" ☼ DwarfClone ", Style::default().fg(KEY).add_modifier(Modifier::BOLD)),
         Span::styled(format!("│ {} ", g.date_string()), Style::default().fg(TEXT)),
         Span::styled(format!("│ {} dwarves ", g.alive_count()), Style::default().fg(TEXT)),
+        if g.hostile_count() > 0 {
+            Span::styled(format!(" ⚠ {} hostiles ", g.hostile_count()), Style::default().fg(Color::Rgb(255, 255, 255)).bg(Color::Rgb(160, 20, 20)))
+        } else {
+            Span::raw("")
+        },
+        Span::raw(" "),
         speed,
         Span::styled("  ? help", Style::default().fg(MUTED)),
     ]);
@@ -746,7 +850,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     );
 
     match app.mode {
-        Mode::Help => popup(f, area, 60, 34, " Help ", help_text()),
+        Mode::Help => popup(f, area, 60, 37, " Help ", help_text()),
         Mode::ConfirmQuit => popup(
             f,
             area,
@@ -806,10 +910,12 @@ mod tests {
             app.game.step();
         }
         println!("{}", dump(&mut app, 130, 45));
-        app.mode = Mode::Help;
-        println!("{}", dump(&mut app, 130, 45));
-        app.cursor.z -= 1;
-        app.mode = Mode::Normal;
+        let id = app.game.dwarves[0].id;
+        app.game.toggle_soldier(id);
+        app.game.dwarves[0].body.wound(crate::body::Part::LeftArm, 15, true);
+        app.mode = Mode::Unit { id, sel: 2 };
+        println!("{}", dump(&mut app, 130, 50));
+        app.mode = Mode::Military;
         println!("{}", dump(&mut app, 130, 45));
     }
 }
