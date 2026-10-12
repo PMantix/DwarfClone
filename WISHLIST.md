@@ -16,19 +16,9 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W24, W21, W22, W23 (starting a game, asked for 2026-10-12) → W07, W06 (siege defense) → W04, W05.
+Suggested order: W21, W22, W23 (starting a game, asked for 2026-10-12) → W07, W06 (siege defense) → W04, W05.
 
 ### Tier 1b: starting a game (prioritized by request)
-
-#### W24 Title screen and loading screens (S)
-- **DF:** title menu (create new world, start playing, continue), progress screens while generating, loading and saving, several saved worlds and autosaves.
-- **Us:** the world and the default embark are generated before the terminal opens (a silent pause), then straight to the world map; one save file on F5/F9.
-- **Plan:** a `Mode::Title` menu in `app.rs`. Long jobs (world generation, embark, save, load) run in steps between frames so a loading screen can show progress. Saves go to a `saves/` folder by fortress name.
-- **Steps:**
-  - [ ] Title screen: New world, Continue (latest save), Load, Quit
-  - [ ] Loading screen with progress bar and stage name for embark, save and load
-  - [ ] Save slots: list, load and delete saves; autosave each season
-- **Done when:** a test steps the app through New world → embark → save → load from the title screen without a blank frame.
 
 #### W21 World generation screen (M)
 - **DF:** a world-creation screen (world size, history length, number of civilizations, savagery, minerals), then a live view of the world taking shape, years ticking by with counts of events, civs and figures; accept or reject the result.
@@ -230,6 +220,8 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **W24 Title and loading screens** (this commit): title menu (New world, Continue, Load game, Quit); world generation, embarking, saving and loading run on a worker thread behind a loading screen with stage, progress bar and tips; save slots per fortress in `saves/` with a load menu (delete with confirmation); autosave each season; quitting offers save-and-quit and save-and-return-to-title.
+- **Diagonal movement** (7571ac3): diagonal steps slip between two walls, as in DF (the tile stepped to must still be open).
 - **W01 Constructions** (this commit): `b` then `C` plans walls, floors, stairs, ramps and fortifications in a box, built from rough stone, blocks or logs (`m` picks). `x` takes a construction down and returns its material; `c` cancels plans. Floors bridge open space; fortifications stop walkers but let water through; built walls can't be mined; a roof makes a surface room count.
 - **W03 Rooms made from zones** (this commit): bedroom and office zones with owners (assigned in look mode with `o`), dormitories with shared beds, dining halls whose seats are taken first, a garbage dump with `d`/`D` to mark items. Room zones work above ground and are valued over the zone itself.
 - **W02 Labor screen and work details** (this commit): `y` opens a grid of every dwarf against every labor with skill levels; `a` toggles a whole column; named work details (6 defaults, save your own, apply with 1-9); specialists never haul; mining and woodcutting are exclusive.

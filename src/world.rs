@@ -144,6 +144,11 @@ pub struct World {
 }
 
 impl World {
+    /// A one-cell stand-in used before a fortress exists.
+    pub fn empty() -> World {
+        World { w: 1, h: 1, d: 1, tiles: vec![Tile::default()], surface: vec![0] }
+    }
+
     pub fn in_bounds(&self, p: Pos) -> bool {
         p.x >= 0 && p.y >= 0 && p.z >= 0 && p.x < self.w && p.y < self.h && p.z < self.d
     }

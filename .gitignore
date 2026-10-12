@@ -1,3 +1,4 @@
 /target
 *.json.save
-dwarfclone_save.json
+/saves
+/dwarfclone_save.json

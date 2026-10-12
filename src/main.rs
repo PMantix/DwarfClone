@@ -6,11 +6,13 @@ mod dwarf;
 mod game;
 mod geom;
 mod items;
+mod jobs;
 mod material;
 mod noise;
 mod overworld;
 mod path;
 mod rng;
+mod saves;
 mod ui;
 mod world;
 
@@ -54,7 +56,7 @@ fn main() -> Result<()> {
 
     restore_terminal();
     terminal.show_cursor()?;
-    if result.is_ok() {
+    if result.is_ok() && !app.game.is_placeholder() {
         println!("Seed {} — {} dwarves survived to {}.", seed, app.game.alive_count(), app.game.date_string());
     }
     result
@@ -79,16 +81,7 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> 
                 return Ok(());
             }
         }
-        if !app.paused {
-            for _ in 0..app.ticks_per_frame() {
-                app.game.step();
-                if app.game.pause_request {
-                    app.game.pause_request = false;
-                    app.paused = true;
-                    break;
-                }
-            }
-        }
+        app.frame();
     }
     Ok(())
 }

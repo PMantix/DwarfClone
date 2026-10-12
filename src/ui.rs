@@ -1,4 +1,4 @@
-use crate::app::{look_entries, App, LookEntry, Mode, ZoneTool, DESIG_KEYS};
+use crate::app::{look_entries, App, LookEntry, Mode, ZoneTool, DESIG_KEYS, TITLE_MENU};
 use crate::body::PARTS;
 use crate::buildings::BuildingKind;
 use crate::dwarf::{skill_level, skill_rank, Dwarf, Task, LABORS};
@@ -783,7 +783,14 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             title = "Look".to_string();
             v.extend(look_lines(g, app.cursor, *sel));
         }
-        Mode::WorldMap { .. } | Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } => {
+        Mode::WorldMap { .. }
+        | Mode::Legends { .. }
+        | Mode::Trade { .. }
+        | Mode::Status { .. }
+        | Mode::Labors { .. }
+        | Mode::Title { .. }
+        | Mode::LoadMenu { .. }
+        | Mode::Loading => {
             title = String::new();
         }
         Mode::Nobles => {
@@ -1372,6 +1379,12 @@ fn draw_trade(f: &mut Frame, area: Rect, app: &App, side: usize, sel: [usize; 2]
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.size();
+    match app.mode {
+        Mode::Title { sel } => return draw_title(f, app, sel),
+        Mode::LoadMenu { sel, confirm } => return draw_load_menu(f, app, sel, confirm),
+        Mode::Loading => return draw_loading(f, app),
+        _ => {}
+    }
     if let Mode::WorldMap { x, y } = app.mode {
         draw_world(f, app, x, y);
         return;
@@ -1457,9 +1470,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             f,
             area,
             40,
-            5,
+            7,
             " Quit ",
-            vec![plain("Really abandon the fortress? (y/n)".into(), TEXT), plain("(F5 saves first)".into(), MUTED)],
+            vec![
+                key_line("s", "Save and quit", false),
+                key_line("t", "Save and return to the title", false),
+                key_line("y", "Quit without saving", false),
+                plain("  any other key: keep playing".into(), MUTED),
+            ],
         ),
         _ => {}
     }
@@ -1989,6 +2007,178 @@ fn draw_status(f: &mut Frame, area: Rect, g: &Game, tab: usize, scroll: usize) {
     );
 }
 
+const BANNER: [&str; 5] = [
+    "█▀▀▄ █   █ ▄▀▀▄ █▀▀▄ █▀▀▀   ▄▀▀▀ █    ▄▀▀▄ █▄  █ █▀▀▀",
+    "█  █ █ ▄ █ █▄▄█ █▄▄▀ █▄▄    █    █    █  █ █ ▀▄█ █▄▄ ",
+    "█  █ ██▀██ █  █ █ ▀▄ █      █    █    █  █ █   █ █   ",
+    "█▄▄▀ █   █ █  █ █  █ █      ▀▄▄▄ █▄▄▄ ▀▄▄▀ █   █ █▄▄▄",
+    "",
+];
+
+const TIPS: [&str; 10] = [
+    "Dwarves who sleep on the floor wake up grumpy.",
+    "A meeting area keeps idle dwarves out of the corridors.",
+    "Eating raw stoutcaps leaves spawn to plant again.",
+    "Goblins come from the nearest dark fortress. Closer means sooner.",
+    "Locked doors stop everyone, until goblins break them down.",
+    "A dwarf in a strange mood will not be denied.",
+    "Fortifications stop walkers but let water through.",
+    "Specialists never haul. Somebody has to.",
+    "Every artifact has a name, and the world will remember it.",
+    "Diagonal steps slip between two walls.",
+];
+
+/// Paint a quiet field of stone behind the menus.
+fn backdrop(f: &mut Frame, area: Rect) {
+    let buf = f.buffer_mut();
+    for y in area.y..area.y + area.height {
+        for x in area.x..area.x + area.width {
+            let h = hash2(x as i32 * 7, y as i32 * 13);
+            let (ch, c) = match h % 23 {
+                0 => ('▲', Color::Rgb(70, 64, 58)),
+                1 => ('·', Color::Rgb(55, 55, 60)),
+                2 => ('£', Color::Rgb(90, 70, 40)),
+                3 => ('░', Color::Rgb(40, 38, 36)),
+                _ => (' ', BLACK),
+            };
+            buf.get_mut(x, y).set_char(ch).set_fg(c).set_bg(Color::Rgb(8, 8, 12));
+        }
+    }
+}
+
+fn centered(area: Rect, w: u16, h: u16) -> Rect {
+    let w = w.min(area.width);
+    let h = h.min(area.height);
+    Rect::new(area.x + (area.width - w) / 2, area.y + (area.height - h) / 2, w, h)
+}
+
+fn draw_title(f: &mut Frame, app: &App, sel: usize) {
+    let area = f.size();
+    backdrop(f, area);
+    let saves = app.saves();
+    let mut v: Vec<Line> = Vec::new();
+    for l in BANNER {
+        v.push(Line::from(Span::styled(l.to_string(), Style::default().fg(Color::Rgb(255, 200, 80)).add_modifier(Modifier::BOLD))));
+    }
+    v.push(plain("a fortress in the deep places of the world".into(), MUTED));
+    v.push(Line::default());
+    for (i, item) in TITLE_MENU.iter().enumerate() {
+        let detail = match i {
+            1 => saves.first().map(|m| format!("{} ({})", m.fortress, m.date)),
+            2 if !saves.is_empty() => Some(format!("{} saved", saves.len())),
+            _ => None,
+        };
+        // Same width on every line so the centered menu lines up.
+        let detail: String = detail.unwrap_or_default().chars().take(38).collect();
+        let usable = !matches!(i, 1 | 2) || !saves.is_empty();
+        let st = if i == sel {
+            Style::default().fg(BLACK).bg(KEY).add_modifier(Modifier::BOLD)
+        } else if usable {
+            Style::default().fg(TEXT)
+        } else {
+            Style::default().fg(Color::Rgb(80, 80, 90))
+        };
+        v.push(Line::from(vec![
+            Span::styled(format!(" {:<11}", item), st),
+            Span::styled(format!(" {:<38}", detail), Style::default().fg(MUTED)),
+        ]));
+    }
+    v.push(Line::default());
+    if let Some(fl) = &app.flash {
+        v.push(plain(fl.clone(), Color::Rgb(240, 150, 110)));
+    } else {
+        v.push(plain("↑↓ choose · Enter · Esc quits".into(), MUTED));
+    }
+    let r = centered(area, 60, v.len() as u16 + 3);
+    f.render_widget(Clear, r);
+    f.render_widget(
+        Paragraph::new(v).wrap(Wrap { trim: true }).alignment(ratatui::layout::Alignment::Center).style(Style::default().bg(Color::Rgb(12, 12, 20))).block(
+            Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Rgb(120, 100, 60))),
+        ),
+        r,
+    );
+}
+
+fn draw_load_menu(f: &mut Frame, app: &App, sel: usize, confirm: bool) {
+    let area = f.size();
+    backdrop(f, area);
+    let saves = app.saves();
+    let mut v: Vec<Line> = vec![Line::default()];
+    for (i, m) in saves.iter().enumerate() {
+        let st = if i == sel { Style::default().fg(BLACK).bg(KEY) } else { Style::default().fg(TEXT) };
+        let tag = if m.autosave { " (autosave)" } else { "" };
+        v.push(Line::from(vec![
+            Span::styled(format!(" {:<18}", format!("{}{}", m.fortress, tag)), st.add_modifier(Modifier::BOLD)),
+            Span::styled(format!(" {:<34}", m.date), st),
+            Span::styled(format!(" {:>3} dwarves ", m.dwarves), st),
+            Span::styled(format!(" {:<12}", saves::ago(m.saved_unix)), st),
+        ]));
+        v.push(plain(format!("   {}", m.world), MUTED));
+    }
+    v.push(Line::default());
+    if confirm {
+        let name = saves.get(sel).map_or(String::new(), |m| m.file.clone());
+        v.push(plain(format!("Delete {}? This can't be undone. (y/n)", name), Color::Rgb(255, 120, 90)));
+    } else if let Some(fl) = &app.flash {
+        v.push(plain(fl.clone(), Color::Rgb(240, 150, 110)));
+    }
+    let r = centered(area, 90, (v.len() as u16 + 2).max(8));
+    f.render_widget(Clear, r);
+    f.render_widget(
+        Paragraph::new(v).style(Style::default().bg(Color::Rgb(12, 12, 20))).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(KEY))
+                .title(Span::styled(" Load game ", Style::default().fg(KEY)))
+                .title_bottom(Span::styled(" ↑↓ choose · Enter load · x delete · Esc back ", Style::default().fg(MUTED))),
+        ),
+        r,
+    );
+}
+
+use crate::saves;
+
+fn draw_loading(f: &mut Frame, app: &App) {
+    let area = f.size();
+    backdrop(f, area);
+    let (title, stage, frac, secs) = match &app.job {
+        Some(j) => {
+            let (s, p) = j.status();
+            (j.title.clone(), s, p, j.started.elapsed().as_secs_f32())
+        }
+        None => ("Working".to_string(), String::new(), 1.0, 0.0),
+    };
+    const SPIN: [char; 8] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧'];
+    let spin = SPIN[(secs * 10.0) as usize % SPIN.len()];
+    let width = 44usize;
+    let filled = ((frac * width as f32).round() as usize).min(width);
+    let tip = TIPS[(secs / 4.0) as usize % TIPS.len()];
+    let v = vec![
+        Line::default(),
+        Line::from(vec![
+            Span::styled(format!("{} ", spin), Style::default().fg(KEY)),
+            Span::styled(format!("{}...", title), Style::default().fg(TEXT).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::default(),
+        Line::from(vec![
+            Span::styled("█".repeat(filled), Style::default().fg(Color::Rgb(255, 200, 80))),
+            Span::styled("░".repeat(width - filled), Style::default().fg(Color::Rgb(60, 55, 50))),
+            Span::styled(format!(" {:>3}%", (frac * 100.0) as u32), Style::default().fg(MUTED)),
+        ]),
+        plain(stage, Color::Rgb(180, 180, 190)),
+        Line::default(),
+        plain(format!("Tip: {}", tip), MUTED),
+    ];
+    let r = centered(area, 60, 10);
+    f.render_widget(Clear, r);
+    f.render_widget(
+        Paragraph::new(v).alignment(ratatui::layout::Alignment::Center).style(Style::default().bg(Color::Rgb(12, 12, 20))).block(
+            Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Rgb(120, 100, 60))),
+        ),
+        r,
+    );
+}
+
 fn popup(f: &mut Frame, area: Rect, w: u16, h: u16, title: &str, lines: Vec<Line<'static>>) {
     let w = w.min(area.width);
     let h = h.min(area.height);
@@ -2030,7 +2220,7 @@ mod tests {
 
     #[test]
     fn render_snapshot() {
-        let mut app = App::new(42);
+        let mut app = App::generated(42);
         app.mode = Mode::Normal;
         for _ in 0..3000 {
             app.game.step();
@@ -2052,7 +2242,7 @@ mod tests {
 
     #[test]
     fn render_look_and_status() {
-        let mut app = App::new(42);
+        let mut app = App::generated(42);
         let e = app.game.embark;
         app.game.add_zone(e.offset(-8, -8, -1), e.offset(-3, -3, 1), ZoneKind::Meeting);
         app.mode = Mode::Normal;
@@ -2096,7 +2286,7 @@ mod tests {
 
     #[test]
     fn render_labors() {
-        let mut app = App::new(42);
+        let mut app = App::generated(42);
         app.mode = Mode::Labors { row: 1, col: 0, detail: 0 };
         // Toggle a cell and a whole column through the keyboard.
         let key = |c| crossterm::event::KeyEvent::new(c, crossterm::event::KeyModifiers::NONE);
@@ -2107,5 +2297,76 @@ mod tests {
         println!("{}", s);
         assert!(s.contains("Labors") && s.contains("Hau") && s.contains("Woodworker"));
         assert!(matches!(app.mode, Mode::Labors { col: 1, .. }));
+    }
+
+    /// Title → new world → embark → play → save → title → continue, drawing
+    /// every frame on the way: none may be blank.
+    #[test]
+    fn title_to_fortress_and_back() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let dir = std::env::temp_dir().join(format!("dwarfclone-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = App::new(4242);
+        app.save_dir = dir.clone();
+        app.mode = Mode::Title { sel: 0 };
+        let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
+        let check = |app: &mut App, want: &str| {
+            let s = dump(app, 120, 40);
+            assert!(s.chars().any(|c| !c.is_whitespace()), "blank frame in {:?}", app.mode);
+            assert!(s.contains(want), "expected {:?} on screen in {:?}:
+{}", want, app.mode, s);
+        };
+        // Run frames until the loading screen goes away, checking each one.
+        let wait = |app: &mut App, loading: &str| {
+            let t = std::time::Instant::now();
+            while app.mode == Mode::Loading {
+                check(app, loading);
+                app.frame();
+                std::thread::sleep(std::time::Duration::from_millis(5));
+                assert!(t.elapsed().as_secs() < 120, "{} never finished", loading);
+            }
+        };
+
+        check(&mut app, "New world");
+        app.on_key(key(KeyCode::Enter));
+        assert_eq!(app.mode, Mode::Loading);
+        wait(&mut app, "Creating a world");
+        assert!(matches!(app.mode, Mode::WorldMap { .. }), "after worldgen: {:?}", app.mode);
+        check(&mut app, "Choose a site");
+
+        app.on_key(key(KeyCode::Enter));
+        wait(&mut app, "Embarking");
+        assert_eq!(app.mode, Mode::Help);
+        app.on_key(key(KeyCode::Esc));
+        let name = app.game.fortress_name.clone();
+        assert!(!name.is_empty());
+        app.paused = false;
+        for _ in 0..30 {
+            app.frame();
+        }
+        let tick = app.game.tick;
+        assert!(tick > 0, "the fortress never ran");
+
+        // F5: save and carry on.
+        app.on_key(key(KeyCode::F(5)));
+        wait(&mut app, "Saving");
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(app.game.fortress_name, name, "game not handed back after saving");
+        assert_eq!(app.saves().len(), 1);
+
+        // Save and return to the title, then continue.
+        app.on_key(key(KeyCode::Char('Q')));
+        app.on_key(key(KeyCode::Char('t')));
+        wait(&mut app, "Saving");
+        assert!(matches!(app.mode, Mode::Title { .. }), "after save-to-title: {:?}", app.mode);
+        check(&mut app, &name);
+        app.mode = Mode::Title { sel: 1 };
+        app.on_key(key(KeyCode::Enter));
+        wait(&mut app, "Loading");
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(app.game.fortress_name, name);
+        assert!(app.game.tick >= tick);
+        check(&mut app, &name);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

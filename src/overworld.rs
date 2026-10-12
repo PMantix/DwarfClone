@@ -455,7 +455,29 @@ impl Overworld {
         self.log(year, format!("{} became {} of the {}.", fname, title, cname));
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn generate(seed: u64) -> Overworld {
+        Self::generate_with(seed, &|_, _| {})
+    }
+
+    /// A stand-in before any world exists (the title screen).
+    pub fn empty() -> Overworld {
+        Overworld {
+            w: 1,
+            h: 1,
+            cells: vec![Cell { biome: Biome::Ocean, evil: false, site: 0 }],
+            civs: Vec::new(),
+            sites: Vec::new(),
+            figures: Vec::new(),
+            events: Vec::new(),
+            year: 0,
+            name: String::new(),
+        }
+    }
+
+    /// Generate, reporting each stage and how far along it is (0..1).
+    pub fn generate_with(seed: u64, report: &dyn Fn(&str, f32)) -> Overworld {
+        report("Raising mountains and filling the seas", 0.0);
         let mut rng = Rng::new(seed ^ 0xBADC0DE);
         let elev = Noise::new(seed ^ 0xE1E7);
         let rain = Noise::new(seed ^ 0x7A1);
@@ -508,6 +530,7 @@ impl Overworld {
             name: format!("The {} {}", word(&mut rng, Race::Elf, 2), rng.pick(&["Continent", "Expanse", "Reaches", "Wilds"])),
         };
 
+        report("Founding the first civilizations", 0.08);
         // Civilizations and their capitals.
         let plan = [Race::Dwarf, Race::Dwarf, Race::Human, Race::Human, Race::Elf, Race::Goblin, Race::Goblin];
         for race in plan {
@@ -564,9 +587,14 @@ impl Overworld {
             ow.log(0, format!("{} the {} made its lair in the {}.", name, kind, ow.cell(x, y).biome.name()));
         }
 
+        report("Waking ancient beasts", 0.12);
         for year in 1..=HISTORY_YEARS {
+            if year % 5 == 0 {
+                report(&format!("Recording history: year {} of {}", year, HISTORY_YEARS), 0.15 + 0.85 * year as f32 / HISTORY_YEARS as f32);
+            }
             ow.simulate_year(&mut rng, year);
         }
+        report("History is written", 1.0);
         ow
     }
 

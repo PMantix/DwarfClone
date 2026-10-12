@@ -8,8 +8,8 @@ to their labors, needs, personalities and moods.
 ## Run
 
 ```
-cargo run --release            # random world
-cargo run --release -- 12345   # specific seed
+cargo run --release            # title screen; new worlds get a random seed
+cargo run --release -- 12345   # the first new world uses this seed
 ```
 
 Use Windows Terminal (or any truecolor + Unicode terminal) at 130x40 or larger.
@@ -78,7 +78,10 @@ dwarf, creature and item on the tile (Tab cycles, Enter opens a dwarf or buildin
 `z` is the fortress status screen: supplies and how long they'll last, population by
 profession, what everyone is doing, happiness, full stocks, health and each dwarf's mood.
 
-**Save / load** with F5 / F9 (`dwarfclone_save.json`).
+**Title, saves and loading.** The game opens on a title menu: New world, Continue, Load
+game. World generation, embarking, saving and loading show a loading screen with progress.
+Each fortress has its own save in `saves/` (F5 saves, F9 reloads it), plus an autosave
+every season. `Q` offers save and quit, or save and return to the title.
 
 ## Tests
 

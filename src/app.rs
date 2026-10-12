@@ -3,13 +3,18 @@ use crate::dwarf::LABORS;
 use crate::game::{BuildMat, ConstructKind, Game, ZoneKind};
 use crate::geom::Pos;
 use crate::items::StockFilter;
+use crate::jobs::{AfterSave, Job, JobDone};
+use crate::overworld::Overworld;
+use crate::saves::{self, SaveMeta};
+use std::path::PathBuf;
 use crate::world::Desig;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 use std::collections::HashSet;
 
 pub const SPEEDS: [u32; 6] = [1, 2, 5, 10, 25, 60];
-pub const SAVE_FILE: &str = "dwarfclone_save.json";
+pub const SAVE_DIR: &str = "saves";
+pub const TITLE_MENU: [&str; 4] = ["New world", "Continue", "Load game", "Quit"];
 
 pub const DESIG_KEYS: [(char, Desig); 8] = [
     ('d', Desig::Dig),
@@ -128,6 +133,12 @@ pub fn look_entries(g: &Game, p: Pos) -> Vec<LookEntry> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Mode {
+    /// The opening menu.
+    Title { sel: usize },
+    /// Pick a save. `confirm` asks before deleting the selected one.
+    LoadMenu { sel: usize, confirm: bool },
+    /// A job is running; the loading screen shows its progress.
+    Loading,
     Normal,
     Designate { kind: Desig, corner: Option<Pos> },
     /// `filter == None` erases zones.
@@ -173,11 +184,32 @@ pub struct App {
     pub seed: u64,
     pub trade_ours: HashSet<u32>,
     pub trade_theirs: HashSet<u32>,
+    /// The long job behind the loading screen, if any.
+    pub job: Option<Job>,
+    /// Where to go back to after an in-game save.
+    pub resume: Mode,
+    pub save_dir: PathBuf,
+    /// The seed from the command line is used for the first new world only.
+    seed_used: bool,
 }
 
 impl App {
+    /// Start at the title screen; nothing is generated until asked.
     pub fn new(seed: u64) -> App {
-        let game = Game::new(seed);
+        let mut app = App::with_game(seed, Game::placeholder(Overworld::empty()));
+        app.mode = Mode::Title { sel: if saves::list(&app.save_dir).is_empty() { 0 } else { 1 } };
+        app
+    }
+
+    /// Straight onto the world map of a freshly generated world with a default embark (tests).
+    #[cfg(test)]
+    pub fn generated(seed: u64) -> App {
+        let mut app = App::with_game(seed, Game::new(seed));
+        app.seed_used = true;
+        app
+    }
+
+    fn with_game(seed: u64, game: Game) -> App {
         let cursor = game.embark;
         let (x, y) = game.site;
         App {
@@ -194,6 +226,215 @@ impl App {
             seed,
             trade_ours: HashSet::new(),
             trade_theirs: HashSet::new(),
+            job: None,
+            resume: Mode::Normal,
+            save_dir: PathBuf::from(SAVE_DIR),
+            seed_used: false,
+        }
+    }
+
+    // ------------------------------------------------------------ jobs
+
+    /// Advance one frame: finish jobs, run the simulation, autosave.
+    pub fn frame(&mut self) {
+        self.poll_job();
+        if self.job.is_some() || self.game.is_placeholder() || !self.in_fortress() {
+            return;
+        }
+        if !self.paused {
+            for _ in 0..self.ticks_per_frame() {
+                self.game.step();
+                if self.game.pause_request {
+                    self.game.pause_request = false;
+                    self.paused = true;
+                    break;
+                }
+            }
+        }
+        if self.game.autosave_request {
+            self.game.autosave_request = false;
+            self.start_save(true, AfterSave::Resume);
+        }
+    }
+
+    /// Screens that belong to a running fortress (not menus, the world map or loading).
+    pub fn in_fortress(&self) -> bool {
+        !matches!(
+            self.mode,
+            Mode::Title { .. } | Mode::LoadMenu { .. } | Mode::Loading | Mode::WorldMap { .. } | Mode::Legends { from_world: true, .. }
+        )
+    }
+
+    fn run_job<F>(&mut self, title: &str, work: F)
+    where
+        F: FnOnce(crate::jobs::Report) -> Result<JobDone, String> + Send + 'static,
+    {
+        self.job = Some(Job::spawn(title, work));
+        self.mode = Mode::Loading;
+    }
+
+    pub fn start_new_world(&mut self) {
+        if self.seed_used {
+            self.seed = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(self.seed.wrapping_add(1), |d| d.as_nanos() as u64);
+        }
+        self.seed_used = true;
+        let seed = self.seed;
+        self.run_job("Creating a world", move |report| Ok(JobDone::World(Overworld::generate_with(seed, report))));
+    }
+
+    fn start_embark(&mut self, x: i32, y: i32) {
+        let ow = self.game.overworld.clone();
+        let seed = self.seed;
+        self.run_job("Embarking", move |report| Ok(JobDone::Embarked(Game::embark_with(seed, ow, x, y, report))));
+    }
+
+    /// Save on a worker thread; the game is handed back when it's done.
+    pub fn start_save(&mut self, autosave: bool, after: AfterSave) {
+        if self.game.is_placeholder() {
+            return;
+        }
+        if !matches!(self.mode, Mode::Loading) {
+            self.resume = self.mode.clone();
+        }
+        let game = std::mem::replace(&mut self.game, Game::placeholder(Overworld::empty()));
+        let dir = self.save_dir.clone();
+        let title = if autosave { "Autosaving" } else { "Saving" };
+        self.run_job(title, move |report| {
+            // Hand the game back even if writing failed, so nothing is lost.
+            match saves::write(&dir, &game, autosave, report) {
+                Ok(meta) => Ok(JobDone::Saved(game, meta, after)),
+                Err(e) => {
+                    let meta = SaveMeta {
+                        fortress: game.fortress_name.clone(),
+                        date: e,
+                        dwarves: 0,
+                        world: String::new(),
+                        saved_unix: 0,
+                        autosave,
+                        file: String::new(),
+                    };
+                    Ok(JobDone::Saved(game, meta, AfterSave::Resume))
+                }
+            }
+        });
+    }
+
+    pub fn start_load(&mut self, file: String) {
+        let dir = self.save_dir.clone();
+        self.run_job("Loading", move |report| saves::read(&dir, &file, report).map(JobDone::Loaded));
+    }
+
+    fn poll_job(&mut self) {
+        let Some(result) = self.job.as_ref().and_then(|j| j.poll()) else { return };
+        self.job = None;
+        match result {
+            Ok(JobDone::World(ow)) => {
+                self.game = Game::placeholder(ow);
+                let (x, y) = self.game.site;
+                self.mode = Mode::WorldMap { x, y };
+            }
+            Ok(JobDone::Embarked(g)) => {
+                self.game = g;
+                self.cursor = self.game.embark;
+                self.paused = true;
+                self.mode = Mode::Help;
+            }
+            Ok(JobDone::Saved(g, meta, after)) => {
+                self.game = g;
+                self.flash = Some(if meta.file.is_empty() {
+                    meta.date
+                } else if meta.autosave {
+                    "Autosaved.".into()
+                } else {
+                    format!("Saved to {}.", self.save_dir.join(&meta.file).display())
+                });
+                match after {
+                    AfterSave::Resume => self.mode = std::mem::replace(&mut self.resume, Mode::Normal),
+                    AfterSave::Quit => self.quit = true,
+                    AfterSave::Title => {
+                        self.game = Game::placeholder(Overworld::empty());
+                        self.mode = Mode::Title { sel: 1 };
+                    }
+                }
+            }
+            Ok(JobDone::Loaded(g)) => {
+                self.game = g;
+                self.cursor = self.game.embark;
+                self.paused = true;
+                self.mode = Mode::Normal;
+                self.flash = Some("Game loaded.".into());
+            }
+            Err(e) => {
+                self.flash = Some(e);
+                self.mode = if self.game.is_placeholder() { Mode::Title { sel: 0 } } else { Mode::Normal };
+            }
+        }
+    }
+
+    pub fn saves(&self) -> Vec<SaveMeta> {
+        saves::list(&self.save_dir)
+    }
+
+    fn key_title(&mut self, k: KeyEvent, sel: usize) {
+        let n = TITLE_MENU.len();
+        match k.code {
+            KeyCode::Up => self.mode = Mode::Title { sel: (sel + n - 1) % n },
+            KeyCode::Down => self.mode = Mode::Title { sel: (sel + 1) % n },
+            KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => self.quit = true,
+            KeyCode::Enter => match sel {
+                0 => self.start_new_world(),
+                1 => match self.saves().into_iter().next() {
+                    Some(m) => self.start_load(m.file),
+                    None => self.flash = Some("No saved games yet.".into()),
+                },
+                2 => {
+                    if self.saves().is_empty() {
+                        self.flash = Some("No saved games yet.".into());
+                    } else {
+                        self.mode = Mode::LoadMenu { sel: 0, confirm: false };
+                    }
+                }
+                _ => self.quit = true,
+            },
+            _ => {}
+        }
+    }
+
+    fn key_load_menu(&mut self, k: KeyEvent, sel: usize, confirm: bool) {
+        let list = self.saves();
+        let n = list.len().max(1);
+        let sel = sel.min(n - 1);
+        if confirm {
+            if matches!(k.code, KeyCode::Char('y') | KeyCode::Char('Y')) {
+                if let Some(m) = list.get(sel) {
+                    self.flash = Some(match saves::delete(&self.save_dir, m) {
+                        Ok(()) => format!("Deleted {}.", m.file),
+                        Err(e) => format!("Couldn't delete: {}", e),
+                    });
+                }
+                if self.saves().is_empty() {
+                    self.mode = Mode::Title { sel: 0 };
+                    return;
+                }
+            }
+            self.mode = Mode::LoadMenu { sel: sel.saturating_sub(1).min(self.saves().len().saturating_sub(1)), confirm: false };
+            return;
+        }
+        match k.code {
+            KeyCode::Esc => self.mode = Mode::Title { sel: 2 },
+            KeyCode::Up => self.mode = Mode::LoadMenu { sel: sel.saturating_sub(1), confirm: false },
+            KeyCode::Down => self.mode = Mode::LoadMenu { sel: (sel + 1).min(n - 1), confirm: false },
+            KeyCode::Enter => {
+                if let Some(m) = list.get(sel) {
+                    self.start_load(m.file.clone());
+                }
+            }
+            KeyCode::Char('x') | KeyCode::Char('X') | KeyCode::Delete => {
+                self.mode = Mode::LoadMenu { sel, confirm: true };
+            }
+            _ => {}
         }
     }
 
@@ -270,6 +511,12 @@ impl App {
         if k.code == KeyCode::Char('c') && k.modifiers.contains(KeyModifiers::CONTROL) {
             self.quit = true;
             return;
+        }
+        match self.mode.clone() {
+            Mode::Loading => return,
+            Mode::Title { sel } => return self.key_title(k, sel),
+            Mode::LoadMenu { sel, confirm } => return self.key_load_menu(k, sel, confirm),
+            _ => {}
         }
         if self.uses_map_cursor() && self.move_cursor(&k) {
             if let Mode::Look { .. } = self.mode {
@@ -461,13 +708,19 @@ impl App {
                 }
             }
             Mode::Trade { side, sel } => self.key_trade(k, side, sel),
-            Mode::ConfirmQuit => {
-                if matches!(k.code, KeyCode::Char('y') | KeyCode::Char('Y')) {
-                    self.quit = true;
-                } else {
+            Mode::ConfirmQuit => match k.code {
+                KeyCode::Char('s') | KeyCode::Char('S') => {
                     self.mode = Mode::Normal;
+                    self.start_save(false, AfterSave::Quit);
                 }
-            }
+                KeyCode::Char('t') | KeyCode::Char('T') => {
+                    self.mode = Mode::Normal;
+                    self.start_save(false, AfterSave::Title);
+                }
+                KeyCode::Char('y') | KeyCode::Char('Y') => self.quit = true,
+                _ => self.mode = Mode::Normal,
+            },
+            Mode::Title { .. } | Mode::LoadMenu { .. } | Mode::Loading => {}
         }
     }
 
@@ -511,8 +764,15 @@ impl App {
             KeyCode::Char('?') => self.mode = Mode::Help,
             KeyCode::Char('Q') => self.mode = Mode::ConfirmQuit,
             KeyCode::Char('H') => self.cursor = self.game.embark,
-            KeyCode::F(5) => self.save(),
-            KeyCode::F(9) => self.load(),
+            KeyCode::F(5) => self.start_save(false, AfterSave::Resume),
+            KeyCode::F(9) => {
+                // Reload this fortress's latest save.
+                let name = self.game.fortress_name.clone();
+                match self.saves().into_iter().find(|m| m.fortress == name) {
+                    Some(m) => self.start_load(m.file),
+                    None => self.flash = Some("No save of this fortress yet (F5 saves).".into()),
+                }
+            }
             _ => {}
         }
     }
@@ -698,20 +958,20 @@ impl App {
                 return;
             }
             KeyCode::Char('?') => {
-                self.flash = Some("Arrows pick a site, Enter embarks, l opens legends.".into());
+                self.flash = Some("Arrows pick a site, Enter embarks, l opens legends, Esc back to the title.".into());
                 return;
             }
             KeyCode::Char('Q') => {
                 self.quit = true;
                 return;
             }
+            KeyCode::Esc => {
+                self.mode = Mode::Title { sel: 0 };
+                return;
+            }
             KeyCode::Enter => {
                 if ow.embarkable(x, y) {
-                    let ow = self.game.overworld.clone();
-                    self.game = Game::embark(self.seed, ow, x, y);
-                    self.cursor = self.game.embark;
-                    self.paused = true;
-                    self.mode = Mode::Help;
+                    self.start_embark(x, y);
                 } else {
                     self.flash = Some("You can't embark on water or an existing site.".into());
                 }
@@ -842,29 +1102,4 @@ impl App {
         }
     }
 
-    fn save(&mut self) {
-        let result = serde_json::to_string(&self.game)
-            .map_err(anyhow::Error::from)
-            .and_then(|s| std::fs::write(SAVE_FILE, s).map_err(anyhow::Error::from));
-        self.flash = Some(match result {
-            Ok(()) => format!("Saved to {}.", SAVE_FILE),
-            Err(e) => format!("Save failed: {}", e),
-        });
-    }
-
-    fn load(&mut self) {
-        let result = std::fs::read_to_string(SAVE_FILE)
-            .map_err(anyhow::Error::from)
-            .and_then(|s| serde_json::from_str::<Game>(&s).map_err(anyhow::Error::from));
-        match result {
-            Ok(g) => {
-                self.game = g;
-                self.cursor = self.game.embark;
-                self.mode = Mode::Normal;
-                self.paused = true;
-                self.flash = Some("Game loaded.".into());
-            }
-            Err(e) => self.flash = Some(format!("Load failed: {}", e)),
-        }
-    }
 }

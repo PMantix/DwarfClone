@@ -140,6 +140,9 @@ pub struct Game {
     pub constructions: BTreeMap<u32, Construction>,
     #[serde(skip)]
     pub pause_request: bool,
+    /// Set at each new season; the app saves an autosave and clears it.
+    #[serde(skip)]
+    pub autosave_request: bool,
     /// Bumped whenever designations or dug terrain change.
     #[serde(skip)]
     dig_version: u64,
@@ -152,23 +155,54 @@ pub struct Game {
 }
 
 impl Game {
-    /// A fresh world with the expedition sent to a sensible default site.
+    /// A fresh world with the expedition sent to a sensible default site (tests).
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn new(seed: u64) -> Game {
         let ow = Overworld::generate(seed);
         let (x, y) = ow.default_site();
         Game::embark(seed, ow, x, y)
     }
 
+    /// A stand-in game holding just a world map: the title screen and site choice
+    /// run on this until the expedition embarks.
+    pub fn placeholder(ow: Overworld) -> Game {
+        let site = if ow.w > 1 { ow.default_site() } else { (0, 0) };
+        let mut g = Game::from_world(World::empty(), 0, ow, site, Pos::new(0, 0, 0));
+        g.fortress_name = String::new();
+        g
+    }
+
+    /// Whether this is the stand-in from `placeholder`, not a real fortress.
+    pub fn is_placeholder(&self) -> bool {
+        self.world.w <= 1
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn embark(seed: u64, ow: Overworld, sx: i32, sy: i32) -> Game {
+        Self::embark_with(seed, ow, sx, sy, &|_, _| {})
+    }
+
+    pub fn embark_with(seed: u64, ow: Overworld, sx: i32, sy: i32, report: &dyn Fn(&str, f32)) -> Game {
+        report("Surveying the site", 0.05);
         let cell = ow.cell(sx, sy).clone();
         let params = cell.biome.params();
         let world = world::generate(seed ^ ((sx as u64) << 20) ^ ((sy as u64) << 40), &params);
+        report("Loading the wagon", 0.8);
+        let embark = find_embark(&world);
+        let mut g = Game::from_world(world, seed, ow, (sx, sy), embark);
+        g.settle_expedition(embark);
+        report("Strike the earth!", 1.0);
+        g
+    }
+
+    fn from_world(world: World, seed: u64, ow: Overworld, (sx, sy): (i32, i32), embark: Pos) -> Game {
+        let cell = ow.cell(sx, sy).clone();
+        let params = cell.biome.params();
         let civ = ow.parent_civ(sx, sy);
         let neighbors = ow.neighbors(sx, sy, 30);
         let start_year = ow.year + 1;
         let mut rng = Rng::new(seed.wrapping_mul(31).wrapping_add(7));
-        let embark = find_embark(&world);
-        let mut g = Game {
+        Game {
             world,
             dwarves: Vec::new(),
             items: BTreeMap::new(),
@@ -185,6 +219,7 @@ impl Game {
             reserved: HashSet::new(),
             warns: BTreeMap::new(),
             pause_request: false,
+            autosave_request: false,
             water_cells: None,
             creatures: BTreeMap::new(),
             station: None,
@@ -206,7 +241,12 @@ impl Game {
             constructions: BTreeMap::new(),
             dig_version: 0,
             dig_fail: [None, None],
-        };
+        }
+    }
+
+    /// The seven founders, their tools and the wagon's supplies.
+    fn settle_expedition(&mut self, embark: Pos) {
+        let g = self;
         let crews: [&[Labor]; 7] = [
             &[Labor::Mining, Labor::Crafting],
             &[Labor::Mining, Labor::Smelting],
@@ -255,10 +295,9 @@ impl Game {
             &format!("Seven dwarves have arrived to found the outpost of {}. Strike the earth!", name),
             (255, 255, 120),
         );
-        let civ_name = civ.map_or("a band of wanderers".to_string(), |c| format!("the {}", g.overworld.civ(c).name));
+        let civ_name = g.civ.map_or("a band of wanderers".to_string(), |c| format!("the {}", g.overworld.civ(c).name));
         let biome = g.biome.name();
         g.legend(format!("The dwarves of {} founded the outpost of {} in the {}.", civ_name, name, biome));
-        g
     }
 
     fn new_id(&mut self) -> u32 {
@@ -588,6 +627,7 @@ impl Game {
             let season = (self.tick / SEASON) % 4;
             let s = SEASONS[season as usize];
             self.msg(&format!("{} has arrived.", s), (200, 200, 255));
+            self.autosave_request = true;
             if season == 1 || season == 2 {
                 self.migrants();
             }
