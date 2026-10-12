@@ -57,6 +57,15 @@ everyone until goblins batter them down.
 civilization in autumn, if they are at peace with you. Haul goods to the depot and barter
 (they want a tenth on top).
 
+**Zones & idling.** Zones (`i`) cover farm plots and meeting areas. Dwarves with nothing
+to do gather at the meeting area and chat there more often; without one they at least keep
+out of corridors. A stroll always gives way to real work.
+
+**Looking around.** `k` inspects anything at the cursor: terrain, zone, building, every
+dwarf, creature and item on the tile (Tab cycles, Enter opens a dwarf or building).
+`z` is the fortress status screen: supplies and how long they'll last, population by
+profession, what everyone is doing, happiness, full stocks, health and each dwarf's mood.
+
 **Save / load** with F5 / F9 (`dwarfclone_save.json`).
 
 ## Tests

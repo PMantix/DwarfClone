@@ -1,10 +1,10 @@
-use crate::app::{App, Mode, DESIG_KEYS};
+use crate::app::{look_entries, App, LookEntry, Mode, ZoneTool, DESIG_KEYS};
 use crate::body::PARTS;
 use crate::buildings::BuildingKind;
 use crate::dwarf::{skill_rank, Dwarf, Task, LABORS};
 use crate::game::{Game, ZoneKind, DAY, HUNGRY, RIPE, THIRSTY, TIRED};
 use crate::geom::Pos;
-use crate::items::{ItemKind, StockFilter};
+use crate::items::{Item, ItemKind, StockFilter};
 use crate::material::Mat;
 use crate::overworld::{Overworld, Race};
 use crate::world::{Desig, TileKind, World};
@@ -126,7 +126,7 @@ fn water_glyph(level: u8) -> char {
 
 fn selection_box(app: &App) -> Option<(Pos, Pos)> {
     let corner = match &app.mode {
-        Mode::Designate { corner, .. } | Mode::Stockpile { corner, .. } | Mode::Farm { corner } => *corner,
+        Mode::Designate { corner, .. } | Mode::Stockpile { corner, .. } | Mode::Zone { corner, .. } => *corner,
         _ => None,
     }?;
     Some((corner, app.cursor))
@@ -186,10 +186,14 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     let g = &app.game;
-    let mut units: HashMap<(i32, i32), &Dwarf> = HashMap::new();
+    let mut units: HashMap<(i32, i32), Vec<&Dwarf>> = HashMap::new();
     for d in g.dwarves.iter().filter(|d| d.alive && d.pos.z == z) {
-        units.insert((d.pos.x, d.pos.y), d);
+        units.entry((d.pos.x, d.pos.y)).or_default().push(d);
     }
+    // Dwarves sharing a tile (passing in a corridor, chatting) take turns being drawn.
+    let blink = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |t| (t.as_millis() / 500) as usize);
     let mut beasts: HashMap<(i32, i32), (char, Color, bool)> = HashMap::new();
     for c in g.creatures.values().filter(|c| c.alive && c.pos.z == z && g.world.t(c.pos).revealed) {
         let info = c.species.info();
@@ -247,6 +251,13 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                             fg = Color::Rgb(70, 70, 100);
                         }
                     }
+                    Some(ZoneKind::Meeting) => {
+                        bg = Color::Rgb(20, 50, 40);
+                        if ch == '.' || ch == ',' || ch == '`' || ch == '\'' {
+                            ch = '·';
+                            fg = Color::Rgb(70, 130, 110);
+                        }
+                    }
                     None => {}
                 }
             }
@@ -275,7 +286,8 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                     bg = Color::Rgb(90, 0, 0);
                 }
             }
-            if let Some(d) = units.get(&(wx, wy)) {
+            if let Some(ds) = units.get(&(wx, wy)) {
+                let d = ds[blink % ds.len()];
                 ch = if d.soldier { '☻' } else { '☺' };
                 fg = if d.asleep || d.body.unconscious() { dim(rgb(d.color), 0.5) } else { rgb(d.color) };
                 if d.body.bleeding > 0 {
@@ -419,6 +431,7 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
                 v.push(plain(format!("Farm plot ({})", s), Color::Rgb(200, 150, 90)));
             }
             ZoneKind::Stockpile(f) => v.push(plain(format!("Stockpile: {}", f.name()), Color::Rgb(150, 150, 220))),
+            ZoneKind::Meeting => v.push(plain("Meeting area".into(), Color::Rgb(110, 200, 170))),
         }
     }
     if let Some(b) = g.buildings.get(&t.building) {
@@ -517,9 +530,11 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(header("Commands"));
             v.push(key_line("d", "Designate (dig, chop...)", false));
             v.push(key_line("p", "Stockpiles", false));
-            v.push(key_line("z", "Farm plots", false));
+            v.push(key_line("i", "Zones: farm plots, meeting area", false));
             v.push(key_line("b", "Build", false));
             v.push(key_line("q", "Query building", false));
+            v.push(key_line("k", "Look around", false));
+            v.push(key_line("z", "Fortress status", false));
             v.push(key_line("u", "Unit list", false));
             v.push(key_line("m", "Military", false));
             v.push(key_line("n", "Nobles, mandates & rooms", false));
@@ -559,11 +574,31 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(Line::default());
             v.extend(cursor_info(g, app.cursor));
         }
-        Mode::Farm { corner } => {
-            title = "Farm plots".to_string();
-            v.push(plain("Mark soil floor (grass, loam, clay,".into(), TEXT));
-            v.push(plain("sand) as farmland. Farmers plant".into(), TEXT));
-            v.push(plain("stoutcaps; brewers turn them to ale.".into(), TEXT));
+        Mode::Zone { tool, corner } => {
+            title = "Zones".to_string();
+            for t in ZoneTool::ALL {
+                v.push(key_line(&t.key().to_string(), t.name(), t == *tool));
+            }
+            v.push(Line::default());
+            match tool {
+                ZoneTool::Farm => {
+                    v.push(plain("Mark soil floor (grass, loam, clay,".into(), TEXT));
+                    v.push(plain("sand) as farmland. Farmers plant".into(), TEXT));
+                    v.push(plain("stoutcaps; brewers turn them to ale.".into(), TEXT));
+                }
+                ZoneTool::Meeting => {
+                    v.push(plain("Dwarves with nothing to do gather".into(), TEXT));
+                    v.push(plain("here and chat (and make friends)".into(), TEXT));
+                    v.push(plain("instead of loitering in corridors.".into(), TEXT));
+                    v.push(plain("Tables and chairs may stand in it.".into(), MUTED));
+                }
+                ZoneTool::Erase => {
+                    v.push(plain("Removes farm plots and meeting".into(), TEXT));
+                    v.push(plain("areas (stockpiles: p, then x).".into(), TEXT));
+                }
+            }
+            let meet = g.zones.values().filter(|z| z.kind == ZoneKind::Meeting).map(|z| z.tiles.len()).sum::<usize>();
+            v.push(plain(format!("Meeting area: {} tiles", meet), MUTED));
             v.push(Line::default());
             v.push(plain(
                 if corner.is_some() { "Enter: set second corner".into() } else { "Enter: set first corner".into() },
@@ -682,7 +717,11 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.extend(unit_view(g, d, *sel));
             }
         }
-        Mode::WorldMap { .. } | Mode::Legends { .. } | Mode::Trade { .. } => {
+        Mode::Look { sel } => {
+            title = "Look".to_string();
+            v.extend(look_lines(g, app.cursor, *sel));
+        }
+        Mode::WorldMap { .. } | Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } => {
             title = String::new();
         }
         Mode::Nobles => {
@@ -920,7 +959,9 @@ fn help_text() -> Vec<Line<'static>> {
         k("+ / -", "game speed"),
         k("d", "designate: mine, channel, stairs, chop"),
         k("p", "stockpiles"),
-        k("z", "farm plots (on soil)"),
+        k("i", "zones: farm plots, meeting area"),
+        k("k", "look: inspect anything at the cursor"),
+        k("z", "fortress status: population, stocks, health"),
         k("b", "build workshops and furniture"),
         k("q", "query building: queue work orders"),
         k("u / v", "unit list / view dwarf (m drafts)"),
@@ -937,7 +978,8 @@ fn help_text() -> Vec<Line<'static>> {
         plain(" 2. Dig down: designate up/down stairs (d, i)".into(), TEXT),
         plain("    across several z-levels, then mine rooms.".into(), TEXT),
         plain(" 3. Make food and stone stockpiles (p).".into(), TEXT),
-        plain(" 4. Farm stoutcaps (z), build a Still, brew ale.".into(), TEXT),
+        plain(" 4. Farm stoutcaps (i, f), build a Still, brew ale.".into(), TEXT),
+        plain("    Give idle dwarves a meeting area (i, m).".into(), TEXT),
         plain("    A Kitchen turns food into better meals.".into(), TEXT),
         plain("    Ore -> Smelter (+fuel) -> bars -> Forge -> arms.".into(), TEXT),
         plain(" 5. Carpenter's workshop -> beds. Dwarves sleep".into(), TEXT),
@@ -1333,7 +1375,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     match app.mode {
         Mode::Legends { tab, scroll, .. } => draw_legends(f, area, &app.game.overworld, tab, scroll),
         Mode::Trade { side, sel } => draw_trade(f, area, app, side, sel),
-        Mode::Help => popup(f, area, 60, 44, " Help ", help_text()),
+        Mode::Status { tab, scroll } => draw_status(f, area, &app.game, tab, scroll),
+        Mode::Help => popup(f, area, 60, 47, " Help ", help_text()),
         Mode::ConfirmQuit => popup(
             f,
             area,
@@ -1344,6 +1387,406 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         ),
         _ => {}
     }
+}
+
+fn item_line(it: &Item, extra: &str, selected: bool) -> Line<'static> {
+    let (c, col) = it.glyph();
+    let style = if selected { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
+    Line::from(vec![
+        Span::styled(format!("{} ", c), style.fg(col)),
+        Span::styled(format!("{}{}", it.name(), extra), style.fg(TEXT)),
+    ])
+}
+
+/// The look panel: terrain, then everything standing or lying on the tile.
+fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
+    let mut v = cursor_info_terrain(g, p);
+    let entries = look_entries(g, p);
+    if entries.is_empty() {
+        v.push(Line::default());
+        v.push(plain("Nothing else here.".into(), MUTED));
+        v.push(Line::default());
+        v.push(plain("Arrows move · Esc back".into(), MUTED));
+        return v;
+    }
+    let sel = sel.min(entries.len() - 1);
+    v.push(Line::default());
+    v.push(header(&format!("Here ({})", entries.len())));
+    let hi = |i: usize| if i == sel { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
+    for (i, e) in entries.iter().enumerate().take(14) {
+        let line = match *e {
+            LookEntry::Dwarf(id) => {
+                let Some(d) = g.dwarves.iter().find(|d| d.id == id) else { continue };
+                Line::from(vec![
+                    Span::styled(if d.soldier { "☻ " } else { "☺ " }, hi(i).fg(rgb(d.color))),
+                    Span::styled(d.name.clone(), hi(i).fg(TEXT)),
+                ])
+            }
+            LookEntry::Creature(id) => {
+                let Some(c) = g.creatures.get(&id) else { continue };
+                let info = c.species.info();
+                Line::from(vec![
+                    Span::styled(format!("{} ", info.glyph), hi(i).fg(rgb(info.color))),
+                    Span::styled(cap(info.name), hi(i).fg(TEXT)),
+                ])
+            }
+            LookEntry::Building(id) => {
+                let Some(b) = g.buildings.get(&id) else { continue };
+                Line::from(vec![
+                    Span::styled(format!("{} ", b.glyph_at(p.x - b.pos.x, p.y - b.pos.y)), hi(i).fg(b.kind.color())),
+                    Span::styled(b.name(), hi(i).fg(TEXT)),
+                ])
+            }
+            LookEntry::Item(id) => {
+                let Some(it) = g.items.get(&id) else { continue };
+                item_line(it, "", i == sel)
+            }
+        };
+        v.push(line);
+    }
+    if entries.len() > 14 {
+        v.push(plain(format!("...and {} more", entries.len() - 14), MUTED));
+    }
+    v.push(Line::default());
+    let detail_col = Color::Rgb(180, 180, 190);
+    match entries[sel] {
+        LookEntry::Dwarf(id) => {
+            if let Some(d) = g.dwarves.iter().find(|d| d.id == id) {
+                let (mood, mc) = d.mood();
+                v.push(header(&d.name));
+                v.push(plain(
+                    match d.noble {
+                        Some(n) => format!("{}, {}", n.title(), d.profession()),
+                        None => d.profession().to_string(),
+                    },
+                    MUTED,
+                ));
+                v.push(plain(task_desc(g, d), KEY));
+                v.push(plain(mood.to_string(), rgb(mc)));
+                if let Some(t) = d.thoughts.last() {
+                    v.push(plain(format!("Recently {}.", t.text), detail_col));
+                }
+                v.push(plain("Enter: full dwarf screen".into(), MUTED));
+            }
+        }
+        LookEntry::Creature(id) => {
+            if let Some(c) = g.creatures.get(&id) {
+                let info = c.species.info();
+                v.push(header(&cap(info.name)));
+                let state = if c.body.unconscious() {
+                    "Unconscious"
+                } else if c.leaving {
+                    "Leaving the area"
+                } else if c.hostile() {
+                    if c.siege { "Hostile (siege)" } else { "Hostile" }
+                } else {
+                    "Peaceful"
+                };
+                v.push(plain(state.into(), if c.hostile() { Color::Rgb(255, 100, 90) } else { detail_col }));
+                if let Some(w) = c.weapon.and_then(|id| g.items.get(&id)) {
+                    v.push(plain(format!("Wields {}", w.name()), detail_col));
+                }
+                for a in c.armor.iter().filter_map(|id| g.items.get(id)) {
+                    v.push(plain(format!("Wears {}", a.name()), detail_col));
+                }
+                if c.body.bleeding > 0 {
+                    v.push(plain("Bleeding".into(), Color::Rgb(255, 60, 60)));
+                }
+                for part in PARTS.iter().filter(|p| c.body.part_status(**p) != "fine") {
+                    v.push(plain(format!("{}: {}", part.name(), c.body.part_status(*part)), Color::Rgb(240, 130, 100)));
+                }
+            }
+        }
+        LookEntry::Building(id) => {
+            if let Some(b) = g.buildings.get(&id) {
+                v.push(header(&b.name()));
+                v.push(plain(
+                    if b.built { format!("Worth ☼{}", g.building_value(b)) } else { format!("Awaiting construction ({})", b.kind.needs_desc()) },
+                    detail_col,
+                ));
+                if let Some(o) = b.owner.and_then(|o| g.dwarves.iter().find(|d| d.id == o)) {
+                    v.push(plain(format!("Owned by {}", o.name), detail_col));
+                }
+                if let Some(w) = b.worker.and_then(|o| g.dwarves.iter().find(|d| d.id == o)) {
+                    v.push(plain(format!("In use by {}", w.name), detail_col));
+                }
+                if !b.orders.is_empty() {
+                    v.push(plain(format!("{} work orders queued", b.orders.len()), detail_col));
+                }
+                v.push(plain("Enter: query building".into(), MUTED));
+            }
+        }
+        LookEntry::Item(id) => {
+            if let Some(it) = g.items.get(&id) {
+                v.push(header(&cap(&it.name())));
+                v.push(plain(format!("{}, worth ☼{}", cap(it.mat.name()), it.value()), detail_col));
+                if let Some(d) = it.claimed_by.and_then(|o| g.dwarves.iter().find(|d| d.id == o)) {
+                    v.push(plain(format!("Wanted by {}", d.name), detail_col));
+                }
+                if it.to_depot {
+                    v.push(plain("Marked for the trade depot".into(), Color::Rgb(240, 240, 160)));
+                }
+                if it.kind.is_container() {
+                    let mut inside: Vec<&Item> = g.items.values().filter(|c| c.container == Some(it.id)).collect();
+                    inside.sort_by_key(|c| c.name());
+                    v.push(plain(format!("Holds {} of {}", inside.len(), crate::items::CONTAINER_CAP), detail_col));
+                    for c in inside {
+                        v.push(item_line(c, "", false));
+                    }
+                }
+            }
+        }
+    }
+    v.push(Line::default());
+    v.push(plain("Arrows move · Tab next thing · Esc back".into(), MUTED));
+    v
+}
+
+/// The terrain part of the cursor description (no units or items).
+fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
+    let mut v = cursor_info(g, p);
+    // cursor_info lists units and items after the tile itself; keep only the tile part.
+    let t = g.world.t(p);
+    let mut keep = 1;
+    if t.revealed {
+        keep += 1;
+        keep += (t.water > 0) as usize;
+        keep += (t.desig != Desig::None) as usize;
+        keep += g.zones.contains_key(&t.zone) as usize;
+        keep += g.buildings.contains_key(&t.building) as usize;
+    } else {
+        keep += 1 + (t.desig != Desig::None) as usize;
+    }
+    v.truncate(keep);
+    if t.revealed && g.world.outside(p) {
+        v.push(plain("Outside".into(), MUTED));
+    } else if t.revealed && t.kind.has_floor() {
+        v.push(plain("Underground".into(), MUTED));
+    }
+    v
+}
+
+fn cap(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
+}
+
+fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
+    let mut v = Vec::new();
+    let alive: Vec<&Dwarf> = g.dwarves.iter().filter(|d| d.alive).collect();
+    let n = alive.len().max(1);
+    match tab {
+        0 => {
+            let civ = g.civ.map_or("no civilization".to_string(), |c| format!("the {}", g.overworld.civ(c).name));
+            v.push(header(&format!("{}, an outpost of {}", g.fortress_name, civ)));
+            v.push(plain(g.date_string(), TEXT));
+            v.push(plain(format!("Fortress wealth ☼{}", g.wealth()), Color::Rgb(255, 215, 60)));
+            v.push(Line::default());
+
+            let food = g.items.values().filter(|it| it.kind.is_food() && it.kind != ItemKind::Drink && it.kind != ItemKind::Seed).count();
+            let drink = g.items.values().filter(|it| it.kind == ItemKind::Drink).count();
+            v.push(header("Supplies"));
+            // A dwarf eats about every HUNGRY ticks and drinks about every THIRSTY ticks.
+            let days = |x: usize, every: u32| x as u64 * every as u64 / DAY / n as u64;
+            let warn = |d: u64| if d < 20 { Color::Rgb(255, 120, 90) } else { TEXT };
+            let (fd, dd) = (days(food, HUNGRY), days(drink, THIRSTY));
+            v.push(plain(format!("Food  {:>4}  (about {} days for {} dwarves)", food, fd, alive.len()), warn(fd)));
+            v.push(plain(format!("Drink {:>4}  (about {} days)", drink, dd), warn(dd)));
+            let beds = g.buildings.values().filter(|b| b.kind == BuildingKind::Bed && b.built).count();
+            v.push(plain(format!("Beds  {:>4}  for {} dwarves", beds, alive.len()), if beds < alive.len() { Color::Rgb(240, 190, 60) } else { TEXT }));
+            let meet: usize = g.zones.values().filter(|z| z.kind == ZoneKind::Meeting).map(|z| z.tiles.len()).sum();
+            v.push(plain(
+                if meet > 0 { format!("Meeting area of {} tiles", meet) } else { "No meeting area (i, m to make one)".into() },
+                if meet > 0 { TEXT } else { Color::Rgb(240, 190, 60) },
+            ));
+            v.push(Line::default());
+
+            v.push(header(&format!("Population: {}", alive.len())));
+            let mut profs: HashMap<&'static str, usize> = HashMap::new();
+            for d in &alive {
+                *profs.entry(if d.soldier { "Soldier" } else { d.profession() }).or_default() += 1;
+            }
+            let mut profs: Vec<_> = profs.into_iter().collect();
+            profs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+            for (p, c) in profs {
+                v.push(plain(format!("  {:>3}  {}", c, p), TEXT));
+            }
+            v.push(Line::default());
+
+            v.push(header("Activity"));
+            let mut acts: HashMap<&'static str, usize> = HashMap::new();
+            for d in &alive {
+                let a = match d.task {
+                    Task::Idle | Task::Wander { .. } => {
+                        if g.in_meeting_area(d.pos) { "At the meeting area" } else { "Idle" }
+                    }
+                    Task::Sleep { .. } => "Sleeping",
+                    Task::Rest { .. } => "Resting injuries",
+                    Task::Eat { .. } | Task::Dine { .. } | Task::DrinkItem { .. } | Task::DrinkWater { .. } => "Eating or drinking",
+                    Task::Attack { .. } | Task::Station { .. } | Task::Train | Task::Equip { .. } => "Military duty",
+                    Task::Flee => "Fleeing",
+                    Task::Mood => "Strange mood",
+                    _ => "Working",
+                };
+                *acts.entry(a).or_default() += 1;
+            }
+            let mut acts: Vec<_> = acts.into_iter().collect();
+            acts.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+            for (a, c) in acts {
+                v.push(plain(format!("  {:>3}  {}", c, a), TEXT));
+            }
+            v.push(Line::default());
+
+            v.push(header("Happiness"));
+            let mut moods: Vec<(&'static str, (u8, u8, u8), usize)> = Vec::new();
+            for d in &alive {
+                let (m, c) = d.mood();
+                match moods.iter_mut().find(|x| x.0 == m) {
+                    Some(x) => x.2 += 1,
+                    None => moods.push((m, c, 1)),
+                }
+            }
+            moods.sort_by_key(|x| std::cmp::Reverse(x.2));
+            for (m, c, k) in moods {
+                v.push(plain(format!("  {:>3}  {}", k, m), rgb(c)));
+            }
+            let hostiles = g.hostile_count();
+            if hostiles > 0 {
+                v.push(Line::default());
+                v.push(plain(format!("⚠ {} hostile creatures on the map", hostiles), Color::Rgb(255, 90, 90)));
+            }
+        }
+        1 => {
+            v.push(header("Stocks (everything in the fortress, by category)"));
+            for f in StockFilter::ALL.iter().filter(|f| **f != StockFilter::All) {
+                let mut names: HashMap<String, usize> = HashMap::new();
+                let mut total = 0;
+                for it in g.items.values().filter(|it| f.accepts(it.kind)) {
+                    let base = Item { quality: 0, ..it.clone() };
+                    let name = if it.quality >= crate::items::ARTIFACT { it.name() } else { base.name() };
+                    *names.entry(name).or_default() += 1;
+                    total += 1;
+                }
+                v.push(Line::default());
+                v.push(header(&format!("{} ({})", cap(f.name()), total)));
+                if names.is_empty() {
+                    v.push(plain("  none".into(), MUTED));
+                }
+                let mut names: Vec<_> = names.into_iter().collect();
+                names.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+                for (name, c) in names {
+                    v.push(plain(format!("  {:>4}  {}", c, name), TEXT));
+                }
+            }
+        }
+        2 => {
+            v.push(header("Health"));
+            let mut any = false;
+            for d in &alive {
+                let hurt: Vec<String> = PARTS
+                    .iter()
+                    .filter(|p| d.body.part_status(**p) != "fine")
+                    .map(|p| format!("{} {}", p.name(), d.body.part_status(*p)))
+                    .collect();
+                let mut flags = Vec::new();
+                if d.body.unconscious() {
+                    flags.push("unconscious".to_string());
+                }
+                if d.body.bleeding > 0 {
+                    flags.push(format!("bleeding (blood {}%)", d.body.blood * 100 / d.body.max_blood));
+                }
+                if matches!(d.task, Task::Rest { .. }) {
+                    flags.push("resting".into());
+                }
+                if d.thirst > THIRSTY * 2 {
+                    flags.push("dehydrated".into());
+                }
+                if d.hunger > HUNGRY * 2 {
+                    flags.push("starving".into());
+                }
+                if d.fatigue > TIRED * 2 {
+                    flags.push("exhausted".into());
+                }
+                if hurt.is_empty() && flags.is_empty() {
+                    continue;
+                }
+                any = true;
+                v.push(Line::default());
+                v.push(Line::from(vec![
+                    Span::styled("☺ ", Style::default().fg(rgb(d.color))),
+                    Span::styled(d.name.clone(), Style::default().fg(TEXT).add_modifier(Modifier::BOLD)),
+                    Span::styled(if flags.is_empty() { String::new() } else { format!("  {}", flags.join(", ")) }, Style::default().fg(Color::Rgb(255, 90, 80))),
+                ]));
+                for h in hurt {
+                    v.push(plain(format!("    {}", h), Color::Rgb(240, 130, 100)));
+                }
+            }
+            if !any {
+                v.push(plain("Everyone is in good health.".into(), Color::Rgb(120, 220, 120)));
+            }
+            let dead: Vec<&Dwarf> = g.dwarves.iter().filter(|d| !d.alive).collect();
+            if !dead.is_empty() {
+                v.push(Line::default());
+                v.push(header(&format!("Dead ({})", dead.len())));
+                for d in dead {
+                    v.push(plain(format!("  {}", d.name), MUTED));
+                }
+            }
+        }
+        _ => {
+            v.push(header("Dwarves"));
+            for d in &alive {
+                let (mood, mc) = d.mood();
+                v.push(Line::default());
+                v.push(Line::from(vec![
+                    Span::styled(if d.soldier { "☻ " } else { "☺ " }, Style::default().fg(rgb(d.color))),
+                    Span::styled(format!("{:<22}", d.name), Style::default().fg(TEXT).add_modifier(Modifier::BOLD)),
+                    Span::styled(format!("{:<18}", d.profession()), Style::default().fg(MUTED)),
+                    Span::styled(mood.to_string(), Style::default().fg(rgb(mc))),
+                ]));
+                v.push(plain(format!("    {}", task_desc(g, d)), KEY));
+                for t in d.thoughts.iter().rev().take(2) {
+                    let col = if t.stress < 0 { Color::Rgb(120, 220, 120) } else { Color::Rgb(230, 140, 100) };
+                    v.push(plain(format!("    · {}", t.text), col));
+                }
+            }
+        }
+    }
+    v
+}
+
+fn draw_status(f: &mut Frame, area: Rect, g: &Game, tab: usize, scroll: usize) {
+    let w = area.width.saturating_sub(6).min(100);
+    let h = area.height.saturating_sub(4);
+    let r = Rect::new(area.x + (area.width - w) / 2, area.y + 2, w, h);
+    let lines = status_lines(g, tab);
+    let visible = h.saturating_sub(4) as usize;
+    let scroll = scroll.min(lines.len().saturating_sub(visible));
+    let names = ["1 Overview", "2 Stocks", "3 Health", "4 Dwarves"];
+    let mut tabs: Vec<Span> = Vec::new();
+    for (i, n) in names.iter().enumerate() {
+        let st = if i == tab { Style::default().fg(BLACK).bg(KEY) } else { Style::default().fg(TEXT) };
+        tabs.push(Span::styled(format!(" {} ", n), st));
+        tabs.push(Span::raw(" "));
+    }
+    let mut body = vec![Line::from(tabs), Line::default()];
+    body.extend(lines.into_iter().skip(scroll).take(visible));
+    f.render_widget(Clear, r);
+    f.render_widget(
+        Paragraph::new(body)
+            .style(Style::default().bg(Color::Rgb(15, 15, 25)))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(KEY))
+                    .title(Span::styled(" Fortress status ", Style::default().fg(KEY)))
+                    .title_bottom(Span::styled(" Tab/1-4 switch · ↑↓ PgUp/PgDn scroll · Esc back ", Style::default().fg(MUTED))),
+            ),
+        r,
+    );
 }
 
 fn popup(f: &mut Frame, area: Rect, w: u16, h: u16, title: &str, lines: Vec<Line<'static>>) {
@@ -1405,5 +1848,35 @@ mod tests {
         println!("{}", dump(&mut app, 140, 40));
         app.mode = Mode::Legends { tab: 0, scroll: usize::MAX, from_world: false };
         println!("{}", dump(&mut app, 130, 40));
+    }
+
+    #[test]
+    fn render_look_and_status() {
+        let mut app = App::new(42);
+        let e = app.game.embark;
+        app.game.add_zone(e.offset(-8, -8, -1), e.offset(-3, -3, 1), ZoneKind::Meeting);
+        app.mode = Mode::Normal;
+        for _ in 0..3000 {
+            app.game.step();
+        }
+        app.game.dwarves[1].body.wound(crate::body::Part::LeftLeg, 12, true);
+        // Look at a dwarf, then at the wagon's pile of supplies.
+        app.cursor = app.game.dwarves[0].pos;
+        app.mode = Mode::Look { sel: 0 };
+        let s = dump(&mut app, 130, 45);
+        println!("{}", s);
+        assert!(s.contains(&app.game.dwarves[0].name));
+        let pile = app.game.items.values().filter(|it| it.carried_by.is_none()).map(|it| it.pos).next().unwrap();
+        app.cursor = pile;
+        app.mode = Mode::Look { sel: 0 };
+        println!("{}", dump(&mut app, 130, 45));
+        for tab in 0..4 {
+            app.mode = Mode::Status { tab, scroll: 0 };
+            let s = dump(&mut app, 130, 45);
+            println!("{}", s);
+            assert!(s.contains("Fortress status"));
+        }
+        app.mode = Mode::Zone { tool: ZoneTool::Meeting, corner: None };
+        println!("{}", dump(&mut app, 130, 45));
     }
 }

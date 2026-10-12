@@ -22,13 +22,76 @@ pub const DESIG_KEYS: [(char, Desig); 8] = [
     ('x', Desig::None),
 ];
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ZoneTool {
+    Farm,
+    Meeting,
+    Erase,
+}
+
+impl ZoneTool {
+    pub const ALL: [ZoneTool; 3] = [ZoneTool::Farm, ZoneTool::Meeting, ZoneTool::Erase];
+
+    pub fn key(self) -> char {
+        match self {
+            ZoneTool::Farm => 'f',
+            ZoneTool::Meeting => 'm',
+            ZoneTool::Erase => 'x',
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            ZoneTool::Farm => "Farm plot",
+            ZoneTool::Meeting => "Meeting area",
+            ZoneTool::Erase => "Remove zones",
+        }
+    }
+}
+
+/// Something under the look cursor.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LookEntry {
+    Dwarf(u32),
+    Creature(u32),
+    Building(u32),
+    Item(u32),
+}
+
+/// Everything at `p`, units first.
+pub fn look_entries(g: &Game, p: Pos) -> Vec<LookEntry> {
+    let mut v: Vec<LookEntry> = Vec::new();
+    if !g.world.in_bounds(p) {
+        return v;
+    }
+    v.extend(g.dwarves.iter().filter(|d| d.alive && d.pos == p).map(|d| LookEntry::Dwarf(d.id)));
+    if g.world.t(p).revealed {
+        v.extend(g.creatures.values().filter(|c| c.alive && c.pos == p).map(|c| LookEntry::Creature(c.id)));
+        let b = g.world.t(p).building;
+        if b != 0 {
+            v.push(LookEntry::Building(b));
+        }
+        v.extend(
+            g.items
+                .values()
+                .filter(|it| it.pos == p && it.carried_by.is_none() && it.container.is_none())
+                .map(|it| LookEntry::Item(it.id)),
+        );
+    }
+    v
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Mode {
     Normal,
     Designate { kind: Desig, corner: Option<Pos> },
     /// `filter == None` erases zones.
     Stockpile { filter: Option<StockFilter>, corner: Option<Pos> },
-    Farm { corner: Option<Pos> },
+    Zone { tool: ZoneTool, corner: Option<Pos> },
+    /// Inspect whatever is under the cursor; `sel` picks one of several things there.
+    Look { sel: usize },
+    /// Fortress overview screens.
+    Status { tab: usize, scroll: usize },
     BuildMenu,
     Place(BuildingKind),
     Query { bld: u32, adding: bool },
@@ -101,7 +164,8 @@ impl App {
             Mode::Normal
                 | Mode::Designate { .. }
                 | Mode::Stockpile { .. }
-                | Mode::Farm { .. }
+                | Mode::Zone { .. }
+                | Mode::Look { .. }
                 | Mode::Place(_)
                 | Mode::Military
         )
@@ -157,6 +221,9 @@ impl App {
             return;
         }
         if self.uses_map_cursor() && self.move_cursor(&k) {
+            if let Mode::Look { .. } = self.mode {
+                self.mode = Mode::Look { sel: 0 };
+            }
             return;
         }
         // Time controls work everywhere except the quit prompt and pre-embark screens.
@@ -206,11 +273,28 @@ impl App {
                 }
                 _ => {}
             },
-            Mode::Farm { corner } => match k.code {
+            Mode::Zone { tool, corner } => match k.code {
                 KeyCode::Enter => self.confirm(),
                 KeyCode::Esc => {
-                    self.mode = if corner.is_some() { Mode::Farm { corner: None } } else { Mode::Normal }
+                    self.mode = if corner.is_some() { Mode::Zone { tool, corner: None } } else { Mode::Normal }
                 }
+                KeyCode::Char(c) => {
+                    if let Some(&t) = ZoneTool::ALL.iter().find(|t| t.key() == c) {
+                        self.mode = Mode::Zone { tool: t, corner };
+                    }
+                }
+                _ => {}
+            },
+            Mode::Look { sel } => self.key_look(k, sel),
+            Mode::Status { tab, scroll } => match k.code {
+                KeyCode::Esc | KeyCode::Char('z') => self.mode = Mode::Normal,
+                KeyCode::Tab | KeyCode::Right => self.mode = Mode::Status { tab: (tab + 1) % 4, scroll: 0 },
+                KeyCode::Left => self.mode = Mode::Status { tab: (tab + 3) % 4, scroll: 0 },
+                KeyCode::Char(c @ '1'..='4') => self.mode = Mode::Status { tab: c as usize - '1' as usize, scroll: 0 },
+                KeyCode::Up => self.mode = Mode::Status { tab, scroll: scroll.saturating_sub(1) },
+                KeyCode::Down => self.mode = Mode::Status { tab, scroll: scroll + 1 },
+                KeyCode::PageUp => self.mode = Mode::Status { tab, scroll: scroll.saturating_sub(20) },
+                KeyCode::PageDown => self.mode = Mode::Status { tab, scroll: scroll + 20 },
                 _ => {}
             },
             Mode::BuildMenu => match k.code {
@@ -314,7 +398,9 @@ impl App {
         match k.code {
             KeyCode::Char('d') => self.mode = Mode::Designate { kind: Desig::Dig, corner: None },
             KeyCode::Char('p') => self.mode = Mode::Stockpile { filter: Some(StockFilter::All), corner: None },
-            KeyCode::Char('z') => self.mode = Mode::Farm { corner: None },
+            KeyCode::Char('i') => self.mode = Mode::Zone { tool: ZoneTool::Meeting, corner: None },
+            KeyCode::Char('k') => self.mode = Mode::Look { sel: 0 },
+            KeyCode::Char('z') => self.mode = Mode::Status { tab: 0, scroll: 0 },
             KeyCode::Char('b') => self.mode = Mode::BuildMenu,
             KeyCode::Char('q') => {
                 let bid = self.game.world.t(self.cursor).building;
@@ -349,6 +435,23 @@ impl App {
             KeyCode::Char('H') => self.cursor = self.game.embark,
             KeyCode::F(5) => self.save(),
             KeyCode::F(9) => self.load(),
+            _ => {}
+        }
+    }
+
+    fn key_look(&mut self, k: KeyEvent, sel: usize) {
+        let entries = look_entries(&self.game, self.cursor);
+        let n = entries.len().max(1);
+        match k.code {
+            KeyCode::Esc => self.mode = Mode::Normal,
+            KeyCode::Tab | KeyCode::Char(']') => self.mode = Mode::Look { sel: (sel + 1) % n },
+            KeyCode::BackTab | KeyCode::Char('[') => self.mode = Mode::Look { sel: (sel + n - 1) % n },
+            KeyCode::Enter => match entries.get(sel.min(n - 1)) {
+                Some(LookEntry::Dwarf(id)) => self.mode = Mode::Unit { id: *id, sel: 0 },
+                Some(LookEntry::Building(b)) => self.mode = Mode::Query { bld: *b, adding: false },
+                Some(_) => self.flash = Some("Nothing more to see.".into()),
+                None => {}
+            },
             _ => {}
         }
     }
@@ -516,15 +619,24 @@ impl App {
                 });
                 self.mode = Mode::Stockpile { filter, corner: None };
             }
-            Mode::Farm { corner: None } => self.mode = Mode::Farm { corner: Some(c) },
-            Mode::Farm { corner: Some(a) } => {
-                let n = self.game.add_zone(a, c, ZoneKind::Farm);
-                self.flash = Some(if n > 0 {
-                    format!("Farm plot of {} tiles.", n)
-                } else {
-                    "Farm plots need revealed soil floor.".into()
+            Mode::Zone { tool, corner: None } => self.mode = Mode::Zone { tool, corner: Some(c) },
+            Mode::Zone { tool, corner: Some(a) } => {
+                self.flash = Some(match tool {
+                    ZoneTool::Farm => match self.game.add_zone(a, c, ZoneKind::Farm) {
+                        0 => "Farm plots need revealed soil floor.".into(),
+                        n => format!("Farm plot of {} tiles.", n),
+                    },
+                    ZoneTool::Meeting => match self.game.add_zone(a, c, ZoneKind::Meeting) {
+                        0 => "Meeting areas need clear, revealed floor.".into(),
+                        n => format!("Meeting area of {} tiles. Idle dwarves will gather here.", n),
+                    },
+                    ZoneTool::Erase => {
+                        // Leave stockpiles to the stockpile tool.
+                        let n = self.game.remove_zones_where(a, c, |k| !matches!(k, ZoneKind::Stockpile(_)));
+                        format!("Removed {} zone tiles.", n)
+                    }
                 });
-                self.mode = Mode::Farm { corner: None };
+                self.mode = Mode::Zone { tool, corner: None };
             }
             Mode::Place(kind) => {
                 let s = kind.size() / 2;

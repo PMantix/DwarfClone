@@ -54,6 +54,8 @@ pub struct LogEntry {
 pub enum ZoneKind {
     Stockpile(StockFilter),
     Farm,
+    /// Where idle dwarves gather and chat.
+    Meeting,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -365,7 +367,9 @@ impl Game {
         let mut tiles = Vec::new();
         for p in box_iter(a, b) {
             let Some(t) = self.world.get(p) else { continue };
-            if !t.revealed || t.zone != 0 || t.building != 0 || !matches!(t.kind, TileKind::Floor | TileKind::Shrub) {
+            // A meeting hall can take in the tables and chairs already standing in it.
+            let bld_ok = t.building == 0 || kind == ZoneKind::Meeting;
+            if !t.revealed || t.zone != 0 || !bld_ok || !matches!(t.kind, TileKind::Floor | TileKind::Shrub) {
                 continue;
             }
             if kind == ZoneKind::Farm && !t.mat.is_soil() {
@@ -391,11 +395,16 @@ impl Game {
     }
 
     pub fn remove_zones(&mut self, a: Pos, b: Pos) -> usize {
+        self.remove_zones_where(a, b, |_| true)
+    }
+
+    /// Clear zone tiles in the box whose zone kind passes `which`.
+    pub fn remove_zones_where<F: Fn(ZoneKind) -> bool>(&mut self, a: Pos, b: Pos, which: F) -> usize {
         let mut n = 0;
         for p in box_iter(a, b) {
             let Some(t) = self.world.get(p) else { continue };
             let zid = t.zone;
-            if zid == 0 {
+            if zid == 0 || !self.zones.get(&zid).map_or(false, |z| which(z.kind)) {
                 continue;
             }
             let t = self.world.t_mut(p);
@@ -806,16 +815,62 @@ impl Game {
                 self.choose_task(d);
                 if d.task == Task::Idle {
                     d.idle_cd = 20 + self.rng.range(0, 20) as u32;
-                    if self.rng.chance(0.25) {
-                        self.start_wander(d);
-                    }
+                    self.idle_activity(d);
                 }
+            }
+        }
+        // An idle stroll gives way as soon as there's real work.
+        if matches!(d.task, Task::Wander { .. }) && d.tantrum == 0 && self.tick % 30 == d.id as u64 % 30 {
+            let stroll = std::mem::take(&mut d.task);
+            self.choose_task(d);
+            if d.task == Task::Idle {
+                d.task = stroll;
             }
         }
         if d.task != Task::Idle {
             self.do_task(d);
         }
         self.carry_follow(d);
+    }
+
+    /// Meeting-area tiles a dwarf could stand on.
+    pub fn meeting_tiles(&self) -> Vec<Pos> {
+        self.zones
+            .values()
+            .filter(|z| z.kind == ZoneKind::Meeting)
+            .flat_map(|z| z.tiles.iter().copied())
+            .filter(|&p| self.world.walkable(p))
+            .collect()
+    }
+
+    pub fn in_meeting_area(&self, p: Pos) -> bool {
+        self.zones.get(&self.world.t(p).zone).map_or(false, |z| z.kind == ZoneKind::Meeting)
+    }
+
+    /// Nothing to do: head for the meeting area, or at least out of the way.
+    fn idle_activity(&mut self, d: &mut Dwarf) {
+        let meet = self.meeting_tiles();
+        if !meet.is_empty() {
+            let inside = self.in_meeting_area(d.pos);
+            if !inside || self.rng.chance(0.15) {
+                let q = meet[self.rng.range(0, meet.len() as i32) as usize];
+                if q != d.pos {
+                    d.task = Task::Wander { target: q };
+                }
+            }
+            return;
+        }
+        // Without one, don't loiter in corridors and doorways.
+        if self.openness(d.pos) <= 3 || self.rng.chance(0.25) {
+            self.start_wander(d);
+        }
+    }
+
+    /// Number of tiles a dwarf could step to from `p`.
+    fn openness(&self, p: Pos) -> usize {
+        let mut nb = Vec::new();
+        self.world.neighbors(p, &mut nb, Mover::Dwarf);
+        nb.len()
     }
 
     fn carry_follow(&mut self, d: &Dwarf) {
@@ -1005,12 +1060,21 @@ impl Game {
     }
 
     fn start_wander(&mut self, d: &mut Dwarf) {
-        for _ in 0..10 {
-            let q = d.pos.offset(self.rng.range(-5, 6), self.rng.range(-5, 6), 0);
-            if self.world.walkable(q) && q != d.pos {
+        // Prefer somewhere roomy over a spot in the middle of a corridor.
+        let mut fallback = None;
+        for _ in 0..12 {
+            let q = d.pos.offset(self.rng.range(-6, 7), self.rng.range(-6, 7), 0);
+            if !self.world.walkable(q) || q == d.pos {
+                continue;
+            }
+            if self.openness(q) >= 5 {
                 d.task = Task::Wander { target: q };
                 return;
             }
+            fallback.get_or_insert(q);
+        }
+        if let Some(q) = fallback {
+            d.task = Task::Wander { target: q };
         }
     }
 
@@ -1483,11 +1547,15 @@ impl Game {
     fn do_task(&mut self, d: &mut Dwarf) {
         match d.task.clone() {
             Task::Idle => {}
-            Task::Wander { target } => {
-                if !matches!(self.travel(d, target), Travel::Moving) {
+            Task::Wander { target } => match self.travel(d, target) {
+                Travel::Moving => {}
+                Travel::Arrived => d.task = Task::Idle,
+                Travel::Failed => {
+                    // Probably an unreachable meeting area; don't hammer the pathfinder.
                     d.task = Task::Idle;
+                    d.idle_cd = 150;
                 }
-            }
+            },
             Task::Dig { target, stand } => {
                 let desig = self.world.t(target).desig;
                 if desig == Desig::None || !self.desig_valid(target, desig) {
@@ -2129,6 +2197,76 @@ mod bench {
         eprintln!("1 year: {:?}, alive {}/{}, items {}", t.elapsed(), g.alive_count(), g.dwarves.len(), g.items.len());
         for l in g.log.iter().rev().take(12) {
             eprintln!("  {}", l.text);
+        }
+    }
+}
+
+#[cfg(test)]
+mod traffic_tests {
+    use super::*;
+
+    /// Busy fortress with long one-tile corridors: nobody should stand still for long
+    /// while they have somewhere to go.
+    #[test]
+    fn no_dwarf_stalls() {
+        let mut g = Game::new(42);
+        let e = g.embark;
+        g.designate(e.offset(-12, -12, -2), e.offset(12, 12, 2), Desig::Chop);
+        let s = (1..10).map(|i| e.offset(i, 0, 0)).find(|&p| g.world.t(p).kind == TileKind::Floor).unwrap();
+        g.designate(s, s.offset(0, 0, -6), Desig::StairUD);
+        let b = s.offset(0, 0, -6);
+        // Long 1-wide corridors with rooms at the ends.
+        g.designate(b.offset(1, 0, 0), b.offset(25, 0, 0), Desig::Dig);
+        g.designate(b.offset(26, -3, 0), b.offset(32, 3, 0), Desig::Dig);
+        g.designate(b.offset(0, 1, 0), b.offset(0, 20, 0), Desig::Dig);
+        g.designate(b.offset(-3, 21, 0), b.offset(3, 26, 0), Desig::Dig);
+        g.add_zone(b.offset(26, -3, 0), b.offset(32, 3, 0), ZoneKind::Stockpile(StockFilter::All));
+        g.add_zone(e.offset(-8, -8, -1), e.offset(-2, -3, 1), ZoneKind::Farm);
+        // pos at last move, ticks spent wanting to move since then, tasks seen
+        let mut st: HashMap<u32, (Pos, u64, Vec<String>)> = HashMap::new();
+        let mut stalls = Vec::new();
+        for _ in 0..(30 * DAY) {
+            g.step();
+            for d in g.dwarves.iter().filter(|d| d.alive) {
+                let e = st.entry(d.id).or_insert((d.pos, 0, Vec::new()));
+                if e.0 != d.pos {
+                    *e = (d.pos, 0, Vec::new());
+                    continue;
+                }
+                let wants = !d.working && !d.asleep && !matches!(d.task, Task::Idle | Task::Train | Task::Station { .. });
+                if wants {
+                    e.1 += 1;
+                    let t = format!("{:?}", d.task);
+                    let t = t.split(' ').next().unwrap().to_string();
+                    if e.2.last() != Some(&t) && e.2.len() < 12 {
+                        e.2.push(t);
+                    }
+                    if e.1 == 400 {
+                        stalls.push(format!("t{} {} at {:?} tasks {:?}", g.tick, d.name, d.pos, e.2));
+                    }
+                }
+            }
+        }
+        assert!(stalls.is_empty(), "stalled dwarves: {:#?}", stalls);
+    }
+
+    #[test]
+    fn idle_dwarves_gather_at_meeting_area() {
+        let mut g = Game::new(11);
+        let e = g.embark;
+        let n = g.add_zone(e.offset(-8, -8, -1), e.offset(-3, -3, 1), ZoneKind::Meeting);
+        assert!(n > 4, "no room for a meeting area");
+        // No work designated, so once fed and watered everyone should drift there.
+        run(&mut g, 3 * DAY);
+        let there = g.dwarves.iter().filter(|d| d.alive && g.in_meeting_area(d.pos)).count();
+        assert!(there >= 4, "only {} of {} dwarves at the meeting area", there, g.alive_count());
+        let chats = g.dwarves.iter().filter(|d| d.relations.len() >= 3).count();
+        assert!(chats >= 3, "dwarves at the meeting area barely talked");
+    }
+
+    fn run(g: &mut Game, ticks: u64) {
+        for _ in 0..ticks {
+            g.step();
         }
     }
 }

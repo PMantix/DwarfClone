@@ -270,7 +270,9 @@ impl Game {
             d.task,
             Task::Idle | Task::Wander { .. } | Task::Eat { .. } | Task::Dine { .. } | Task::DrinkItem { .. } | Task::Train | Task::Station { .. }
         );
-        if !calm || d.asleep || self.tick < d.last_chat + DAY / 2 {
+        // Dwarves at the meeting hall are there to talk.
+        let gap = if self.in_meeting_area(d.pos) { DAY / 6 } else { DAY / 2 };
+        if !calm || d.asleep || self.tick < d.last_chat + gap {
             return;
         }
         let Some(j) = self.dwarves.iter().position(|o| {
