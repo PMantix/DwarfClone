@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W03 (cheap and visible) → W01 → W07, W06 (siege defense) → W04, W05.
+Suggested order: W01 → W07, W06 (siege defense) → W04, W05.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -31,18 +31,6 @@ Suggested order: W03 (cheap and visible) → W01 → W07, W06 (siege defense) �
   - [ ] Fortifications (soldiers can see through, creatures can't pass)
   - [ ] Roof tiles over surface rooms count toward room detection (`psyche.rs` `room_at`)
 - **Done when:** a test walls off a corridor and a goblin can no longer path through it; removing the wall restores the path.
-
-#### W03 Rooms made from zones (S–M)
-- **DF:** zones for bedroom, dormitory, dining hall, office, tomb, barracks, hospital, tavern, temple, library, garbage dump, water source, pit/pond, pen/pasture, dungeon.
-- **Us:** rooms are detected automatically from enclosed digging, beds are handed out automatically, and there's a meeting area.
-- **Plan:** more `ZoneKind` variants in `game.rs` and more `ZoneTool` entries in `app.rs`. Assigning a bedroom to a dwarf replaces automatic bed assignment when used.
-- **Steps:**
-  - [ ] Bedroom zone, assigned to one dwarf (from look mode or the zone screen)
-  - [ ] Dormitory zone: shared beds; mild bad thought
-  - [ ] Dining hall zone: dwarves prefer tables inside it
-  - [ ] Garbage dump zone, plus a dump command on items (ties to W14)
-  - [ ] Office zone (needed by later noble positions, W15)
-- **Done when:** a test assigns a bedroom and the owner sleeps there, not in a nearer free bed.
 
 #### W04 Squads and the military screen (M–L)
 - **DF:** squads with captains and a militia commander, uniforms, monthly schedules, station, patrol, burrow and kill orders, barracks, sparring, marksdwarves with crossbows and bolts.
@@ -201,6 +189,8 @@ next. The size is our guess.
 
 Ideas not ranked yet. Add a line on why each matters.
 
+- Overlapping zones: a tile holds one zone, so a dining hall can't also be the meeting area as it often is in DF.
+- Pick a room's owner from a list instead of cycling through dwarves with `o`.
 - Announcements history screen (DF's report log): find out what happened while you weren't looking.
 - Mini-map and saved camera spots: get around a 96×64 map faster.
 - Adventure mode: explore the generated world. Out of scope until fortress mode is deep.
@@ -208,6 +198,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **W03 Rooms made from zones** (this commit): bedroom and office zones with owners (assigned in look mode with `o`), dormitories with shared beds, dining halls whose seats are taken first, a garbage dump with `d`/`D` to mark items. Room zones work above ground and are valued over the zone itself.
 - **W02 Labor screen and work details** (this commit): `y` opens a grid of every dwarf against every labor with skill levels; `a` toggles a whole column; named work details (6 defaults, save your own, apply with 1-9); specialists never haul; mining and woodcutting are exclusive.
 - **Meeting areas, look mode, status screen** (dbae659): `i` zones with meeting areas, so idle dwarves gather and chat there; `k` look at anything under the cursor; `z` status screen with overview, stocks, health and dwarves.
 - **World and history** (428a1fb): world map, civilizations, 200 years of history, legends viewer, embark choice, caravans and trade.

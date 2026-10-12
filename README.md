@@ -57,7 +57,10 @@ everyone until goblins batter them down.
 civilization in autumn, if they are at peace with you. Haul goods to the depot and barter
 (they want a tenth on top).
 
-**Zones & idling.** Zones (`i`) cover farm plots and meeting areas. Dwarves with nothing
+**Zones & idling.** Zones (`i`) cover meeting areas, bedrooms, dormitories, dining halls,
+offices, farm plots and a garbage dump. Bedrooms and offices are given to a dwarf from look
+mode (`k`, then `o`); dormitory beds are shared; dining hall seats are taken first; items
+marked with `d` go to the dump. Dwarves with nothing
 to do gather at the meeting area and chat there more often; without one they at least keep
 out of corridors. A stroll always gives way to real work.
 

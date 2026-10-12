@@ -29,6 +29,7 @@ impl Mandate {
             container: None,
             quality: 0,
             to_depot: false,
+            dump: false,
         }
         .name();
         let what = if self.mat.is_none() {
@@ -132,7 +133,7 @@ impl Game {
             if !b.built || !matches!(b.kind, BuildingKind::Bed | BuildingKind::Table) {
                 continue;
             }
-            let v = self.room_at(b.pos).map_or(0, |(_, v)| v);
+            let v = self.room_value_at(b.pos);
             self.buildings.get_mut(id).unwrap().room_value = v;
         }
         let living: HashSet<u32> = self.dwarves.iter().filter(|d| d.alive && !d.insane).map(|d| d.id).collect();
@@ -141,6 +142,13 @@ impl Game {
                 b.owner = None;
             }
         }
+        for z in self.zones.values_mut() {
+            if z.owner.map_or(false, |o| !living.contains(&o)) {
+                z.owner = None;
+            }
+        }
+        // Rooms the player assigned are not reshuffled below.
+        let fixed = self.apply_zone_beds();
         let mut order: Vec<(bool, u32)> = self
             .dwarves
             .iter()
@@ -149,11 +157,14 @@ impl Game {
             .collect();
         order.sort();
         for (_, did) in order {
+            if fixed.contains(&did) {
+                continue;
+            }
             let owned = self.buildings.values().find(|b| b.owner == Some(did)).map(|b| (b.id, b.room_value));
             let best_free = self
                 .buildings
                 .values()
-                .filter(|b| b.kind == BuildingKind::Bed && b.built && b.owner.is_none())
+                .filter(|b| b.kind == BuildingKind::Bed && b.built && b.owner.is_none() && self.bed_assignable(b.pos))
                 .max_by_key(|b| (b.room_value, std::cmp::Reverse(b.id)))
                 .map(|b| (b.id, b.room_value));
             let is_noble = self.dwarves.iter().any(|d| d.id == did && d.noble.is_some());
@@ -211,6 +222,8 @@ impl Game {
                     .unwrap_or(0);
                 if hall >= 80 {
                     d.think("dined in a fine dining room", -10, tick);
+                } else if cpos.map_or(false, |c| self.in_dining_hall(c)) {
+                    d.think("ate in the dining hall", -6, tick);
                 } else {
                     d.think("ate at a table", -4, tick);
                 }
@@ -229,6 +242,10 @@ impl Game {
             return;
         };
         let own = b.owner == Some(d.id);
+        if self.zone_kind_at(b.pos) == Some(ZoneKind::Dormitory) {
+            d.think("slept in a crowded dormitory", 2, tick);
+            return;
+        }
         match b.room_value {
             0 => d.think("slept in a bed", -4, tick),
             v if v < 40 => d.think(if own { "slept in a modest bedroom of their own" } else { "slept in a modest bedroom" }, -7, tick),

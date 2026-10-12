@@ -215,6 +215,9 @@ pub struct Item {
     /// Marked to be carried to the trade depot.
     #[serde(default)]
     pub to_depot: bool,
+    /// Marked to be thrown on the garbage dump.
+    #[serde(default)]
+    pub dump: bool,
 }
 
 pub const ARTIFACT: u8 = 6;

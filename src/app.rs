@@ -26,25 +26,70 @@ pub const DESIG_KEYS: [(char, Desig); 8] = [
 pub enum ZoneTool {
     Farm,
     Meeting,
+    Bedroom,
+    Dormitory,
+    Dining,
+    Office,
+    Dump,
     Erase,
 }
 
 impl ZoneTool {
-    pub const ALL: [ZoneTool; 3] = [ZoneTool::Farm, ZoneTool::Meeting, ZoneTool::Erase];
+    pub const ALL: [ZoneTool; 8] = [
+        ZoneTool::Meeting,
+        ZoneTool::Bedroom,
+        ZoneTool::Dormitory,
+        ZoneTool::Dining,
+        ZoneTool::Office,
+        ZoneTool::Farm,
+        ZoneTool::Dump,
+        ZoneTool::Erase,
+    ];
 
     pub fn key(self) -> char {
         match self {
             ZoneTool::Farm => 'f',
             ZoneTool::Meeting => 'm',
+            ZoneTool::Bedroom => 'b',
+            ZoneTool::Dormitory => 'r',
+            ZoneTool::Dining => 'h',
+            ZoneTool::Office => 'o',
+            ZoneTool::Dump => 'g',
             ZoneTool::Erase => 'x',
         }
     }
 
-    pub fn name(self) -> &'static str {
+    pub fn kind(self) -> Option<ZoneKind> {
         match self {
-            ZoneTool::Farm => "Farm plot",
-            ZoneTool::Meeting => "Meeting area",
-            ZoneTool::Erase => "Remove zones",
+            ZoneTool::Farm => Some(ZoneKind::Farm),
+            ZoneTool::Meeting => Some(ZoneKind::Meeting),
+            ZoneTool::Bedroom => Some(ZoneKind::Bedroom),
+            ZoneTool::Dormitory => Some(ZoneKind::Dormitory),
+            ZoneTool::Dining => Some(ZoneKind::Dining),
+            ZoneTool::Office => Some(ZoneKind::Office),
+            ZoneTool::Dump => Some(ZoneKind::Dump),
+            ZoneTool::Erase => None,
+        }
+    }
+
+    pub fn name(self) -> String {
+        match self.kind() {
+            Some(k) => k.name(),
+            None => "Remove zones".into(),
+        }
+    }
+
+    /// What the zone is for, a few short lines for the sidebar.
+    pub fn help(self) -> &'static [&'static str] {
+        match self {
+            ZoneTool::Farm => &["Mark soil floor (grass, loam, clay,", "sand) as farmland. Farmers plant", "stoutcaps; brewers turn them to ale."],
+            ZoneTool::Meeting => &["Dwarves with nothing to do gather", "here and chat (and make friends)", "instead of loitering in corridors."],
+            ZoneTool::Bedroom => &["Lay over a bed. Give it to a dwarf", "with k then o; otherwise beds are", "handed out automatically."],
+            ZoneTool::Dormitory => &["Beds here are shared and never", "owned. Better than the floor, but", "nobody likes a crowded dormitory."],
+            ZoneTool::Dining => &["Lay over tables and chairs. Dwarves", "eat here first; a richer hall", "makes for happier meals."],
+            ZoneTool::Office => &["A room for a noble. Assign it with", "k then o. Nobles will want one."],
+            ZoneTool::Dump => &["Items marked for dumping (k, then", "d or D) are thrown here and left."],
+            ZoneTool::Erase => &["Removes zones other than", "stockpiles (stockpiles: p, then x)."],
         }
     }
 }
@@ -527,6 +572,29 @@ impl App {
             KeyCode::Esc => self.mode = Mode::Normal,
             KeyCode::Tab | KeyCode::Char(']') => self.mode = Mode::Look { sel: (sel + 1) % n },
             KeyCode::BackTab | KeyCode::Char('[') => self.mode = Mode::Look { sel: (sel + n - 1) % n },
+            KeyCode::Char('o') => {
+                let zone = self.game.zone_at(self.cursor).filter(|z| z.kind.ownable()).map(|z| (z.id, z.kind));
+                self.flash = Some(match zone {
+                    Some((zid, kind)) => {
+                        let who = self.game.cycle_zone_owner(zid).unwrap_or_default();
+                        format!("{} assigned to {}.", kind.name(), who)
+                    }
+                    None => "No bedroom or office here.".into(),
+                });
+            }
+            KeyCode::Char('d') => {
+                if let Some(LookEntry::Item(id)) = entries.get(sel.min(n - 1)) {
+                    self.flash = Some(match self.game.toggle_dump(*id) {
+                        Some(true) => "Marked for the garbage dump.".into(),
+                        Some(false) => "No longer marked for dumping.".into(),
+                        None => "That's being carried.".into(),
+                    });
+                }
+            }
+            KeyCode::Char('D') => {
+                let k = self.game.dump_tile(self.cursor);
+                self.flash = Some(format!("{} items marked for the garbage dump.", k));
+            }
             KeyCode::Enter => match entries.get(sel.min(n - 1)) {
                 Some(LookEntry::Dwarf(id)) => self.mode = Mode::Unit { id: *id, sel: 0 },
                 Some(LookEntry::Building(b)) => self.mode = Mode::Query { bld: *b, adding: false },
@@ -702,20 +770,25 @@ impl App {
             }
             Mode::Zone { tool, corner: None } => self.mode = Mode::Zone { tool, corner: Some(c) },
             Mode::Zone { tool, corner: Some(a) } => {
-                self.flash = Some(match tool {
-                    ZoneTool::Farm => match self.game.add_zone(a, c, ZoneKind::Farm) {
-                        0 => "Farm plots need revealed soil floor.".into(),
-                        n => format!("Farm plot of {} tiles.", n),
-                    },
-                    ZoneTool::Meeting => match self.game.add_zone(a, c, ZoneKind::Meeting) {
-                        0 => "Meeting areas need clear, revealed floor.".into(),
-                        n => format!("Meeting area of {} tiles. Idle dwarves will gather here.", n),
-                    },
-                    ZoneTool::Erase => {
+                self.flash = Some(match tool.kind() {
+                    None => {
                         // Leave stockpiles to the stockpile tool.
                         let n = self.game.remove_zones_where(a, c, |k| !matches!(k, ZoneKind::Stockpile(_)));
                         format!("Removed {} zone tiles.", n)
                     }
+                    Some(kind) => match self.game.add_zone(a, c, kind) {
+                        0 if kind == ZoneKind::Farm => "Farm plots need revealed soil floor.".into(),
+                        0 => "Zones need clear, revealed floor not already zoned.".into(),
+                        n => {
+                            let hint = match kind {
+                                ZoneKind::Meeting => " Idle dwarves will gather here.",
+                                k if k.ownable() => " Assign it with k, then o.",
+                                ZoneKind::Dump => " Mark items with k, then d.",
+                                _ => "",
+                            };
+                            format!("{} of {} tiles.{}", kind.name(), n, hint)
+                        }
+                    },
                 });
                 self.mode = Mode::Zone { tool, corner: None };
             }

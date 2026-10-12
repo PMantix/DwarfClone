@@ -20,6 +20,7 @@ mod psyche;
 mod psyche_tests;
 mod labor;
 pub use labor::WorkDetail;
+mod rooms;
 mod trade;
 pub use trade::Caravan;
 pub use psyche::Mandate;
@@ -58,6 +59,16 @@ pub enum ZoneKind {
     Farm,
     /// Where idle dwarves gather and chat.
     Meeting,
+    /// One dwarf's room; beds in it are theirs.
+    Bedroom,
+    /// Shared beds nobody owns.
+    Dormitory,
+    /// Seats here are taken first at mealtimes.
+    Dining,
+    /// A noble's office.
+    Office,
+    /// Items marked for dumping are thrown here.
+    Dump,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -65,6 +76,9 @@ pub struct Zone {
     pub id: u32,
     pub kind: ZoneKind,
     pub tiles: Vec<Pos>,
+    /// Bedrooms and offices belong to one dwarf.
+    #[serde(default)]
+    pub owner: Option<u32>,
 }
 
 enum Travel {
@@ -294,6 +308,7 @@ impl Game {
                 container: None,
                 quality: 0,
                 to_depot: false,
+                dump: false,
             },
         );
         id
@@ -373,7 +388,7 @@ impl Game {
         for p in box_iter(a, b) {
             let Some(t) = self.world.get(p) else { continue };
             // A meeting hall can take in the tables and chairs already standing in it.
-            let bld_ok = t.building == 0 || kind == ZoneKind::Meeting;
+            let bld_ok = t.building == 0 || kind.holds_furniture();
             if !t.revealed || t.zone != 0 || !bld_ok || !matches!(t.kind, TileKind::Floor | TileKind::Shrub) {
                 continue;
             }
@@ -395,7 +410,7 @@ impl Game {
             }
         }
         let n = tiles.len();
-        self.zones.insert(id, Zone { id, kind, tiles });
+        self.zones.insert(id, Zone { id, kind, tiles, owner: None });
         n
     }
 
@@ -1113,7 +1128,7 @@ impl Game {
         if d.has(Labor::Farming) && self.find_farm(d) {
             return;
         }
-        if d.has(Labor::Hauling) && !d.specialist && !self.find_depot_haul(d) {
+        if d.has(Labor::Hauling) && !d.specialist && !self.find_depot_haul(d) && !self.find_dump_haul(d) {
             self.find_haul(d);
         }
     }
@@ -1179,11 +1194,15 @@ impl Game {
             self.claim_item(item, d.id);
             let seats = self.free_seats();
             let ipos = self.items[&item].pos;
-            let seat = if seats.is_empty() {
-                None
-            } else {
-                path::search(&self.world, ipos, SEARCH_LIMIT, Mover::Dwarf, |p| seats.contains_key(&p)).map(|(p, _)| seats[&p])
+            // Seats in a dining hall are taken first.
+            let hall: HashMap<Pos, u32> = seats.iter().filter(|(p, _)| self.in_dining_hall(**p)).map(|(p, b)| (*p, *b)).collect();
+            let pick = |s: &HashMap<Pos, u32>| {
+                if s.is_empty() {
+                    return None;
+                }
+                path::search(&self.world, ipos, SEARCH_LIMIT, Mover::Dwarf, |p| s.contains_key(&p)).map(|(p, _)| s[&p])
             };
+            let seat = pick(&hall).or_else(|| pick(&seats));
             match seat {
                 Some(seat) => {
                     self.buildings.get_mut(&seat).unwrap().occupant = Some(d.id);
@@ -1497,7 +1516,7 @@ impl Game {
             return false;
         }
         let haulable = |it: &Item| {
-            if it.to_depot || it.container.is_some() || (it.kind.is_container() && fill.contains_key(&it.id)) {
+            if it.to_depot || it.dump || it.container.is_some() || (it.kind.is_container() && fill.contains_key(&it.id)) {
                 return false;
             }
             let stored = self.stockpile_accepts(it.pos, it.kind);

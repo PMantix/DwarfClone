@@ -251,11 +251,19 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                             fg = Color::Rgb(70, 70, 100);
                         }
                     }
-                    Some(ZoneKind::Meeting) => {
-                        bg = Color::Rgb(20, 50, 40);
+                    Some(k) => {
+                        let (zbg, zfg) = match k {
+                            ZoneKind::Meeting => ((20, 50, 40), (70, 130, 110)),
+                            ZoneKind::Bedroom => ((45, 30, 55), (120, 90, 150)),
+                            ZoneKind::Dormitory => ((35, 30, 50), (100, 90, 130)),
+                            ZoneKind::Dining => ((55, 40, 20), (150, 120, 70)),
+                            ZoneKind::Office => ((25, 40, 60), (90, 120, 170)),
+                            _ => ((45, 40, 20), (120, 110, 60)),
+                        };
+                        bg = rgb(zbg);
                         if ch == '.' || ch == ',' || ch == '`' || ch == '\'' {
                             ch = '·';
-                            fg = Color::Rgb(70, 130, 110);
+                            fg = rgb(zfg);
                         }
                     }
                     None => {}
@@ -431,7 +439,18 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
                 v.push(plain(format!("Farm plot ({})", s), Color::Rgb(200, 150, 90)));
             }
             ZoneKind::Stockpile(f) => v.push(plain(format!("Stockpile: {}", f.name()), Color::Rgb(150, 150, 220))),
-            ZoneKind::Meeting => v.push(plain("Meeting area".into(), Color::Rgb(110, 200, 170))),
+            k => {
+                let mut s = k.name();
+                if k.ownable() {
+                    let who = z.owner.and_then(|o| g.dwarves.iter().find(|d| d.id == o)).map_or("unassigned".to_string(), |d| d.name.clone());
+                    s.push_str(&format!(" ({})", who));
+                }
+                v.push(plain(s, Color::Rgb(110, 200, 170)));
+                if k.holds_furniture() && k != ZoneKind::Meeting {
+                    let tiles = z.tiles.iter().copied().collect();
+                    v.push(plain(format!("Room value ☼{}", g.area_value(&tiles)), MUTED));
+                }
+            }
         }
     }
     if let Some(b) = g.buildings.get(&t.building) {
@@ -530,7 +549,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(header("Commands"));
             v.push(key_line("d", "Designate (dig, chop...)", false));
             v.push(key_line("p", "Stockpiles", false));
-            v.push(key_line("i", "Zones: farm plots, meeting area", false));
+            v.push(key_line("i", "Zones: rooms, farms, meeting, dump", false));
             v.push(key_line("b", "Build", false));
             v.push(key_line("q", "Query building", false));
             v.push(key_line("k", "Look around", false));
@@ -578,25 +597,11 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
         Mode::Zone { tool, corner } => {
             title = "Zones".to_string();
             for t in ZoneTool::ALL {
-                v.push(key_line(&t.key().to_string(), t.name(), t == *tool));
+                v.push(key_line(&t.key().to_string(), &t.name(), t == *tool));
             }
             v.push(Line::default());
-            match tool {
-                ZoneTool::Farm => {
-                    v.push(plain("Mark soil floor (grass, loam, clay,".into(), TEXT));
-                    v.push(plain("sand) as farmland. Farmers plant".into(), TEXT));
-                    v.push(plain("stoutcaps; brewers turn them to ale.".into(), TEXT));
-                }
-                ZoneTool::Meeting => {
-                    v.push(plain("Dwarves with nothing to do gather".into(), TEXT));
-                    v.push(plain("here and chat (and make friends)".into(), TEXT));
-                    v.push(plain("instead of loitering in corridors.".into(), TEXT));
-                    v.push(plain("Tables and chairs may stand in it.".into(), MUTED));
-                }
-                ZoneTool::Erase => {
-                    v.push(plain("Removes farm plots and meeting".into(), TEXT));
-                    v.push(plain("areas (stockpiles: p, then x).".into(), TEXT));
-                }
+            for line in tool.help() {
+                v.push(plain(line.to_string(), TEXT));
             }
             let meet = g.zones.values().filter(|z| z.kind == ZoneKind::Meeting).map(|z| z.tiles.len()).sum::<usize>();
             v.push(plain(format!("Meeting area: {} tiles", meet), MUTED));
@@ -753,6 +758,14 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.push(plain(
                     format!("  bedroom value {} (wants {})", room, n.room_demand()),
                     if ok { Color::Rgb(120, 220, 120) } else { Color::Rgb(240, 130, 100) },
+                ));
+                let office = g.zones.values().find(|z| z.kind == ZoneKind::Office && z.owner == Some(d.id));
+                v.push(plain(
+                    match office {
+                        Some(z) => format!("  office value {}", g.area_value(&z.tiles.iter().copied().collect())),
+                        None => "  no office (i, o to zone one)".into(),
+                    },
+                    MUTED,
                 ));
             }
             if !any {
@@ -964,7 +977,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("+ / -", "game speed"),
         k("d", "designate: mine, channel, stairs, chop"),
         k("p", "stockpiles"),
-        k("i", "zones: farm plots, meeting area"),
+        k("i", "zones: meeting, bedroom, dining, dump..."),
         k("k", "look: inspect anything at the cursor"),
         k("z", "fortress status: population, stocks, health"),
         k("b", "build workshops and furniture"),
@@ -1409,6 +1422,9 @@ fn item_line(it: &Item, extra: &str, selected: bool) -> Line<'static> {
 fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
     let mut v = cursor_info_terrain(g, p);
     let entries = look_entries(g, p);
+    if g.zone_at(p).map_or(false, |z| z.kind.ownable()) {
+        v.push(plain("o: assign to the next dwarf".into(), KEY));
+    }
     if entries.is_empty() {
         v.push(Line::default());
         v.push(plain("Nothing else here.".into(), MUTED));
@@ -1533,6 +1549,10 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 if it.to_depot {
                     v.push(plain("Marked for the trade depot".into(), Color::Rgb(240, 240, 160)));
                 }
+                if it.dump {
+                    v.push(plain("Marked for the garbage dump".into(), Color::Rgb(200, 170, 90)));
+                }
+                v.push(plain("d: dump this · D: dump everything here".into(), MUTED));
                 if it.kind.is_container() {
                     let mut inside: Vec<&Item> = g.items.values().filter(|c| c.container == Some(it.id)).collect();
                     inside.sort_by_key(|c| c.name());
@@ -1559,7 +1579,10 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
         keep += 1;
         keep += (t.water > 0) as usize;
         keep += (t.desig != Desig::None) as usize;
-        keep += g.zones.contains_key(&t.zone) as usize;
+        if let Some(z) = g.zones.get(&t.zone) {
+            // Room zones add a value line under their name.
+            keep += 1 + (z.kind.holds_furniture() && z.kind != ZoneKind::Meeting) as usize;
+        }
         keep += g.buildings.contains_key(&t.building) as usize;
     } else {
         keep += 1 + (t.desig != Desig::None) as usize;
@@ -1996,8 +2019,16 @@ mod tests {
             println!("{}", s);
             assert!(s.contains("Fortress status"));
         }
-        app.mode = Mode::Zone { tool: ZoneTool::Meeting, corner: None };
+        app.mode = Mode::Zone { tool: ZoneTool::Bedroom, corner: None };
         println!("{}", dump(&mut app, 130, 45));
+        // A bedroom handed to a dwarf from look mode.
+        let spot = (2..12).map(|i| e.offset(i, -6, 0)).find(|&p| app.game.add_zone(p, p.offset(1, 1, 0), ZoneKind::Bedroom) > 0).unwrap();
+        app.cursor = spot;
+        app.mode = Mode::Look { sel: 0 };
+        app.on_key(crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Char('o'), crossterm::event::KeyModifiers::NONE));
+        let s = dump(&mut app, 130, 45);
+        println!("{}", s);
+        assert!(s.contains("Bedroom (") && !s.contains("unassigned"), "bedroom not assigned");
     }
 
     #[test]
