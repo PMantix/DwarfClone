@@ -16,7 +16,50 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W01 → W07, W06 (siege defense) → W04, W05.
+Suggested order: W01 → W24, W21, W22, W23 (starting a game, asked for 2026-10-12) → W07, W06 (siege defense) → W04, W05.
+
+### Tier 1b: starting a game (prioritized by request)
+
+#### W24 Title screen and loading screens (S)
+- **DF:** title menu (create new world, start playing, continue), progress screens while generating, loading and saving, several saved worlds and autosaves.
+- **Us:** the world and the default embark are generated before the terminal opens (a silent pause), then straight to the world map; one save file on F5/F9.
+- **Plan:** a `Mode::Title` menu in `app.rs`. Long jobs (world generation, embark, save, load) run in steps between frames so a loading screen can show progress. Saves go to a `saves/` folder by fortress name.
+- **Steps:**
+  - [ ] Title screen: New world, Continue (latest save), Load, Quit
+  - [ ] Loading screen with progress bar and stage name for embark, save and load
+  - [ ] Save slots: list, load and delete saves; autosave each season
+- **Done when:** a test steps the app through New world → embark → save → load from the title screen without a blank frame.
+
+#### W21 World generation screen (M)
+- **DF:** a world-creation screen (world size, history length, number of civilizations, savagery, minerals), then a live view of the world taking shape, years ticking by with counts of events, civs and figures; accept or reject the result.
+- **Us:** a fixed world from the seed, 200 years of history, generated instantly with no feedback (`overworld.rs` `Overworld::generate`).
+- **Plan:** split `Overworld::generate` into stages (heightmap, rain and biomes, civs, history year by year) that can be advanced a bit per frame. A setup screen picks parameters and the seed; the generation screen draws the map as it forms with a running history ticker.
+- **Steps:**
+  - [ ] Staged generation (same result as today for the same seed and settings)
+  - [ ] Live generation screen: map drawing in, year counter, counts of events, civs and figures, notable events scrolling past
+  - [ ] Setup screen: seed, history length, civ count, savagery, minerals; presets
+  - [ ] Accept or regenerate when done
+- **Done when:** a test generates in steps and gets the same world as generating in one go.
+
+#### W22 Larger world map (M)
+- **DF:** world sizes from pocket (17×17) to large (257×257), a scrolling world map, region names.
+- **Us:** a fixed 64×32 world that fits on one screen (`OW_W`, `OW_H`).
+- **Plan:** world size becomes a generation parameter (small 64×32, medium 128×64, large 256×128). The world map scrolls with the cursor and gets a zoomed-out overview. History scales with the land (more sites and civs).
+- **Steps:**
+  - [ ] Size parameter through `Overworld` (no fixed `OW_W`/`OW_H`)
+  - [ ] Scrolling world map with cursor-follow, plus a minimap
+  - [ ] Named regions (mountain ranges, forests, seas), shown on the map and in legends
+- **Done when:** a large world generates in a few seconds, and an embark in a far corner works.
+
+#### W23 Embark size and fortress map size (M–L)
+- **DF:** pick the embark rectangle on the world map; maps are deep (dozens to 100+ levels) with several caverns and a magma sea.
+- **Us:** a fixed 96×64×32 map (`world.rs` `W`, `H`, `D`).
+- **Plan:** embark size chosen on the world map (small, medium, large), with dimensions passed into `world::generate`. Deeper maps once W18 adds more cavern layers. Check job search, fluids and pathing costs with `one_year_timing` at each size.
+- **Steps:**
+  - [ ] Map dimensions as data, not constants
+  - [ ] Embark size choice with the footprint shown on the world map
+  - [ ] Performance budget: a large map still simulates a year in under ~20 s
+- **Done when:** tests run a season on the smallest and largest sizes.
 
 ### Tier 1: basics you'll miss in the first hour
 
