@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W01 → W24, W21, W22, W23 (starting a game, asked for 2026-10-12) → W07, W06 (siege defense) → W04, W05.
+Suggested order: W24, W21, W22, W23 (starting a game, asked for 2026-10-12) → W07, W06 (siege defense) → W04, W05.
 
 ### Tier 1b: starting a game (prioritized by request)
 
@@ -62,18 +62,6 @@ Suggested order: W01 → W24, W21, W22, W23 (starting a game, asked for 2026-10-
 - **Done when:** tests run a season on the smallest and largest sizes.
 
 ### Tier 1: basics you'll miss in the first hour
-
-#### W01 Constructions (L)
-- **DF:** buildable walls, floors, stairs, ramps, fortifications, bridges, roads, grates, bars, windows, supports; remove construction.
-- **Us:** digging only. Rock can be removed, never placed.
-- **Plan:** a construct designation that consumes a boulder, block or log and sets the tile's `kind` and `mat` (`world.rs` `Tile`). Reuse the hauling and claiming flow of `find_construct` and `Task::Construct` in `game.rs`, with a new task that targets a tile instead of a building. Mark constructed tiles so they can be removed and drop their material back.
-- **Steps:**
-  - [ ] Walls and floors from boulders, blocks or logs; build menu entry with a box selection
-  - [ ] Constructed stairs (up, down, up/down) and ramps
-  - [ ] Remove construction (gives the material back)
-  - [ ] Fortifications (soldiers can see through, creatures can't pass)
-  - [ ] Roof tiles over surface rooms count toward room detection (`psyche.rs` `room_at`)
-- **Done when:** a test walls off a corridor and a goblin can no longer path through it; removing the wall restores the path.
 
 #### W04 Squads and the military screen (M–L)
 - **DF:** squads with captains and a militia commander, uniforms, monthly schedules, station, patrol, burrow and kill orders, barracks, sparring, marksdwarves with crossbows and bolts.
@@ -233,6 +221,7 @@ next. The size is our guess.
 Ideas not ranked yet. Add a line on why each matters.
 
 - Overlapping zones: a tile holds one zone, so a dining hall can't also be the meeting area as it often is in DF.
+- Bridges and drawbridges (with W06 levers), roads, grates, bars, windows, supports: the rest of DF's constructions.
 - Pick a room's owner from a list instead of cycling through dwarves with `o`.
 - Announcements history screen (DF's report log): find out what happened while you weren't looking.
 - Mini-map and saved camera spots: get around a 96×64 map faster.
@@ -241,6 +230,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **W01 Constructions** (this commit): `b` then `C` plans walls, floors, stairs, ramps and fortifications in a box, built from rough stone, blocks or logs (`m` picks). `x` takes a construction down and returns its material; `c` cancels plans. Floors bridge open space; fortifications stop walkers but let water through; built walls can't be mined; a roof makes a surface room count.
 - **W03 Rooms made from zones** (this commit): bedroom and office zones with owners (assigned in look mode with `o`), dormitories with shared beds, dining halls whose seats are taken first, a garbage dump with `d`/`D` to mark items. Room zones work above ground and are valued over the zone itself.
 - **W02 Labor screen and work details** (this commit): `y` opens a grid of every dwarf against every labor with skill levels; `a` toggles a whole column; named work details (6 defaults, save your own, apply with 1-9); specialists never haul; mining and woodcutting are exclusive.
 - **Meeting areas, look mode, status screen** (dbae659): `i` zones with meeting areas, so idle dwarves gather and chat there; `k` look at anything under the cursor; `z` status screen with overview, stocks, health and dwarves.

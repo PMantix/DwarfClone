@@ -1,6 +1,6 @@
 use crate::buildings::BuildingKind;
 use crate::dwarf::LABORS;
-use crate::game::{Game, ZoneKind};
+use crate::game::{BuildMat, ConstructKind, Game, ZoneKind};
 use crate::geom::Pos;
 use crate::items::StockFilter;
 use crate::world::Desig;
@@ -138,6 +138,8 @@ pub enum Mode {
     /// Fortress overview screens.
     Status { tab: usize, scroll: usize },
     BuildMenu,
+    /// Plan constructions in a box. `kind == None` cancels plans.
+    Construct { kind: Option<ConstructKind>, mat: BuildMat, corner: Option<Pos> },
     Place(BuildingKind),
     Query { bld: u32, adding: bool },
     Units { sel: usize },
@@ -213,6 +215,7 @@ impl App {
                 | Mode::Designate { .. }
                 | Mode::Stockpile { .. }
                 | Mode::Zone { .. }
+                | Mode::Construct { .. }
                 | Mode::Look { .. }
                 | Mode::Place(_)
                 | Mode::Military
@@ -345,8 +348,25 @@ impl App {
                 KeyCode::PageDown => self.mode = Mode::Status { tab, scroll: scroll + 20 },
                 _ => {}
             },
+            Mode::Construct { kind, mat, corner } => match k.code {
+                KeyCode::Enter => self.confirm(),
+                KeyCode::Esc => {
+                    self.mode = if corner.is_some() { Mode::Construct { kind, mat, corner: None } } else { Mode::BuildMenu }
+                }
+                KeyCode::Char('m') => self.mode = Mode::Construct { kind, mat: mat.next(), corner },
+                KeyCode::Char('c') => self.mode = Mode::Construct { kind: None, mat, corner },
+                KeyCode::Char(c) => {
+                    if let Some(&ck) = ConstructKind::ALL.iter().find(|ck| ck.key() == c) {
+                        self.mode = Mode::Construct { kind: Some(ck), mat, corner };
+                    }
+                }
+                _ => {}
+            },
             Mode::BuildMenu => match k.code {
                 KeyCode::Esc => self.mode = Mode::Normal,
+                KeyCode::Char('C') => {
+                    self.mode = Mode::Construct { kind: Some(ConstructKind::Wall), mat: BuildMat::Any, corner: None }
+                }
                 KeyCode::Char(c) => {
                     if let Some(&b) = BuildingKind::ALL.iter().find(|b| b.key() == c) {
                         self.mode = Mode::Place(b);
@@ -767,6 +787,22 @@ impl App {
                     None => format!("Removed {} zone tiles.", n),
                 });
                 self.mode = Mode::Stockpile { filter, corner: None };
+            }
+            Mode::Construct { kind, mat, corner: None } => self.mode = Mode::Construct { kind, mat, corner: Some(c) },
+            Mode::Construct { kind, mat, corner: Some(a) } => {
+                self.flash = Some(match kind {
+                    Some(k) => match self.game.plan_constructions(a, c, k, mat) {
+                        0 => match k {
+                            ConstructKind::Remove => "Nothing built there to remove.".into(),
+                            ConstructKind::Floor => "Floors go over open space next to something solid.".into(),
+                            _ => "Needs clear, revealed floor outside zones.".into(),
+                        },
+                        n if k == ConstructKind::Remove => format!("{} constructions to take down.", n),
+                        n => format!("{} × {} planned, from {}.", n, k.name().to_lowercase(), mat.name()),
+                    },
+                    None => format!("Cancelled {} planned constructions.", self.game.cancel_constructions(a, c)),
+                });
+                self.mode = Mode::Construct { kind, mat, corner: None };
             }
             Mode::Zone { tool, corner: None } => self.mode = Mode::Zone { tool, corner: Some(c) },
             Mode::Zone { tool, corner: Some(a) } => {

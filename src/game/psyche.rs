@@ -84,7 +84,7 @@ impl Game {
     /// An enclosed underground room containing `p`, and its value.
     pub fn room_at(&self, p: Pos) -> Option<(Vec<Pos>, u32)> {
         let w = &self.world;
-        if w.outside(p) {
+        if !w.roofed(p) {
             return None;
         }
         let mut seen = HashSet::new();
@@ -93,13 +93,13 @@ impl Game {
         let mut walls: HashSet<Pos> = HashSet::new();
         while let Some(q) = stack.pop() {
             let t = w.t(q);
-            if !matches!(t.kind, TileKind::Floor | TileKind::Shrub) || w.outside(q) {
+            if !matches!(t.kind, TileKind::Floor | TileKind::Shrub) || !w.roofed(q) {
                 return None;
             }
             for (dx, dy) in DIRS4 {
                 let n = q.offset(dx, dy, 0);
                 let Some(nt) = w.get(n) else { return None };
-                if nt.kind.solid() {
+                if nt.kind.encloses() {
                     walls.insert(n);
                 } else if nt.door != world::DOOR_NONE {
                     // Doors bound a room.

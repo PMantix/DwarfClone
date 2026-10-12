@@ -165,6 +165,8 @@ pub enum Task {
     Mood,
     /// Eat at a seat (chair beside a table) if one was found.
     Dine { item: u32, seat: u32 },
+    /// Build or take down a construction, standing beside it.
+    BuildTile { con: u32, item: Option<u32>, stand: Option<Pos> },
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

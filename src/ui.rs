@@ -76,6 +76,15 @@ fn tile_look(w: &World, p: Pos) -> (char, Color, Color) {
             }
             (' ', BLACK, BLACK)
         }
+        TileKind::Floor if t.built_from.is_some() => ('+', dim(mc, 0.85), BLACK),
+        TileKind::Wall if t.built_from.is_some() => {
+            if t.built_from == Some(ItemKind::Block) {
+                ('▓', mc, BLACK)
+            } else {
+                ('█', mc, BLACK)
+            }
+        }
+        TileKind::Fortification => ('#', mc, BLACK),
         TileKind::Floor => {
             if t.mat == Mat::Grass {
                 let h = hash2(p.x, p.y);
@@ -126,7 +135,10 @@ fn water_glyph(level: u8) -> char {
 
 fn selection_box(app: &App) -> Option<(Pos, Pos)> {
     let corner = match &app.mode {
-        Mode::Designate { corner, .. } | Mode::Stockpile { corner, .. } | Mode::Zone { corner, .. } => *corner,
+        Mode::Designate { corner, .. }
+        | Mode::Stockpile { corner, .. }
+        | Mode::Zone { corner, .. }
+        | Mode::Construct { corner, .. } => *corner,
         _ => None,
     }?;
     Some((corner, app.cursor))
@@ -207,6 +219,8 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
             items.insert(key, it.glyph());
         }
     }
+    let planned: HashMap<(i32, i32), crate::game::ConstructKind> =
+        g.constructions.values().filter(|c| c.pos.z == z).map(|c| ((c.pos.x, c.pos.y), c.kind)).collect();
     let sel = selection_box(app);
     let placing = match app.mode {
         Mode::Place(kind) => {
@@ -300,6 +314,13 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                 fg = if d.asleep || d.body.unconscious() { dim(rgb(d.color), 0.5) } else { rgb(d.color) };
                 if d.body.bleeding > 0 {
                     bg = Color::Rgb(70, 0, 0);
+                }
+            }
+            if let Some(k) = planned.get(&(wx, wy)) {
+                bg = Color::Rgb(25, 40, 90);
+                if units.get(&(wx, wy)).is_none() {
+                    ch = k.glyph();
+                    fg = Color::Rgb(150, 180, 255);
                 }
             }
             if t.desig != Desig::None {
@@ -400,6 +421,11 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
             }
         }
         Task::Dine { .. } => "Eating at a table".into(),
+        Task::BuildTile { con, .. } => match g.constructions.get(con).map(|c| c.kind) {
+            Some(crate::game::ConstructKind::Remove) => "Removing construction".into(),
+            Some(k) => format!("Constructing {}", k.name().to_lowercase()),
+            None => "Constructing".into(),
+        },
     }
 }
 
@@ -417,6 +443,7 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
         TileKind::Open => "open space".to_string(),
         TileKind::Tree => if g.world.outside(p) { "tree".into() } else { "tower mushroom".into() },
         TileKind::Shrub => "shrub".into(),
+        k if t.built_from.is_some() => format!("constructed {} {}", t.mat.name(), k.name()),
         k => format!("{} {}", t.mat.name(), k.name()),
     };
     v.push(plain(desc, t.mat.color()));
@@ -425,6 +452,9 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
     }
     if t.desig != Desig::None {
         v.push(plain(format!("Designated: {}", t.desig.name()), KEY));
+    }
+    if let Some(c) = g.construction_at(p) {
+        v.push(plain(format!("Planned: {} ({})", c.kind.name(), c.mat.name()), Color::Rgb(150, 180, 255)));
     }
     if let Some(z) = g.zones.get(&t.zone) {
         match z.kind {
@@ -615,11 +645,37 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
         }
         Mode::BuildMenu => {
             title = "Build".to_string();
+            v.push(key_line("C", "Constructions: walls, floors, stairs...", false));
+            v.push(Line::default());
             for b in BuildingKind::ALL {
                 v.push(key_line(&b.key().to_string(), &format!("{} ({})", b.name(), b.needs_desc()), false));
             }
             v.push(Line::default());
             v.push(plain("Esc: back".into(), MUTED));
+        }
+        Mode::Construct { kind, mat, corner } => {
+            title = "Constructions".to_string();
+            for ck in crate::game::ConstructKind::ALL {
+                v.push(key_line(&ck.key().to_string(), ck.name(), *kind == Some(ck)));
+            }
+            v.push(key_line("c", "Cancel planned constructions", kind.is_none()));
+            v.push(Line::default());
+            v.push(key_line("m", &format!("Material: {}", mat.name()), false));
+            v.push(plain("Built from rough stone, blocks or logs.".into(), MUTED));
+            v.push(plain("Floors bridge open space beside".into(), MUTED));
+            v.push(plain("something solid. Fortifications stop".into(), MUTED));
+            v.push(plain("walkers but let water through.".into(), MUTED));
+            v.push(Line::default());
+            let n = g.constructions.len();
+            let busy = g.constructions.values().filter(|c| c.worker.is_some()).count();
+            v.push(plain(format!("{} planned, {} being built", n, busy), TEXT));
+            v.push(plain(
+                if corner.is_some() { "Enter: set second corner".into() } else { "Enter: set first corner".into() },
+                KEY,
+            ));
+            v.push(plain("Esc: back".into(), MUTED));
+            v.push(Line::default());
+            v.extend(cursor_info(g, app.cursor));
         }
         Mode::Place(kind) => {
             title = "Place".to_string();
@@ -980,7 +1036,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("i", "zones: meeting, bedroom, dining, dump..."),
         k("k", "look: inspect anything at the cursor"),
         k("z", "fortress status: population, stocks, health"),
-        k("b", "build workshops and furniture"),
+        k("b", "build workshops, furniture; C constructions"),
         k("q", "query building: queue work orders"),
         k("u / v", "unit list / view dwarf (m drafts)"),
         k("y", "labors: who does what, work details"),
@@ -1579,6 +1635,7 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
         keep += 1;
         keep += (t.water > 0) as usize;
         keep += (t.desig != Desig::None) as usize;
+        keep += g.construction_at(p).is_some() as usize;
         if let Some(z) = g.zones.get(&t.zone) {
             // Room zones add a value line under their name.
             keep += 1 + (z.kind.holds_furniture() && z.kind != ZoneKind::Meeting) as usize;
@@ -2019,6 +2076,12 @@ mod tests {
             println!("{}", s);
             assert!(s.contains("Fortress status"));
         }
+        app.game.plan_constructions(e.offset(2, 2, 0), e.offset(6, 2, 0), crate::game::ConstructKind::Wall, crate::game::BuildMat::Any);
+        app.cursor = e.offset(4, 2, 0);
+        app.mode = Mode::Construct { kind: Some(crate::game::ConstructKind::Wall), mat: crate::game::BuildMat::Any, corner: None };
+        let s = dump(&mut app, 130, 45);
+        println!("{}", s);
+        assert!(s.contains("Constructions") && s.contains("Planned: Wall"));
         app.mode = Mode::Zone { tool: ZoneTool::Bedroom, corner: None };
         println!("{}", dump(&mut app, 130, 45));
         // A bedroom handed to a dwarf from look mode.

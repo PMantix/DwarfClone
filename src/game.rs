@@ -21,6 +21,8 @@ mod psyche_tests;
 mod labor;
 pub use labor::WorkDetail;
 mod rooms;
+mod construct;
+pub use construct::{BuildMat, ConstructKind, Construction};
 mod trade;
 pub use trade::Caravan;
 pub use psyche::Mandate;
@@ -133,6 +135,9 @@ pub struct Game {
     pub caravan: Option<Caravan>,
     #[serde(default = "labor::default_details")]
     pub work_details: Vec<WorkDetail>,
+    /// Planned walls, floors, stairs and removals.
+    #[serde(default)]
+    pub constructions: BTreeMap<u32, Construction>,
     #[serde(skip)]
     pub pause_request: bool,
     /// Bumped whenever designations or dug terrain change.
@@ -198,6 +203,7 @@ impl Game {
             start_year,
             caravan: None,
             work_details: labor::default_details(),
+            constructions: BTreeMap::new(),
             dig_version: 0,
             dig_fail: [None, None],
         };
@@ -335,7 +341,8 @@ impl Game {
             Some(t) => *t,
             None => return false,
         };
-        let wall = t.kind == TileKind::Wall && t.mat.diggable();
+        // Built walls are taken down, not mined.
+        let wall = t.kind == TileKind::Wall && t.mat.diggable() && t.built_from.is_none();
         match d {
             Desig::None => true,
             Desig::Dig | Desig::StairUp | Desig::Ramp => wall,
@@ -945,6 +952,14 @@ impl Game {
                 self.claimed.remove(&pos);
                 self.unclaim(seed);
             }
+            Task::BuildTile { con, item, .. } => {
+                if let Some(item) = item {
+                    self.unclaim(item);
+                }
+                if let Some(c) = self.constructions.get_mut(&con) {
+                    c.worker = None;
+                }
+            }
             Task::Harvest { pos } => {
                 self.claimed.remove(&pos);
             }
@@ -1113,7 +1128,7 @@ impl Game {
             self.choose_military(d);
             return;
         }
-        if d.has(Labor::Building) && self.find_construct(d) {
+        if d.has(Labor::Building) && (self.find_construct(d) || self.find_build_tile(d)) {
             return;
         }
         if self.find_craft(d) {
@@ -1557,6 +1572,7 @@ impl Game {
     fn do_task(&mut self, d: &mut Dwarf) {
         match d.task.clone() {
             Task::Idle => {}
+            Task::BuildTile { con, item, stand } => self.do_build_tile(d, con, item, stand),
             Task::Wander { target } => match self.travel(d, target) {
                 Travel::Moving => {}
                 Travel::Arrived => d.task = Task::Idle,

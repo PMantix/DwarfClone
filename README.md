@@ -30,6 +30,11 @@ and a hidden cavern layer with pools, tower mushrooms and things that wake when 
 break in. Designate mining, channels, stairs, ramps and tree felling. Water falls and
 levels out.
 
+**Constructions.** `b`, then `C`: plan walls, floors, stairs, ramps and fortifications
+in a box, built from rough stone, blocks or logs. Take them down again to get the material
+back. Floors bridge open space, fortifications stop walkers but let water through, and a
+roof over surface walls makes a proper room.
+
 **Industry.** Farming with seeds, brewing, cooking, butchery, charcoal, ore smelting,
 steel (with limestone flux), a forge for tools, weapons and armor, stone and bone crafts,
 gem cutting, furniture, barrels and bins that store goods. Multi-input recipes, repeating

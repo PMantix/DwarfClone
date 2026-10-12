@@ -1,4 +1,5 @@
 use crate::geom::{Pos, DIRS8};
+use crate::items::ItemKind;
 use crate::material::Mat;
 use crate::noise::Noise;
 use crate::overworld::EmbarkParams;
@@ -22,6 +23,8 @@ pub enum TileKind {
     StairUD,
     Tree,
     Shrub,
+    /// Built wall with arrow slits: blocks walkers, lets water through.
+    Fortification,
 }
 
 impl TileKind {
@@ -30,7 +33,12 @@ impl TileKind {
     }
 
     pub fn has_floor(self) -> bool {
-        !matches!(self, TileKind::Open | TileKind::Wall | TileKind::Tree)
+        !matches!(self, TileKind::Open | TileKind::Wall | TileKind::Tree | TileKind::Fortification)
+    }
+
+    /// Bounds a room the way a wall does.
+    pub fn encloses(self) -> bool {
+        self.solid() || self == TileKind::Fortification
     }
 
     pub fn name(self) -> &'static str {
@@ -44,6 +52,7 @@ impl TileKind {
             TileKind::StairUD => "up/down stair",
             TileKind::Tree => "tree",
             TileKind::Shrub => "shrub",
+            TileKind::Fortification => "fortification",
         }
     }
 }
@@ -103,6 +112,9 @@ pub struct Tile {
     /// DOOR_NONE / DOOR_OPEN / DOOR_LOCKED.
     #[serde(default)]
     pub door: u8,
+    /// What a construction here was built from (None = natural).
+    #[serde(default)]
+    pub built_from: Option<ItemKind>,
 }
 
 impl Default for Tile {
@@ -117,6 +129,7 @@ impl Default for Tile {
             building: 0,
             farm: 0,
             door: DOOR_NONE,
+            built_from: None,
         }
     }
 }
@@ -168,6 +181,11 @@ impl World {
     /// Out-of-bounds counts as solid so nothing walks or flows off the map.
     pub fn solid(&self, p: Pos) -> bool {
         self.get(p).map_or(true, |t| t.kind.solid())
+    }
+
+    /// Something overhead: rock, or a floor or wall built above.
+    pub fn roofed(&self, p: Pos) -> bool {
+        (p.z + 1..self.d).any(|z| self.kind(Pos::new(p.x, p.y, z)).map_or(false, |k| k != TileKind::Open))
     }
 
     pub fn walkable(&self, p: Pos) -> bool {

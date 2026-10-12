@@ -60,7 +60,7 @@ impl Game {
             }
             for (dx, dy) in DIRS4 {
                 let n = q.offset(dx, dy, 0);
-                if w.get(n).map_or(false, |t| t.kind.solid()) {
+                if w.get(n).map_or(false, |t| t.kind.encloses()) {
                     walls.insert(n);
                 }
             }
