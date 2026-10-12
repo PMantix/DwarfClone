@@ -34,6 +34,7 @@ pub enum Mode {
     Units { sel: usize },
     Unit { id: u32, sel: usize },
     Military,
+    Nobles,
     Help,
     ConfirmQuit,
 }
@@ -260,7 +261,7 @@ impl App {
                 KeyCode::Char('h') => self.game.hunt = !self.game.hunt,
                 _ => {}
             },
-            Mode::Help => self.mode = Mode::Normal,
+            Mode::Help | Mode::Nobles => self.mode = Mode::Normal,
             Mode::ConfirmQuit => {
                 if matches!(k.code, KeyCode::Char('y') | KeyCode::Char('Y')) {
                     self.quit = true;
@@ -287,6 +288,7 @@ impl App {
             }
             KeyCode::Char('u') => self.mode = Mode::Units { sel: 0 },
             KeyCode::Char('m') => self.mode = Mode::Military,
+            KeyCode::Char('n') => self.mode = Mode::Nobles,
             KeyCode::Char('v') => {
                 let c = self.cursor;
                 if let Some(d) = self.game.dwarves.iter().find(|d| d.alive && d.pos == c) {

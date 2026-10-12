@@ -1,5 +1,5 @@
 use crate::buildings::{Building, BuildingKind, Order, Recipe};
-use crate::dwarf::{self, Dwarf, Labor, Task};
+use crate::dwarf::{self, Dwarf, Labor, Task, LABORS};
 use crate::geom::{box_iter, Pos, DIRS4, DIRS8};
 use crate::items::{Item, ItemKind, StockFilter, CONTAINER_CAP};
 use crate::material::Mat;
@@ -14,6 +14,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 mod combat;
 #[cfg(test)]
 mod industry_tests;
+mod psyche;
+#[cfg(test)]
+mod psyche_tests;
+pub use psyche::Mandate;
 
 pub const DAY: u64 = 1200;
 pub const MONTH: u64 = DAY * 28;
@@ -92,6 +96,8 @@ pub struct Game {
     pub hunt: bool,
     siege_size: u32,
     siege_routed: bool,
+    #[serde(default)]
+    pub mandate: Option<Mandate>,
     #[serde(skip)]
     pub pause_request: bool,
     /// Bumped whenever designations or dug terrain change.
@@ -134,6 +140,7 @@ impl Game {
             hunt: false,
             siege_size: 0,
             siege_routed: false,
+            mandate: None,
             dig_version: 0,
             dig_fail: [None, None],
         };
@@ -164,6 +171,7 @@ impl Game {
             g.dwarves.push(d);
         }
         g.populate_caverns();
+        g.appoint_leader();
         let supplies = [
             (ItemKind::Mushroom, Mat::Stoutcap, 30),
             (ItemKind::Drink, Mat::Stoutcap, 40),
@@ -229,7 +237,7 @@ impl Game {
         let pos = self.world.settle(pos);
         self.items.insert(
             id,
-            Item { id, kind, mat, pos, carried_by: None, claimed_by: None, label: None, container: None },
+            Item { id, kind, mat, pos, carried_by: None, claimed_by: None, label: None, container: None, quality: 0 },
         );
         id
     }
@@ -383,6 +391,9 @@ impl Game {
             occupant: None,
             retry_tick: 0,
             locked: false,
+            owner: None,
+            quality: 0,
+            room_value: 0,
         };
         for p in b.tiles() {
             let t = self.world.t_mut(p);
@@ -424,7 +435,8 @@ impl Game {
                 BuildingKind::Door => ItemKind::Door,
                 _ => ItemKind::Boulder,
             };
-            self.spawn_item(kind, b.mat, b.center());
+            let id = self.spawn_item(kind, b.mat, b.center());
+            self.items.get_mut(&id).unwrap().quality = b.quality;
         }
     }
 
@@ -493,6 +505,11 @@ impl Game {
         if self.tick % DAY == DAY / 2 {
             self.wildlife();
         }
+        if self.tick % DAY == 0 {
+            self.assign_rooms();
+            self.nobles_daily();
+            self.check_mandate();
+        }
         if self.tick % SEASON == 0 {
             let season = (self.tick / SEASON) % 4;
             let s = SEASONS[season as usize];
@@ -501,6 +518,8 @@ impl Game {
                 self.migrants();
             }
             self.maybe_siege();
+            self.issue_mandate();
+            self.maybe_strange_mood();
         }
     }
 
@@ -697,12 +716,25 @@ impl Game {
             d.stress -= d.stress.signum();
         }
 
+        self.psyche_tick(d);
+        if d.insane || !d.alive {
+            if d.task == Task::Idle && self.rng.chance(0.02) {
+                self.start_wander(d);
+            }
+            if let Task::Wander { target } = d.task {
+                if !matches!(self.travel(d, target), Travel::Moving) {
+                    d.task = Task::Idle;
+                }
+            }
+            return;
+        }
         if d.tantrum > 0 {
             d.tantrum -= 1;
-        } else if d.stress >= 450 {
+        } else if d.stress >= d.tantrum_threshold() {
             self.release_task(d);
             d.tantrum = 1500;
-            d.stress = 300;
+            // Venting helps a little; a truly miserable dwarf keeps sliding.
+            d.stress -= 120;
             let name = d.name.clone();
             self.msg(&format!("{} is throwing a tantrum!", name), (255, 90, 90));
         }
@@ -755,9 +787,19 @@ impl Game {
         let name = d.name.clone();
         self.msg(&format!("{} {}.", name, cause), (255, 60, 60));
         let tick = self.tick;
+        let dead = d.id;
         for o in self.dwarves.iter_mut().filter(|o| o.alive) {
-            o.think(&format!("grieved over the death of {}", name), 60, tick);
+            let regard = o.regard(dead);
+            if regard >= 30 {
+                o.think(&format!("lost their dear friend {}", name), 90, tick);
+            } else if regard <= -40 {
+                o.think(&format!("felt satisfied at the death of {}", name), -10, tick);
+            } else {
+                o.think(&format!("grieved over the death of {}", name), 25, tick);
+            }
         }
+        self.end_mood(d);
+        d.noble = None;
         self.pause_request = true;
     }
 
@@ -793,6 +835,12 @@ impl Game {
                 self.claimed.remove(&pos);
             }
             Task::Eat { item } | Task::DrinkItem { item } | Task::Equip { item } => self.unclaim(item),
+            Task::Dine { item, seat } => {
+                self.unclaim(item);
+                if let Some(b) = self.buildings.get_mut(&seat) {
+                    b.occupant = None;
+                }
+            }
             Task::Sleep { bed: Some(bed), .. } | Task::Rest { bed: Some(bed), .. } => {
                 if let Some(b) = self.buildings.get_mut(&bed) {
                     b.occupant = None;
@@ -802,9 +850,13 @@ impl Game {
         }
         if let Some(id) = d.carrying.take() {
             let pos = self.world.settle(d.pos);
+            // A moody dwarf keeps hold of the materials they've claimed.
+            let keep = d.mood.as_ref().map_or(false, |m| m.items.contains(&id));
             if let Some(it) = self.items.get_mut(&id) {
                 it.carried_by = None;
-                it.claimed_by = None;
+                if !keep {
+                    it.claimed_by = None;
+                }
                 it.pos = pos;
             }
         }
@@ -885,7 +937,8 @@ impl Game {
     fn labor(d: &mut Dwarf, base: u32, level: u32) -> bool {
         if !d.working {
             d.working = true;
-            d.work = Self::work_time(base, level);
+            let diligent = (100 - d.personality.diligence / 3) as u32;
+            d.work = Self::work_time(base * diligent / 100, level);
         }
         if d.work > 0 {
             d.work -= 1;
@@ -927,6 +980,10 @@ impl Game {
         }
         if d.tantrum > 0 {
             self.start_wander(d);
+            return;
+        }
+        if d.mood.is_some() {
+            d.task = Task::Mood;
             return;
         }
         if d.soldier {
@@ -1012,7 +1069,20 @@ impl Game {
         let meal = self.find_item(d.pos, |it| it.kind == ItemKind::Meal);
         if let Some((item, path)) = meal.or_else(|| self.find_item(d.pos, |it| it.kind.is_food())) {
             self.claim_item(item, d.id);
-            d.task = Task::Eat { item };
+            let seats = self.free_seats();
+            let ipos = self.items[&item].pos;
+            let seat = if seats.is_empty() {
+                None
+            } else {
+                path::search(&self.world, ipos, SEARCH_LIMIT, Mover::Dwarf, |p| seats.contains_key(&p)).map(|(p, _)| seats[&p])
+            };
+            match seat {
+                Some(seat) => {
+                    self.buildings.get_mut(&seat).unwrap().occupant = Some(d.id);
+                    d.task = Task::Dine { item, seat };
+                }
+                None => d.task = Task::Eat { item },
+            }
             Self::set_path(d, path);
             return true;
         }
@@ -1057,12 +1127,20 @@ impl Game {
 
     fn start_bed(&mut self, d: &mut Dwarf, rest: bool) {
         let task = |bed, stand| if rest { Task::Rest { bed, stand } } else { Task::Sleep { bed, stand } };
-        let beds: HashMap<Pos, u32> = self
+        let own = self
             .buildings
             .values()
-            .filter(|b| b.kind == BuildingKind::Bed && b.built && b.occupant.is_none())
-            .map(|b| (b.pos, b.id))
-            .collect();
+            .find(|b| b.kind == BuildingKind::Bed && b.built && b.occupant.is_none() && b.owner == Some(d.id))
+            .map(|b| (b.pos, b.id));
+        let beds: HashMap<Pos, u32> = match own {
+            Some((p, id)) => [(p, id)].into_iter().collect(),
+            None => self
+                .buildings
+                .values()
+                .filter(|b| b.kind == BuildingKind::Bed && b.built && b.occupant.is_none() && b.owner.is_none())
+                .map(|b| (b.pos, b.id))
+                .collect(),
+        };
         if !beds.is_empty() {
             if let Some((p, path)) = path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| beds.contains_key(&p)) {
                 let bed = beds[&p];
@@ -1407,13 +1485,14 @@ impl Game {
                         }
                         Travel::Arrived => {
                             if Self::labor(d, 120, d.skill(Labor::Building)) {
-                                let mat = self.items.remove(&item).map_or(Mat::Wood, |it| it.mat);
+                                let (mat, quality) = self.items.remove(&item).map_or((Mat::Wood, 0), |it| (it.mat, it.quality));
                                 d.carrying = None;
                                 d.gain_xp(Labor::Building, 20);
                                 d.task = Task::Idle;
                                 if let Some(b) = self.buildings.get_mut(&bld) {
                                     b.built = true;
                                     b.mat = mat;
+                                    b.quality = quality;
                                     b.worker = None;
                                     if b.kind == BuildingKind::Door {
                                         let pos = b.pos;
@@ -1472,11 +1551,18 @@ impl Game {
                     d.gain_xp(recipe.labor(), 30);
                     d.task = Task::Idle;
                     let mut made: Vec<String> = Vec::new();
+                    let quality = self.roll_quality(level);
                     for (kind, mat, label) in recipe.produce(&used) {
                         let id = self.spawn_item(kind, mat, site);
                         let it = self.items.get_mut(&id).unwrap();
                         it.label = label;
+                        if kind.base_value() >= 10 && kind != ItemKind::Bar || kind == ItemKind::Block {
+                            it.quality = quality;
+                        }
                         made.push(it.name());
+                    }
+                    if d.likes_mat == used.first().map_or(Mat::Air, |it| it.mat) {
+                        d.think("enjoyed working with a favorite material", -6, self.tick);
                     }
                     if let Some(b) = self.buildings.get_mut(&bld) {
                         b.worker = None;
@@ -1544,16 +1630,7 @@ impl Game {
                         d.carrying = None;
                         d.hunger = 0;
                         d.task = Task::Idle;
-                        match kind {
-                            ItemKind::Meal => d.think("enjoyed a fine prepared meal", -12, self.tick),
-                            ItemKind::Meat => d.think("ate some roasted meat", -4, self.tick),
-                            _ => {
-                                d.think("ate raw stoutcaps", 0, self.tick);
-                                if self.rng.chance(0.5) {
-                                    self.spawn_item(ItemKind::Seed, Mat::Stoutcap, d.pos);
-                                }
-                            }
-                        }
+                        self.eat_thoughts(d, kind, None);
                     }
                 }
             },
@@ -1603,11 +1680,7 @@ impl Game {
                     let rested = d.fatigue == 0;
                     self.release_task(d);
                     if rested {
-                        if bed.is_some() {
-                            d.think("slept in a fine bed", -8, self.tick);
-                        } else {
-                            d.think("slept on the hard ground", 10, self.tick);
-                        }
+                        self.sleep_thought(d, bed);
                     }
                 }
             }
@@ -1632,6 +1705,35 @@ impl Game {
                 }
             }
             Task::Equip { item } => self.do_equip(d, item),
+            Task::Mood => self.do_mood(d),
+            Task::Dine { item, seat } => {
+                let Some(spos) = self.buildings.get(&seat).filter(|b| b.built).map(|b| b.pos) else {
+                    self.release_task(d);
+                    return;
+                };
+                match self.fetch(d, item) {
+                    None => self.release_task(d),
+                    Some(false) => {}
+                    Some(true) => match self.travel(d, spos) {
+                        Travel::Moving => {}
+                        Travel::Failed => {
+                            if let Some(b) = self.buildings.get_mut(&seat) {
+                                b.occupant = None;
+                            }
+                            d.task = Task::Eat { item };
+                        }
+                        Travel::Arrived => {
+                            if Self::labor(d, 40, 0) {
+                                let kind = self.items.remove(&item).map_or(ItemKind::Mushroom, |it| it.kind);
+                                d.carrying = None;
+                                d.hunger = 0;
+                                d.task = Task::Idle;
+                                self.eat_thoughts(d, kind, Some(seat));
+                            }
+                        }
+                    },
+                }
+            }
             Task::Attack { target } => self.do_attack(d, target),
             Task::Flee => self.do_flee(d),
             Task::Station { pos } => match self.travel(d, pos) {

@@ -1,5 +1,7 @@
 use crate::body::Body;
 use crate::geom::Pos;
+use crate::items::ItemKind;
+use crate::material::Mat;
 use crate::rng::Rng;
 use serde::{Deserialize, Serialize};
 
@@ -77,6 +79,11 @@ impl Labor {
             Labor::Hauling | Labor::Building => "Peasant",
         }
     }
+
+    /// Labors that can be seized by a strange mood.
+    pub fn moody(self) -> bool {
+        matches!(self, Labor::Carpentry | Labor::Masonry | Labor::Smithing | Labor::Crafting)
+    }
 }
 
 const SKILL_RANKS: [&str; 11] = [
@@ -126,6 +133,89 @@ pub enum Task {
     Station { pos: Pos },
     Train,
     Flee,
+    /// Possessed by a strange mood: gather materials and make an artifact.
+    Mood,
+    /// Eat at a seat (chair beside a table) if one was found.
+    Dine { item: u32, seat: u32 },
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Personality {
+    /// Each trait runs from -50 to 50.
+    pub anxiety: i32,
+    pub sociability: i32,
+    pub temper: i32,
+    pub diligence: i32,
+    pub artistry: i32,
+}
+
+impl Personality {
+    pub fn random(rng: &mut Rng) -> Personality {
+        let mut t = || rng.range(-50, 51);
+        Personality { anxiety: t(), sociability: t(), temper: t(), diligence: t(), artistry: t() }
+    }
+
+    pub fn describe(&self) -> Vec<&'static str> {
+        let mut v = Vec::new();
+        let pick = |x: i32, hi: &'static str, lo: &'static str| {
+            if x >= 25 {
+                Some(hi)
+            } else if x <= -25 {
+                Some(lo)
+            } else {
+                None
+            }
+        };
+        v.extend(pick(self.anxiety, "is easily stressed", "is calm under pressure"));
+        v.extend(pick(self.sociability, "loves company", "prefers to be alone"));
+        v.extend(pick(self.temper, "has a hot temper", "is slow to anger"));
+        v.extend(pick(self.diligence, "is a tireless worker", "is rather lazy"));
+        v.extend(pick(self.artistry, "is moved by fine craftsmanship", "cares little for art"));
+        v
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Noble {
+    Leader,
+    Mayor,
+}
+
+impl Noble {
+    pub fn title(self) -> &'static str {
+        match self {
+            Noble::Leader => "Expedition leader",
+            Noble::Mayor => "Mayor",
+        }
+    }
+
+    /// Minimum bedroom value this noble expects.
+    pub fn room_demand(self) -> u32 {
+        match self {
+            Noble::Leader => 40,
+            Noble::Mayor => 100,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MoodNeed {
+    Log,
+    Stone,
+    Bar,
+    Bone,
+    Gem,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Mood {
+    pub labor: Labor,
+    pub shop: Option<u32>,
+    pub needs: Vec<MoodNeed>,
+    pub items: Vec<u32>,
+    pub delivered: usize,
+    pub started: u64,
+    pub work_left: u32,
 }
 
 impl Task {
@@ -183,6 +273,26 @@ pub struct Dwarf {
     pub attack_cd: u32,
     /// Creature that last hit this dwarf, and when.
     pub attacker: Option<(u32, u64)>,
+    #[serde(default)]
+    pub personality: Personality,
+    #[serde(default)]
+    pub likes_mat: Mat,
+    #[serde(default)]
+    pub likes_food: Option<ItemKind>,
+    /// (other dwarf id, regard from -100 to 100)
+    #[serde(default)]
+    pub relations: Vec<(u32, i32)>,
+    #[serde(default)]
+    pub last_chat: u64,
+    #[serde(default)]
+    pub insane: bool,
+    /// Ticks spent miserable; sustained misery breaks a dwarf.
+    #[serde(default)]
+    pub misery: u32,
+    #[serde(default)]
+    pub mood: Option<Mood>,
+    #[serde(default)]
+    pub noble: Option<Noble>,
 }
 
 impl Dwarf {
@@ -209,6 +319,9 @@ impl Dwarf {
                 best = Some((xp, l));
             }
         }
+        if let Some(n) = self.noble {
+            return n.title();
+        }
         if self.soldier {
             return if self.fight_xp >= 1200 { "Veteran" } else { "Recruit" };
         }
@@ -219,8 +332,27 @@ impl Dwarf {
         skill_level(self.fight_xp)
     }
 
+    pub fn regard(&self, other: u32) -> i32 {
+        self.relations.iter().find(|(id, _)| *id == other).map_or(0, |r| r.1)
+    }
+
+    pub fn adjust_regard(&mut self, other: u32, delta: i32) {
+        match self.relations.iter_mut().find(|(id, _)| *id == other) {
+            Some(r) => r.1 = (r.1 + delta).clamp(-100, 100),
+            None => self.relations.push((other, delta.clamp(-100, 100))),
+        }
+    }
+
+    pub fn tantrum_threshold(&self) -> i32 {
+        450 - self.personality.temper * 2
+    }
+
     pub fn mood(&self) -> (&'static str, (u8, u8, u8)) {
-        if self.body.unconscious() {
+        if self.insane {
+            ("Stricken by melancholy", (150, 150, 255))
+        } else if self.mood.is_some() {
+            ("Possessed by a strange mood", (255, 120, 255))
+        } else if self.body.unconscious() {
             ("Unconscious", (255, 60, 60))
         } else if self.tantrum > 0 {
             ("Throwing a tantrum", (255, 60, 60))
@@ -240,6 +372,12 @@ impl Dwarf {
     }
 
     pub fn think(&mut self, text: &str, stress: i32, tick: u64) {
+        // Anxious dwarves take bad news harder and good news less to heart.
+        let stress = if stress > 0 {
+            stress * (100 + self.personality.anxiety) / 100
+        } else {
+            stress * (100 - self.personality.anxiety / 2) / 100
+        };
         self.stress += stress;
         self.thoughts.push(Thought { text: text.to_string(), stress, tick });
         if self.thoughts.len() > 8 {
@@ -273,6 +411,32 @@ const COLORS: [(u8, u8, u8); 8] = [
     (90, 255, 200),
 ];
 
+const LIKED_MATS: [Mat; 10] = [
+    Mat::Granite,
+    Mat::Marble,
+    Mat::Limestone,
+    Mat::Wood,
+    Mat::Copper,
+    Mat::Iron,
+    Mat::Steel,
+    Mat::Gold,
+    Mat::Amethyst,
+    Mat::Bone,
+];
+
+const ART_A: [&str; 16] = [
+    "Ember", "Oath", "Echo", "Anvil", "Gleam", "Hollow", "Thunder", "Silence", "Dawn", "Ash",
+    "Crown", "Vigil", "Storm", "Marrow", "Lantern", "Root",
+];
+const ART_B: [&str; 12] = [
+    "of Echoes", "of the Deep", "Unbroken", "of Ages", "the Patient", "of Sorrows", "Everlasting",
+    "of the Mountainhome", "the Bright", "of Iron Rain", "the Quiet", "of First Fire",
+];
+
+pub fn artifact_name(rng: &mut Rng) -> String {
+    format!("The {} {}", rng.pick(&ART_A), rng.pick(&ART_B))
+}
+
 pub fn random_name(rng: &mut Rng) -> String {
     format!("{} {}{}", rng.pick(&FIRST), rng.pick(&PREFIX), rng.pick(&SUFFIX))
 }
@@ -302,6 +466,9 @@ pub fn new_dwarf(id: u32, pos: Pos, rng: &mut Rng, specialties: &[Labor]) -> Dwa
         fatigue: rng.range(0, 800) as u32,
         color: *rng.pick(&COLORS),
         idle_cd: rng.range(0, 20) as u32,
+        personality: Personality::random(rng),
+        likes_mat: *rng.pick(&LIKED_MATS),
+        likes_food: Some(*rng.pick(&[ItemKind::Mushroom, ItemKind::Meat, ItemKind::Meal])),
         ..Default::default()
     }
 }

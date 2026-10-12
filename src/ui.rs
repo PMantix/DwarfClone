@@ -2,7 +2,7 @@ use crate::app::{App, Mode, DESIG_KEYS};
 use crate::body::PARTS;
 use crate::buildings::BuildingKind;
 use crate::dwarf::{skill_rank, Dwarf, Task, LABORS};
-use crate::game::{Game, ZoneKind, HUNGRY, RIPE, THIRSTY, TIRED};
+use crate::game::{Game, ZoneKind, DAY, HUNGRY, RIPE, THIRSTY, TIRED};
 use crate::geom::Pos;
 use crate::items::{ItemKind, StockFilter};
 use crate::material::Mat;
@@ -370,6 +370,15 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
         Task::Station { .. } => "Going to station".into(),
         Task::Train => "Combat drill".into(),
         Task::Flee => "Fleeing!".into(),
+        Task::Mood => {
+            let m = d.mood.as_ref();
+            match m {
+                Some(m) if m.work_left > 0 => "Working on something mysterious".into(),
+                Some(m) if m.items.len() < m.needs.len() => format!("Demanding {}", m.needs[m.items.len()].desc()),
+                _ => "Gathering materials (fey)".into(),
+            }
+        }
+        Task::Dine { .. } => "Eating at a table".into(),
     }
 }
 
@@ -512,6 +521,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(key_line("q", "Query building", false));
             v.push(key_line("u", "Unit list", false));
             v.push(key_line("m", "Military", false));
+            v.push(key_line("n", "Nobles, mandates & rooms", false));
             v.push(key_line("v", "View dwarf at cursor", false));
             v.push(key_line("Tab", "Jump to next dwarf", false));
             v.push(key_line("?", "Help", false));
@@ -585,8 +595,17 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 if !b.built {
                     v.push(plain(format!("Awaiting construction ({})", b.kind.needs_desc()), KEY));
                 } else if b.kind == BuildingKind::Bed {
-                    let who = b.occupant.and_then(|id| g.dwarves.iter().find(|d| d.id == id));
-                    v.push(plain(who.map_or("Unoccupied".into(), |d| format!("In use by {}", d.name)), TEXT));
+                    let who = b.owner.and_then(|id| g.dwarves.iter().find(|d| d.id == id));
+                    v.push(plain(who.map_or("Unassigned".into(), |d| format!("Owned by {}", d.name)), TEXT));
+                    v.push(plain(
+                        if b.room_value > 0 { format!("Bedroom value ☼{}", b.room_value) } else { "Not in an enclosed room".into() },
+                        MUTED,
+                    ));
+                } else if b.kind == BuildingKind::Table {
+                    v.push(plain(
+                        if b.room_value > 0 { format!("Dining room value ☼{}", b.room_value) } else { "Not in an enclosed room".into() },
+                        MUTED,
+                    ));
                 }
                 if let Some(w) = b.worker.and_then(|id| g.dwarves.iter().find(|d| d.id == id)) {
                     v.push(plain(format!("Worker: {}", w.name), TEXT));
@@ -649,6 +668,53 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.extend(unit_view(g, d, *sel));
             }
         }
+        Mode::Nobles => {
+            title = "Nobles".to_string();
+            v.push(plain(format!("Fortress wealth: ☼{}", g.wealth()), Color::Rgb(255, 215, 60)));
+            v.push(Line::default());
+            v.push(header("Nobility"));
+            let mut any = false;
+            for d in g.dwarves.iter().filter(|d| d.alive && d.noble.is_some()) {
+                any = true;
+                let n = d.noble.unwrap();
+                let room = g.buildings.values().find(|b| b.owner == Some(d.id)).map_or(0, |b| b.room_value);
+                v.push(plain(format!("{}: {}", n.title(), d.name), Color::Rgb(255, 230, 120)));
+                let ok = room >= n.room_demand();
+                v.push(plain(
+                    format!("  bedroom value {} (wants {})", room, n.room_demand()),
+                    if ok { Color::Rgb(120, 220, 120) } else { Color::Rgb(240, 130, 100) },
+                ));
+            }
+            if !any {
+                v.push(plain("(none)".into(), MUTED));
+            }
+            v.push(Line::default());
+            v.push(header("Mandate"));
+            match &g.mandate {
+                Some(m) => {
+                    let left = m.deadline.saturating_sub(g.tick) / DAY;
+                    v.push(plain(format!("Produce {}", m.describe()), TEXT));
+                    v.push(plain(format!("  {} days remaining", left), MUTED));
+                }
+                None => v.push(plain("(none)".into(), MUTED)),
+            }
+            v.push(Line::default());
+            v.push(header("Bedrooms"));
+            let mut beds: Vec<_> = g.buildings.values().filter(|b| b.kind == BuildingKind::Bed && b.built).collect();
+            beds.sort_by_key(|b| std::cmp::Reverse(b.room_value));
+            for b in beds.iter().take(12) {
+                let owner = b.owner.and_then(|o| g.dwarves.iter().find(|d| d.id == o)).map_or("unassigned".to_string(), |d| d.name.clone());
+                let room = if b.room_value > 0 { format!("room ☼{}", b.room_value) } else { "no room".into() };
+                v.push(plain(format!("Θ {} — {}", room, owner), TEXT));
+            }
+            if beds.is_empty() {
+                v.push(plain("No beds yet. Dig rooms and".into(), MUTED));
+                v.push(plain("place beds in them.".into(), MUTED));
+            }
+            v.push(Line::default());
+            v.push(plain("A room is floor enclosed by rock".into(), MUTED));
+            v.push(plain("and doors, underground.".into(), MUTED));
+        }
         Mode::Military => {
             title = "Military".to_string();
             let alert = if g.alert { "ENGAGE hostiles" } else { "Stand down" };
@@ -709,7 +775,13 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
     let (mood, mc) = d.mood();
     let mut v = vec![
         Line::from(Span::styled(d.name.clone(), Style::default().fg(rgb(d.color)).add_modifier(Modifier::BOLD))),
-        plain(d.profession().to_string(), MUTED),
+        plain(
+            match d.noble {
+                Some(n) => format!("{} ({})", n.title(), d.profession()),
+                None => d.profession().to_string(),
+            },
+            MUTED,
+        ),
         Line::from(vec![
             Span::styled("Mood: ", Style::default().fg(TEXT)),
             Span::styled(mood, Style::default().fg(rgb(mc))),
@@ -733,6 +805,41 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
         }
         v.extend(hurt);
     }
+    v.push(Line::default());
+    v.push(header("Personality"));
+    for t in d.personality.describe() {
+        v.push(plain(format!("  {}", t), TEXT));
+    }
+    let food = match d.likes_food {
+        Some(ItemKind::Meal) => "prepared meals",
+        Some(ItemKind::Meat) => "meat",
+        _ => "stoutcaps",
+    };
+    v.push(plain(format!("  Likes {} and {}", d.likes_mat.name(), food), MUTED));
+    let mut rel: Vec<(u32, i32)> = d.relations.iter().copied().filter(|r| r.1 >= 30 || r.1 <= -30).collect();
+    rel.sort_by_key(|r| std::cmp::Reverse(r.1.abs()));
+    for (oid, r) in rel.into_iter().take(3) {
+        if let Some(o) = g.dwarves.iter().find(|o| o.id == oid) {
+            let (what, col) = if r >= 70 {
+                ("Close friend", Color::Rgb(120, 220, 255))
+            } else if r >= 30 {
+                ("Friend", Color::Rgb(150, 220, 200))
+            } else {
+                ("Grudge", Color::Rgb(240, 140, 90))
+            };
+            let dead = if o.alive { "" } else { " (dead)" };
+            v.push(plain(format!("  {}: {}{}", what, o.name, dead), col));
+        }
+    }
+    let room = g.buildings.values().find(|b| b.owner == Some(d.id)).map(|b| b.room_value);
+    v.push(plain(
+        match room {
+            Some(0) => "  Owns a bed (no room)".to_string(),
+            Some(v) => format!("  Owns a bedroom (☼{})", v),
+            None => "  Has no bed of their own".to_string(),
+        },
+        MUTED,
+    ));
     v.push(Line::default());
     v.push(header(if d.soldier { "Soldier (m: discharge)" } else { "Civilian (m: draft)" }));
     let held = d.held.and_then(|id| g.items.get(&id)).map_or("nothing".to_string(), |it| it.name());
@@ -788,6 +895,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("q", "query building: queue work orders"),
         k("u / v", "unit list / view dwarf (m drafts)"),
         k("m", "military: station point, engage orders"),
+        k("n", "nobles, mandates, bedrooms, wealth"),
         k("Tab", "jump to next dwarf"),
         k("H", "jump back to the wagon"),
         k("F5 / F9", "save / load"),
@@ -805,6 +913,8 @@ fn help_text() -> Vec<Line<'static>> {
         plain("    better in beds; drinking water makes them sad.".into(), TEXT),
         plain(" 6. Wolves, cave beasts and goblins will come.".into(), TEXT),
         plain("    Draft soldiers, arm them, lock doors (q, l).".into(), TEXT),
+        plain(" 7. Dig enclosed rooms for beds and a dining hall".into(), TEXT),
+        plain("    (tables + chairs). Keep nobles content.".into(), TEXT),
         Line::default(),
         plain("Mouse: click to move cursor / set corners; wheel".into(), MUTED),
         plain("changes z-level. Press any key to continue.".into(), MUTED),
@@ -879,7 +989,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     );
 
     match app.mode {
-        Mode::Help => popup(f, area, 60, 39, " Help ", help_text()),
+        Mode::Help => popup(f, area, 60, 42, " Help ", help_text()),
         Mode::ConfirmQuit => popup(
             f,
             area,

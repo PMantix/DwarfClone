@@ -436,6 +436,15 @@ pub struct Building {
     pub retry_tick: u64,
     #[serde(default)]
     pub locked: bool,
+    /// Bed owner.
+    #[serde(default)]
+    pub owner: Option<u32>,
+    /// Quality of the item it was built from.
+    #[serde(default)]
+    pub quality: u8,
+    /// Value of the enclosed room around this bed or table (0 = not a room).
+    #[serde(default)]
+    pub room_value: u32,
 }
 
 impl Building {

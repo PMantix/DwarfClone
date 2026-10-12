@@ -42,16 +42,18 @@ impl Game {
         if can_hold {
             if let Some(it) = held.and_then(|id| self.items.get(&id)) {
                 if let Some(w) = it.kind.weapon_damage() {
-                    f.dmg = w * it.mat.weapon_mult();
+                    let q = if it.quality >= crate::items::ARTIFACT { 1.5 } else { 1.0 + it.quality as f32 * 0.06 };
+                    f.dmg = w * it.mat.weapon_mult() * q;
                     f.verb = it.kind.weapon_verb();
                     f.edged = it.kind.edged();
                 }
             }
         }
         for it in armor.iter().filter_map(|id| self.items.get(id)) {
+            let bonus = (it.quality as i32 + 1) / 2;
             match it.kind.armor_slot() {
-                Some(Slot::Head) => f.helm = it.mat.armor_value(),
-                Some(Slot::Body) => f.mail = it.mat.armor_value(),
+                Some(Slot::Head) => f.helm = it.mat.armor_value() + bonus,
+                Some(Slot::Body) => f.mail = it.mat.armor_value() + bonus,
                 Some(Slot::Shield) => f.shield = true,
                 None => {}
             }
@@ -880,30 +882,29 @@ mod profile {
         let mut g = Game::new(33);
         let e = g.embark;
         g.add_zone(e.offset(-8, 3, -1), e.offset(-1, 9, 1), ZoneKind::Stockpile(StockFilter::All));
-        g.add_zone(e.offset(-8, -8, -1), e.offset(-2, -3, 1), ZoneKind::Farm);
-        let s = (1..10).map(|i| e.offset(i, 0, 0)).find(|&p| g.world.t(p).kind == TileKind::Floor).unwrap();
-        g.designate(s, Pos::new(s.x, s.y, 5), Desig::StairUD);
-        let mut t = [Duration::ZERO; 4];
-        for _ in 0..YEAR {
-            g.tick += 1;
-            let a = Instant::now();
-            if g.tick % 3 == 0 { g.fluids(); }
-            let b = Instant::now();
-            for i in 0..g.dwarves.len() {
-                if g.dwarves[i].alive {
-                    let mut d = std::mem::take(&mut g.dwarves[i]);
-                    g.update_dwarf(&mut d);
-                    g.dwarves[i] = d;
-                }
+        let mut farm = 0;
+        for (dx, dy) in [(-10, -10), (2, -10), (-10, 10), (2, 10), (-20, 0), (12, 0)] {
+            if farm < 30 {
+                farm += g.add_zone(e.offset(dx, dy, -2), e.offset(dx + 8, dy + 6, 2), ZoneKind::Farm);
             }
-            let c = Instant::now();
-            g.update_creatures();
-            let dd = Instant::now();
-            if g.tick % 10 == 0 { g.grow_farms(); }
-            if g.tick % DAY == DAY / 2 { g.wildlife(); }
-            if g.tick % SEASON == 0 { if (g.tick / SEASON) % 4 != 0 { g.migrants(); } g.maybe_siege(); }
-            t[0] += b - a; t[1] += c - b; t[2] += dd - c; t[3] += dd.elapsed();
         }
-        eprintln!("fluids {:?} dwarves {:?} creatures {:?} other {:?}; alive {}", t[0], t[1], t[2], t[3], g.alive_count());
+        for i in 0..3 {
+            g.spawn_item(ItemKind::Spear, Mat::Copper, e);
+            let id = g.dwarves[2 + i].id;
+            g.toggle_soldier(id);
+        }
+        let t = Instant::now();
+        for _ in 0..YEAR {
+            g.step();
+        }
+        let _ = Duration::ZERO;
+        eprintln!("year in {:?}; alive {}/{}", t.elapsed(), g.alive_count(), g.dwarves.len());
+        let count = |pat: &str| g.log.iter().filter(|l| l.text.contains(pat)).count();
+        let stress: Vec<i32> = g.dwarves.iter().filter(|d| d.alive).map(|d| d.stress).collect();
+        eprintln!(
+            "tantrums {} insane {} friends {} grudges {} moods {} artifacts {} mandates ok {} failed {} stress {:?}",
+            count("tantrum"), g.dwarves.iter().filter(|d| d.insane).count(), count("become friends"), count("grudge"),
+            count("fey mood"), count("has created"), count("fulfilled"), count("went unmet"), stress
+        );
     }
 }

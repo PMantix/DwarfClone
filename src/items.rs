@@ -209,10 +209,46 @@ pub struct Item {
     /// Barrel or bin this item is stored in.
     #[serde(default)]
     pub container: Option<u32>,
+    /// 0 ordinary .. 5 masterful, 6 artifact (named in `label`).
+    #[serde(default)]
+    pub quality: u8,
+}
+
+pub const ARTIFACT: u8 = 6;
+
+pub fn quality_prefix(q: u8) -> &'static str {
+    match q {
+        1 => "well-crafted ",
+        2 => "finely-crafted ",
+        3 => "superior ",
+        4 => "exceptional ",
+        5 => "masterful ",
+        _ => "",
+    }
+}
+
+pub fn quality_mult(q: u8) -> u32 {
+    match q {
+        0 => 1,
+        1 => 2,
+        2 => 3,
+        3 => 4,
+        4 => 5,
+        5 => 10,
+        _ => 100,
+    }
 }
 
 impl Item {
     pub fn name(&self) -> String {
+        if self.quality >= ARTIFACT {
+            let base = Item { quality: 0, label: None, ..self.clone() };
+            return format!("{} ({})", self.label.as_deref().unwrap_or("an artifact"), base.base_name());
+        }
+        format!("{}{}", quality_prefix(self.quality), self.base_name())
+    }
+
+    fn base_name(&self) -> String {
         use ItemKind::*;
         let m = self.mat;
         match self.kind {
@@ -252,7 +288,7 @@ impl Item {
     }
 
     pub fn value(&self) -> u32 {
-        self.kind.base_value() * self.mat.value()
+        self.kind.base_value() * self.mat.value() * quality_mult(self.quality)
     }
 
     pub fn glyph(&self) -> (char, Color) {
