@@ -212,6 +212,9 @@ pub struct Item {
     /// 0 ordinary .. 5 masterful, 6 artifact (named in `label`).
     #[serde(default)]
     pub quality: u8,
+    /// Marked to be carried to the trade depot.
+    #[serde(default)]
+    pub to_depot: bool,
 }
 
 pub const ARTIFACT: u8 = 6;

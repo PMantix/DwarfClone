@@ -413,7 +413,8 @@ impl Game {
         }
         let Some(entry) = self.edge_entry() else { return };
         let roll = self.rng.f64();
-        let (species, n) = if roll < 0.8 || self.tick < SEASON {
+        let tame = 1.0 - self.savagery.clamp(0.05, 0.9) * 0.7;
+        let (species, n) = if roll < tame || self.tick < SEASON {
             (Species::Deer, self.rng.range(2, 5))
         } else if roll < 0.95 || self.tick < YEAR {
             (Species::Wolf, self.rng.range(2, 4))
@@ -434,7 +435,10 @@ impl Game {
 
     pub(super) fn maybe_siege(&mut self) {
         let pop = self.alive_count() as f64;
-        if self.tick < SEASON * 2 || !self.rng.chance(0.3 + pop * 0.02) {
+        let goblins = self.neighbors.iter().filter(|n| n.race == Race::Goblin).map(|n| n.dist).min();
+        let Some(dist) = goblins else { return };
+        let near = (1.0 - dist as f64 / 35.0).max(0.2);
+        if self.tick < SEASON * 2 || !self.rng.chance((0.3 + pop * 0.02) * near + self.wealth() as f64 / 200_000.0) {
             return;
         }
         let Some(entry) = self.edge_entry() else { return };
@@ -476,6 +480,8 @@ impl Game {
             &format!("A vile force of darkness has arrived! ({} goblins)", n),
             (255, 70, 70),
         );
+        let name = self.fortress_name.clone();
+        self.legend(format!("Goblins laid siege to {}.", name));
         self.pause_request = true;
     }
 
@@ -495,7 +501,10 @@ impl Game {
             self.drop_item(id, c.pos);
         }
         let info = c.species.info();
-        let kind = if c.species == Species::Goblin { ItemKind::Corpse } else { ItemKind::Carcass };
+        if c.species == Species::Merchant {
+            self.merchant_died(&c);
+        }
+        let kind = if matches!(c.species, Species::Goblin | Species::Merchant) { ItemKind::Corpse } else { ItemKind::Carcass };
         let id = self.spawn_item(kind, Mat::Flesh, c.pos);
         if let Some(it) = self.items.get_mut(&id) {
             it.label = Some(info.name.to_string());
@@ -622,7 +631,7 @@ impl Game {
                 self.creature_step(c, info.move_delay);
             }
         } else {
-            if c.path.is_empty() && self.rng.chance(0.03) {
+            if c.path.is_empty() && c.species != Species::Merchant && self.rng.chance(0.03) {
                 let q = c.pos.offset(self.rng.range(-6, 7), self.rng.range(-6, 7), 0);
                 if self.world.passable(q, info.mover) {
                     if let Some(p) = path::astar(&self.world, c.pos, q, 600, info.mover) {
@@ -654,6 +663,10 @@ impl Game {
     fn creature_think(&mut self, c: &mut Creature) {
         let info = c.species.info();
         let dwarves: Vec<(u32, Pos)> = self.dwarves.iter().filter(|d| d.alive).map(|d| (d.id, d.pos)).collect();
+        if c.species == Species::Merchant {
+            self.merchant_think(c);
+            return;
+        }
         if info.aggro == 0 {
             // Skittish animals bolt from anyone nearby.
             if dwarves.iter().any(|(_, p)| near(*p, c.pos, 4)) {

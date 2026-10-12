@@ -8,6 +8,7 @@ mod geom;
 mod items;
 mod material;
 mod noise;
+mod overworld;
 mod path;
 mod rng;
 mod ui;

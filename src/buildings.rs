@@ -16,6 +16,7 @@ pub enum BuildingKind {
     Smelter,
     Forge,
     Craftsdwarf,
+    Depot,
     Bed,
     Table,
     Chair,
@@ -23,7 +24,7 @@ pub enum BuildingKind {
 }
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 13] = [
+    pub const ALL: [BuildingKind; 14] = [
         BuildingKind::Carpenter,
         BuildingKind::Mason,
         BuildingKind::Still,
@@ -33,6 +34,7 @@ impl BuildingKind {
         BuildingKind::Smelter,
         BuildingKind::Forge,
         BuildingKind::Craftsdwarf,
+        BuildingKind::Depot,
         BuildingKind::Bed,
         BuildingKind::Table,
         BuildingKind::Chair,
@@ -50,6 +52,7 @@ impl BuildingKind {
             BuildingKind::Smelter => "Smelter",
             BuildingKind::Forge => "Metalsmith's forge",
             BuildingKind::Craftsdwarf => "Craftsdwarf's workshop",
+            BuildingKind::Depot => "Trade depot",
             BuildingKind::Bed => "Bed",
             BuildingKind::Table => "Table",
             BuildingKind::Chair => "Chair",
@@ -68,6 +71,7 @@ impl BuildingKind {
             BuildingKind::Smelter => 'e',
             BuildingKind::Forge => 'f',
             BuildingKind::Craftsdwarf => 'r',
+            BuildingKind::Depot => 'p',
             BuildingKind::Bed => 'b',
             BuildingKind::Table => 't',
             BuildingKind::Chair => 'h',
@@ -90,7 +94,7 @@ impl BuildingKind {
     /// The item consumed to construct this building.
     pub fn needs(self, item: &Item) -> bool {
         match self {
-            BuildingKind::Carpenter | BuildingKind::Butcher => item.kind == ItemKind::Log,
+            BuildingKind::Carpenter | BuildingKind::Butcher | BuildingKind::Depot => item.kind == ItemKind::Log,
             BuildingKind::Bed => item.kind == ItemKind::Bed,
             BuildingKind::Table => item.kind == ItemKind::Table,
             BuildingKind::Chair => item.kind == ItemKind::Chair,
@@ -101,7 +105,7 @@ impl BuildingKind {
 
     pub fn needs_desc(self) -> &'static str {
         match self {
-            BuildingKind::Carpenter | BuildingKind::Butcher => "a log",
+            BuildingKind::Carpenter | BuildingKind::Butcher | BuildingKind::Depot => "a log",
             BuildingKind::Bed => "a bed",
             BuildingKind::Table => "a table",
             BuildingKind::Chair => "a chair",
@@ -146,6 +150,7 @@ impl BuildingKind {
             BuildingKind::Smelter => Color::Rgb(255, 150, 50),
             BuildingKind::Forge => Color::Rgb(255, 90, 40),
             BuildingKind::Craftsdwarf => Color::Rgb(120, 200, 220),
+            BuildingKind::Depot => Color::Rgb(240, 240, 160),
             _ => Color::Rgb(200, 200, 200),
         }
     }
@@ -161,6 +166,7 @@ impl BuildingKind {
             BuildingKind::Smelter => 'E',
             BuildingKind::Forge => 'F',
             BuildingKind::Craftsdwarf => 'R',
+            BuildingKind::Depot => 'D',
             BuildingKind::Bed => 'Θ',
             BuildingKind::Table => '╥',
             BuildingKind::Chair => 'h',

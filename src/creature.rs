@@ -11,6 +11,7 @@ pub enum Species {
     GiantSpider,
     Troglodyte,
     Goblin,
+    Merchant,
 }
 
 pub struct SpeciesInfo {
@@ -106,6 +107,21 @@ impl Species {
                 aggro: 10,
                 skill: 2,
                 mover: Mover::Beast,
+                edged: false,
+            },
+            Species::Merchant => SpeciesInfo {
+                name: "merchant",
+                plural: "merchants",
+                glyph: 'M',
+                color: (240, 240, 160),
+                scale: 1.0,
+                damage: 3.0,
+                verb: "punches",
+                move_delay: 3,
+                attack_delay: 10,
+                aggro: 0,
+                skill: 1,
+                mover: Mover::Dwarf,
                 edged: false,
             },
             Species::Goblin => SpeciesInfo {

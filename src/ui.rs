@@ -6,6 +6,7 @@ use crate::game::{Game, ZoneKind, DAY, HUNGRY, RIPE, THIRSTY, TIRED};
 use crate::geom::Pos;
 use crate::items::{ItemKind, StockFilter};
 use crate::material::Mat;
+use crate::overworld::{Overworld, Race};
 use crate::world::{Desig, TileKind, World};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -522,6 +523,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(key_line("u", "Unit list", false));
             v.push(key_line("m", "Military", false));
             v.push(key_line("n", "Nobles, mandates & rooms", false));
+            v.push(key_line("L", "Legends of the world", false));
             v.push(key_line("v", "View dwarf at cursor", false));
             v.push(key_line("Tab", "Jump to next dwarf", false));
             v.push(key_line("?", "Help", false));
@@ -634,6 +636,18 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                         v.push(key_line("x", "Remove last order", false));
                     }
                 }
+                if b.kind == BuildingKind::Depot && b.built {
+                    match &g.caravan {
+                        Some(c) if c.arrived => v.push(plain(format!("Merchants from the {} are here.", c.civ_name), Color::Rgb(240, 240, 160))),
+                        Some(c) => v.push(plain(format!("A caravan from the {} is on its way.", c.civ_name), MUTED)),
+                        None => v.push(plain("No caravan at present.".into(), MUTED)),
+                    }
+                    let waiting = g.items.values().filter(|it| it.to_depot && !g.at_depot(it.pos)).count();
+                    v.push(plain(format!("{} goods at depot, {} on the way", g.depot_goods().len(), waiting), TEXT));
+                    v.push(key_line("g", "Bring goods to the depot", false));
+                    v.push(key_line("G", "Cancel bringing goods", false));
+                    v.push(key_line("t", "Trade", false));
+                }
                 if b.kind == BuildingKind::Door && b.built {
                     v.push(key_line("l", if b.locked { "Unlock door (locked)" } else { "Lock door" }, b.locked));
                 }
@@ -668,9 +682,25 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.extend(unit_view(g, d, *sel));
             }
         }
+        Mode::WorldMap { .. } | Mode::Legends { .. } | Mode::Trade { .. } => {
+            title = String::new();
+        }
         Mode::Nobles => {
             title = "Nobles".to_string();
             v.push(plain(format!("Fortress wealth: ☼{}", g.wealth()), Color::Rgb(255, 215, 60)));
+            let civ = g.civ.map_or("none".to_string(), |c| g.overworld.civ(c).name.clone());
+            v.push(plain(format!("Civilization: {}", civ), TEXT));
+            v.push(plain(
+                format!("Site: {}{}", g.biome.name(), if g.evil { " (evil)" } else { "" }),
+                if g.evil { Color::Rgb(200, 120, 255) } else { MUTED },
+            ));
+            for n in g.neighbors.iter().take(4) {
+                let war = g.civ.map_or(false, |c| g.overworld.civ(c).enemies.contains(&n.civ)) || n.race == Race::Goblin;
+                v.push(plain(
+                    format!("  {} {} away{}", n.race.plural(), n.dist, if war { " (hostile)" } else { "" }),
+                    if war { Color::Rgb(240, 110, 90) } else { rgb_of(n.race.color()) },
+                ));
+            }
             v.push(Line::default());
             v.push(header("Nobility"));
             let mut any = false;
@@ -896,6 +926,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("u / v", "unit list / view dwarf (m drafts)"),
         k("m", "military: station point, engage orders"),
         k("n", "nobles, mandates, bedrooms, wealth"),
+        k("L", "legends: history, civs, sites, figures"),
         k("Tab", "jump to next dwarf"),
         k("H", "jump back to the wagon"),
         k("F5 / F9", "save / load"),
@@ -915,14 +946,325 @@ fn help_text() -> Vec<Line<'static>> {
         plain("    Draft soldiers, arm them, lock doors (q, l).".into(), TEXT),
         plain(" 7. Dig enclosed rooms for beds and a dining hall".into(), TEXT),
         plain("    (tables + chairs). Keep nobles content.".into(), TEXT),
+        plain(" 8. Build a trade depot; caravans come each year.".into(), TEXT),
         Line::default(),
         plain("Mouse: click to move cursor / set corners; wheel".into(), MUTED),
         plain("changes z-level. Press any key to continue.".into(), MUTED),
     ]
 }
 
+fn rgb_of(c: Color) -> Color {
+    c
+}
+
+fn draw_world(f: &mut Frame, app: &mut App, cx: i32, cy: i32) {
+    let area = f.size();
+    let ow = &app.game.overworld;
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(10)])
+        .split(area);
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(20), Constraint::Length(SIDEBAR_W + 4)])
+        .split(rows[1]);
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" ☼ DwarfClone ", Style::default().fg(KEY).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("│ {} │ Year {} │ Choose a site to embark", ow.name, ow.year), Style::default().fg(TEXT)),
+        ]))
+        .style(Style::default().bg(Color::Rgb(20, 20, 30))),
+        rows[0],
+    );
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(MUTED))
+        .title(Span::styled(" World map ", Style::default().fg(KEY)));
+    let inner = block.inner(cols[0]);
+    f.render_widget(block, cols[0]);
+    // Each world cell is two characters wide so the map isn't squashed.
+    let ox = inner.x as i32 + ((inner.width as i32 - ow.w * 2) / 2).max(0);
+    let oy = inner.y as i32 + ((inner.height as i32 - ow.h) / 2).max(0);
+    let buf = f.buffer_mut();
+    for y in 0..ow.h {
+        for x in 0..ow.w {
+            let (sx, sy) = (ox + x * 2, oy + y);
+            if sx + 1 >= (inner.x + inner.width) as i32 || sy >= (inner.y + inner.height) as i32 {
+                continue;
+            }
+            let c = ow.cell(x, y);
+            let (mut ch, mut fg) = c.biome.glyph();
+            let mut bg = if c.evil { Color::Rgb(45, 10, 55) } else { BLACK };
+            if c.site > 0 {
+                let s = &ow.sites[(c.site - 1) as usize];
+                ch = if s.ruined { '×' } else { s.kind.glyph() };
+                fg = match s.civ {
+                    Some(civ) if !s.ruined => ow.civs[civ as usize].race.color(),
+                    _ => Color::Rgb(150, 150, 150),
+                };
+            }
+            if x == cx && y == cy {
+                bg = Color::Rgb(220, 200, 0);
+                fg = BLACK;
+            }
+            for dx in 0..2 {
+                let cell = buf.get_mut((sx + dx) as u16, sy as u16);
+                cell.set_char(if dx == 0 { ch } else { ' ' }).set_fg(fg).set_bg(bg);
+            }
+        }
+    }
+    let lines = world_info(ow, cx, cy, &app.flash);
+    f.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(MUTED))
+                    .title(Span::styled(" Site ", Style::default().fg(KEY))),
+            )
+            .wrap(Wrap { trim: false }),
+        cols[1],
+    );
+}
+
+fn world_info(ow: &Overworld, x: i32, y: i32, flash: &Option<String>) -> Vec<Line<'static>> {
+    let c = ow.cell(x, y);
+    let (g, col) = c.biome.glyph();
+    let mut v = vec![
+        Line::from(vec![
+            Span::styled(format!("{} ", g), Style::default().fg(col)),
+            Span::styled(cap_first(c.biome.name()), Style::default().fg(TEXT).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("  ({}, {})", x, y), Style::default().fg(MUTED)),
+        ]),
+    ];
+    if c.evil {
+        v.push(plain("An evil taint lies on this land.".into(), Color::Rgb(200, 120, 255)));
+    }
+    if let Some(s) = ow.site_at(x, y) {
+        let owner = s.civ.map_or("no one".to_string(), |c| format!("the {}", ow.civ(c).name));
+        let state = if s.ruined { "ruined " } else { "" };
+        v.push(plain(format!("{}: {}{} of {}", s.name, state, s.kind.name(), owner), Color::Rgb(255, 230, 120)));
+    } else if c.biome != crate::overworld::Biome::Ocean {
+        let p = c.biome.params();
+        v.push(plain(
+            format!(
+                "Terrain: {}, trees: {}",
+                if p.relief > 1.1 { "rugged" } else if p.relief < 0.6 { "flat" } else { "rolling" },
+                if p.forest > 1.0 { "dense" } else if p.forest < 0.3 { "sparse" } else { "some" }
+            ),
+            MUTED,
+        ));
+        v.push(plain(
+            format!("Wildlife: {}", if p.savagery + if c.evil { 0.3 } else { 0.0 } > 0.35 { "savage" } else { "calm" }),
+            MUTED,
+        ));
+    }
+    v.push(Line::default());
+    v.push(header("Neighbors"));
+    let ns = ow.neighbors(x, y, 30);
+    if ns.is_empty() {
+        v.push(plain("None within reach.".into(), MUTED));
+    }
+    for n in ns.iter().take(6) {
+        let civ = ow.civ(n.civ);
+        let note = match n.race {
+            Race::Goblin => " — sieges!",
+            Race::Dwarf => " — your kin",
+            _ => " — traders",
+        };
+        v.push(plain(format!("{} ({}), {} away{}", civ.name, n.race.plural(), n.dist, note), n.race.color()));
+    }
+    v.push(Line::default());
+    let parent = ow.parent_civ(x, y).map(|c| ow.civ(c).name.clone());
+    v.push(plain(format!("Expedition from: {}", parent.unwrap_or_else(|| "nobody".into())), TEXT));
+    v.push(Line::default());
+    v.push(header("Keys"));
+    v.push(key_line("↑↓←→", "move (Shift = x5)", false));
+    v.push(key_line("Enter", "embark here", false));
+    v.push(key_line("l", "legends of this world", false));
+    v.push(key_line("Q", "quit", false));
+    v.push(Line::default());
+    v.push(plain("Ω dwarves  # + humans  ♠ elves".into(), MUTED));
+    v.push(plain("Ψ goblins  & beast lair  × ruins".into(), MUTED));
+    if let Some(f) = flash {
+        v.push(Line::default());
+        v.push(plain(f.clone(), Color::Rgb(255, 150, 90)));
+    }
+    v
+}
+
+fn cap_first(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map_or(String::new(), |f| f.to_uppercase().collect::<String>() + c.as_str())
+}
+
+fn legends_lines(ow: &Overworld, tab: usize) -> Vec<Line<'static>> {
+    match tab {
+        0 => ow.events.iter().map(|e| {
+            Line::from(vec![
+                Span::styled(format!("{:>4}  ", e.year), Style::default().fg(MUTED)),
+                Span::styled(e.text.clone(), Style::default().fg(TEXT)),
+            ])
+        }).collect(),
+        1 => ow.civs.iter().flat_map(|c| {
+            let sites = ow.sites.iter().filter(|s| s.civ == Some(c.id) && !s.ruined).count();
+            let ruler = c.ruler.map(|r| ow.figures[r as usize].name.clone()).unwrap_or_else(|| "none".into());
+            let enemies: Vec<String> = c.enemies.iter().map(|e| ow.civ(*e).name.clone()).collect();
+            vec![
+                Line::from(Span::styled(
+                    format!("{} ({}){}", c.name, c.race.plural(), if c.alive { "" } else { " — fallen" }),
+                    Style::default().fg(if c.alive { c.race.color() } else { MUTED }).add_modifier(Modifier::BOLD),
+                )),
+                plain(format!("   {} sites, ruler: {}", sites, ruler), TEXT),
+                plain(format!("   at war with: {}", if enemies.is_empty() { "nobody".into() } else { enemies.join(", ") }), MUTED),
+            ]
+        }).collect(),
+        2 => ow.sites.iter().map(|s| {
+            let owner = s.civ.map_or("—".to_string(), |c| ow.civ(c).race.plural().to_string());
+            Line::from(vec![
+                Span::styled(format!("{} ", if s.ruined { '×' } else { s.kind.glyph() }), Style::default().fg(KEY)),
+                Span::styled(format!("{:<20}", s.name), Style::default().fg(TEXT)),
+                Span::styled(
+                    format!("{} of {}{}, founded {}", s.kind.name(), owner, if s.ruined { " (ruined)" } else { "" }, s.founded),
+                    Style::default().fg(MUTED),
+                ),
+            ])
+        }).collect(),
+        _ => ow.figures.iter().map(|fg| {
+            let life = match fg.died {
+                Some(d) => format!("{}–{}, {}", fg.born, d, fg.cause.clone().unwrap_or_default()),
+                None => format!("born {}", fg.born),
+            };
+            let title = fg.title.clone().map(|t| format!(", {}", t)).unwrap_or_default();
+            Line::from(vec![
+                Span::styled(format!("{}", fg.name), Style::default().fg(TEXT).add_modifier(Modifier::BOLD)),
+                Span::styled(format!(" the {}{} ({})", fg.kind, title, life), Style::default().fg(MUTED)),
+            ])
+        }).collect(),
+    }
+}
+
+fn draw_legends(f: &mut Frame, area: Rect, ow: &Overworld, tab: usize, scroll: usize) {
+    let w = area.width.saturating_sub(6).min(120);
+    let h = area.height.saturating_sub(4);
+    let r = Rect::new(area.x + (area.width - w) / 2, area.y + 2, w, h);
+    let lines = legends_lines(ow, tab);
+    let visible = h.saturating_sub(4) as usize;
+    let max = lines.len().saturating_sub(visible);
+    let scroll = scroll.min(max);
+    let names = ["1 History", "2 Civilizations", "3 Sites", "4 Figures"];
+    let mut tabs: Vec<Span> = Vec::new();
+    for (i, n) in names.iter().enumerate() {
+        let st = if i == tab { Style::default().fg(BLACK).bg(KEY) } else { Style::default().fg(TEXT) };
+        tabs.push(Span::styled(format!(" {} ", n), st));
+        tabs.push(Span::raw(" "));
+    }
+    let mut body = vec![Line::from(tabs), Line::default()];
+    body.extend(lines.into_iter().skip(scroll).take(visible));
+    f.render_widget(Clear, r);
+    f.render_widget(
+        Paragraph::new(body)
+            .style(Style::default().bg(Color::Rgb(15, 15, 25)))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(KEY))
+                    .title(Span::styled(format!(" Legends of {} ", ow.name), Style::default().fg(KEY)))
+                    .title_bottom(Span::styled(" Tab/1-4 switch · ↑↓ PgUp/PgDn scroll · Esc back ", Style::default().fg(MUTED))),
+            ),
+        r,
+    );
+}
+
+fn draw_trade(f: &mut Frame, area: Rect, app: &App, side: usize, sel: [usize; 2]) {
+    let g = &app.game;
+    let Some(car) = &g.caravan else { return };
+    let w = area.width.saturating_sub(4).min(110);
+    let h = area.height.saturating_sub(4);
+    let r = Rect::new(area.x + (area.width - w) / 2, area.y + 2, w, h);
+    f.render_widget(Clear, r);
+    let outer = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(KEY))
+        .style(Style::default().bg(Color::Rgb(15, 15, 25)))
+        .title(Span::styled(format!(" Trading with the {} ", car.civ_name), Style::default().fg(KEY)))
+        .title_bottom(Span::styled(" Tab side · ↑↓ move · Space mark · o offer · Esc leave ", Style::default().fg(MUTED)));
+    let inner = outer.inner(r);
+    f.render_widget(outer, r);
+    let parts = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(5), Constraint::Length(3)])
+        .split(inner);
+    let halves = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(parts[0]);
+    let ours = g.depot_goods();
+    let lists: [(Vec<(u32, String, u32)>, &std::collections::HashSet<u32>, &str); 2] = [
+        (ours.iter().map(|it| (it.id, it.name(), it.value())).collect(), &app.trade_ours, " Your goods at the depot "),
+        (car.goods.iter().map(|it| (it.id, it.name(), it.value())).collect(), &app.trade_theirs, " Their wares "),
+    ];
+    for (i, (list, marks, title)) in lists.iter().enumerate() {
+        let rows = halves[i].height.saturating_sub(2) as usize;
+        let start = sel[i].saturating_sub(rows.saturating_sub(1));
+        let lines: Vec<Line> = list
+            .iter()
+            .enumerate()
+            .skip(start)
+            .take(rows)
+            .map(|(j, (id, name, val))| {
+                let marked = marks.contains(id);
+                let mut st = Style::default().fg(if marked { Color::Rgb(120, 255, 160) } else { TEXT });
+                if j == sel[i] && side == i {
+                    st = st.bg(Color::Rgb(50, 60, 120));
+                }
+                Line::from(Span::styled(format!("{} {:<34} ☼{}", if marked { "■" } else { " " }, name, val), st))
+            })
+            .collect();
+        let empty = if list.is_empty() {
+            vec![plain(if i == 0 { "Nothing here. Query the depot and press g".into() } else { "Sold out.".into() }, MUTED)]
+        } else {
+            lines
+        };
+        f.render_widget(
+            Paragraph::new(empty).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(if side == i { KEY } else { MUTED }))
+                    .title(Span::styled(title.to_string(), Style::default().fg(TEXT))),
+            ),
+            halves[i],
+        );
+    }
+    let offer: u32 = ours.iter().filter(|it| app.trade_ours.contains(&it.id)).map(|it| it.value()).sum();
+    let ask: u32 = car.goods.iter().filter(|it| app.trade_theirs.contains(&it.id)).map(|it| it.value()).sum();
+    let ok = offer * 10 >= ask * 11;
+    let mut summary = vec![Line::from(vec![
+        Span::styled(format!(" Offer ☼{}   ", offer), Style::default().fg(TEXT)),
+        Span::styled(format!("Request ☼{}   ", ask), Style::default().fg(TEXT)),
+        Span::styled(
+            if ok { "The merchants look interested." } else { "They want at least a tenth more." },
+            Style::default().fg(if ok { Color::Rgb(120, 255, 160) } else { Color::Rgb(240, 150, 90) }),
+        ),
+    ])];
+    if let Some(fl) = &app.flash {
+        summary.push(plain(format!(" {}", fl), KEY));
+    }
+    f.render_widget(Paragraph::new(summary), parts[1]);
+}
+
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.size();
+    if let Mode::WorldMap { x, y } = app.mode {
+        draw_world(f, app, x, y);
+        return;
+    }
+    if let Mode::Legends { tab, scroll, from_world: true } = app.mode {
+        let (x, y) = app.game.site;
+        draw_world(f, app, x, y);
+        draw_legends(f, area, &app.game.overworld, tab, scroll);
+        return;
+    }
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Min(10), Constraint::Length(7)])
@@ -989,7 +1331,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     );
 
     match app.mode {
-        Mode::Help => popup(f, area, 60, 42, " Help ", help_text()),
+        Mode::Legends { tab, scroll, .. } => draw_legends(f, area, &app.game.overworld, tab, scroll),
+        Mode::Trade { side, sel } => draw_trade(f, area, app, side, sel),
+        Mode::Help => popup(f, area, 60, 44, " Help ", help_text()),
         Mode::ConfirmQuit => popup(
             f,
             area,
@@ -1056,5 +1400,10 @@ mod tests {
         println!("{}", dump(&mut app, 130, 50));
         app.mode = Mode::Military;
         println!("{}", dump(&mut app, 130, 45));
+        let (x, y) = app.game.site;
+        app.mode = Mode::WorldMap { x, y };
+        println!("{}", dump(&mut app, 140, 40));
+        app.mode = Mode::Legends { tab: 0, scroll: usize::MAX, from_world: false };
+        println!("{}", dump(&mut app, 130, 40));
     }
 }

@@ -8,6 +8,7 @@ use crate::rng::Rng;
 use crate::world::{self, Desig, Mover, TileKind, World};
 use serde::{Deserialize, Serialize};
 use crate::creature::Creature;
+use crate::overworld::{Biome, Neighbor, Overworld, Race};
 use crate::world::{DOOR_LOCKED, DOOR_OPEN};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -17,6 +18,8 @@ mod industry_tests;
 mod psyche;
 #[cfg(test)]
 mod psyche_tests;
+mod trade;
+pub use trade::Caravan;
 pub use psyche::Mandate;
 
 pub const DAY: u64 = 1200;
@@ -98,6 +101,18 @@ pub struct Game {
     siege_routed: bool,
     #[serde(default)]
     pub mandate: Option<Mandate>,
+    pub overworld: Overworld,
+    /// Embark location on the world map.
+    pub site: (i32, i32),
+    pub biome: Biome,
+    pub evil: bool,
+    pub savagery: f64,
+    /// The dwarven civilization this outpost belongs to.
+    pub civ: Option<u32>,
+    pub neighbors: Vec<Neighbor>,
+    pub start_year: i32,
+    #[serde(default)]
+    pub caravan: Option<Caravan>,
     #[serde(skip)]
     pub pause_request: bool,
     /// Bumped whenever designations or dug terrain change.
@@ -112,8 +127,20 @@ pub struct Game {
 }
 
 impl Game {
+    /// A fresh world with the expedition sent to a sensible default site.
     pub fn new(seed: u64) -> Game {
-        let world = world::generate(seed);
+        let ow = Overworld::generate(seed);
+        let (x, y) = ow.default_site();
+        Game::embark(seed, ow, x, y)
+    }
+
+    pub fn embark(seed: u64, ow: Overworld, sx: i32, sy: i32) -> Game {
+        let cell = ow.cell(sx, sy).clone();
+        let params = cell.biome.params();
+        let world = world::generate(seed ^ ((sx as u64) << 20) ^ ((sy as u64) << 40), &params);
+        let civ = ow.parent_civ(sx, sy);
+        let neighbors = ow.neighbors(sx, sy, 30);
+        let start_year = ow.year + 1;
         let mut rng = Rng::new(seed.wrapping_mul(31).wrapping_add(7));
         let embark = find_embark(&world);
         let mut g = Game {
@@ -141,6 +168,15 @@ impl Game {
             siege_size: 0,
             siege_routed: false,
             mandate: None,
+            savagery: params.savagery + if cell.evil { 0.3 } else { 0.0 },
+            biome: cell.biome,
+            evil: cell.evil,
+            overworld: ow,
+            site: (sx, sy),
+            civ,
+            neighbors,
+            start_year,
+            caravan: None,
             dig_version: 0,
             dig_fail: [None, None],
         };
@@ -192,6 +228,9 @@ impl Game {
             &format!("Seven dwarves have arrived to found the outpost of {}. Strike the earth!", name),
             (255, 255, 120),
         );
+        let civ_name = civ.map_or("a band of wanderers".to_string(), |c| format!("the {}", g.overworld.civ(c).name));
+        let biome = g.biome.name();
+        g.legend(format!("The dwarves of {} founded the outpost of {} in the {}.", civ_name, name, biome));
         g
     }
 
@@ -237,7 +276,18 @@ impl Game {
         let pos = self.world.settle(pos);
         self.items.insert(
             id,
-            Item { id, kind, mat, pos, carried_by: None, claimed_by: None, label: None, container: None, quality: 0 },
+            Item {
+                id,
+                kind,
+                mat,
+                pos,
+                carried_by: None,
+                claimed_by: None,
+                label: None,
+                container: None,
+                quality: 0,
+                to_depot: false,
+            },
         );
         id
     }
@@ -246,6 +296,7 @@ impl Game {
         let year = self.tick / YEAR + 1;
         let month = ((self.tick % YEAR) / MONTH) as usize;
         let day = (self.tick % MONTH) / DAY + 1;
+        let year = self.start_year as u64 + year - 1;
         format!("{} {}, Year {} ({})", day_ordinal(day), MONTHS[month], year, SEASONS[month / 3])
     }
 
@@ -502,6 +553,7 @@ impl Game {
             }
         }
         self.update_creatures();
+        self.update_caravan();
         if self.tick % DAY == DAY / 2 {
             self.wildlife();
         }
@@ -518,6 +570,7 @@ impl Game {
                 self.migrants();
             }
             self.maybe_siege();
+            self.caravan_season(season);
             self.issue_mandate();
             self.maybe_strange_mood();
         }
@@ -1005,7 +1058,7 @@ impl Game {
         if d.has(Labor::Farming) && self.find_farm(d) {
             return;
         }
-        if d.has(Labor::Hauling) {
+        if d.has(Labor::Hauling) && !self.find_depot_haul(d) {
             self.find_haul(d);
         }
     }
@@ -1098,7 +1151,7 @@ impl Game {
             let at: HashMap<Pos, u32> = self
                 .creatures
                 .values()
-                .filter(|c| (c.hostile() || self.hunt) && !c.leaving && self.creature_active(c))
+                .filter(|c| (c.hostile() || (self.hunt && c.species != crate::creature::Species::Merchant)) && !c.leaving && self.creature_active(c))
                 .map(|c| (c.pos, c.id))
                 .collect();
             if !at.is_empty() {
@@ -1389,7 +1442,7 @@ impl Game {
             return false;
         }
         let haulable = |it: &Item| {
-            if it.container.is_some() || (it.kind.is_container() && fill.contains_key(&it.id)) {
+            if it.to_depot || it.container.is_some() || (it.kind.is_container() && fill.contains_key(&it.id)) {
                 return false;
             }
             let stored = self.stockpile_accepts(it.pos, it.kind);

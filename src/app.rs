@@ -6,6 +6,7 @@ use crate::items::StockFilter;
 use crate::world::Desig;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
+use std::collections::HashSet;
 
 pub const SPEEDS: [u32; 6] = [1, 2, 5, 10, 25, 60];
 pub const SAVE_FILE: &str = "dwarfclone_save.json";
@@ -35,6 +36,12 @@ pub enum Mode {
     Unit { id: u32, sel: usize },
     Military,
     Nobles,
+    /// Choose an embark site on the world map.
+    WorldMap { x: i32, y: i32 },
+    /// Browse history. `from_world` returns to the world map on Esc.
+    Legends { tab: usize, scroll: usize, from_world: bool },
+    /// Barter at the depot. side 0 = our goods, 1 = theirs.
+    Trade { side: usize, sel: [usize; 2] },
     Help,
     ConfirmQuit,
 }
@@ -50,23 +57,30 @@ pub struct App {
     pub quit: bool,
     pub map_rect: Rect,
     pub flash: Option<String>,
+    pub seed: u64,
+    pub trade_ours: HashSet<u32>,
+    pub trade_theirs: HashSet<u32>,
 }
 
 impl App {
     pub fn new(seed: u64) -> App {
         let game = Game::new(seed);
         let cursor = game.embark;
+        let (x, y) = game.site;
         App {
             game,
             cursor,
             view_x: 0,
             view_y: 0,
-            mode: Mode::Help,
+            mode: Mode::WorldMap { x, y },
             speed: 2,
             paused: true,
             quit: false,
             map_rect: Rect::default(),
             flash: None,
+            seed,
+            trade_ours: HashSet::new(),
+            trade_theirs: HashSet::new(),
         }
     }
 
@@ -145,8 +159,9 @@ impl App {
         if self.uses_map_cursor() && self.move_cursor(&k) {
             return;
         }
-        // Time controls work everywhere except the quit prompt.
-        if self.mode != Mode::ConfirmQuit {
+        // Time controls work everywhere except the quit prompt and pre-embark screens.
+        let pre_embark = matches!(self.mode, Mode::WorldMap { .. } | Mode::Legends { from_world: true, .. });
+        if self.mode != Mode::ConfirmQuit && !pre_embark {
             match k.code {
                 KeyCode::Char(' ') => {
                     self.paused = !self.paused;
@@ -262,6 +277,29 @@ impl App {
                 _ => {}
             },
             Mode::Help | Mode::Nobles => self.mode = Mode::Normal,
+            Mode::WorldMap { x, y } => self.key_world(k, x, y),
+            Mode::Legends { tab, scroll, from_world } => {
+                let back = if from_world {
+                    let (x, y) = self.game.site;
+                    Mode::WorldMap { x, y }
+                } else {
+                    Mode::Normal
+                };
+                match k.code {
+                    KeyCode::Esc | KeyCode::Char('q') => self.mode = back,
+                    KeyCode::Tab | KeyCode::Right => self.mode = Mode::Legends { tab: (tab + 1) % 4, scroll: 0, from_world },
+                    KeyCode::Left => self.mode = Mode::Legends { tab: (tab + 3) % 4, scroll: 0, from_world },
+                    KeyCode::Char(c @ '1'..='4') => {
+                        self.mode = Mode::Legends { tab: c as usize - '1' as usize, scroll: 0, from_world }
+                    }
+                    KeyCode::Up => self.mode = Mode::Legends { tab, scroll: scroll.saturating_sub(1), from_world },
+                    KeyCode::Down => self.mode = Mode::Legends { tab, scroll: scroll + 1, from_world },
+                    KeyCode::PageUp => self.mode = Mode::Legends { tab, scroll: scroll.saturating_sub(20), from_world },
+                    KeyCode::PageDown => self.mode = Mode::Legends { tab, scroll: scroll + 20, from_world },
+                    _ => {}
+                }
+            }
+            Mode::Trade { side, sel } => self.key_trade(k, side, sel),
             Mode::ConfirmQuit => {
                 if matches!(k.code, KeyCode::Char('y') | KeyCode::Char('Y')) {
                     self.quit = true;
@@ -289,6 +327,7 @@ impl App {
             KeyCode::Char('u') => self.mode = Mode::Units { sel: 0 },
             KeyCode::Char('m') => self.mode = Mode::Military,
             KeyCode::Char('n') => self.mode = Mode::Nobles,
+            KeyCode::Char('L') => self.mode = Mode::Legends { tab: 0, scroll: usize::MAX, from_world: false },
             KeyCode::Char('v') => {
                 let c = self.cursor;
                 if let Some(d) = self.game.dwarves.iter().find(|d| d.alive && d.pos == c) {
@@ -334,6 +373,23 @@ impl App {
                 self.mode = Mode::Query { bld, adding: true };
             }
             KeyCode::Char('l') => self.game.toggle_lock(bld),
+            KeyCode::Char('g') if kind == BuildingKind::Depot => {
+                let n = self.game.mark_for_trade(true);
+                self.flash = Some(format!("{} items marked for the depot.", n));
+            }
+            KeyCode::Char('G') if kind == BuildingKind::Depot => {
+                let n = self.game.mark_for_trade(false);
+                self.flash = Some(format!("{} items unmarked.", n));
+            }
+            KeyCode::Char('t') if kind == BuildingKind::Depot => {
+                if self.game.caravan.as_ref().map_or(false, |c| c.arrived) {
+                    self.trade_ours.clear();
+                    self.trade_theirs.clear();
+                    self.mode = Mode::Trade { side: 0, sel: [0, 0] };
+                } else {
+                    self.flash = Some("No merchants at the depot.".into());
+                }
+            }
             KeyCode::Char('r') => {
                 if let Some(o) = self.game.buildings.get_mut(&bld).and_then(|b| b.orders.last_mut()) {
                     o.repeat = !o.repeat;
@@ -354,6 +410,88 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    fn key_world(&mut self, k: KeyEvent, x: i32, y: i32) {
+        let step = if k.modifiers.contains(KeyModifiers::SHIFT) { 5 } else { 1 };
+        let ow = &self.game.overworld;
+        let (mut nx, mut ny) = (x, y);
+        match k.code {
+            KeyCode::Up => ny -= step,
+            KeyCode::Down => ny += step,
+            KeyCode::Left => nx -= step,
+            KeyCode::Right => nx += step,
+            KeyCode::Char('l') | KeyCode::Char('L') => {
+                self.mode = Mode::Legends { tab: 0, scroll: usize::MAX, from_world: true };
+                return;
+            }
+            KeyCode::Char('?') => {
+                self.flash = Some("Arrows pick a site, Enter embarks, l opens legends.".into());
+                return;
+            }
+            KeyCode::Char('Q') => {
+                self.quit = true;
+                return;
+            }
+            KeyCode::Enter => {
+                if ow.embarkable(x, y) {
+                    let ow = self.game.overworld.clone();
+                    self.game = Game::embark(self.seed, ow, x, y);
+                    self.cursor = self.game.embark;
+                    self.paused = true;
+                    self.mode = Mode::Help;
+                } else {
+                    self.flash = Some("You can't embark on water or an existing site.".into());
+                }
+                return;
+            }
+            _ => return,
+        }
+        nx = nx.clamp(0, ow.w - 1);
+        ny = ny.clamp(0, ow.h - 1);
+        self.mode = Mode::WorldMap { x: nx, y: ny };
+    }
+
+    fn key_trade(&mut self, k: KeyEvent, side: usize, mut sel: [usize; 2]) {
+        let ours: Vec<u32> = self.game.depot_goods().iter().map(|it| it.id).collect();
+        let theirs: Vec<u32> = self.game.caravan.as_ref().map_or(Vec::new(), |c| c.goods.iter().map(|g| g.id).collect());
+        let len = [ours.len(), theirs.len()];
+        match k.code {
+            KeyCode::Esc => {
+                self.mode = Mode::Normal;
+                return;
+            }
+            KeyCode::Tab | KeyCode::Left | KeyCode::Right => {
+                self.mode = Mode::Trade { side: 1 - side, sel };
+                return;
+            }
+            KeyCode::Up => sel[side] = sel[side].saturating_sub(1),
+            KeyCode::Down => sel[side] = (sel[side] + 1).min(len[side].saturating_sub(1)),
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                let (list, marks) = if side == 0 { (&ours, &mut self.trade_ours) } else { (&theirs, &mut self.trade_theirs) };
+                if let Some(&id) = list.get(sel[side]) {
+                    if !marks.insert(id) {
+                        marks.remove(&id);
+                    }
+                }
+            }
+            KeyCode::Char('o') => {
+                let o: Vec<u32> = self.trade_ours.iter().copied().filter(|id| ours.contains(id)).collect();
+                let t: Vec<u32> = self.trade_theirs.iter().copied().filter(|id| theirs.contains(id)).collect();
+                match self.game.trade(&o, &t) {
+                    Ok(m) => {
+                        self.game.msg(&m, (240, 240, 160));
+                        self.flash = Some(m);
+                        self.trade_ours.clear();
+                        self.trade_theirs.clear();
+                        sel = [0, 0];
+                    }
+                    Err(m) => self.flash = Some(m),
+                }
+            }
+            _ => {}
+        }
+        self.mode = Mode::Trade { side, sel };
     }
 
     /// Enter/click: set a corner or apply the current tool.

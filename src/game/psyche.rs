@@ -28,6 +28,7 @@ impl Mandate {
             label: None,
             container: None,
             quality: 0,
+            to_depot: false,
         }
         .name();
         let what = if self.mat.is_none() {
@@ -390,6 +391,8 @@ impl Game {
                 d.noble = Some(Noble::Mayor);
                 let name = d.name.clone();
                 self.msg(&format!("{} has been elected mayor.", name), (255, 230, 120));
+                let fort = self.fortress_name.clone();
+                self.legend(format!("{} was elected mayor of {}.", name, fort));
             }
         } else if alive > 0 && !has(self, Noble::Mayor) && !has(self, Noble::Leader) {
             self.appoint_leader();
@@ -682,6 +685,8 @@ impl Game {
         d.task = Task::Idle;
         let who = d.name.clone();
         self.msg(&format!("{} has created {}!", who, desc), (255, 215, 60));
+        let fort = self.fortress_name.clone();
+        self.legend(format!("{} created {} in {}.", who, desc, fort));
         self.pause_request = true;
     }
 }

@@ -1,6 +1,7 @@
 use crate::geom::{Pos, DIRS8};
 use crate::material::Mat;
 use crate::noise::Noise;
+use crate::overworld::EmbarkParams;
 use crate::rng::Rng;
 use serde::{Deserialize, Serialize};
 
@@ -308,7 +309,7 @@ impl World {
 }
 
 /// Generate a fresh embark region.
-pub fn generate(seed: u64) -> World {
+pub fn generate(seed: u64, params: &EmbarkParams) -> World {
     let (w, h, d) = (W, H, D);
     let height_n = Noise::new(seed);
     let soil_n = Noise::new(seed ^ 0x1111);
@@ -325,7 +326,7 @@ pub fn generate(seed: u64) -> World {
     for y in 0..h {
         for x in 0..w {
             let v = height_n.fbm2(x as f64 / 34.0, y as f64 / 34.0, 4);
-            surf[(y * w + x) as usize] = (18.0 + (v - 0.5) * 18.0).round() as i32;
+            surf[(y * w + x) as usize] = (18.0 + (v - 0.5) * 18.0 * params.relief).round().clamp(9.0, 27.0) as i32;
         }
     }
     loop {
@@ -353,7 +354,11 @@ pub fn generate(seed: u64) -> World {
 
     let mut sorted = surf.clone();
     sorted.sort_unstable();
-    let water_level = sorted[sorted.len() * 10 / 100];
+    let water_level = if params.lake <= 0.0 {
+        0
+    } else {
+        sorted[((sorted.len() as f64 * params.lake) as usize).min(sorted.len() - 1)]
+    };
 
     let mut world = World {
         w,
@@ -532,7 +537,7 @@ pub fn generate(seed: u64) -> World {
                 continue;
             }
             let forest = forest_n.fbm2(x as f64 / 16.0, y as f64 / 16.0, 3);
-            if forest > 0.55 && rng.chance(0.30) || rng.chance(0.015) {
+            if forest > 0.55 && rng.chance((0.30 * params.forest).min(0.8)) || rng.chance(0.015 * params.forest) {
                 let t = world.t_mut(p);
                 t.kind = TileKind::Tree;
                 t.mat = Mat::Wood;
