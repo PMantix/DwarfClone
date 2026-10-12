@@ -18,6 +18,8 @@ mod industry_tests;
 mod psyche;
 #[cfg(test)]
 mod psyche_tests;
+mod labor;
+pub use labor::WorkDetail;
 mod trade;
 pub use trade::Caravan;
 pub use psyche::Mandate;
@@ -115,6 +117,8 @@ pub struct Game {
     pub start_year: i32,
     #[serde(default)]
     pub caravan: Option<Caravan>,
+    #[serde(default = "labor::default_details")]
+    pub work_details: Vec<WorkDetail>,
     #[serde(skip)]
     pub pause_request: bool,
     /// Bumped whenever designations or dug terrain change.
@@ -179,6 +183,7 @@ impl Game {
             neighbors,
             start_year,
             caravan: None,
+            work_details: labor::default_details(),
             dig_version: 0,
             dig_fail: [None, None],
         };
@@ -525,20 +530,6 @@ impl Game {
                 self.release_task(&mut d);
             }
             self.dwarves[i] = d;
-        }
-    }
-
-    pub fn toggle_labor(&mut self, dwarf_id: u32, labor: Labor) {
-        if let Some(i) = self.dwarves.iter().position(|d| d.id == dwarf_id) {
-            let on = !self.dwarves[i].labors[labor.idx()];
-            self.dwarves[i].labors[labor.idx()] = on;
-            if !on {
-                let mut d = std::mem::take(&mut self.dwarves[i]);
-                if !d.task.is_need() {
-                    self.release_task(&mut d);
-                }
-                self.dwarves[i] = d;
-            }
         }
     }
 
@@ -1122,7 +1113,7 @@ impl Game {
         if d.has(Labor::Farming) && self.find_farm(d) {
             return;
         }
-        if d.has(Labor::Hauling) && !self.find_depot_haul(d) {
+        if d.has(Labor::Hauling) && !d.specialist && !self.find_depot_haul(d) {
             self.find_haul(d);
         }
     }

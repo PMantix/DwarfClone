@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W02, W03 (cheap and visible) → W01 → W07, W06 (siege defense) → W04, W05.
+Suggested order: W03 (cheap and visible) → W01 → W07, W06 (siege defense) → W04, W05.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -31,17 +31,6 @@ Suggested order: W02, W03 (cheap and visible) → W01 → W07, W06 (siege defens
   - [ ] Fortifications (soldiers can see through, creatures can't pass)
   - [ ] Roof tiles over surface rooms count toward room detection (`psyche.rs` `room_at`)
 - **Done when:** a test walls off a corridor and a goblin can no longer path through it; removing the wall restores the path.
-
-#### W02 Labor screen and work details (S)
-- **DF:** work details (Miners, Haulers, Planters…) set to "only selected", "everybody" or "nobody"; specialised dwarves; mining, woodcutting and hunting exclusive.
-- **Us:** 13 labor toggles, edited one dwarf at a time on the unit screen.
-- **Plan:** a new `Mode::Labors` full-screen grid (dwarves are rows, labors are columns), moving the cursor and toggling with Enter. Work details are named presets of labors, applied to a dwarf.
-- **Steps:**
-  - [ ] Grid screen with row and column cursor; toggle a cell; toggle a whole column
-  - [ ] Work details: named labor sets that can be applied to a dwarf, with default sets
-  - [ ] "Specialised" flag: the dwarf only does their own labors, never hauling
-  - [ ] Exclusive tool labors: one of mining, woodcutting or hunting per dwarf
-- **Done when:** a test toggles a column and every dwarf's labor changes; UI render test shows the grid.
 
 #### W03 Rooms made from zones (S–M)
 - **DF:** zones for bedroom, dormitory, dining hall, office, tomb, barracks, hospital, tavern, temple, library, garbage dump, water source, pit/pond, pen/pasture, dungeon.
@@ -219,6 +208,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **W02 Labor screen and work details** (this commit): `y` opens a grid of every dwarf against every labor with skill levels; `a` toggles a whole column; named work details (6 defaults, save your own, apply with 1-9); specialists never haul; mining and woodcutting are exclusive.
 - **Meeting areas, look mode, status screen** (dbae659): `i` zones with meeting areas, so idle dwarves gather and chat there; `k` look at anything under the cursor; `z` status screen with overview, stocks, health and dwarves.
 - **World and history** (428a1fb): world map, civilizations, 200 years of history, legends viewer, embark choice, caravans and trade.
 - **Psychology** (2ba1bbb): personalities, friendships, rooms, nobles, mandates, strange moods, insanity.

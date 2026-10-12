@@ -80,6 +80,34 @@ impl Labor {
         }
     }
 
+    /// Three-letter column heading for the labor screen.
+    pub fn short(self) -> &'static str {
+        match self {
+            Labor::Mining => "Min",
+            Labor::Woodcutting => "Woo",
+            Labor::Carpentry => "Car",
+            Labor::Masonry => "Mas",
+            Labor::Farming => "Frm",
+            Labor::Brewing => "Brw",
+            Labor::Cooking => "Coo",
+            Labor::Butchery => "But",
+            Labor::Smelting => "Sme",
+            Labor::Smithing => "Smi",
+            Labor::Crafting => "Cra",
+            Labor::Hauling => "Hau",
+            Labor::Building => "Con",
+        }
+    }
+
+    /// Tool labors are exclusive: a dwarf carries a pick or an axe, not both.
+    pub fn exclusive_with(self) -> Option<Labor> {
+        match self {
+            Labor::Mining => Some(Labor::Woodcutting),
+            Labor::Woodcutting => Some(Labor::Mining),
+            _ => None,
+        }
+    }
+
     /// Labors that can be seized by a strange mood.
     pub fn moody(self) -> bool {
         matches!(self, Labor::Carpentry | Labor::Masonry | Labor::Smithing | Labor::Crafting)
@@ -293,6 +321,9 @@ pub struct Dwarf {
     pub mood: Option<Mood>,
     #[serde(default)]
     pub noble: Option<Noble>,
+    /// Only does their own skilled labors: no hauling.
+    #[serde(default)]
+    pub specialist: bool,
 }
 
 impl Dwarf {
@@ -451,6 +482,9 @@ pub fn new_dwarf(id: u32, pos: Pos, rng: &mut Rng, specialties: &[Labor]) -> Dwa
     labors[Labor::Hauling.idx()] = true;
     labors[Labor::Building.idx()] = true;
     for (i, &l) in specialties.iter().enumerate() {
+        if l.exclusive_with().map_or(false, |r| labors[r.idx()]) {
+            continue;
+        }
         labors[l.idx()] = true;
         skills[l.idx()] = if i == 0 { 900 + rng.range(0, 600) as u32 } else { 400 + rng.range(0, 300) as u32 };
     }

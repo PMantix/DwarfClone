@@ -61,6 +61,10 @@ civilization in autumn, if they are at peace with you. Haul goods to the depot a
 to do gather at the meeting area and chat there more often; without one they at least keep
 out of corridors. A stroll always gives way to real work.
 
+**Labors.** `y` shows every dwarf against every labor, with skill levels. Toggle cells or
+whole columns, apply named work details (or save your own), and mark specialists who never
+haul. A dwarf can be a miner or a woodcutter, not both, since each needs its own tool.
+
 **Looking around.** `k` inspects anything at the cursor: terrain, zone, building, every
 dwarf, creature and item on the tile (Tab cycles, Enter opens a dwarf or building).
 `z` is the fortress status screen: supplies and how long they'll last, population by

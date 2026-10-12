@@ -96,6 +96,9 @@ pub enum Mode {
     Place(BuildingKind),
     Query { bld: u32, adding: bool },
     Units { sel: usize },
+    /// Labor grid: rows are dwarves, columns are labors (plus the specialist column).
+    /// `detail` is the highlighted work detail.
+    Labors { row: usize, col: usize, detail: usize },
     Unit { id: u32, sel: usize },
     Military,
     Nobles,
@@ -342,7 +345,15 @@ impl App {
                 }
                 KeyCode::Up => self.mode = Mode::Unit { id, sel: sel.saturating_sub(1) },
                 KeyCode::Down => self.mode = Mode::Unit { id, sel: (sel + 1).min(LABORS.len() - 1) },
-                KeyCode::Enter => self.game.toggle_labor(id, LABORS[sel]),
+                KeyCode::Enter => {
+                    if let Some(lost) = self.game.toggle_labor(id, LABORS[sel]) {
+                        self.flash = Some(format!("{} dropped: one tool labor per dwarf.", lost.name()));
+                    }
+                }
+                KeyCode::Char('s') => {
+                    let on = self.game.toggle_specialist(id);
+                    self.flash = Some(if on { "Specialist: won't haul.".into() } else { "Will haul again.".into() });
+                }
                 KeyCode::Char('m') => self.game.toggle_soldier(id),
                 _ => {}
             },
@@ -360,6 +371,7 @@ impl App {
                 KeyCode::Char('h') => self.game.hunt = !self.game.hunt,
                 _ => {}
             },
+            Mode::Labors { row, col, detail } => self.key_labors(k, row, col, detail),
             Mode::Help | Mode::Nobles => self.mode = Mode::Normal,
             Mode::WorldMap { x, y } => self.key_world(k, x, y),
             Mode::Legends { tab, scroll, from_world } => {
@@ -411,6 +423,7 @@ impl App {
                 }
             }
             KeyCode::Char('u') => self.mode = Mode::Units { sel: 0 },
+            KeyCode::Char('y') => self.mode = Mode::Labors { row: 0, col: 0, detail: 0 },
             KeyCode::Char('m') => self.mode = Mode::Military,
             KeyCode::Char('n') => self.mode = Mode::Nobles,
             KeyCode::Char('L') => self.mode = Mode::Legends { tab: 0, scroll: usize::MAX, from_world: false },
@@ -437,6 +450,74 @@ impl App {
             KeyCode::F(9) => self.load(),
             _ => {}
         }
+    }
+
+    fn key_labors(&mut self, k: KeyEvent, row: usize, col: usize, detail: usize) {
+        let ids: Vec<u32> = self.game.dwarves.iter().filter(|d| d.alive).map(|d| d.id).collect();
+        let rows = ids.len().max(1);
+        // One column per labor, then the specialist column.
+        let cols = LABORS.len() + 1;
+        let ndet = self.game.work_details.len().max(1);
+        let (mut row, mut col, mut detail) = (row.min(rows - 1), col, detail.min(ndet - 1));
+        let id = ids.get(row).copied();
+        match k.code {
+            KeyCode::Esc => {
+                self.mode = Mode::Normal;
+                return;
+            }
+            KeyCode::Up => row = row.saturating_sub(1),
+            KeyCode::Down => row = (row + 1).min(rows - 1),
+            KeyCode::Left => col = (col + cols - 1) % cols,
+            KeyCode::Right => col = (col + 1) % cols,
+            KeyCode::Enter => {
+                if let Some(id) = id {
+                    if col == LABORS.len() {
+                        self.game.toggle_specialist(id);
+                    } else if let Some(lost) = self.game.toggle_labor(id, LABORS[col]) {
+                        self.flash = Some(format!("{} dropped: one tool labor per dwarf.", lost.name()));
+                    }
+                }
+            }
+            KeyCode::Char('a') if col < LABORS.len() => {
+                let l = LABORS[col];
+                let on = self.game.toggle_labor_all(l);
+                self.flash = Some(if on { format!("Everybody does {}.", l.name()) } else { format!("Nobody does {}.", l.name()) });
+            }
+            KeyCode::Char('[') => detail = (detail + ndet - 1) % ndet,
+            KeyCode::Char(']') => detail = (detail + 1) % ndet,
+            KeyCode::Char('w') => {
+                if let Some(id) = id {
+                    self.game.apply_detail(id, detail);
+                }
+            }
+            KeyCode::Char(c @ '1'..='9') => {
+                let n = c as usize - '1' as usize;
+                if let Some(id) = id {
+                    if self.game.apply_detail(id, n) {
+                        detail = n;
+                    }
+                }
+            }
+            KeyCode::Char('S') => {
+                if let Some(id) = id {
+                    self.flash = Some(match self.game.save_detail(id) {
+                        Some(name) => {
+                            detail = self.game.work_details.len() - 1;
+                            format!("Saved work detail \"{}\".", name)
+                        }
+                        None => "A work detail with these labors already exists.".into(),
+                    });
+                }
+            }
+            KeyCode::Char('X') => {
+                if let Some(name) = self.game.delete_detail(detail) {
+                    self.flash = Some(format!("Deleted work detail \"{}\".", name));
+                    detail = detail.saturating_sub(1);
+                }
+            }
+            _ => {}
+        }
+        self.mode = Mode::Labors { row, col, detail };
     }
 
     fn key_look(&mut self, k: KeyEvent, sel: usize) {

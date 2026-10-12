@@ -1,7 +1,7 @@
 use crate::app::{look_entries, App, LookEntry, Mode, ZoneTool, DESIG_KEYS};
 use crate::body::PARTS;
 use crate::buildings::BuildingKind;
-use crate::dwarf::{skill_rank, Dwarf, Task, LABORS};
+use crate::dwarf::{skill_level, skill_rank, Dwarf, Task, LABORS};
 use crate::game::{Game, ZoneKind, DAY, HUNGRY, RIPE, THIRSTY, TIRED};
 use crate::geom::Pos;
 use crate::items::{Item, ItemKind, StockFilter};
@@ -536,6 +536,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(key_line("k", "Look around", false));
             v.push(key_line("z", "Fortress status", false));
             v.push(key_line("u", "Unit list", false));
+            v.push(key_line("y", "Labors & work details", false));
             v.push(key_line("m", "Military", false));
             v.push(key_line("n", "Nobles, mandates & rooms", false));
             v.push(key_line("L", "Legends of the world", false));
@@ -721,7 +722,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             title = "Look".to_string();
             v.extend(look_lines(g, app.cursor, *sel));
         }
-        Mode::WorldMap { .. } | Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } => {
+        Mode::WorldMap { .. } | Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } => {
             title = String::new();
         }
         Mode::Nobles => {
@@ -919,6 +920,10 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
     v.push(plain(format!("  Fighter: {}", skill_rank(d.fight_xp)), MUTED));
     v.push(Line::default());
     v.push(header("Labors (Up/Down, Enter toggles)"));
+    v.push(plain(
+        if d.specialist { "  Specialist: no hauling (s)".into() } else { "  Hauls when idle (s: specialist)".into() },
+        MUTED,
+    ));
     for (i, l) in LABORS.iter().enumerate() {
         let on = d.labors[i];
         let xp = d.skills[i];
@@ -965,6 +970,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("b", "build workshops and furniture"),
         k("q", "query building: queue work orders"),
         k("u / v", "unit list / view dwarf (m drafts)"),
+        k("y", "labors: who does what, work details"),
         k("m", "military: station point, engage orders"),
         k("n", "nobles, mandates, bedrooms, wealth"),
         k("L", "legends: history, civs, sites, figures"),
@@ -1376,6 +1382,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::Legends { tab, scroll, .. } => draw_legends(f, area, &app.game.overworld, tab, scroll),
         Mode::Trade { side, sel } => draw_trade(f, area, app, side, sel),
         Mode::Status { tab, scroll } => draw_status(f, area, &app.game, tab, scroll),
+        Mode::Labors { row, col, detail } => draw_labors(f, area, app, row, col, detail),
         Mode::Help => popup(f, area, 60, 47, " Help ", help_text()),
         Mode::ConfirmQuit => popup(
             f,
@@ -1758,6 +1765,119 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
     v
 }
 
+fn draw_labors(f: &mut Frame, area: Rect, app: &App, row: usize, col: usize, detail: usize) {
+    let g = &app.game;
+    let w = area.width.saturating_sub(4).min(110);
+    let h = area.height.saturating_sub(2);
+    let r = Rect::new(area.x + (area.width - w) / 2, area.y + 1, w, h);
+    let alive: Vec<&Dwarf> = g.dwarves.iter().filter(|d| d.alive).collect();
+    let row = row.min(alive.len().saturating_sub(1));
+    let ncols = LABORS.len() + 1;
+    let on_bg = Color::Rgb(30, 90, 40);
+    let cursor_bg = Color::Rgb(220, 200, 0);
+
+    let mut v: Vec<Line> = Vec::new();
+    // Header: labor abbreviations, the active column highlighted.
+    let mut hdr = vec![Span::styled(format!("{:<38}", "Dwarf"), Style::default().fg(MUTED))];
+    for c in 0..ncols {
+        let name = if c < LABORS.len() { LABORS[c].short() } else { "Spc" };
+        let st = if c == col { Style::default().fg(BLACK).bg(KEY) } else { Style::default().fg(KEY) };
+        hdr.push(Span::styled(format!("{:^4}", name), st));
+    }
+    v.push(Line::from(hdr));
+
+    // Leave room for the cursor info and work details below the grid.
+    let room = (h as usize).saturating_sub(4 + 6 + g.work_details.len().min(9));
+    let first = row.saturating_sub(room.saturating_sub(1));
+    for (i, d) in alive.iter().enumerate().skip(first).take(room.max(1)) {
+        let sel_row = i == row;
+        let name_st = if sel_row { Style::default().fg(TEXT).bg(Color::Rgb(50, 60, 120)) } else { Style::default().fg(TEXT) };
+        let prof = if d.soldier { "Soldier" } else { d.profession() };
+        let mut spans = vec![
+            Span::styled(if d.soldier { "☻ " } else { "☺ " }, Style::default().fg(rgb(d.color))),
+            Span::styled(format!("{:<19.19}", d.name), name_st),
+            Span::styled(format!("{:<17.17}", prof), name_st.fg(MUTED)),
+        ];
+        for c in 0..ncols {
+            let (text, mut st) = if c < LABORS.len() {
+                let l = LABORS[c];
+                let xp = d.skills[l.idx()];
+                let lvl = if xp > 0 { format!("{}", skill_level(xp)) } else { String::new() };
+                if d.has(l) {
+                    (if lvl.is_empty() { "■".to_string() } else { lvl }, Style::default().fg(Color::Rgb(150, 255, 150)).bg(on_bg))
+                } else {
+                    (if lvl.is_empty() { "·".to_string() } else { lvl }, Style::default().fg(Color::Rgb(90, 90, 100)))
+                }
+            } else if d.specialist {
+                ("S".to_string(), Style::default().fg(Color::Rgb(255, 200, 120)).bg(Color::Rgb(90, 60, 20)))
+            } else {
+                ("·".to_string(), Style::default().fg(Color::Rgb(90, 90, 100)))
+            };
+            if sel_row && c == col {
+                st = st.fg(BLACK).bg(cursor_bg);
+            }
+            spans.push(Span::styled(format!("{:^4}", text), st));
+        }
+        v.push(Line::from(spans));
+    }
+    if alive.len() > first + room.max(1) {
+        v.push(plain(format!("  ...{} more below", alive.len() - first - room.max(1)), MUTED));
+    }
+
+    v.push(Line::default());
+    if let Some(d) = alive.get(row) {
+        if col < LABORS.len() {
+            let l = LABORS[col];
+            let xp = d.skills[l.idx()];
+            let skill = if xp > 0 { format!("{} {}", skill_rank(xp), l.name().to_lowercase()) } else { format!("no {} skill", l.name().to_lowercase()) };
+            let state = if d.has(l) { "does" } else { "doesn't do" };
+            let mut line = format!("{} {} {} ({}).", d.name, state, l.name().to_lowercase(), skill);
+            if let Some(r) = l.exclusive_with() {
+                line.push_str(&format!(" Excludes {}.", r.name().to_lowercase()));
+            }
+            v.push(plain(line, TEXT));
+        } else {
+            v.push(plain(
+                format!("{} {}", d.name, if d.specialist { "is a specialist: never hauls." } else { "hauls when there's nothing else." }),
+                TEXT,
+            ));
+        }
+    }
+    v.push(plain("Numbers are skill levels (0 dabbling .. 10 legendary). Green = enabled.".into(), MUTED));
+
+    v.push(Line::default());
+    v.push(header("Work details   [ ] select · w or 1-9 apply to dwarf · S save dwarf's labors · X delete"));
+    for (i, wd) in g.work_details.iter().enumerate().take(9) {
+        let st = if i == detail { Style::default().fg(BLACK).bg(KEY) } else { Style::default().fg(TEXT) };
+        let labors: Vec<&str> = wd.labors.iter().map(|l| l.short()).collect();
+        v.push(Line::from(vec![
+            Span::styled(format!(" {} {:<14}", i + 1, wd.name), st),
+            Span::styled(format!("  {}", labors.join(" ")), Style::default().fg(MUTED)),
+        ]));
+    }
+    if let Some(fl) = &app.flash {
+        v.push(Line::default());
+        v.push(plain(fl.clone(), Color::Rgb(120, 255, 160)));
+    }
+
+    f.render_widget(Clear, r);
+    f.render_widget(
+        Paragraph::new(v)
+            .style(Style::default().bg(Color::Rgb(15, 15, 25)))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(KEY))
+                    .title(Span::styled(" Labors ", Style::default().fg(KEY)))
+                    .title_bottom(Span::styled(
+                        " Arrows move · Enter toggle · a everybody/nobody · Esc back ",
+                        Style::default().fg(MUTED),
+                    )),
+            ),
+        r,
+    );
+}
+
 fn draw_status(f: &mut Frame, area: Rect, g: &Game, tab: usize, scroll: usize) {
     let w = area.width.saturating_sub(6).min(100);
     let h = area.height.saturating_sub(4);
@@ -1878,5 +1998,20 @@ mod tests {
         }
         app.mode = Mode::Zone { tool: ZoneTool::Meeting, corner: None };
         println!("{}", dump(&mut app, 130, 45));
+    }
+
+    #[test]
+    fn render_labors() {
+        let mut app = App::new(42);
+        app.mode = Mode::Labors { row: 1, col: 0, detail: 0 };
+        // Toggle a cell and a whole column through the keyboard.
+        let key = |c| crossterm::event::KeyEvent::new(c, crossterm::event::KeyModifiers::NONE);
+        app.on_key(key(crossterm::event::KeyCode::Right));
+        app.on_key(key(crossterm::event::KeyCode::Enter));
+        app.on_key(key(crossterm::event::KeyCode::Char('a')));
+        let s = dump(&mut app, 130, 45);
+        println!("{}", s);
+        assert!(s.contains("Labors") && s.contains("Hau") && s.contains("Woodworker"));
+        assert!(matches!(app.mode, Mode::Labors { col: 1, .. }));
     }
 }
