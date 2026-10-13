@@ -1,0 +1,394 @@
+//! Squads: members, orders, uniforms, barracks training and crossbows.
+
+use super::{Game, ZoneKind};
+use crate::dwarf::{Dwarf, Task};
+use crate::geom::Pos;
+use crate::items::{Item, ItemKind};
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SquadOrder {
+    /// Train in the barracks (or where they stand).
+    Train,
+    /// Hold the squad's station point.
+    Station,
+    /// Hunt down one creature.
+    Kill(u32),
+}
+
+/// What the squad's uniform puts in their hands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UniformWeapon {
+    Best,
+    Axe,
+    Sword,
+    Spear,
+    Hammer,
+    Crossbow,
+}
+
+impl UniformWeapon {
+    pub const ALL: [UniformWeapon; 6] =
+        [UniformWeapon::Best, UniformWeapon::Axe, UniformWeapon::Sword, UniformWeapon::Spear, UniformWeapon::Hammer, UniformWeapon::Crossbow];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            UniformWeapon::Best => "best melee weapon",
+            UniformWeapon::Axe => "battle axes",
+            UniformWeapon::Sword => "short swords",
+            UniformWeapon::Spear => "spears",
+            UniformWeapon::Hammer => "war hammers",
+            UniformWeapon::Crossbow => "crossbows",
+        }
+    }
+
+    pub fn next(self) -> UniformWeapon {
+        let i = Self::ALL.iter().position(|&w| w == self).unwrap_or(0);
+        Self::ALL[(i + 1) % Self::ALL.len()]
+    }
+
+    /// Whether a soldier in this uniform would carry `kind`.
+    pub fn accepts(self, kind: ItemKind) -> bool {
+        match self {
+            UniformWeapon::Best => kind.weapon_damage().is_some() && !matches!(kind, ItemKind::Crossbow | ItemKind::Pick),
+            UniformWeapon::Axe => kind == ItemKind::Axe,
+            UniformWeapon::Sword => kind == ItemKind::Sword,
+            UniformWeapon::Spear => kind == ItemKind::Spear,
+            UniformWeapon::Hammer => kind == ItemKind::Hammer,
+            UniformWeapon::Crossbow => kind == ItemKind::Crossbow,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Squad {
+    pub id: u32,
+    pub name: String,
+    pub members: Vec<u32>,
+    pub station: Option<Pos>,
+    pub order: SquadOrder,
+    pub weapon: UniformWeapon,
+    pub armor: bool,
+}
+
+const SQUAD_ADJ: [&str; 10] = ["Iron", "Granite", "Copper", "Silent", "Red", "Black", "Steel", "Grim", "Bright", "Deep"];
+const SQUAD_NOUN: [&str; 10] = ["Hammers", "Shields", "Axes", "Wardens", "Spears", "Fists", "Bolts", "Anvils", "Picks", "Guard"];
+
+/// Bolts a marksdwarf carries at most (two bundles).
+pub const MAX_AMMO: u32 = 20;
+/// How far a crossbow reaches.
+pub const RANGE: i32 = 10;
+
+impl Game {
+    pub fn new_squad(&mut self) -> usize {
+        let n = self.squads.len();
+        let name = format!("The {} {}", SQUAD_ADJ[(n * 3 + self.tick as usize) % 10], SQUAD_NOUN[(n * 7 + 1) % 10]);
+        let id = self.new_id();
+        self.squads.push(Squad {
+            id,
+            name,
+            members: Vec::new(),
+            station: None,
+            order: SquadOrder::Train,
+            weapon: UniformWeapon::Best,
+            armor: true,
+        });
+        self.squads.len() - 1
+    }
+
+    /// Disband a squad; its members go back to civilian life.
+    pub fn delete_squad(&mut self, idx: usize) {
+        if idx >= self.squads.len() {
+            return;
+        }
+        let s = self.squads.remove(idx);
+        for id in s.members {
+            if self.dwarves.iter().any(|d| d.id == id && d.soldier) {
+                self.toggle_soldier(id);
+            }
+        }
+    }
+
+    pub fn squad_of(&self, dwarf: u32) -> Option<&Squad> {
+        self.squads.iter().find(|s| s.members.contains(&dwarf))
+    }
+
+    /// Put a dwarf in a squad (drafting them) or take them out (discharging them).
+    pub fn set_squad_member(&mut self, idx: usize, dwarf: u32, on: bool) {
+        for s in self.squads.iter_mut() {
+            s.members.retain(|&m| m != dwarf);
+        }
+        let soldier = self.dwarves.iter().any(|d| d.id == dwarf && d.soldier);
+        if on {
+            if let Some(s) = self.squads.get_mut(idx) {
+                s.members.push(dwarf);
+            }
+        }
+        if on != soldier {
+            self.toggle_soldier(dwarf);
+        }
+    }
+
+    pub fn order_station(&mut self, idx: usize, at: Pos) {
+        if let Some(s) = self.squads.get_mut(idx) {
+            s.station = Some(at);
+            s.order = SquadOrder::Station;
+        }
+    }
+
+    pub fn order_train(&mut self, idx: usize) {
+        if let Some(s) = self.squads.get_mut(idx) {
+            s.order = SquadOrder::Train;
+        }
+    }
+
+    pub fn order_kill(&mut self, idx: usize, creature: u32) -> Result<String, String> {
+        let Some(c) = self.creatures.get(&creature).filter(|c| c.alive) else { return Err("Nothing to kill there.".into()) };
+        let what = c.name().to_string();
+        let Some(s) = self.squads.get_mut(idx) else { return Err("No such squad.".into()) };
+        s.order = SquadOrder::Kill(creature);
+        let msg = format!("{} will hunt down the {}.", s.name, what);
+        self.msg(&msg, (240, 200, 120));
+        Ok(msg)
+    }
+
+    /// The squad's uniform: (weapon, wears armor). Soldiers without a squad take the best of everything.
+    pub(super) fn uniform_of(&self, dwarf: u32) -> (UniformWeapon, bool) {
+        self.squad_of(dwarf).map_or((UniformWeapon::Best, true), |s| (s.weapon, s.armor))
+    }
+
+    /// Orders for a soldier with nothing more pressing. Returns true if a task was set.
+    pub(super) fn squad_task(&mut self, d: &mut Dwarf) -> bool {
+        let Some(idx) = self.squads.iter().position(|s| s.members.contains(&d.id)) else { return false };
+        match self.squads[idx].order {
+            SquadOrder::Kill(target) => {
+                if self.creatures.get(&target).map_or(false, |c| c.alive) {
+                    d.task = Task::Attack { target };
+                    return true;
+                }
+                let name = self.squads[idx].name.clone();
+                self.squads[idx].order = SquadOrder::Train;
+                self.msg(&format!("{} has carried out its kill order.", name), (160, 230, 160));
+                false
+            }
+            SquadOrder::Station => {
+                let Some(st) = self.squads[idx].station else { return false };
+                if (st.x - d.pos.x).abs() > 3 || (st.y - d.pos.y).abs() > 3 || st.z != d.pos.z {
+                    d.task = Task::Station { pos: st };
+                } else {
+                    d.task = Task::Train;
+                }
+                true
+            }
+            SquadOrder::Train => false,
+        }
+    }
+
+    /// Training goes on in the barracks when there is one.
+    pub(super) fn go_train(&mut self, d: &mut Dwarf) {
+        let barracks: Vec<Pos> = self
+            .zones
+            .values()
+            .filter(|z| z.kind == ZoneKind::Barracks)
+            .flat_map(|z| z.tiles.iter().copied())
+            .filter(|&p| self.world.walkable(p))
+            .collect();
+        if !barracks.is_empty() && self.zone_kind_at(d.pos) != Some(ZoneKind::Barracks) {
+            let p = barracks[self.rng.range(0, barracks.len() as i32) as usize];
+            d.task = Task::Station { pos: p };
+            return;
+        }
+        d.task = Task::Train;
+    }
+
+    /// Experience for a tick of drill: sparring partners in the barracks and
+    /// archery targets for marksdwarves make it count for more.
+    pub(super) fn drill_xp(&self, d: &Dwarf) -> u32 {
+        let mut xp = 1;
+        let in_barracks = self.zone_kind_at(d.pos) == Some(ZoneKind::Barracks);
+        if in_barracks
+            && self.dwarves.iter().any(|o| o.alive && o.soldier && o.id != d.id && crate::game::combat::adjacent(o.pos, d.pos))
+        {
+            xp += 1;
+        }
+        if self.holds_crossbow(d) {
+            let target = self.buildings.values().any(|b| {
+                b.kind == crate::buildings::BuildingKind::ArcheryTarget
+                    && b.built
+                    && b.pos.z == d.pos.z
+                    && (b.pos.x - d.pos.x).abs().max((b.pos.y - d.pos.y).abs()) <= RANGE
+                    && self.clear_shot(d.pos, b.pos)
+            });
+            if target {
+                xp += 1;
+            }
+        }
+        xp
+    }
+
+    pub(super) fn holds_crossbow(&self, d: &Dwarf) -> bool {
+        d.held.and_then(|id| self.items.get(&id)).map_or(false, |it| it.kind == ItemKind::Crossbow)
+    }
+
+    /// A straight line on one level with nothing solid in between.
+    /// Fortifications don't block it: they're built to shoot through.
+    pub fn clear_shot(&self, a: Pos, b: Pos) -> bool {
+        if a.z != b.z {
+            return false;
+        }
+        let (dx, dy) = (b.x - a.x, b.y - a.y);
+        let steps = dx.abs().max(dy.abs());
+        for i in 1..steps {
+            let x = a.x + (dx * i + dx.signum() * steps / 2) / steps.max(1);
+            let y = a.y + (dy * i + dy.signum() * steps / 2) / steps.max(1);
+            if self.world.solid(Pos::new(x, y, a.z)) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Shoot at a creature if loaded, in range and in sight. Returns true if a bolt flew.
+    pub(super) fn try_shoot(&mut self, d: &mut Dwarf, target: u32) -> bool {
+        if d.ammo == 0 || !self.holds_crossbow(d) {
+            return false;
+        }
+        let Some(c) = self.creatures.get(&target).filter(|c| c.alive) else { return false };
+        let (cpos, dpos) = (c.pos, d.pos);
+        if (cpos.x - dpos.x).abs().max((cpos.y - dpos.y).abs()) > RANGE || !self.clear_shot(dpos, cpos) {
+            return false;
+        }
+        if d.attack_cd > 0 {
+            return true;
+        }
+        d.ammo -= 1;
+        d.attack_cd = 14;
+        d.fight_xp += 6;
+        let att = super::combat::Fighter {
+            name: d.name.clone(),
+            skill: d.fight_level(),
+            dmg: 9.0,
+            verb: "shoots",
+            edged: true,
+            helm: 0,
+            mail: 0,
+            shield: false,
+        };
+        let def = self.creature_fighter(c);
+        let mut body = c.body.clone();
+        if let Some(m) = self.strike(&att, &def, &mut body) {
+            self.msg(&m, (235, 225, 130));
+        }
+        let dead = body.dead;
+        if let Some(c) = self.creatures.get_mut(&target) {
+            c.body = body;
+            c.target = c.target.or(Some(d.id));
+        }
+        if dead {
+            if let Some(c) = self.creatures.remove(&target) {
+                self.creature_died(c);
+            }
+        }
+        true
+    }
+
+    /// A bundle of bolts to pick up, if a marksdwarf is running low.
+    pub(super) fn wants_bolts(&self, d: &Dwarf) -> bool {
+        self.uniform_of(d.id).0 == UniformWeapon::Crossbow && d.ammo + 10 <= MAX_AMMO
+    }
+}
+
+/// Bolt bundles are picked up into the quiver rather than held.
+pub fn is_bolts(it: &Item) -> bool {
+    it.kind == ItemKind::Bolt
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::creature::Species;
+    use crate::game::DAY;
+    use crate::material::Mat;
+
+    #[test]
+    fn two_squads_hold_two_stations_and_a_kill_order_is_carried_out() {
+        let mut g = Game::new(71);
+        let e = g.embark;
+        for _ in 0..4 {
+            g.spawn_item(ItemKind::Spear, Mat::Iron, e);
+        }
+        let ids: Vec<u32> = g.dwarves.iter().take(4).map(|d| d.id).collect();
+        let a = g.new_squad();
+        let b = g.new_squad();
+        g.set_squad_member(a, ids[0], true);
+        g.set_squad_member(a, ids[1], true);
+        g.set_squad_member(b, ids[2], true);
+        g.set_squad_member(b, ids[3], true);
+        assert!(g.dwarves.iter().filter(|d| d.soldier).count() == 4);
+        let surface = |g: &Game, p: Pos| Pos::new(p.x, p.y, g.world.surface_z(p.x, p.y));
+        let (sa, sb) = (surface(&g, e.offset(-8, 0, 0)), surface(&g, e.offset(8, 0, 0)));
+        g.order_station(a, sa);
+        g.order_station(b, sb);
+        for _ in 0..DAY / 2 {
+            g.step();
+        }
+        let near = |p: Pos, q: Pos| (p.x - q.x).abs() <= 3 && (p.y - q.y).abs() <= 3;
+        for (squad, st) in [(a, sa), (b, sb)] {
+            for m in &g.squads[squad].members {
+                let d = g.dwarves.iter().find(|d| d.id == *m).unwrap();
+                assert!(near(d.pos, st), "{} isn't at {:?} but {:?}", d.name, st, d.pos);
+            }
+        }
+
+        // A deer wanders by; squad A is told to kill it.
+        let deer = g.spawn_creature(Species::Deer, surface(&g, e.offset(0, 6, 0)), u64::MAX);
+        assert!(g.order_kill(a, deer).is_ok());
+        for _ in 0..DAY {
+            g.step();
+            if !g.creatures.contains_key(&deer) {
+                break;
+            }
+        }
+        assert!(!g.creatures.get(&deer).map_or(false, |c| c.alive), "the deer survived the kill order");
+        assert_eq!(g.squads[a].order, SquadOrder::Train);
+    }
+
+    #[test]
+    fn marksdwarves_shoot_from_range() {
+        let mut g = Game::new(72);
+        let e = g.embark;
+        g.alert = false;
+        g.spawn_item(ItemKind::Crossbow, Mat::Wood, e);
+        g.spawn_item(ItemKind::Bolt, Mat::Wood, e);
+        let s = g.new_squad();
+        g.squads[s].weapon = UniformWeapon::Crossbow;
+        g.squads[s].armor = false;
+        let id = g.dwarves[0].id;
+        g.set_squad_member(s, id, true);
+        for _ in 0..DAY / 2 {
+            g.step();
+        }
+        let d = g.dwarves.iter().find(|d| d.id == id).unwrap().clone();
+        assert!(g.holds_crossbow(&d), "no crossbow picked up");
+        assert_eq!(d.ammo, 10, "no bolts picked up");
+        // Put a wolf six tiles off in the open and let fly.
+        let mut d = d;
+        let spot = (2..9)
+            .map(|i| d.pos.offset(i, 0, 0))
+            .find(|&p| g.world.walkable(p) && g.clear_shot(d.pos, p) && (p.x - d.pos.x) >= 5)
+            .expect("no clear line");
+        let wolf = g.spawn_creature(Species::Wolf, spot, u64::MAX);
+        let mut shots = 0;
+        for _ in 0..200 {
+            d.attack_cd = d.attack_cd.saturating_sub(1);
+            if g.try_shoot(&mut d, wolf) && d.attack_cd == 14 {
+                shots += 1;
+            }
+            if !g.creatures.get(&wolf).map_or(false, |c| c.alive) {
+                break;
+            }
+        }
+        assert!(shots > 0, "never shot");
+        assert!(d.ammo < 10);
+    }
+}

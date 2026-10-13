@@ -27,10 +27,11 @@ pub enum BuildingKind {
     WeaponTrap,
     StoneTrap,
     Bridge,
+    ArcheryTarget,
 }
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 20] = [
+    pub const ALL: [BuildingKind; 21] = [
         BuildingKind::Carpenter,
         BuildingKind::Mason,
         BuildingKind::Still,
@@ -51,6 +52,7 @@ impl BuildingKind {
         BuildingKind::WeaponTrap,
         BuildingKind::StoneTrap,
         BuildingKind::Bridge,
+        BuildingKind::ArcheryTarget,
     ];
 
     pub fn name(self) -> &'static str {
@@ -75,6 +77,7 @@ impl BuildingKind {
             BuildingKind::WeaponTrap => "Weapon trap",
             BuildingKind::StoneTrap => "Stone-fall trap",
             BuildingKind::Bridge => "Drawbridge",
+            BuildingKind::ArcheryTarget => "Archery target",
         }
     }
 
@@ -100,6 +103,7 @@ impl BuildingKind {
             BuildingKind::WeaponTrap => 'v',
             BuildingKind::StoneTrap => 'o',
             BuildingKind::Bridge => 'i',
+            BuildingKind::ArcheryTarget => 'z',
         }
     }
 
@@ -115,6 +119,7 @@ impl BuildingKind {
                 | BuildingKind::WeaponTrap
                 | BuildingKind::StoneTrap
                 | BuildingKind::Bridge
+                | BuildingKind::ArcheryTarget
         )
     }
 
@@ -195,7 +200,7 @@ impl BuildingKind {
     pub fn recipes(self) -> &'static [Recipe] {
         use Recipe::*;
         match self {
-            BuildingKind::Carpenter => &[WoodBed, WoodTable, WoodChair, WoodDoor, Barrel, Bin, WoodCage],
+            BuildingKind::Carpenter => &[WoodBed, WoodTable, WoodChair, WoodDoor, Barrel, Bin, WoodCage, WoodCrossbow, Bolts],
             BuildingKind::Mechanic => &[Mechanism],
             BuildingKind::Mason => &[Blocks, StoneTable, StoneChair, StoneDoor],
             BuildingKind::Still => &[Brew],
@@ -257,6 +262,7 @@ impl BuildingKind {
             BuildingKind::Lever => '¬',
             BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap => '^',
             BuildingKind::Bridge => '≡',
+            BuildingKind::ArcheryTarget => '◎',
         }
     }
 }
@@ -345,6 +351,8 @@ pub enum Recipe {
     CutGem,
     Mechanism,
     WoodCage,
+    WoodCrossbow,
+    Bolts,
 }
 
 impl Recipe {
@@ -380,6 +388,8 @@ impl Recipe {
             CutGem => "Cut a gem",
             Mechanism => "Make mechanism",
             WoodCage => "Make wooden cage",
+            WoodCrossbow => "Make wooden crossbow",
+            Bolts => "Make wooden bolts",
         }
     }
 
@@ -407,6 +417,8 @@ impl Recipe {
             CutGem => 'g',
             Mechanism => 'm',
             WoodCage => 'g',
+            WoodCrossbow => 'x',
+            Bolts => 'l',
         }
     }
 
@@ -423,14 +435,14 @@ impl Recipe {
             | ForgeShield => Labor::Smithing,
             StoneCraft | BoneCraft | CutGem => Labor::Crafting,
             Mechanism => Labor::Mechanics,
-            WoodCage => Labor::Carpentry,
+            WoodCage | WoodCrossbow | Bolts => Labor::Carpentry,
         }
     }
 
     pub fn inputs(self) -> &'static [Input] {
         use Recipe::*;
         match self {
-            WoodBed | WoodTable | WoodChair | WoodDoor | Barrel | Bin | Charcoal | WoodCage => &[Input::Log],
+            WoodBed | WoodTable | WoodChair | WoodDoor | Barrel | Bin | Charcoal | WoodCage | WoodCrossbow | Bolts => &[Input::Log],
             Blocks | StoneTable | StoneChair | StoneDoor | StoneCraft | Mechanism => &[Input::Stone],
             Brew => &[Input::Mushroom],
             Cook => &[Input::Edible],
@@ -507,6 +519,8 @@ impl Recipe {
             CutGem => one(ItemKind::Gem),
             Mechanism => one(ItemKind::Mechanism),
             WoodCage => one(ItemKind::Cage),
+            WoodCrossbow => one(ItemKind::Crossbow),
+            Bolts => vec![(ItemKind::Bolt, m, None); 2],
         }
     }
 

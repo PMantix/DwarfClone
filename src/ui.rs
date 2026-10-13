@@ -843,6 +843,32 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.extend(unit_view(g, d, *sel));
             }
         }
+        Mode::KillTarget { squad } => {
+            title = "Kill order".to_string();
+            v.push(plain(format!("Who should {} kill?", g.squads.get(*squad).map_or("the squad", |s| s.name.as_str())), TEXT));
+            v.push(plain("Move onto a creature, Enter.".into(), TEXT));
+            v.push(plain("Esc: back".into(), MUTED));
+            v.push(Line::default());
+            v.extend(cursor_info(g, app.cursor));
+        }
+        Mode::SquadMembers { squad, sel } => {
+            let s = g.squads.get(*squad);
+            title = s.map_or("Squad".into(), |s| s.name.clone());
+            v.push(plain("Who serves in this squad:".into(), TEXT));
+            for (i, d) in g.dwarves.iter().filter(|d| d.alive).enumerate() {
+                let on = s.map_or(false, |s| s.members.contains(&d.id));
+                let other = if !on { g.squad_of(d.id).map(|o| format!(" ({})", o.name)) } else { None };
+                let style = if i == *sel { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
+                v.push(Line::from(vec![
+                    Span::styled(if on { " [x] " } else { " [ ] " }, style.fg(if on { Color::Rgb(90, 220, 90) } else { MUTED })),
+                    Span::styled(format!("{:<20}", d.name), style.fg(TEXT)),
+                    Span::styled(format!("{} fighter{}", skill_rank(d.fight_xp), other.unwrap_or_default()), style.fg(MUTED)),
+                ]));
+            }
+            v.push(Line::default());
+            v.push(plain("Enter: draft into / discharge from".into(), MUTED));
+            v.push(plain("this squad · Esc back".into(), MUTED));
+        }
         Mode::LinkLever { .. } => {
             title = "Link lever".to_string();
             v.push(plain("Move the cursor onto a door or".into(), TEXT));
@@ -1010,25 +1036,59 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 if g.civ_alert { "Civilian alert: RAISED" } else { "Civilian alert: off" },
                 g.civ_alert,
             ));
-            v.push(key_line("s", "Station soldiers at cursor", false));
-            v.push(key_line("x", "Clear station", false));
-            if let Some(st) = g.station {
-                v.push(plain(format!("Station: ({}, {}, {})", st.x, st.y, st.z), MUTED));
-            }
             v.push(Line::default());
-            v.push(header("Soldiers"));
-            let soldiers: Vec<&Dwarf> = g.dwarves.iter().filter(|d| d.alive && d.soldier).collect();
-            if soldiers.is_empty() {
-                v.push(plain("None. Draft dwarves from their".into(), MUTED));
-                v.push(plain("unit screen (v or u, then m).".into(), MUTED));
+            let sel = app.squad_sel.min(g.squads.len().saturating_sub(1));
+            v.push(header("Squads   n new · [ ] select"));
+            if g.squads.is_empty() {
+                v.push(plain("No squads yet (n).".into(), MUTED));
             }
-            for d in soldiers {
-                let weapon = d.held.and_then(|id| g.items.get(&id)).map_or("unarmed".into(), |it| it.name());
-                v.push(Line::from(vec![
-                    Span::styled("☻ ", Style::default().fg(rgb(d.color))),
-                    Span::styled(d.name.clone(), Style::default().fg(TEXT)),
-                ]));
-                v.push(plain(format!("   {} · {}", weapon, task_desc(g, d)), MUTED));
+            for (i, s) in g.squads.iter().enumerate() {
+                let order = match s.order {
+                    crate::game::SquadOrder::Train => "training".to_string(),
+                    crate::game::SquadOrder::Station => "holding station".to_string(),
+                    crate::game::SquadOrder::Kill(t) => {
+                        format!("hunting the {}", g.creatures.get(&t).map_or("quarry", |c| c.name()))
+                    }
+                };
+                let style = if i == sel { Style::default().fg(BLACK).bg(KEY) } else { Style::default().fg(TEXT) };
+                v.push(Line::from(Span::styled(format!(" {} ({}) ", s.name, s.members.len()), style)));
+                v.push(plain(format!("   {} · {}{}", order, s.weapon.name(), if s.armor { ", armored" } else { "" }), MUTED));
+                if i == sel {
+                    for m in &s.members {
+                        if let Some(d) = g.dwarves.iter().find(|d| d.id == *m && d.alive) {
+                            let weapon = d.held.and_then(|id| g.items.get(&id)).map_or("unarmed".into(), |it| it.name());
+                            let ammo = if d.ammo > 0 { format!(", {} bolts", d.ammo) } else { String::new() };
+                            v.push(Line::from(vec![
+                                Span::styled("   ☻ ", Style::default().fg(rgb(d.color))),
+                                Span::styled(d.name.clone(), Style::default().fg(TEXT)),
+                            ]));
+                            v.push(plain(format!("     {}{} · {}", weapon, ammo, task_desc(g, d)), MUTED));
+                        }
+                    }
+                }
+            }
+            if !g.squads.is_empty() {
+                v.push(Line::default());
+                v.push(key_line("u", "Members", false));
+                v.push(key_line("s", "Station at the cursor", false));
+                v.push(key_line("k", "Kill a creature", false));
+                v.push(key_line("t", "Back to training", false));
+                v.push(key_line("w", "Uniform: next weapon", false));
+                v.push(key_line("r", "Uniform: armor on/off", false));
+                v.push(key_line("X", "Disband", false));
+            }
+            let loose: Vec<&Dwarf> = g.dwarves.iter().filter(|d| d.alive && d.soldier && g.squad_of(d.id).is_none()).collect();
+            if !loose.is_empty() {
+                v.push(Line::default());
+                v.push(header("Soldiers without a squad"));
+                for d in loose {
+                    v.push(plain(format!(" ☻ {} · {}", d.name, task_desc(g, d)), TEXT));
+                }
+                if g.squads.is_empty() {
+                    v.push(key_line("s", "Station them at the cursor", false));
+                } else {
+                    v.push(plain("Add them to a squad with u.".into(), MUTED));
+                }
             }
             let hostiles = g.hostile_count();
             if hostiles > 0 {
@@ -1192,7 +1252,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("u / v", "unit list / view dwarf (m drafts)"),
         k("y", "labors: who does what, work details"),
         k("w / o", "burrows / traffic designations"),
-        k("m", "military: station point, engage orders"),
+        k("m", "military: squads, orders, uniforms, alerts"),
         k("n", "nobles, mandates, bedrooms, wealth"),
         k("L", "legends: history, civs, sites, figures"),
         k("Tab", "jump to next dwarf"),
@@ -2671,8 +2731,16 @@ mod tests {
         app.game.dwarves[0].body.wound(crate::body::Part::LeftArm, 15, true);
         app.mode = Mode::Unit { id, sel: 2 };
         println!("{}", dump(&mut app, 130, 50));
+        let s1 = app.game.new_squad();
+        let s2 = app.game.new_squad();
+        let (a, b) = (app.game.dwarves[1].id, app.game.dwarves[2].id);
+        app.game.set_squad_member(s1, a, true);
+        app.game.set_squad_member(s2, b, true);
+        app.game.squads[s2].weapon = crate::game::military_weapon_for_tests();
         app.mode = Mode::Military;
-        println!("{}", dump(&mut app, 130, 45));
+        let s = dump(&mut app, 130, 45);
+        println!("{}", s);
+        assert!(s.contains("Squads") && s.contains(&app.game.squads[s1].name));
         let (x, y) = app.game.site;
         app.mode = Mode::WorldMap { x, y };
         println!("{}", dump(&mut app, 140, 40));

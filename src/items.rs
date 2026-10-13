@@ -37,6 +37,9 @@ pub enum ItemKind {
     Gem,
     Mechanism,
     Cage,
+    Crossbow,
+    /// A bundle of ten crossbow bolts.
+    Bolt,
 }
 
 /// Items that fit in a barrel or a bin, ten to a container.
@@ -87,6 +90,8 @@ impl ItemKind {
             Gem => 40,
             Mechanism => 8,
             Cage => 6,
+            Crossbow => 20,
+            Bolt => 3,
         }
     }
 
@@ -98,6 +103,8 @@ impl ItemKind {
             ItemKind::Sword => Some(8.0),
             ItemKind::Spear => Some(8.0),
             ItemKind::Hammer => Some(9.0),
+            // Swung, a crossbow is just a club.
+            ItemKind::Crossbow => Some(3.0),
             _ => None,
         }
     }
@@ -127,7 +134,7 @@ impl ItemKind {
     }
 
     pub fn is_equipment(self) -> bool {
-        self.weapon_damage().is_some() || self.armor_slot().is_some()
+        self.weapon_damage().is_some() || self.armor_slot().is_some() || self == ItemKind::Bolt
     }
 }
 
@@ -295,6 +302,8 @@ impl Item {
             Craft => format!("{} figurine", m.adj()),
             Gem => format!("cut {}", m.name()),
             Mechanism => format!("{} mechanism", m.adj()),
+            Crossbow => format!("{} crossbow", m.adj()),
+            Bolt => format!("{} bolts (10)", m.adj()),
             Cage => match self.label.as_deref() {
                 Some(beast) => format!("{} cage (holding a {})", m.adj(), beast),
                 None => format!("{} cage", m.adj()),
@@ -337,6 +346,8 @@ impl Item {
             Gem => '☼',
             Mechanism => '*',
             Cage => '#',
+            Crossbow => '}',
+            Bolt => '/',
         };
         let col = match self.kind {
             Drink => Color::Rgb(230, 170, 60),

@@ -254,6 +254,10 @@ impl Game {
             }
             return;
         }
+        // Marksdwarves shoot from where they stand.
+        if self.try_shoot(d, target) {
+            return;
+        }
         if let Travel::Failed = self.travel(d, cpos) {
             d.task = Task::Idle;
             d.idle_cd = 30;
@@ -262,13 +266,31 @@ impl Game {
 
     /// Soldiers pick up the best weapon and any missing armor before anything else.
     pub(super) fn equip_soldier(&mut self, d: &mut Dwarf) -> bool {
-        let score = |it: &Item| it.kind.weapon_damage().map_or(0.0, |w| w * it.mat.weapon_mult());
+        // The squad's uniform says which weapon; within that, the best material.
+        let (weapon, armor) = self.uniform_of(d.id);
+        let score = |it: &Item| {
+            if !weapon.accepts(it.kind) {
+                return 0.0;
+            }
+            it.kind.weapon_damage().map_or(0.0, |w| w * it.mat.weapon_mult()) + 0.1
+        };
         let current = d.held.and_then(|id| self.items.get(&id)).map_or(0.0, score);
-        if let Some((item, path)) = self.find_item(d.pos, |it| score(it) > current + 0.5) {
+        if let Some((item, path)) = self.find_item(d.pos, |it| score(it) > current + 0.5 || (current == 0.0 && score(it) > 0.0)) {
             self.claim_item(item, d.id);
             d.task = Task::Equip { item };
             Self::set_path(d, path);
             return true;
+        }
+        if self.wants_bolts(d) {
+            if let Some((item, path)) = self.find_item(d.pos, super::military::is_bolts) {
+                self.claim_item(item, d.id);
+                d.task = Task::Equip { item };
+                Self::set_path(d, path);
+                return true;
+            }
+        }
+        if !armor {
+            return false;
         }
         let worn: Vec<Slot> = d
             .armor
@@ -313,6 +335,13 @@ impl Game {
             Travel::Failed => self.release_task(d),
             Travel::Arrived => {
                 let kind = self.items[&item].kind;
+                if kind == ItemKind::Bolt {
+                    // Bolts go into the quiver.
+                    self.items.remove(&item);
+                    d.ammo += 10;
+                    d.task = Task::Idle;
+                    return;
+                }
                 if let Some(slot) = kind.armor_slot() {
                     let old: Vec<u32> = d
                         .armor
@@ -498,6 +527,15 @@ impl Game {
 
     pub(super) fn creature_died(&mut self, mut c: Creature) {
         c.alive = false;
+        // Squads sent after it are done.
+        let mut done = Vec::new();
+        for s in self.squads.iter_mut().filter(|s| s.order == super::SquadOrder::Kill(c.id)) {
+            s.order = super::SquadOrder::Train;
+            done.push(s.name.clone());
+        }
+        for name in done {
+            self.msg(&format!("{} has carried out its kill order.", name), (160, 230, 160));
+        }
         for id in c.weapon.take().into_iter().chain(c.armor.drain(..)) {
             self.drop_item(id, c.pos);
         }

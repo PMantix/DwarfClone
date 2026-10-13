@@ -24,6 +24,12 @@ mod rooms;
 mod construct;
 mod burrows;
 mod traps;
+mod military;
+pub use military::{Squad, SquadOrder};
+#[cfg(test)]
+pub fn military_weapon_for_tests() -> military::UniformWeapon {
+    military::UniformWeapon::Crossbow
+}
 pub use burrows::{Burrow, MAX_BURROWS, TRAFFIC_NAMES};
 pub use construct::{BuildMat, ConstructKind, Construction};
 mod trade;
@@ -74,6 +80,8 @@ pub enum ZoneKind {
     Office,
     /// Items marked for dumping are thrown here.
     Dump,
+    /// Soldiers train and spar here.
+    Barracks,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -143,6 +151,8 @@ pub struct Game {
     pub constructions: BTreeMap<u32, Construction>,
     #[serde(default)]
     pub burrows: Vec<Burrow>,
+    #[serde(default)]
+    pub squads: Vec<Squad>,
     /// Bit of the burrow civilians flee to when the alert is raised.
     #[serde(default)]
     pub alert_burrow: Option<u8>,
@@ -255,6 +265,7 @@ impl Game {
             work_details: labor::default_details(),
             constructions: BTreeMap::new(),
             burrows: Vec::new(),
+            squads: Vec::new(),
             alert_burrow: None,
             civ_alert: false,
             dig_version: 0,
@@ -613,6 +624,11 @@ impl Game {
         if let Some(i) = self.dwarves.iter().position(|d| d.id == dwarf_id) {
             let mut d = std::mem::take(&mut self.dwarves[i]);
             d.soldier = !d.soldier;
+            if !d.soldier {
+                for s in self.squads.iter_mut() {
+                    s.members.retain(|&m| m != dwarf_id);
+                }
+            }
             if !d.task.is_need() {
                 self.release_task(&mut d);
             }
@@ -1318,6 +1334,10 @@ impl Game {
         if self.equip_soldier(d) {
             return;
         }
+        // A kill order comes before everything else.
+        if matches!(self.squad_of(d.id).map(|s| s.order), Some(SquadOrder::Kill(_))) && self.squad_task(d) {
+            return;
+        }
         if self.alert {
             let at: HashMap<Pos, u32> = self
                 .creatures
@@ -1340,13 +1360,19 @@ impl Game {
                 }
             }
         }
-        if let Some(st) = self.station {
-            if (st.x - d.pos.x).abs() > 3 || (st.y - d.pos.y).abs() > 3 || st.z != d.pos.z {
-                d.task = Task::Station { pos: st };
-                return;
+        if self.squad_task(d) {
+            return;
+        }
+        // Soldiers without a squad follow the old fortress-wide station.
+        if self.squad_of(d.id).is_none() {
+            if let Some(st) = self.station {
+                if (st.x - d.pos.x).abs() > 3 || (st.y - d.pos.y).abs() > 3 || st.z != d.pos.z {
+                    d.task = Task::Station { pos: st };
+                    return;
+                }
             }
         }
-        d.task = Task::Train;
+        self.go_train(d);
     }
 
     fn start_bed(&mut self, d: &mut Dwarf, rest: bool) {
@@ -2050,7 +2076,7 @@ impl Game {
                 if Self::labor(d, 300, 0) {
                     d.task = Task::Idle;
                 } else if d.work % 2 == 0 {
-                    d.fight_xp += 1;
+                    d.fight_xp += self.drill_xp(d);
                 }
             }
         }

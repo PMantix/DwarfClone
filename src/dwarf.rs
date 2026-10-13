@@ -336,6 +336,9 @@ pub struct Dwarf {
     /// Only does their own skilled labors: no hauling.
     #[serde(default)]
     pub specialist: bool,
+    /// Crossbow bolts in the quiver.
+    #[serde(default)]
+    pub ammo: u32,
 }
 
 impl Dwarf {

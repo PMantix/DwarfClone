@@ -16,21 +16,9 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W04, W05 (military and medicine) → W08 onward.
+Suggested order: W05 (medicine) → W08 onward.
 
 ### Tier 1: basics you'll miss in the first hour
-
-#### W04 Squads and the military screen (M–L)
-- **DF:** squads with captains and a militia commander, uniforms, monthly schedules, station, patrol, burrow and kill orders, barracks, sparring, marksdwarves with crossbows and bolts.
-- **Us:** individual drafting, one global station point, a global engage switch, hunting.
-- **Plan:** a `Squad` struct (members, station, order, uniform) on `Game`; `combat.rs` `choose_military` reads the dwarf's squad instead of global state.
-- **Steps:**
-  - [ ] Squads: create, name, add and remove members; per-squad station point
-  - [ ] Kill order: pick a target with the look cursor
-  - [ ] Uniforms: weapon type and armor per squad
-  - [ ] Barracks zone: soldiers train and spar there
-  - [ ] Crossbows, bolts and an archery target (first ranged combat)
-- **Done when:** a test sends two squads to different stations and both arrive; a kill order kills the named target.
 
 #### W05 Health care (M)
 - **DF:** a hospital zone and a chief medical dwarf, diagnosis before treatment, surgery, sutures, bone setting, cleaning and dressing wounds, splints, casts, crutches; thread, cloth and soap; infection from dirty water.
@@ -165,6 +153,7 @@ Ideas not ranked yet. Add a line on why each matters.
 - Drawbridges over open space (moats), wider than one tile, flinging what's on them; pressure plates.
 - Linking a lever consumes a mechanism instantly; DF has a mechanic walk over and install it.
 - Caged animals could be tamed (W08) and caged goblins interrogated (B04).
+- Squad schedules (DF's monthly alerts) and patrol routes; metal crossbows and bolts at the forge.
 - Pick a room's owner from a list instead of cycling through dwarves with `o`.
 - Announcements history screen (DF's report log): find out what happened while you weren't looking.
 - Mini-map and saved camera spots: get around a 96×64 map faster.
@@ -173,6 +162,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **W04 Squads and the military screen** (this commit): named squads with members, a station, orders (train, hold station, kill a chosen creature) and a uniform (weapon type, armor on/off); a barracks zone where soldiers train and spar for faster learning; wooden crossbows and bolts from the carpenter, marksdwarves shooting up to 10 tiles with a clear line of fire (through fortifications), archery targets for practice.
 - **W06 Mechanisms, levers and traps** (this commit): Mechanics labor and Mechanic's workshop (mechanisms from stone); wooden cages at the carpenter; buildings that take several parts; cage traps (catch a creature, then need a new cage), weapon traps (strike up to three times, re-arm themselves), stone-fall traps (one heavy hit, then need a new boulder); levers linked to doors and drawbridges (linking uses a mechanism), pulled by any civilian; a raised drawbridge blocks everyone and can't be battered down.
 - **W07 Burrows and traffic** (this commit): `w` paints up to eight burrows and picks who must stay in each (members only path and work inside); one burrow can be the civilian alert burrow, and `m` then `c` sends every non-soldier into it (status bar shows the alert); `o` paints high, normal, low or restricted traffic, which changes dwarves' path costs.
 - **W23 Embark and map size** (this commit): `s` on the world map picks Small 64×48×32, Medium 96×64×32 (unchanged) or Large 144×96×48 with a second, deeper cavern layer; the footprint is outlined on the world map. Saves are run-length encoded (a medium save is well under 4 MB, was ~25 MB; old saves still load). A large map simulates a year in ~12 s.

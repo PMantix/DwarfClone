@@ -75,6 +75,11 @@ marked with `d` go to the dump. Dwarves with nothing
 to do gather at the meeting area and chat there more often; without one they at least keep
 out of corridors. A stroll always gives way to real work.
 
+**Squads.** The military screen (`m`) forms named squads, gives them uniforms (weapon type,
+armor) and orders: train, hold a station, or kill a chosen creature. Soldiers train in the
+barracks zone and learn faster sparring together. Crossbows and bolts come from the
+carpenter; marksdwarves shoot from up to ten tiles, through fortifications.
+
 **Traps & levers.** A mechanic makes mechanisms from stone. Cage traps catch whatever
 steps on them, weapon traps cut it up, stone-fall traps drop a boulder. Levers (`q`, then `k`
 to link, `p` to pull) lock doors and raise drawbridges that nothing can get past.

@@ -20,12 +20,16 @@ impl ZoneKind {
             ZoneKind::Dining => "Dining hall".into(),
             ZoneKind::Office => "Office".into(),
             ZoneKind::Dump => "Garbage dump".into(),
+            ZoneKind::Barracks => "Barracks".into(),
         }
     }
 
     /// Zones that can be laid over beds, tables and chairs.
     pub fn holds_furniture(self) -> bool {
-        matches!(self, ZoneKind::Meeting | ZoneKind::Bedroom | ZoneKind::Dormitory | ZoneKind::Dining | ZoneKind::Office)
+        matches!(
+            self,
+            ZoneKind::Meeting | ZoneKind::Bedroom | ZoneKind::Dormitory | ZoneKind::Dining | ZoneKind::Office | ZoneKind::Barracks
+        )
     }
 
     /// Zones that belong to one dwarf.

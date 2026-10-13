@@ -61,11 +61,12 @@ pub enum ZoneTool {
     Dining,
     Office,
     Dump,
+    Barracks,
     Erase,
 }
 
 impl ZoneTool {
-    pub const ALL: [ZoneTool; 8] = [
+    pub const ALL: [ZoneTool; 9] = [
         ZoneTool::Meeting,
         ZoneTool::Bedroom,
         ZoneTool::Dormitory,
@@ -73,6 +74,7 @@ impl ZoneTool {
         ZoneTool::Office,
         ZoneTool::Farm,
         ZoneTool::Dump,
+        ZoneTool::Barracks,
         ZoneTool::Erase,
     ];
 
@@ -85,6 +87,7 @@ impl ZoneTool {
             ZoneTool::Dining => 'h',
             ZoneTool::Office => 'o',
             ZoneTool::Dump => 'g',
+            ZoneTool::Barracks => 'a',
             ZoneTool::Erase => 'x',
         }
     }
@@ -98,6 +101,7 @@ impl ZoneTool {
             ZoneTool::Dining => Some(ZoneKind::Dining),
             ZoneTool::Office => Some(ZoneKind::Office),
             ZoneTool::Dump => Some(ZoneKind::Dump),
+            ZoneTool::Barracks => Some(ZoneKind::Barracks),
             ZoneTool::Erase => None,
         }
     }
@@ -119,6 +123,7 @@ impl ZoneTool {
             ZoneTool::Dining => &["Lay over tables and chairs. Dwarves", "eat here first; a richer hall", "makes for happier meals."],
             ZoneTool::Office => &["A room for a noble. Assign it with", "k then o. Nobles will want one."],
             ZoneTool::Dump => &["Items marked for dumping (k, then", "d or D) are thrown here and left."],
+            ZoneTool::Barracks => &["Soldiers with nothing to do train", "here, and spar with each other,", "which teaches them faster."],
             ZoneTool::Erase => &["Removes zones other than", "stockpiles (stockpiles: p, then x)."],
         }
     }
@@ -183,6 +188,10 @@ pub enum Mode {
     BurrowMembers { burrow: usize, sel: usize },
     /// Pick a door or bridge for a lever to work.
     LinkLever { lever: u32 },
+    /// Pick a creature for a squad to kill.
+    KillTarget { squad: usize },
+    /// Choose who serves in a squad.
+    SquadMembers { squad: usize, sel: usize },
     /// Paint traffic levels (0 normal, 1 high, 2 low, 3 restricted).
     Traffic { level: u8, corner: Option<Pos> },
     BuildMenu,
@@ -236,6 +245,8 @@ pub struct App {
     pub gen_fast: bool,
     /// Index into `MapSize::ALL` for the next embark.
     pub embark_size: usize,
+    /// The squad selected on the military screen.
+    pub squad_sel: usize,
 }
 
 impl App {
@@ -279,6 +290,7 @@ impl App {
             worldgen: None,
             gen_fast: false,
             embark_size: 1,
+            squad_sel: 0,
         }
     }
 
@@ -590,6 +602,7 @@ impl App {
                 | Mode::Burrows { .. }
                 | Mode::Traffic { .. }
                 | Mode::LinkLever { .. }
+                | Mode::KillTarget { .. }
                 | Mode::Construct { .. }
                 | Mode::Look { .. }
                 | Mode::Place(_)
@@ -805,27 +818,45 @@ impl App {
                 KeyCode::Char('m') => self.game.toggle_soldier(id),
                 _ => {}
             },
-            Mode::Military => match k.code {
-                KeyCode::Esc => self.mode = Mode::Normal,
-                KeyCode::Char('s') => {
-                    self.game.station = Some(self.cursor);
-                    self.flash = Some("Soldiers will station here.".into());
-                }
-                KeyCode::Char('x') => {
-                    self.game.station = None;
-                    self.flash = Some("Station cleared; soldiers train where they stand.".into());
-                }
-                KeyCode::Char('a') => self.game.alert = !self.game.alert,
-                KeyCode::Char('c') => {
-                    self.flash = Some(match self.game.toggle_civ_alert() {
-                        Ok(true) => "Civilian alert raised: everyone into the alert burrow.".into(),
-                        Ok(false) => "Civilian alert lowered.".into(),
-                        Err(e) => e,
+            Mode::Military => self.key_military(k),
+            Mode::KillTarget { squad } => match k.code {
+                KeyCode::Esc => self.mode = Mode::Military,
+                KeyCode::Enter => {
+                    let c = self.cursor;
+                    let target = self
+                        .game
+                        .creatures
+                        .values()
+                        .filter(|cr| cr.alive && cr.pos.z == c.z && (cr.pos.x - c.x).abs() <= 1 && (cr.pos.y - c.y).abs() <= 1)
+                        .min_by_key(|cr| (cr.pos.x - c.x).abs() + (cr.pos.y - c.y).abs())
+                        .map(|cr| cr.id);
+                    self.flash = Some(match target.map(|t| self.game.order_kill(squad, t)) {
+                        Some(Ok(m)) => {
+                            self.mode = Mode::Military;
+                            m
+                        }
+                        Some(Err(e)) => e,
+                        None => "No creature under the cursor.".into(),
                     });
                 }
-                KeyCode::Char('h') => self.game.hunt = !self.game.hunt,
                 _ => {}
             },
+            Mode::SquadMembers { squad, sel } => {
+                let ids: Vec<u32> = self.game.dwarves.iter().filter(|d| d.alive).map(|d| d.id).collect();
+                let n = ids.len().max(1);
+                match k.code {
+                    KeyCode::Esc => self.mode = Mode::Military,
+                    KeyCode::Up => self.mode = Mode::SquadMembers { squad, sel: sel.saturating_sub(1) },
+                    KeyCode::Down => self.mode = Mode::SquadMembers { squad, sel: (sel + 1).min(n - 1) },
+                    KeyCode::Enter => {
+                        if let Some(&id) = ids.get(sel) {
+                            let member = self.game.squads.get(squad).map_or(false, |s| s.members.contains(&id));
+                            self.game.set_squad_member(squad, id, !member);
+                        }
+                    }
+                    _ => {}
+                }
+            }
             Mode::Labors { row, col, detail } => self.key_labors(k, row, col, detail),
             Mode::Burrows { sel, corner, erase } => self.key_burrows(k, sel, corner, erase),
             Mode::LinkLever { lever } => match k.code {
@@ -1039,6 +1070,63 @@ impl App {
             _ => {}
         }
         self.mode = Mode::Labors { row, col, detail };
+    }
+
+    fn key_military(&mut self, k: KeyEvent) {
+        let n = self.game.squads.len();
+        let sel = self.squad_sel.min(n.saturating_sub(1));
+        self.squad_sel = sel;
+        match k.code {
+            KeyCode::Esc => self.mode = Mode::Normal,
+            KeyCode::Char('n') => {
+                self.squad_sel = self.game.new_squad();
+                let name = self.game.squads[self.squad_sel].name.clone();
+                self.flash = Some(format!("{} formed. Add soldiers with u.", name));
+            }
+            KeyCode::Char(']') | KeyCode::Tab if n > 0 => self.squad_sel = (sel + 1) % n,
+            KeyCode::Char('[') if n > 0 => self.squad_sel = (sel + n - 1) % n,
+            KeyCode::Char('u') if n > 0 => self.mode = Mode::SquadMembers { squad: sel, sel: 0 },
+            KeyCode::Char('X') if n > 0 => {
+                let name = self.game.squads[sel].name.clone();
+                self.game.delete_squad(sel);
+                self.flash = Some(format!("{} disbanded.", name));
+            }
+            KeyCode::Char('s') if n > 0 => {
+                self.game.order_station(sel, self.cursor);
+                self.flash = Some(format!("{} will hold the cursor position.", self.game.squads[sel].name));
+            }
+            KeyCode::Char('s') => {
+                self.game.station = Some(self.cursor);
+                self.flash = Some("Soldiers will station here.".into());
+            }
+            KeyCode::Char('x') => {
+                self.game.station = None;
+                self.flash = Some("Station cleared; soldiers train where they stand.".into());
+            }
+            KeyCode::Char('t') if n > 0 => {
+                self.game.order_train(sel);
+                self.flash = Some(format!("{} goes back to training.", self.game.squads[sel].name));
+            }
+            KeyCode::Char('k') if n > 0 => self.mode = Mode::KillTarget { squad: sel },
+            KeyCode::Char('w') if n > 0 => {
+                let w = self.game.squads[sel].weapon.next();
+                self.game.squads[sel].weapon = w;
+            }
+            KeyCode::Char('r') if n > 0 => {
+                let a = !self.game.squads[sel].armor;
+                self.game.squads[sel].armor = a;
+            }
+            KeyCode::Char('a') => self.game.alert = !self.game.alert,
+            KeyCode::Char('c') => {
+                self.flash = Some(match self.game.toggle_civ_alert() {
+                    Ok(true) => "Civilian alert raised: everyone into the alert burrow.".into(),
+                    Ok(false) => "Civilian alert lowered.".into(),
+                    Err(e) => e,
+                });
+            }
+            KeyCode::Char('h') => self.game.hunt = !self.game.hunt,
+            _ => {}
+        }
     }
 
     fn key_burrows(&mut self, k: KeyEvent, sel: usize, corner: Option<Pos>, erase: bool) {
