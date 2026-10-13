@@ -25,6 +25,7 @@ impl Game {
             // Older saves: give everyone needs the first time round.
             d.needs = random_needs(&d.personality, &mut self.rng);
         }
+        self.fill_family(d);
         let leisure = !d.asleep
             && matches!(d.task, Task::Idle | Task::Wander { .. } | Task::Eat { .. } | Task::Dine { .. } | Task::DrinkItem { .. });
         if leisure {

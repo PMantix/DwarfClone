@@ -183,6 +183,8 @@ pub enum Task {
     Slaughter { creature: u32 },
     /// Treat a patient, bringing supplies if needed.
     Treat { patient: u32, what: crate::game::Treatment, item: Option<u32> },
+    /// Carry a citizen's corpse to a coffin.
+    Bury { item: u32, coffin: u32 },
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -467,6 +469,28 @@ pub struct Dwarf {
     /// Taking a break to pray or carouse until this tick.
     #[serde(default)]
     pub break_until: u64,
+    /// In years; missing in older saves until first checked.
+    #[serde(default)]
+    pub age: Option<u32>,
+    #[serde(default)]
+    pub female: Option<bool>,
+    #[serde(default)]
+    pub spouse: Option<u32>,
+    /// (mother, father) for those born in the fortress.
+    #[serde(default)]
+    pub parents: Option<(u32, u32)>,
+    /// Expecting a child, due at this tick.
+    #[serde(default)]
+    pub due: Option<u64>,
+    /// When they died (unknown for deaths in older saves).
+    #[serde(default)]
+    pub died: Option<u64>,
+    /// Buried or remembered on a slab.
+    #[serde(default)]
+    pub rested: bool,
+    /// Walks the halls as a ghost (position is the ghost's).
+    #[serde(default)]
+    pub ghost: bool,
 }
 
 impl Dwarf {
@@ -490,6 +514,15 @@ impl Dwarf {
                 self.satisfy(NeedKind::Learn, 300);
             }
         }
+    }
+
+    pub fn is_child(&self) -> bool {
+        self.age.map_or(false, |a| a < crate::game::ADULT_AGE)
+    }
+
+    /// `other` is this dwarf's parent.
+    pub fn family_of(&self, other: u32) -> bool {
+        self.parents.map_or(false, |(m, f)| m == other || f == other)
     }
 
     pub fn need(&self, k: NeedKind) -> Option<&Need> {
@@ -540,6 +573,9 @@ impl Dwarf {
         }
         if let Some(n) = self.noble {
             return n.title();
+        }
+        if self.is_child() {
+            return if self.age == Some(0) { "Baby" } else { "Child" };
         }
         if self.soldier {
             return if self.fight_xp >= 1200 { "Veteran" } else { "Recruit" };
@@ -681,6 +717,22 @@ pub fn fortress_name(rng: &mut Rng) -> String {
     format!("{}{}", rng.pick(&PREFIX), rng.pick(&SUFFIX))
 }
 
+/// A baby born in the fortress: no labors, the mother's family name.
+pub fn new_child(id: u32, pos: Pos, rng: &mut Rng, mother: &Dwarf, father: u32) -> Dwarf {
+    let mut d = new_dwarf(id, pos, rng, &[]);
+    d.labors = [false; NUM_LABORS];
+    d.age = Some(0);
+    d.parents = Some((mother.id, father));
+    d.hunger = 0;
+    d.thirst = 0;
+    d.fatigue = 0;
+    let first = d.name.split(' ').next().unwrap_or("").to_string();
+    if let Some(family) = mother.name.split(' ').nth(1) {
+        d.name = format!("{} {}", first, family);
+    }
+    d
+}
+
 pub fn new_dwarf(id: u32, pos: Pos, rng: &mut Rng, specialties: &[Labor]) -> Dwarf {
     let mut labors = [false; NUM_LABORS];
     let mut skills = [0u32; NUM_LABORS];
@@ -709,6 +761,8 @@ pub fn new_dwarf(id: u32, pos: Pos, rng: &mut Rng, specialties: &[Labor]) -> Dwa
         idle_cd: rng.range(0, 20) as u32,
         personality,
         needs,
+        age: Some(rng.range(18, 100) as u32),
+        female: Some(rng.chance(0.5)),
         likes_mat: *rng.pick(&LIKED_MATS),
         likes_food: Some(*rng.pick(&[ItemKind::Mushroom, ItemKind::Meat, ItemKind::Meal])),
         ..Default::default()

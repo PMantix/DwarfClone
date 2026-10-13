@@ -69,7 +69,8 @@ civilization in autumn, if they are at peace with you. Haul goods to the depot a
 (they want a tenth on top).
 
 **Zones & idling.** Zones (`i`) cover meeting areas, bedrooms, dormitories, dining halls,
-offices, farm plots, a garbage dump, temples and taverns (a tavern doubles as a meeting area). Bedrooms and offices are given to a dwarf from look
+offices, farm plots, a garbage dump, temples, taverns (a tavern doubles as a meeting area)
+and tombs. Bedrooms and offices are given to a dwarf from look
 mode (`k`, then `o`); dormitory beds are shared; dining hall seats are taken first; items
 marked with `d` go to the dump. Dwarves with nothing
 to do gather at the meeting area and chat there more often; without one they at least keep
@@ -83,6 +84,13 @@ prayer and merrymaking; a dwarf whose need has gone unmet takes a break to go th
 needs lower focus (down to 70%), met ones raise it (up to 120%); focus scales work speed and
 the quality of crafted goods. The dwarf screen shows focus and each need, and the status
 screen (`z`) lists what the fortress is short of.
+
+**Life and death.** Dwarves age, and few live past 150. Close friends of age may marry,
+and couples have children who take their mother's family name, play instead of working,
+and come of age at twelve. The dead should be buried: build a coffin (carpenter or mason,
+then `b`, `y`) and a hauler carries the body there, tomb zones (`i`, `c`) first. A dwarf left
+unburied for a couple of weeks may come back as a ghost that frightens everyone it drifts
+near; burying the body or carving a memorial slab (mason, then `b`, `g`) lays it to rest.
 
 **Animals.** The expedition brings dogs, goats and a cat. Pastures (`i`, `u`) keep them in and
 they breed there. From look mode: `p` assigns a pasture, `w` makes a dog the war dog of a

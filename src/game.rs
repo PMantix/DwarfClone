@@ -28,6 +28,8 @@ mod military;
 mod medicine;
 mod animals;
 mod needs;
+mod family;
+pub use family::ADULT_AGE;
 pub use medicine::Treatment;
 pub use military::{Squad, SquadOrder};
 #[cfg(test)]
@@ -94,6 +96,8 @@ pub enum ZoneKind {
     Temple,
     /// A meeting hall for drinking and making merry.
     Tavern,
+    /// Coffins here are used first; burial in a tomb comforts mourners more.
+    Tomb,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -617,6 +621,8 @@ impl Game {
                 BuildingKind::Table => ItemKind::Table,
                 BuildingKind::Chair => ItemKind::Chair,
                 BuildingKind::Door => ItemKind::Door,
+                BuildingKind::Coffin => ItemKind::Coffin,
+                BuildingKind::Slab => ItemKind::Slab,
                 _ => ItemKind::Boulder,
             };
             let id = self.spawn_item(kind, b.mat, b.center());
@@ -642,7 +648,7 @@ impl Game {
     }
 
     pub fn toggle_soldier(&mut self, dwarf_id: u32) {
-        if let Some(i) = self.dwarves.iter().position(|d| d.id == dwarf_id) {
+        if let Some(i) = self.dwarves.iter().position(|d| d.id == dwarf_id && !(d.is_child() && !d.soldier)) {
             let mut d = std::mem::take(&mut self.dwarves[i]);
             d.soldier = !d.soldier;
             if !d.soldier {
@@ -678,6 +684,7 @@ impl Game {
                 self.dwarves[i] = d;
             }
         }
+        self.ghosts_tick();
         self.update_creatures();
         self.traps_tick();
         self.update_caravan();
@@ -686,6 +693,7 @@ impl Game {
         }
         if self.tick % DAY == 0 {
             self.assign_rooms();
+            self.families_daily();
             self.nobles_daily();
             self.check_mandate();
         }
@@ -694,6 +702,9 @@ impl Game {
             let s = SEASONS[season as usize];
             self.msg(&format!("{} has arrived.", s), (200, 200, 255));
             self.autosave_request = true;
+            if season == 0 {
+                self.new_year();
+            }
             if season == 1 || season == 2 {
                 self.migrants();
             }
@@ -1026,10 +1037,19 @@ impl Game {
         let name = d.name.clone();
         self.msg(&format!("{} {}.", name, cause), (255, 60, 60));
         let tick = self.tick;
+        d.died = Some(tick);
+        d.due = None;
         let dead = d.id;
+        let (spouse, parents) = (d.spouse, d.parents);
         for o in self.dwarves.iter_mut().filter(|o| o.alive) {
             let regard = o.regard(dead);
-            if regard >= 30 {
+            if spouse == Some(o.id) {
+                o.think(&format!("lost their spouse {}", name), 140, tick);
+            } else if parents.map_or(false, |(m, f)| m == o.id || f == o.id) {
+                o.think(&format!("lost their child {}", name), 150, tick);
+            } else if o.family_of(dead) {
+                o.think(&format!("lost their parent {}", name), 110, tick);
+            } else if regard >= 30 {
                 o.think(&format!("lost their dear friend {}", name), 90, tick);
             } else if regard <= -40 {
                 o.think(&format!("felt satisfied at the death of {}", name), -10, tick);
@@ -1077,6 +1097,14 @@ impl Game {
             }
             Task::Slaughter { creature } => {
                 self.slaughtering.remove(&creature);
+            }
+            Task::Bury { item, coffin } => {
+                self.unclaim(item);
+                if let Some(b) = self.buildings.get_mut(&coffin) {
+                    if b.worker == Some(d.id) {
+                        b.worker = None;
+                    }
+                }
             }
             Task::Treat { patient, item, .. } => {
                 self.treating.remove(&patient);
@@ -1257,6 +1285,10 @@ impl Game {
             d.task = Task::Mood;
             return;
         }
+        if d.is_child() {
+            // Children play; idle_activity takes them to the meeting area.
+            return;
+        }
         if d.soldier {
             self.choose_military(d);
             return;
@@ -1268,6 +1300,9 @@ impl Game {
             return;
         }
         if d.has(Labor::Butchery) && self.find_slaughter(d) {
+            return;
+        }
+        if d.has(Labor::Hauling) && self.find_burial(d) {
             return;
         }
         if d.has(Labor::Building) && (self.find_construct(d) || self.find_build_tile(d)) {
@@ -1765,6 +1800,7 @@ impl Game {
             Task::BuildTile { con, item, stand } => self.do_build_tile(d, con, item, stand),
             Task::PullLever { bld } => self.do_pull_lever(d, bld),
             Task::Treat { patient, what, item } => self.do_treat(d, patient, what, item),
+            Task::Bury { item, coffin } => self.do_bury(d, item, coffin),
             Task::Slaughter { creature } => self.do_slaughter(d, creature),
             Task::Wander { target } => match self.travel(d, target) {
                 Travel::Moving => {}
@@ -2539,6 +2575,11 @@ mod bench {
             alive.iter().map(|d| d.stress).sum::<i32>() / n, g.items.len(),
             g.items.values().filter(|it| it.kind == ItemKind::Drink).count(),
             g.items.values().filter(|it| it.kind == ItemKind::Meal).count());
+        eprintln!("PEACE married {} expecting {} children {} ghosts {}",
+            g.dwarves.iter().filter(|d| d.alive && d.spouse.is_some()).count(),
+            g.dwarves.iter().filter(|d| d.due.is_some()).count(),
+            g.dwarves.iter().filter(|d| d.parents.is_some()).count(),
+            g.dwarves.iter().filter(|d| d.ghost).count());
     }
 
     #[test]

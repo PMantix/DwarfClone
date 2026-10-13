@@ -117,7 +117,7 @@ impl Game {
                     young.pasture = c.pasture;
                 }
             }
-            let what = if n == 1 { c.species.young().to_string() } else { format!("{} {}s", n, c.species.young()) };
+            let what = if n == 1 { format!("a {}", c.species.young()) } else { format!("{} {}s", n, c.species.young()) };
             self.msg(&format!("A {} has given birth to {}.", c.name(), what), (160, 230, 160));
         }
         // Checked every tenth tick (those always get a full turn), about once a day on average.

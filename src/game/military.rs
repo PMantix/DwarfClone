@@ -115,6 +115,9 @@ impl Game {
 
     /// Put a dwarf in a squad (drafting them) or take them out (discharging them).
     pub fn set_squad_member(&mut self, idx: usize, dwarf: u32, on: bool) {
+        if on && self.dwarves.iter().any(|d| d.id == dwarf && d.is_child()) {
+            return;
+        }
         for s in self.squads.iter_mut() {
             s.members.retain(|&m| m != dwarf);
         }

@@ -13,7 +13,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use ratatui::Frame;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 const SIDEBAR_W: u16 = 38;
 
@@ -208,6 +208,7 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
     let blink = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |t| (t.as_millis() / 500) as usize);
+    let ghosts: HashSet<(i32, i32)> = g.dwarves.iter().filter(|d| d.ghost && d.pos.z == z).map(|d| (d.pos.x, d.pos.y)).collect();
     let mut beasts: HashMap<(i32, i32), (char, Color, bool)> = HashMap::new();
     for c in g.creatures.values().filter(|c| c.alive && c.pos.z == z && g.world.t(c.pos).revealed) {
         let info = c.species.info();
@@ -309,6 +310,11 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                 if hostile {
                     bg = Color::Rgb(90, 0, 0);
                 }
+            }
+            if ghosts.contains(&(wx, wy)) {
+                ch = '☺';
+                fg = Color::Rgb(170, 200, 255);
+                bg = Color::Rgb(20, 30, 70);
             }
             if let Some(ds) = units.get(&(wx, wy)) {
                 let d = ds[blink % ds.len()];
@@ -446,6 +452,7 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
         Task::Dine { .. } => "Eating at a table".into(),
         Task::PullLever { .. } => "Pulling a lever".into(),
         Task::Slaughter { creature } => format!("Slaughtering a {}", g.creatures.get(creature).map_or("beast", |c| c.name())),
+        Task::Bury { item, .. } => format!("Burying the {}", iname(*item)),
         Task::Treat { patient, what, .. } => {
             let who = g.dwarves.iter().find(|p| p.id == *patient).map_or("a patient".to_string(), |p| p.name.clone());
             format!("Treating {}: {}", who, what.name())
@@ -542,6 +549,9 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
             Span::styled(format!("{} ", info.glyph), Style::default().fg(rgb(info.color))),
             Span::styled(format!("{} ({})", info.name, state), Style::default().fg(TEXT)),
         ]));
+    }
+    for d in g.dwarves.iter().filter(|d| d.ghost && d.pos == p) {
+        v.push(plain(format!("☺ The ghost of {} (bury them, or engrave a slab)", d.name), Color::Rgb(170, 200, 255)));
     }
     for d in g.dwarves.iter().filter(|d| d.alive && d.pos == p) {
         v.push(Line::from(vec![
@@ -1191,6 +1201,30 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
     }
     v.push(Line::default());
     v.push(header("Personality"));
+    if let Some(age) = d.age {
+        let sex = match d.female {
+            Some(true) => ", female",
+            Some(false) => ", male",
+            None => "",
+        };
+        v.push(plain(format!("  Age {}{}", age, sex), MUTED));
+    }
+    let name_of = |id: u32| g.dwarves.iter().find(|o| o.id == id).map(|o| (o.name.clone(), o.alive));
+    if let Some((n, alive)) = d.spouse.and_then(name_of) {
+        v.push(plain(if alive { format!("  Married to {}", n) } else { format!("  Widowed ({})", n) }, Color::Rgb(255, 200, 220)));
+    }
+    if let Some((m, f)) = d.parents {
+        let m = name_of(m).map_or("?".into(), |x| x.0);
+        let f = name_of(f).map_or("?".into(), |x| x.0);
+        v.push(plain(format!("  Child of {} and {}", m, f), MUTED));
+    }
+    let kids: Vec<String> = g.dwarves.iter().filter(|o| o.alive && o.family_of(d.id)).map(|o| o.name.split(' ').next().unwrap_or("").to_string()).collect();
+    if !kids.is_empty() {
+        v.push(plain(format!("  Children: {}", kids.join(", ")), MUTED));
+    }
+    if d.due.is_some() {
+        v.push(plain("  Expecting a child".into(), Color::Rgb(150, 255, 150)));
+    }
     for t in d.personality.describe() {
         v.push(plain(format!("  {}", t), TEXT));
     }
@@ -2062,10 +2096,17 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
         let line = match *e {
             LookEntry::Dwarf(id) => {
                 let Some(d) = g.dwarves.iter().find(|d| d.id == id) else { continue };
-                Line::from(vec![
-                    Span::styled(if d.soldier { "☻ " } else { "☺ " }, hi(i).fg(rgb(d.color))),
-                    Span::styled(d.name.clone(), hi(i).fg(TEXT)),
-                ])
+                if d.ghost {
+                    Line::from(vec![
+                        Span::styled("☺ ", hi(i).fg(Color::Rgb(170, 200, 255))),
+                        Span::styled(format!("The ghost of {}", d.name), hi(i).fg(TEXT)),
+                    ])
+                } else {
+                    Line::from(vec![
+                        Span::styled(if d.soldier { "☻ " } else { "☺ " }, hi(i).fg(rgb(d.color))),
+                        Span::styled(d.name.clone(), hi(i).fg(TEXT)),
+                    ])
+                }
             }
             LookEntry::Creature(id) => {
                 let Some(c) = g.creatures.get(&id) else { continue };
@@ -2096,7 +2137,12 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
     let detail_col = Color::Rgb(180, 180, 190);
     match entries[sel] {
         LookEntry::Dwarf(id) => {
-            if let Some(d) = g.dwarves.iter().find(|d| d.id == id) {
+            if let Some(d) = g.dwarves.iter().find(|d| d.id == id && d.ghost) {
+                v.push(header(&format!("The ghost of {}", d.name)));
+                v.push(plain("Restless, and frightening everyone it".into(), detail_col));
+                v.push(plain("drifts near. Bury the body in a coffin".into(), detail_col));
+                v.push(plain("(b, y) or carve a memorial slab (b, g).".into(), detail_col));
+            } else if let Some(d) = g.dwarves.iter().find(|d| d.id == id) {
                 let (mood, mc) = d.mood();
                 v.push(header(&d.name));
                 v.push(plain(
@@ -2174,6 +2220,17 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 }
                 if let Some(w) = b.worker.and_then(|o| g.dwarves.iter().find(|d| d.id == o)) {
                     v.push(plain(format!("In use by {}", w.name), detail_col));
+                }
+                if matches!(b.kind, BuildingKind::Coffin | BuildingKind::Slab) {
+                    let who = b.occupant.and_then(|o| g.dwarves.iter().find(|d| d.id == o)).map(|d| d.name.clone());
+                    v.push(plain(
+                        match (who, b.kind) {
+                            (Some(n), BuildingKind::Coffin) => format!("Here lies {}", n),
+                            (Some(n), _) => format!("In memory of {}", n),
+                            (None, _) => "Not yet in use".into(),
+                        },
+                        detail_col,
+                    ));
                 }
                 if !b.orders.is_empty() {
                     v.push(plain(format!("{} work orders queued", b.orders.len()), detail_col));
@@ -2376,6 +2433,15 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
                 v.push(Line::default());
                 v.push(plain(format!("⚠ {} hostile creatures on the map", hostiles), Color::Rgb(255, 90, 90)));
             }
+            let ghosts = g.dwarves.iter().filter(|d| d.ghost).count();
+            let unburied = g.dwarves.iter().filter(|d| !d.alive && !d.rested && !d.ghost).count();
+            if ghosts > 0 {
+                let who = if ghosts == 1 { "A ghost haunts".to_string() } else { format!("{} ghosts haunt", ghosts) };
+                v.push(plain(format!("⚠ {} the fortress (coffins: b, y; slabs: b, g)", who), Color::Rgb(170, 200, 255)));
+            }
+            if unburied > 0 {
+                v.push(plain(format!("  {} dead await burial", unburied), Color::Rgb(230, 200, 60)));
+            }
         }
         1 => {
             v.push(header("Stocks (everything in the fortress, by category)"));
@@ -2461,7 +2527,14 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
                 v.push(Line::default());
                 v.push(header(&format!("Dead ({})", dead.len())));
                 for d in dead {
-                    v.push(plain(format!("  {}", d.name), MUTED));
+                    let (state, col) = if d.ghost {
+                        ("a restless ghost!", Color::Rgb(170, 200, 255))
+                    } else if d.rested {
+                        ("at rest", MUTED)
+                    } else {
+                        ("unburied", Color::Rgb(230, 200, 60))
+                    };
+                    v.push(plain(format!("  {:<24}{}", d.name, state), col));
                 }
             }
         }
@@ -2882,6 +2955,13 @@ mod tests {
             app.game.step();
         }
         app.game.dwarves[1].body.wound(crate::body::Part::LeftLeg, 12, true);
+        // A ghost beside dwarf 0, and dwarf 0 married to dwarf 3.
+        app.game.dwarves[2].alive = false;
+        app.game.dwarves[2].ghost = true;
+        app.game.dwarves[2].pos = app.game.dwarves[0].pos.offset(1, 0, 0);
+        let (s0, s3) = (app.game.dwarves[0].id, app.game.dwarves[3].id);
+        app.game.dwarves[0].spouse = Some(s3);
+        app.game.dwarves[3].spouse = Some(s0);
         // Look at a dwarf, then at the wagon's pile of supplies.
         app.cursor = app.game.dwarves[0].pos;
         app.mode = Mode::Look { sel: 0 };
@@ -2892,11 +2972,17 @@ mod tests {
         app.cursor = pile;
         app.mode = Mode::Look { sel: 0 };
         println!("{}", dump(&mut app, 130, 45));
+        app.cursor = app.game.dwarves[2].pos;
+        let s = dump(&mut app, 130, 45);
+        assert!(s.contains("The ghost of"), "look mode doesn't show the ghost");
         for tab in 0..4 {
             app.mode = Mode::Status { tab, scroll: 0 };
             let s = dump(&mut app, 130, 45);
             println!("{}", s);
             assert!(s.contains("Fortress status"));
+            if tab == 0 {
+                assert!(s.contains("ghost haunts"), "no ghost warning");
+            }
         }
         app.game.plan_constructions(e.offset(2, 2, 0), e.offset(6, 2, 0), crate::game::ConstructKind::Wall, crate::game::BuildMat::Any);
         app.cursor = e.offset(4, 2, 0);

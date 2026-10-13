@@ -43,6 +43,9 @@ pub enum ItemKind {
     Thread,
     Splint,
     Crutch,
+    Coffin,
+    /// A memorial slab.
+    Slab,
 }
 
 /// Items that fit in a barrel or a bin, ten to a container.
@@ -97,6 +100,7 @@ impl ItemKind {
             Bolt => 3,
             Thread => 2,
             Splint | Crutch => 4,
+            Coffin | Slab => 10,
         }
     }
 
@@ -204,7 +208,7 @@ impl StockFilter {
             StockFilter::Stone => matches!(k, Boulder | Block),
             StockFilter::Wood => k == Log,
             StockFilter::Food => matches!(k, Mushroom | Drink | Seed | Meat | Meal),
-            StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin | Cage),
+            StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin | Cage | Coffin | Slab),
             StockFilter::Metal => matches!(k, Bar | Charcoal),
             StockFilter::Goods => matches!(k, Craft | Gem | Bone | Leather | Mechanism | Thread | Splint | Crutch),
             StockFilter::Refuse => matches!(k, Corpse | Carcass),
@@ -312,6 +316,8 @@ impl Item {
             Thread => "stoutcap-fiber thread".into(),
             Splint => format!("{} splint", m.adj()),
             Crutch => format!("{} crutch", m.adj()),
+            Coffin => format!("{} coffin", m.adj()),
+            Slab => format!("{} slab", m.adj()),
             Cage => match self.label.as_deref() {
                 Some(beast) => format!("{} cage (holding a {})", m.adj(), beast),
                 None => format!("{} cage", m.adj()),
@@ -359,6 +365,8 @@ impl Item {
             Thread => '§',
             Splint => '|',
             Crutch => '|',
+            Coffin => 'Ω',
+            Slab => '▬',
         };
         let col = match self.kind {
             Drink => Color::Rgb(230, 170, 60),

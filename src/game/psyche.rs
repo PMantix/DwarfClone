@@ -388,7 +388,7 @@ impl Game {
     // ------------------------------------------------------------------
 
     pub(super) fn appoint_leader(&mut self) {
-        if let Some(d) = self.dwarves.iter_mut().filter(|d| d.alive).max_by_key(|d| d.personality.sociability) {
+        if let Some(d) = self.dwarves.iter_mut().filter(|d| d.alive && !d.is_child()).max_by_key(|d| d.personality.sociability) {
             d.noble = Some(Noble::Leader);
         }
     }
@@ -400,7 +400,7 @@ impl Game {
             let pick = self
                 .dwarves
                 .iter()
-                .filter(|d| d.alive && !d.insane)
+                .filter(|d| d.alive && !d.insane && !d.is_child())
                 .max_by_key(|d| d.personality.sociability + d.relations.iter().map(|r| r.1).sum::<i32>() / 10)
                 .map(|d| d.id);
             if let Some(id) = pick {
@@ -514,7 +514,7 @@ impl Game {
         let cands: Vec<usize> = (0..self.dwarves.len())
             .filter(|&i| {
                 let d = &self.dwarves[i];
-                d.alive && !d.insane && !d.soldier && d.noble.is_none()
+                d.alive && !d.insane && !d.soldier && d.noble.is_none() && !d.is_child()
             })
             .collect();
         if cands.is_empty() {

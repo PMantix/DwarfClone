@@ -66,11 +66,12 @@ pub enum ZoneTool {
     Pasture,
     Temple,
     Tavern,
+    Tomb,
     Erase,
 }
 
 impl ZoneTool {
-    pub const ALL: [ZoneTool; 13] = [
+    pub const ALL: [ZoneTool; 14] = [
         ZoneTool::Meeting,
         ZoneTool::Bedroom,
         ZoneTool::Dormitory,
@@ -83,6 +84,7 @@ impl ZoneTool {
         ZoneTool::Pasture,
         ZoneTool::Temple,
         ZoneTool::Tavern,
+        ZoneTool::Tomb,
         ZoneTool::Erase,
     ];
 
@@ -100,6 +102,7 @@ impl ZoneTool {
             ZoneTool::Pasture => 'u',
             ZoneTool::Temple => 't',
             ZoneTool::Tavern => 'v',
+            ZoneTool::Tomb => 'c',
             ZoneTool::Erase => 'x',
         }
     }
@@ -118,6 +121,7 @@ impl ZoneTool {
             ZoneTool::Pasture => Some(ZoneKind::Pasture),
             ZoneTool::Temple => Some(ZoneKind::Temple),
             ZoneTool::Tavern => Some(ZoneKind::Tavern),
+            ZoneTool::Tomb => Some(ZoneKind::Tomb),
             ZoneTool::Erase => None,
         }
     }
@@ -144,6 +148,7 @@ impl ZoneTool {
             ZoneTool::Pasture => &["Goats without a pasture move in.", "Assign other animals with k, then p.", "Kept animals breed here."],
             ZoneTool::Temple => &["Dwarves who need to pray come here", "on their breaks. Unmet needs hurt", "focus, which slows work."],
             ZoneTool::Tavern => &["A meeting hall for making merry.", "Drinking here cheers dwarves more;", "it also counts as a meeting area."],
+            ZoneTool::Tomb => &["Lay over coffins (b, y). The dead", "are buried here first, which", "comforts those who mourn them."],
             ZoneTool::Erase => &["Removes zones other than", "stockpiles (stockpiles: p, then x)."],
         }
     }
@@ -164,7 +169,7 @@ pub fn look_entries(g: &Game, p: Pos) -> Vec<LookEntry> {
     if !g.world.in_bounds(p) {
         return v;
     }
-    v.extend(g.dwarves.iter().filter(|d| d.alive && d.pos == p).map(|d| LookEntry::Dwarf(d.id)));
+    v.extend(g.dwarves.iter().filter(|d| (d.alive || d.ghost) && d.pos == p).map(|d| LookEntry::Dwarf(d.id)));
     if g.world.t(p).revealed {
         v.extend(g.creatures.values().filter(|c| c.alive && c.pos == p).map(|c| LookEntry::Creature(c.id)));
         let b = g.world.t(p).building;
