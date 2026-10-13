@@ -1,8 +1,7 @@
-//! Long jobs (world generation, embarking, saving, loading) run on a worker
+//! Long jobs (embarking, saving, loading) run on a worker
 //! thread so the screen can keep drawing a loading screen with progress.
 
 use crate::game::Game;
-use crate::overworld::Overworld;
 use crate::saves::SaveMeta;
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
@@ -17,7 +16,6 @@ pub enum AfterSave {
 }
 
 pub enum JobDone {
-    World(Overworld),
     Embarked(Game),
     Saved(Game, SaveMeta, AfterSave),
     Loaded(Game),

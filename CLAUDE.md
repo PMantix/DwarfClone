@@ -18,7 +18,7 @@ A Dwarf Fortress-style colony sim in Rust with ratatui. See README.md for featur
 - Use DF's key conventions where they exist (`i` zones, `k` look, `z` status…).
 - Before committing, `cargo test --release` must print `test result: ok`. Don't commit
   on a grep that only checks the command ran.
-- A simulated year takes about 10 seconds (`cargo test --release one_year_timing -- --ignored --nocapture`).
+- A simulated year takes about 5 seconds (`cargo test --release one_year_timing -- --ignored --nocapture`).
   Re-check it after changing job search or pathing.
 - For multi-line source patches, use Python scripts in the scratchpad. Shell heredocs
   break on apostrophes in Rust code.

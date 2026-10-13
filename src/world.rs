@@ -457,7 +457,7 @@ pub fn generate(seed: u64, params: &EmbarkParams) -> World {
                     continue;
                 }
                 let v = ore_n.fbm3(x as f64 / 7.0, y as f64 / 7.0, z as f64 / 3.0, 2);
-                if (v - 0.5).abs() < 0.016 {
+                if (v - 0.5).abs() < 0.016 * params.minerals {
                     world.t_mut(p).mat = match t.mat {
                         Mat::Sandstone | Mat::Limestone => {
                             if (x + z) % 3 == 0 { Mat::Coal } else { Mat::Hematite }
@@ -467,7 +467,7 @@ pub fn generate(seed: u64, params: &EmbarkParams) -> World {
                         }
                         _ => Mat::Hematite,
                     };
-                } else if rng.chance(0.0015) {
+                } else if rng.chance(0.0015 * params.minerals) {
                     world.t_mut(p).mat = Mat::Amethyst;
                 }
             }

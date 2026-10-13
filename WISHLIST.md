@@ -16,20 +16,9 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W21, W22, W23 (starting a game, asked for 2026-10-12) → W07, W06 (siege defense) → W04, W05.
+Suggested order: W22, W23 (starting a game, asked for 2026-10-12) → W07, W06 (siege defense) → W04, W05.
 
 ### Tier 1b: starting a game (prioritized by request)
-
-#### W21 World generation screen (M)
-- **DF:** a world-creation screen (world size, history length, number of civilizations, savagery, minerals), then a live view of the world taking shape, years ticking by with counts of events, civs and figures; accept or reject the result.
-- **Us:** a fixed world from the seed, 200 years of history, generated instantly with no feedback (`overworld.rs` `Overworld::generate`).
-- **Plan:** split `Overworld::generate` into stages (heightmap, rain and biomes, civs, history year by year) that can be advanced a bit per frame. A setup screen picks parameters and the seed; the generation screen draws the map as it forms with a running history ticker.
-- **Steps:**
-  - [ ] Staged generation (same result as today for the same seed and settings)
-  - [ ] Live generation screen: map drawing in, year counter, counts of events, civs and figures, notable events scrolling past
-  - [ ] Setup screen: seed, history length, civ count, savagery, minerals; presets
-  - [ ] Accept or regenerate when done
-- **Done when:** a test generates in steps and gets the same world as generating in one go.
 
 #### W22 Larger world map (M)
 - **DF:** world sizes from pocket (17×17) to large (257×257), a scrolling world map, region names.
@@ -210,6 +199,8 @@ next. The size is our guess.
 
 Ideas not ranked yet. Add a line on why each matters.
 
+- Typed world names and a "favourite seeds" list on the settings screen.
+- Workshop orders that wait on missing materials still announce often ("Cut a gem needs rough gem"); fold into W14's global orders.
 - Overlapping zones: a tile holds one zone, so a dining hall can't also be the meeting area as it often is in DF.
 - Bridges and drawbridges (with W06 levers), roads, grates, bars, windows, supports: the rest of DF's constructions.
 - Pick a room's owner from a list instead of cycling through dwarves with `o`.
@@ -220,6 +211,8 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **W21 World generation screen** (this commit): New world opens a settings screen (preset, seed, history length, civilizations, savagery, minerals), then the world is drawn row by row and history plays out year by year with running totals and the latest events (Space hurries); accept, regenerate or go back to the settings. Generation is resumable and gives the same world stepped or in one go.
+- **Fixes from a played fort** (0e62fd1): hauling search 22× cheaper, one construction warning per kind, stress floor, cooking leaves spawn.
 - **W24 Title and loading screens** (this commit): title menu (New world, Continue, Load game, Quit); world generation, embarking, saving and loading run on a worker thread behind a loading screen with stage, progress bar and tips; save slots per fortress in `saves/` with a load menu (delete with confirmation); autosave each season; quitting offers save-and-quit and save-and-return-to-title.
 - **Diagonal movement** (7571ac3): diagonal steps slip between two walls, as in DF (the tile stepped to must still be open).
 - **W01 Constructions** (this commit): `b` then `C` plans walls, floors, stairs, ramps and fortifications in a box, built from rough stone, blocks or logs (`m` picks). `x` takes a construction down and returns its material; `c` cancels plans. Floors bridge open space; fortifications stop walkers but let water through; built walls can't be mined; a roof makes a surface room count.

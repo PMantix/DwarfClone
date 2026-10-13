@@ -188,7 +188,8 @@ impl Game {
     pub fn embark_with(seed: u64, ow: Overworld, sx: i32, sy: i32, report: &dyn Fn(&str, f32)) -> Game {
         report("Surveying the site", 0.05);
         let cell = ow.cell(sx, sy).clone();
-        let params = cell.biome.params();
+        let mut params = cell.biome.params();
+        params.minerals = ow.minerals;
         let world = world::generate(seed ^ ((sx as u64) << 20) ^ ((sy as u64) << 40), &params);
         report("Loading the wagon", 0.8);
         let embark = find_embark(&world);
@@ -231,7 +232,7 @@ impl Game {
             siege_size: 0,
             siege_routed: false,
             mandate: None,
-            savagery: params.savagery + if cell.evil { 0.3 } else { 0.0 },
+            savagery: (params.savagery + if cell.evil { 0.3 } else { 0.0 }) * ow.savagery,
             biome: cell.biome,
             evil: cell.evil,
             overworld: ow,

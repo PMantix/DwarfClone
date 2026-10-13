@@ -17,6 +17,10 @@ Press `?` in game for keys.
 
 ## Features
 
+**World creation.** New world opens a settings screen: preset, seed, history length,
+number of civilizations, savagery and minerals. Then you watch the continent appear and its
+history play out year by year (Space hurries it), and accept it or roll another.
+
 **World & history.** A 64×32 continent of biomes (mountains, hills, forests, grassland,
 desert, tundra, swamp, evil-tainted land) with dwarven, human, elven and goblin
 civilizations. Two centuries of history are simulated before you arrive: settlements are

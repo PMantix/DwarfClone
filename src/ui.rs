@@ -1,4 +1,4 @@
-use crate::app::{look_entries, App, LookEntry, Mode, ZoneTool, DESIG_KEYS, TITLE_MENU};
+use crate::app::{look_entries, preset_name, App, LookEntry, Mode, ZoneTool, DESIG_KEYS, LEVELS, SETUP_ROWS, TITLE_MENU};
 use crate::body::PARTS;
 use crate::buildings::BuildingKind;
 use crate::dwarf::{skill_level, skill_rank, Dwarf, Task, LABORS};
@@ -790,7 +790,9 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
         | Mode::Labors { .. }
         | Mode::Title { .. }
         | Mode::LoadMenu { .. }
-        | Mode::Loading => {
+        | Mode::Loading
+        | Mode::WorldSetup { .. }
+        | Mode::WorldGen => {
             title = String::new();
         }
         Mode::Nobles => {
@@ -1106,11 +1108,30 @@ fn draw_world(f: &mut Frame, app: &mut App, cx: i32, cy: i32) {
         .title(Span::styled(" World map ", Style::default().fg(KEY)));
     let inner = block.inner(cols[0]);
     f.render_widget(block, cols[0]);
+    paint_world(f, inner, ow, ow.h, Some((cx, cy)));
+    let lines = world_info(ow, cx, cy, &app.flash);
+    f.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(MUTED))
+                    .title(Span::styled(" Site ", Style::default().fg(KEY))),
+            )
+            .wrap(Wrap { trim: false }),
+        cols[1],
+    );
+}
+
+/// Draw the world map into `inner`, only the first `rows` rows (the rest is
+/// still being generated), with an optional highlighted cell.
+fn paint_world(f: &mut Frame, inner: Rect, ow: &Overworld, rows: i32, cursor: Option<(i32, i32)>) {
     // Each world cell is two characters wide so the map isn't squashed.
     let ox = inner.x as i32 + ((inner.width as i32 - ow.w * 2) / 2).max(0);
     let oy = inner.y as i32 + ((inner.height as i32 - ow.h) / 2).max(0);
+    let rows = rows.min(ow.cells.len() as i32 / ow.w.max(1));
     let buf = f.buffer_mut();
-    for y in 0..ow.h {
+    for y in 0..rows {
         for x in 0..ow.w {
             let (sx, sy) = (ox + x * 2, oy + y);
             if sx + 1 >= (inner.x + inner.width) as i32 || sy >= (inner.y + inner.height) as i32 {
@@ -1127,7 +1148,7 @@ fn draw_world(f: &mut Frame, app: &mut App, cx: i32, cy: i32) {
                     _ => Color::Rgb(150, 150, 150),
                 };
             }
-            if x == cx && y == cy {
+            if cursor == Some((x, y)) {
                 bg = Color::Rgb(220, 200, 0);
                 fg = BLACK;
             }
@@ -1137,16 +1158,134 @@ fn draw_world(f: &mut Frame, app: &mut App, cx: i32, cy: i32) {
             }
         }
     }
-    let lines = world_info(ow, cx, cy, &app.flash);
+}
+
+fn draw_world_setup(f: &mut Frame, app: &App, sel: usize) {
+    let area = f.size();
+    backdrop(f, area);
+    let p = &app.world_params;
+    let values = [
+        preset_name(p).to_string(),
+        format!("{}", p.seed),
+        format!("{} years", p.history),
+        LEVELS[0][p.civs.min(2) as usize].to_string(),
+        LEVELS[1][p.savagery.min(2) as usize].to_string(),
+        LEVELS[2][p.minerals.min(2) as usize].to_string(),
+        String::new(),
+    ];
+    let notes = [
+        "Quick, Standard, Long history, Harsh",
+        "type digits · r random",
+        "years simulated before you arrive",
+        "how many peoples share the world",
+        "how dangerous the wildlife is",
+        "how much ore and gem lies in the rock",
+        "",
+    ];
+    let mut v: Vec<Line> = vec![Line::default()];
+    for (i, row) in SETUP_ROWS.iter().enumerate() {
+        let on = i == sel;
+        if i == SETUP_ROWS.len() - 1 {
+            v.push(Line::default());
+            let st = if on { Style::default().fg(BLACK).bg(KEY).add_modifier(Modifier::BOLD) } else { Style::default().fg(KEY) };
+            v.push(Line::from(Span::styled(format!("   ▶ {}   ", row), st)));
+            continue;
+        }
+        let st = if on { Style::default().fg(BLACK).bg(Color::Rgb(90, 110, 170)) } else { Style::default().fg(TEXT) };
+        let arrows = if on { ("◀ ", " ▶") } else { ("  ", "  ") };
+        v.push(Line::from(vec![
+            Span::styled(format!("  {:<15}", row), Style::default().fg(MUTED)),
+            Span::styled(format!("{}{:^16}{}", arrows.0, values[i], arrows.1), st),
+            Span::styled(format!("  {}", notes[i]), Style::default().fg(Color::Rgb(100, 100, 110))),
+        ]));
+    }
+    v.push(Line::default());
+    v.push(plain("  ↑↓ choose · ←→ change · Enter generate · Esc back".into(), MUTED));
+    let r = centered(area, 82, v.len() as u16 + 2);
+    f.render_widget(Clear, r);
     f.render_widget(
-        Paragraph::new(lines)
+        Paragraph::new(v).style(Style::default().bg(Color::Rgb(12, 12, 20))).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(KEY))
+                .title(Span::styled(" Create a new world ", Style::default().fg(KEY))),
+        ),
+        r,
+    );
+}
+
+fn draw_worldgen(f: &mut Frame, app: &App) {
+    let area = f.size();
+    let Some(g) = &app.worldgen else { return };
+    let ow = &g.ow;
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(10)])
+        .split(area);
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(20), Constraint::Length(SIDEBAR_W + 8)])
+        .split(rows[1]);
+    let (stage, frac) = g.progress();
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" ☼ DwarfClone ", Style::default().fg(KEY).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("│ Creating {} │ seed {}", ow.name, g.params.seed), Style::default().fg(TEXT)),
+        ]))
+        .style(Style::default().bg(Color::Rgb(20, 20, 30))),
+        rows[0],
+    );
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(MUTED))
+        .title(Span::styled(format!(" Year {} ", ow.year), Style::default().fg(KEY)));
+    let inner = block.inner(cols[0]);
+    f.render_widget(block, cols[0]);
+    paint_world(f, inner, ow, g.rows_done(), None);
+
+    // Running totals, then the latest events.
+    let width = 28usize;
+    let filled = ((frac * width as f32).round() as usize).min(width);
+    let alive_civs = ow.civs.iter().filter(|c| c.alive).count();
+    let towns = ow.sites.iter().filter(|s| s.civ.is_some() && !s.ruined).count();
+    let ruins = ow.sites.iter().filter(|s| s.ruined).count();
+    let figures = ow.figures.len();
+    let mut v = vec![
+        plain(stage, TEXT),
+        Line::from(vec![
+            Span::styled("█".repeat(filled), Style::default().fg(Color::Rgb(255, 200, 80))),
+            Span::styled("░".repeat(width - filled), Style::default().fg(Color::Rgb(60, 55, 50))),
+            Span::styled(format!(" {:>3}%", (frac * 100.0) as u32), Style::default().fg(MUTED)),
+        ]),
+        Line::default(),
+        plain(format!("Year          {:>5} of {}", ow.year, g.params.history), TEXT),
+        plain(format!("Civilizations {:>5} ({} fallen)", alive_civs, ow.civs.len() - alive_civs), TEXT),
+        plain(format!("Settlements   {:>5}", towns), TEXT),
+        plain(format!("Ruins         {:>5}", ruins), TEXT),
+        plain(format!("Figures       {:>5}", figures), TEXT),
+        plain(format!("Events        {:>5}", ow.events.len()), TEXT),
+        Line::default(),
+        header("Lately"),
+    ];
+    // Events wrap to about two lines each; show as many as fit.
+    let fit = (cols[1].height as usize).saturating_sub(v.len() + 3) / 2;
+    for e in ow.events.iter().rev().take(fit).collect::<Vec<_>>().into_iter().rev() {
+        v.push(Line::from(vec![
+            Span::styled(format!("{:>4} ", e.year), Style::default().fg(MUTED)),
+            Span::styled(e.text.clone(), Style::default().fg(Color::Rgb(190, 190, 200))),
+        ]));
+    }
+    let keys = if g.done() { " Enter accept · r another world · Esc settings " } else { " Space hurry · r new seed · Esc settings " };
+    f.render_widget(
+        Paragraph::new(v)
+            .wrap(Wrap { trim: true })
             .block(
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(MUTED))
-                    .title(Span::styled(" Site ", Style::default().fg(KEY))),
-            )
-            .wrap(Wrap { trim: false }),
+                    .title(Span::styled(if g.done() { " The world is ready " } else { " Generating " }, Style::default().fg(KEY)))
+                    .title_bottom(Span::styled(keys, Style::default().fg(KEY))),
+            ),
         cols[1],
     );
 }
@@ -1383,6 +1522,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::Title { sel } => return draw_title(f, app, sel),
         Mode::LoadMenu { sel, confirm } => return draw_load_menu(f, app, sel, confirm),
         Mode::Loading => return draw_loading(f, app),
+        Mode::WorldSetup { sel } => return draw_world_setup(f, app, sel),
+        Mode::WorldGen => return draw_worldgen(f, app),
         _ => {}
     }
     if let Mode::WorldMap { x, y } = app.mode {
@@ -2329,8 +2470,25 @@ mod tests {
 
         check(&mut app, "New world");
         app.on_key(key(KeyCode::Enter));
-        assert_eq!(app.mode, Mode::Loading);
-        wait(&mut app, "Creating a world");
+        assert!(matches!(app.mode, Mode::WorldSetup { .. }), "{:?}", app.mode);
+        check(&mut app, "Create a new world");
+        assert_eq!(app.world_params.seed, 4242, "the command-line seed should be used first");
+        app.on_key(key(KeyCode::Enter));
+        assert_eq!(app.mode, Mode::WorldGen);
+        // Watch a few paced frames, then hurry it along.
+        for _ in 0..5 {
+            check(&mut app, "Creating");
+            app.frame();
+        }
+        app.on_key(key(KeyCode::Char(' ')));
+        let t = std::time::Instant::now();
+        while !app.worldgen.as_ref().unwrap().done() {
+            check(&mut app, "Year");
+            app.frame();
+            assert!(t.elapsed().as_secs() < 120, "world generation never finished");
+        }
+        check(&mut app, "The world is ready");
+        app.on_key(key(KeyCode::Enter));
         assert!(matches!(app.mode, Mode::WorldMap { .. }), "after worldgen: {:?}", app.mode);
         check(&mut app, "Choose a site");
 

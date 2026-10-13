@@ -4,7 +4,7 @@ use crate::game::{BuildMat, ConstructKind, Game, ZoneKind};
 use crate::geom::Pos;
 use crate::items::StockFilter;
 use crate::jobs::{AfterSave, Job, JobDone};
-use crate::overworld::Overworld;
+use crate::overworld::{Overworld, WorldGen, WorldParams};
 use crate::saves::{self, SaveMeta};
 use std::path::PathBuf;
 use crate::world::Desig;
@@ -15,6 +15,30 @@ use std::collections::HashSet;
 pub const SPEEDS: [u32; 6] = [1, 2, 5, 10, 25, 60];
 pub const SAVE_DIR: &str = "saves";
 pub const TITLE_MENU: [&str; 4] = ["New world", "Continue", "Load game", "Quit"];
+
+/// Rows of the world settings screen.
+pub const SETUP_ROWS: [&str; 7] = ["Preset", "Seed", "History", "Civilizations", "Savagery", "Minerals", "Generate world"];
+pub const HISTORY_CHOICES: [i32; 5] = [50, 100, 200, 300, 500];
+pub const LEVELS: [[&str; 3]; 3] = [["Few", "Normal", "Many"], ["Calm", "Normal", "Savage"], ["Sparse", "Normal", "Rich"]];
+
+/// (name, history, civs, savagery, minerals)
+pub const PRESETS: [(&str, i32, u8, u8, u8); 4] = [
+    ("Quick", 50, 0, 1, 1),
+    ("Standard", 200, 1, 1, 1),
+    ("Long history", 500, 2, 1, 1),
+    ("Harsh", 300, 1, 2, 0),
+];
+
+pub fn preset_name(p: &WorldParams) -> &'static str {
+    PRESETS
+        .iter()
+        .find(|(_, h, c, s, m)| *h == p.history && *c == p.civs && *s == p.savagery && *m == p.minerals)
+        .map_or("Custom", |x| x.0)
+}
+
+fn random_seed() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64) % 1_000_000_000
+}
 
 pub const DESIG_KEYS: [(char, Desig); 8] = [
     ('d', Desig::Dig),
@@ -139,6 +163,10 @@ pub enum Mode {
     LoadMenu { sel: usize, confirm: bool },
     /// A job is running; the loading screen shows its progress.
     Loading,
+    /// World creation settings.
+    WorldSetup { sel: usize },
+    /// Watching the world being made; it runs a little each frame.
+    WorldGen,
     Normal,
     Designate { kind: Desig, corner: Option<Pos> },
     /// `filter == None` erases zones.
@@ -191,6 +219,12 @@ pub struct App {
     pub save_dir: PathBuf,
     /// The seed from the command line is used for the first new world only.
     seed_used: bool,
+    /// Settings for the next world, kept between worlds.
+    pub world_params: WorldParams,
+    /// The world being generated on the creation screen.
+    pub worldgen: Option<WorldGen>,
+    /// Skip the pacing and generate as fast as possible.
+    pub gen_fast: bool,
 }
 
 impl App {
@@ -230,6 +264,9 @@ impl App {
             resume: Mode::Normal,
             save_dir: PathBuf::from(SAVE_DIR),
             seed_used: false,
+            world_params: WorldParams { seed, ..WorldParams::default() },
+            worldgen: None,
+            gen_fast: false,
         }
     }
 
@@ -238,6 +275,14 @@ impl App {
     /// Advance one frame: finish jobs, run the simulation, autosave.
     pub fn frame(&mut self) {
         self.poll_job();
+        if self.mode == Mode::WorldGen {
+            if let Some(g) = self.worldgen.as_mut() {
+                // Paced so the world can be watched taking shape; Space skips ahead.
+                let (rows, years) = if self.gen_fast { (usize::MAX, 40) } else { (1, 1) };
+                g.step(rows, years);
+            }
+            return;
+        }
         if self.job.is_some() || self.game.is_placeholder() || !self.in_fortress() {
             return;
         }
@@ -261,7 +306,13 @@ impl App {
     pub fn in_fortress(&self) -> bool {
         !matches!(
             self.mode,
-            Mode::Title { .. } | Mode::LoadMenu { .. } | Mode::Loading | Mode::WorldMap { .. } | Mode::Legends { from_world: true, .. }
+            Mode::Title { .. }
+                | Mode::LoadMenu { .. }
+                | Mode::Loading
+                | Mode::WorldSetup { .. }
+                | Mode::WorldGen
+                | Mode::WorldMap { .. }
+                | Mode::Legends { from_world: true, .. }
         )
     }
 
@@ -273,15 +324,86 @@ impl App {
         self.mode = Mode::Loading;
     }
 
-    pub fn start_new_world(&mut self) {
+    /// Open the world settings, with a fresh seed unless the command line gave one.
+    pub fn open_world_setup(&mut self) {
         if self.seed_used {
-            self.seed = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(self.seed.wrapping_add(1), |d| d.as_nanos() as u64);
+            self.world_params.seed = random_seed();
         }
         self.seed_used = true;
-        let seed = self.seed;
-        self.run_job("Creating a world", move |report| Ok(JobDone::World(Overworld::generate_with(seed, report))));
+        self.mode = Mode::WorldSetup { sel: SETUP_ROWS.len() - 1 };
+    }
+
+    pub fn start_worldgen(&mut self) {
+        self.seed = self.world_params.seed;
+        self.worldgen = Some(WorldGen::new(self.world_params));
+        self.gen_fast = false;
+        self.mode = Mode::WorldGen;
+    }
+
+    fn key_world_setup(&mut self, k: KeyEvent, sel: usize) {
+        let n = SETUP_ROWS.len();
+        let p = &mut self.world_params;
+        let step = |v: u8, right: bool| if right { (v + 1).min(2) } else { v.saturating_sub(1) };
+        let horiz = matches!(k.code, KeyCode::Left | KeyCode::Right);
+        let right = k.code == KeyCode::Right;
+        match k.code {
+            KeyCode::Esc => self.mode = Mode::Title { sel: 0 },
+            KeyCode::Up => self.mode = Mode::WorldSetup { sel: (sel + n - 1) % n },
+            KeyCode::Down | KeyCode::Tab => self.mode = Mode::WorldSetup { sel: (sel + 1) % n },
+            KeyCode::Enter => self.start_worldgen(),
+            KeyCode::Char('r') => p.seed = random_seed(),
+            KeyCode::Char(c @ '0'..='9') if sel == 1 => {
+                if p.seed < 100_000_000_000_000_000 {
+                    p.seed = p.seed * 10 + (c as u64 - '0' as u64);
+                }
+            }
+            KeyCode::Backspace if sel == 1 => p.seed /= 10,
+            _ if horiz => match sel {
+                0 => {
+                    let cur = PRESETS.iter().position(|x| x.0 == preset_name(p));
+                    let i = match (cur, right) {
+                        (Some(i), true) => (i + 1) % PRESETS.len(),
+                        (Some(i), false) => (i + PRESETS.len() - 1) % PRESETS.len(),
+                        (None, _) => 1,
+                    };
+                    let (_, h, c, s, m) = PRESETS[i];
+                    (p.history, p.civs, p.savagery, p.minerals) = (h, c, s, m);
+                }
+                1 => p.seed = random_seed(),
+                2 => {
+                    let i = HISTORY_CHOICES.iter().position(|&h| h >= p.history).unwrap_or(2);
+                    let i = if right { (i + 1).min(HISTORY_CHOICES.len() - 1) } else { i.saturating_sub(1) };
+                    p.history = HISTORY_CHOICES[i];
+                }
+                3 => p.civs = step(p.civs, right),
+                4 => p.savagery = step(p.savagery, right),
+                5 => p.minerals = step(p.minerals, right),
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
+    fn key_worldgen(&mut self, k: KeyEvent) {
+        let done = self.worldgen.as_ref().map_or(false, |g| g.done());
+        match k.code {
+            KeyCode::Enter if done => {
+                let ow = self.worldgen.take().unwrap().finish();
+                self.game = Game::placeholder(ow);
+                let (x, y) = self.game.site;
+                self.mode = Mode::WorldMap { x, y };
+            }
+            KeyCode::Char(' ') | KeyCode::Enter => self.gen_fast = true,
+            KeyCode::Char('r') => {
+                self.world_params.seed = random_seed();
+                self.start_worldgen();
+            }
+            KeyCode::Esc | KeyCode::Char('e') => {
+                self.worldgen = None;
+                self.mode = Mode::WorldSetup { sel: 0 };
+            }
+            _ => {}
+        }
     }
 
     fn start_embark(&mut self, x: i32, y: i32) {
@@ -330,11 +452,6 @@ impl App {
         let Some(result) = self.job.as_ref().and_then(|j| j.poll()) else { return };
         self.job = None;
         match result {
-            Ok(JobDone::World(ow)) => {
-                self.game = Game::placeholder(ow);
-                let (x, y) = self.game.site;
-                self.mode = Mode::WorldMap { x, y };
-            }
             Ok(JobDone::Embarked(g)) => {
                 self.game = g;
                 self.cursor = self.game.embark;
@@ -384,7 +501,7 @@ impl App {
             KeyCode::Down => self.mode = Mode::Title { sel: (sel + 1) % n },
             KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => self.quit = true,
             KeyCode::Enter => match sel {
-                0 => self.start_new_world(),
+                0 => self.open_world_setup(),
                 1 => match self.saves().into_iter().next() {
                     Some(m) => self.start_load(m.file),
                     None => self.flash = Some("No saved games yet.".into()),
@@ -514,6 +631,8 @@ impl App {
         }
         match self.mode.clone() {
             Mode::Loading => return,
+            Mode::WorldSetup { sel } => return self.key_world_setup(k, sel),
+            Mode::WorldGen => return self.key_worldgen(k),
             Mode::Title { sel } => return self.key_title(k, sel),
             Mode::LoadMenu { sel, confirm } => return self.key_load_menu(k, sel, confirm),
             _ => {}
@@ -720,7 +839,7 @@ impl App {
                 KeyCode::Char('y') | KeyCode::Char('Y') => self.quit = true,
                 _ => self.mode = Mode::Normal,
             },
-            Mode::Title { .. } | Mode::LoadMenu { .. } | Mode::Loading => {}
+            Mode::Title { .. } | Mode::LoadMenu { .. } | Mode::Loading | Mode::WorldSetup { .. } | Mode::WorldGen => {}
         }
     }
 

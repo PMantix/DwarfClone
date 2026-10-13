@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 
 pub const OW_W: i32 = 64;
 pub const OW_H: i32 = 32;
-pub const HISTORY_YEARS: i32 = 200;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Biome {
@@ -33,6 +32,8 @@ pub struct EmbarkParams {
     pub lake: f64,
     /// Chance of hostile animals among wildlife.
     pub savagery: f64,
+    /// Multiplier on ore veins and gems.
+    pub minerals: f64,
 }
 
 impl Biome {
@@ -63,7 +64,7 @@ impl Biome {
     }
 
     pub fn params(self) -> EmbarkParams {
-        let p = |relief, forest, lake, savagery| EmbarkParams { relief, forest, lake, savagery };
+        let p = |relief, forest, lake, savagery| EmbarkParams { relief, forest, lake, savagery, minerals: 1.0 };
         match self {
             Biome::Mountain => p(1.6, 0.3, 0.03, 0.3),
             Biome::Hills => p(1.2, 0.7, 0.06, 0.2),
@@ -237,6 +238,284 @@ pub struct Overworld {
     pub events: Vec<Event>,
     pub year: i32,
     pub name: String,
+    /// Wildlife savagery multiplier chosen at world creation.
+    #[serde(default = "one")]
+    pub savagery: f64,
+    /// Ore and gem abundance multiplier chosen at world creation.
+    #[serde(default = "one")]
+    pub minerals: f64,
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+/// Settings chosen on the world creation screen.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WorldParams {
+    pub seed: u64,
+    /// Years of history before the expedition sets out.
+    pub history: i32,
+    /// 0 few, 1 normal, 2 many civilizations.
+    pub civs: u8,
+    /// 0 calm, 1 normal, 2 savage wildlife.
+    pub savagery: u8,
+    /// 0 sparse, 1 normal, 2 rich ore and gems.
+    pub minerals: u8,
+}
+
+impl Default for WorldParams {
+    fn default() -> Self {
+        WorldParams { seed: 0, history: 200, civs: 1, savagery: 1, minerals: 1 }
+    }
+}
+
+impl WorldParams {
+    pub fn civ_plan(&self) -> Vec<Race> {
+        use Race::*;
+        match self.civs {
+            0 => vec![Dwarf, Human, Elf, Goblin],
+            1 => vec![Dwarf, Dwarf, Human, Human, Elf, Goblin, Goblin],
+            _ => vec![Dwarf, Dwarf, Dwarf, Human, Human, Human, Elf, Elf, Goblin, Goblin, Goblin],
+        }
+    }
+
+    pub fn savagery_mult(&self) -> f64 {
+        [0.5, 1.0, 1.7][self.savagery.min(2) as usize]
+    }
+
+    pub fn minerals_mult(&self) -> f64 {
+        [0.5, 1.0, 2.0][self.minerals.min(2) as usize]
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum GenStage {
+    Terrain,
+    Civs,
+    Beasts,
+    History,
+    Done,
+}
+
+/// World generation that can be advanced a little at a time, so the
+/// creation screen can draw the world as it takes shape.
+pub struct WorldGen {
+    pub params: WorldParams,
+    pub ow: Overworld,
+    rng: Rng,
+    elev: Noise,
+    rain: Noise,
+    heat: Noise,
+    evil: Noise,
+    row: i32,
+    stage: GenStage,
+}
+
+impl WorldGen {
+    pub fn new(params: WorldParams) -> WorldGen {
+        let seed = params.seed;
+        let mut rng = Rng::new(seed ^ 0xBADC0DE);
+        let (w, h) = (OW_W, OW_H);
+        // The terrain uses only noise, so naming the world first draws the
+        // same random numbers as naming it afterwards.
+        let name = format!("The {} {}", word(&mut rng, Race::Elf, 2), rng.pick(&["Continent", "Expanse", "Reaches", "Wilds"]));
+        let ow = Overworld {
+            w,
+            h,
+            cells: Vec::with_capacity((w * h) as usize),
+            civs: Vec::new(),
+            sites: Vec::new(),
+            figures: Vec::new(),
+            events: Vec::new(),
+            year: 0,
+            name,
+            savagery: params.savagery_mult(),
+            minerals: params.minerals_mult(),
+        };
+        WorldGen {
+            params,
+            ow,
+            rng,
+            elev: Noise::new(seed ^ 0xE1E7),
+            rain: Noise::new(seed ^ 0x7A1),
+            heat: Noise::new(seed ^ 0x4EA7),
+            evil: Noise::new(seed ^ 0xE711),
+            row: 0,
+            stage: GenStage::Terrain,
+        }
+    }
+
+    pub fn done(&self) -> bool {
+        self.stage == GenStage::Done
+    }
+
+    /// Rows of terrain generated so far (the rest of the map is still blank).
+    pub fn rows_done(&self) -> i32 {
+        self.row
+    }
+
+    /// Advance by up to `rows` rows of terrain or `years` years of history.
+    /// Returns true once the world is finished.
+    pub fn step(&mut self, rows: usize, years: usize) -> bool {
+        match self.stage {
+            GenStage::Terrain => {
+                for _ in 0..rows {
+                    if self.row >= self.ow.h {
+                        break;
+                    }
+                    let y = self.row;
+                    self.terrain_row(y);
+                    self.row += 1;
+                }
+                if self.row >= self.ow.h {
+                    self.stage = GenStage::Civs;
+                }
+            }
+            GenStage::Civs => {
+                self.found_civs();
+                self.stage = GenStage::Beasts;
+            }
+            GenStage::Beasts => {
+                self.place_beasts();
+                self.stage = GenStage::History;
+            }
+            GenStage::History => {
+                for _ in 0..years {
+                    if self.ow.year >= self.params.history {
+                        break;
+                    }
+                    let year = self.ow.year + 1;
+                    self.ow.simulate_year(&mut self.rng, year);
+                    self.ow.year = year;
+                }
+                if self.ow.year >= self.params.history {
+                    self.stage = GenStage::Done;
+                }
+            }
+            GenStage::Done => {}
+        }
+        self.done()
+    }
+
+    /// Stage name and fraction done (terrain counts for the first 15%).
+    pub fn progress(&self) -> (String, f32) {
+        match self.stage {
+            GenStage::Terrain => ("Raising mountains and filling the seas".into(), 0.1 * self.row as f32 / self.ow.h as f32),
+            GenStage::Civs => ("Founding the first civilizations".into(), 0.1),
+            GenStage::Beasts => ("Waking ancient beasts".into(), 0.12),
+            GenStage::History => (
+                format!("Recording history: year {} of {}", self.ow.year, self.params.history),
+                0.15 + 0.85 * self.ow.year as f32 / self.params.history.max(1) as f32,
+            ),
+            GenStage::Done => ("History is written".into(), 1.0),
+        }
+    }
+
+    pub fn finish(mut self) -> Overworld {
+        while !self.step(usize::MAX, usize::MAX) {}
+        self.ow
+    }
+
+    fn terrain_row(&mut self, y: i32) {
+        let (w, h) = (self.ow.w, self.ow.h);
+        for x in 0..w {
+            let (fx, fy) = (x as f64 / 14.0, y as f64 / 9.0);
+            // Shape a continent: lower toward the edges.
+            let edge = {
+                let dx = (x as f64 / w as f64 - 0.5).abs() * 2.0;
+                let dy = (y as f64 / h as f64 - 0.5).abs() * 2.0;
+                dx.max(dy).powi(3) * 0.35
+            };
+            let e = self.elev.fbm2(fx, fy, 5) - edge;
+            let r = self.rain.fbm2(fx * 1.3, fy * 1.3, 3);
+            let t = 1.0 - (y as f64 / h as f64) * 0.9 + (self.heat.fbm2(fx, fy, 2) - 0.5) * 0.4;
+            let biome = if e < 0.36 {
+                Biome::Ocean
+            } else if e > 0.66 {
+                Biome::Mountain
+            } else if e > 0.58 {
+                Biome::Hills
+            } else if t < 0.3 {
+                Biome::Tundra
+            } else if r < 0.36 && t > 0.55 {
+                Biome::Desert
+            } else if r > 0.64 {
+                Biome::Swamp
+            } else if r > 0.5 {
+                Biome::Forest
+            } else {
+                Biome::Grassland
+            };
+            let ev = biome != Biome::Ocean && self.evil.fbm2(fx * 1.6, fy * 1.6, 2) > 0.66;
+            self.ow.cells.push(Cell { biome, evil: ev, site: 0 });
+        }
+    }
+
+    fn found_civs(&mut self) {
+        let (w, h) = (self.ow.w, self.ow.h);
+        let params = self.params;
+        // Civilizations and their capitals.
+        let plan = params.civ_plan();
+        for race in plan {
+            let mut spot = None;
+            for _ in 0..400 {
+                let (x, y) = (self.rng.range(1, w - 1), self.rng.range(1, h - 1));
+                let c = self.ow.cell(x, y);
+                if c.site == 0 && race.home(c.biome, c.evil) && self.ow.sites.iter().all(|s| (s.x - x).abs() + (s.y - y).abs() > 8) {
+                    spot = Some((x, y));
+                    break;
+                }
+            }
+            let Some((x, y)) = spot else { continue };
+            let id = self.ow.civs.len() as u32;
+            let name = civ_name(&mut self.rng, race);
+            self.ow.civs.push(Civ { id, name, race, alive: true, enemies: Vec::new(), ruler: None, capital: 0 });
+            let sid = self.ow.add_site(&mut self.rng, Overworld::site_kind_for(race, true), Some(id), x, y, 0);
+            self.ow.civs[id as usize].capital = sid;
+            let (cname, sname) = (self.ow.civs[id as usize].name.clone(), self.ow.sites[sid as usize].name.clone());
+            self.ow.log(0, format!("The {} of the {} founded {}.", race.plural(), cname, sname));
+            self.ow.crown(&mut self.rng, id, 0);
+        }
+        // Goblins hate everyone.
+        let ids: Vec<u32> = self.ow.civs.iter().map(|c| c.id).collect();
+        for &a in &ids {
+            for &b in &ids {
+                if a != b && (self.ow.civs[a as usize].race == Race::Goblin || self.ow.civs[b as usize].race == Race::Goblin)
+                    && self.ow.civs[a as usize].race != self.ow.civs[b as usize].race
+                {
+                    self.ow.civs[a as usize].enemies.push(b);
+                }
+            }
+        }
+    }
+
+    fn place_beasts(&mut self) {
+        let (w, h) = (self.ow.w, self.ow.h);
+        // Megabeasts in remote lairs.
+        for i in 0..3 {
+            let (kind, part) = BEASTS[(i + self.rng.range(0, 5) as usize) % BEASTS.len()];
+            let mut spot = None;
+            for _ in 0..300 {
+                let (x, y) = (self.rng.range(0, w), self.rng.range(0, h));
+                let c = self.ow.cell(x, y);
+                if c.site == 0 && matches!(c.biome, Biome::Mountain | Biome::Swamp | Biome::Desert | Biome::Tundra) {
+                    spot = Some((x, y));
+                    break;
+                }
+            }
+            let Some((x, y)) = spot else { continue };
+            let born = -self.rng.range(200, 900);
+            let f = self.ow.add_figure(&mut self.rng, kind, None, None, born);
+            let name = format!("{}{}", self.ow.figures[f as usize].name, part);
+            self.ow.figures[f as usize].name = name.clone();
+            let lair = self.ow.add_site(&mut self.rng, SiteKind::Lair, None, x, y, 0);
+            self.ow.sites[lair as usize].name = format!("{}'s lair", name);
+            self.ow.figures[f as usize].lair = Some(lair);
+            self.ow.log(0, format!("{} the {} made its lair in the {}.", name, kind, self.ow.cell(x, y).biome.name()));
+        }
+
+    }
 }
 
 // ---------------------------------------------------------------- names
@@ -472,130 +751,20 @@ impl Overworld {
             events: Vec::new(),
             year: 0,
             name: String::new(),
+            savagery: 1.0,
+            minerals: 1.0,
         }
     }
 
-    /// Generate, reporting each stage and how far along it is (0..1).
+    /// Generate with default settings, reporting each stage and how far along it is (0..1).
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn generate_with(seed: u64, report: &dyn Fn(&str, f32)) -> Overworld {
-        report("Raising mountains and filling the seas", 0.0);
-        let mut rng = Rng::new(seed ^ 0xBADC0DE);
-        let elev = Noise::new(seed ^ 0xE1E7);
-        let rain = Noise::new(seed ^ 0x7A1);
-        let heat = Noise::new(seed ^ 0x4EA7);
-        let evil = Noise::new(seed ^ 0xE711);
-        let (w, h) = (OW_W, OW_H);
-        let mut cells = Vec::with_capacity((w * h) as usize);
-        for y in 0..h {
-            for x in 0..w {
-                let (fx, fy) = (x as f64 / 14.0, y as f64 / 9.0);
-                // Shape a continent: lower toward the edges.
-                let edge = {
-                    let dx = (x as f64 / w as f64 - 0.5).abs() * 2.0;
-                    let dy = (y as f64 / h as f64 - 0.5).abs() * 2.0;
-                    dx.max(dy).powi(3) * 0.35
-                };
-                let e = elev.fbm2(fx, fy, 5) - edge;
-                let r = rain.fbm2(fx * 1.3, fy * 1.3, 3);
-                let t = 1.0 - (y as f64 / h as f64) * 0.9 + (heat.fbm2(fx, fy, 2) - 0.5) * 0.4;
-                let biome = if e < 0.36 {
-                    Biome::Ocean
-                } else if e > 0.66 {
-                    Biome::Mountain
-                } else if e > 0.58 {
-                    Biome::Hills
-                } else if t < 0.3 {
-                    Biome::Tundra
-                } else if r < 0.36 && t > 0.55 {
-                    Biome::Desert
-                } else if r > 0.64 {
-                    Biome::Swamp
-                } else if r > 0.5 {
-                    Biome::Forest
-                } else {
-                    Biome::Grassland
-                };
-                let ev = biome != Biome::Ocean && evil.fbm2(fx * 1.6, fy * 1.6, 2) > 0.66;
-                cells.push(Cell { biome, evil: ev, site: 0 });
-            }
+        let mut g = WorldGen::new(WorldParams { seed, ..WorldParams::default() });
+        while !g.step(usize::MAX, 5) {
+            let (stage, frac) = g.progress();
+            report(&stage, frac);
         }
-        let mut ow = Overworld {
-            w,
-            h,
-            cells,
-            civs: Vec::new(),
-            sites: Vec::new(),
-            figures: Vec::new(),
-            events: Vec::new(),
-            year: HISTORY_YEARS,
-            name: format!("The {} {}", word(&mut rng, Race::Elf, 2), rng.pick(&["Continent", "Expanse", "Reaches", "Wilds"])),
-        };
-
-        report("Founding the first civilizations", 0.08);
-        // Civilizations and their capitals.
-        let plan = [Race::Dwarf, Race::Dwarf, Race::Human, Race::Human, Race::Elf, Race::Goblin, Race::Goblin];
-        for race in plan {
-            let mut spot = None;
-            for _ in 0..400 {
-                let (x, y) = (rng.range(1, w - 1), rng.range(1, h - 1));
-                let c = ow.cell(x, y);
-                if c.site == 0 && race.home(c.biome, c.evil) && ow.sites.iter().all(|s| (s.x - x).abs() + (s.y - y).abs() > 8) {
-                    spot = Some((x, y));
-                    break;
-                }
-            }
-            let Some((x, y)) = spot else { continue };
-            let id = ow.civs.len() as u32;
-            let name = civ_name(&mut rng, race);
-            ow.civs.push(Civ { id, name, race, alive: true, enemies: Vec::new(), ruler: None, capital: 0 });
-            let sid = ow.add_site(&mut rng, Self::site_kind_for(race, true), Some(id), x, y, 0);
-            ow.civs[id as usize].capital = sid;
-            let (cname, sname) = (ow.civs[id as usize].name.clone(), ow.sites[sid as usize].name.clone());
-            ow.log(0, format!("The {} of the {} founded {}.", race.plural(), cname, sname));
-            ow.crown(&mut rng, id, 0);
-        }
-        // Goblins hate everyone.
-        let ids: Vec<u32> = ow.civs.iter().map(|c| c.id).collect();
-        for &a in &ids {
-            for &b in &ids {
-                if a != b && (ow.civs[a as usize].race == Race::Goblin || ow.civs[b as usize].race == Race::Goblin)
-                    && ow.civs[a as usize].race != ow.civs[b as usize].race
-                {
-                    ow.civs[a as usize].enemies.push(b);
-                }
-            }
-        }
-        // Megabeasts in remote lairs.
-        for i in 0..3 {
-            let (kind, part) = BEASTS[(i + rng.range(0, 5) as usize) % BEASTS.len()];
-            let mut spot = None;
-            for _ in 0..300 {
-                let (x, y) = (rng.range(0, w), rng.range(0, h));
-                let c = ow.cell(x, y);
-                if c.site == 0 && matches!(c.biome, Biome::Mountain | Biome::Swamp | Biome::Desert | Biome::Tundra) {
-                    spot = Some((x, y));
-                    break;
-                }
-            }
-            let Some((x, y)) = spot else { continue };
-            let born = -rng.range(200, 900);
-            let f = ow.add_figure(&mut rng, kind, None, None, born);
-            let name = format!("{}{}", ow.figures[f as usize].name, part);
-            ow.figures[f as usize].name = name.clone();
-            let lair = ow.add_site(&mut rng, SiteKind::Lair, None, x, y, 0);
-            ow.sites[lair as usize].name = format!("{}'s lair", name);
-            ow.figures[f as usize].lair = Some(lair);
-            ow.log(0, format!("{} the {} made its lair in the {}.", name, kind, ow.cell(x, y).biome.name()));
-        }
-
-        report("Waking ancient beasts", 0.12);
-        for year in 1..=HISTORY_YEARS {
-            if year % 5 == 0 {
-                report(&format!("Recording history: year {} of {}", year, HISTORY_YEARS), 0.15 + 0.85 * year as f32 / HISTORY_YEARS as f32);
-            }
-            ow.simulate_year(&mut rng, year);
-        }
-        report("History is written", 1.0);
-        ow
+        g.finish()
     }
 
     fn living_sites(&self, civ: u32) -> Vec<u32> {
@@ -624,7 +793,7 @@ impl Overworld {
             if !sites.is_empty() && rng.chance(0.18) {
                 let from = self.sites[*rng.pick(&sites) as usize].clone();
                 if let Some((x, y)) = self.free_spot_near(rng, from.x, from.y, 6, race) {
-                    let sid = self.add_site(rng, Self::site_kind_for(race, false), Some(c), x, y, year);
+                    let sid = self.add_site(rng, Overworld::site_kind_for(race, false), Some(c), x, y, year);
                     let text = format!(
                         "The {} of {} founded the {} of {}.",
                         race.plural(),
@@ -857,6 +1026,27 @@ impl Overworld {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stepwise_generation_matches_one_go() {
+        for seed in [3u64, 99] {
+            let params = WorldParams { seed, history: 60, civs: 2, savagery: 0, minerals: 2 };
+            let mut g = WorldGen::new(params);
+            let mut steps = 0;
+            while !g.step(1, 1) {
+                steps += 1;
+            }
+            assert!(steps > 60, "generation wasn't actually stepped ({} steps)", steps);
+            let stepped = serde_json::to_string(&g.finish()).unwrap();
+            let one_go = serde_json::to_string(&WorldGen::new(params).finish()).unwrap();
+            assert!(stepped == one_go, "seed {}: stepped world differs from one-go world", seed);
+        }
+        // Settings matter.
+        let a = WorldGen::new(WorldParams { seed: 5, ..WorldParams::default() }).finish();
+        let b = WorldGen::new(WorldParams { seed: 5, civs: 2, ..WorldParams::default() }).finish();
+        assert!(b.civs.len() > a.civs.len());
+        assert_eq!(a.year, 200);
+    }
 
     #[test]
     fn world_has_history() {
