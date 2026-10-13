@@ -27,6 +27,7 @@ mod traps;
 mod military;
 mod medicine;
 mod animals;
+mod needs;
 pub use medicine::Treatment;
 pub use military::{Squad, SquadOrder};
 #[cfg(test)]
@@ -89,6 +90,10 @@ pub enum ZoneKind {
     Hospital,
     /// Tame animals assigned here stay inside and breed.
     Pasture,
+    /// Dwarves come here to pray.
+    Temple,
+    /// A meeting hall for drinking and making merry.
+    Tavern,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -926,6 +931,9 @@ impl Game {
         if d.task == Task::Idle {
             if d.idle_cd > 0 {
                 d.idle_cd -= 1;
+            } else if self.on_break(d) {
+                d.idle_cd = 20 + self.rng.range(0, 20) as u32;
+                self.idle_activity(d);
             } else {
                 self.choose_task(d);
                 if d.task == Task::Idle {
@@ -939,6 +947,7 @@ impl Game {
             && d.tantrum == 0
             && self.tick % 30 == d.id as u64 % 30
             && !self.returning_to_burrow(d)
+            && self.tick >= d.break_until
         {
             let stroll = std::mem::take(&mut d.task);
             self.choose_task(d);
@@ -956,18 +965,21 @@ impl Game {
     pub fn meeting_tiles(&self) -> Vec<Pos> {
         self.zones
             .values()
-            .filter(|z| z.kind == ZoneKind::Meeting)
+            .filter(|z| matches!(z.kind, ZoneKind::Meeting | ZoneKind::Tavern))
             .flat_map(|z| z.tiles.iter().copied())
             .filter(|&p| self.world.walkable(p))
             .collect()
     }
 
     pub fn in_meeting_area(&self, p: Pos) -> bool {
-        self.zones.get(&self.world.t(p).zone).map_or(false, |z| z.kind == ZoneKind::Meeting)
+        self.zones.get(&self.world.t(p).zone).map_or(false, |z| matches!(z.kind, ZoneKind::Meeting | ZoneKind::Tavern))
     }
 
     /// Nothing to do: head for the meeting area, or at least out of the way.
     fn idle_activity(&mut self, d: &mut Dwarf) {
+        if self.seek_need_zone(d) {
+            return;
+        }
         let meet = self.meeting_tiles();
         if !meet.is_empty() {
             let inside = self.in_meeting_area(d.pos);
@@ -1187,7 +1199,8 @@ impl Game {
         if !d.working {
             d.working = true;
             let diligent = (100 - d.personality.diligence / 3) as u32;
-            d.work = Self::work_time(base * diligent / 100, level);
+            let focus = d.focus().max(1) as u32;
+            d.work = Self::work_time(base * diligent / focus, level);
         }
         if d.work > 0 {
             d.work -= 1;
@@ -1926,9 +1939,10 @@ impl Game {
                 if Self::labor(d, recipe.work(), level) {
                     let used: Vec<Item> = items.iter().filter_map(|id| self.items.remove(id)).collect();
                     d.gain_xp(recipe.labor(), 30);
+                    d.satisfy(dwarf::NeedKind::Craft, 350);
                     d.task = Task::Idle;
                     let mut made: Vec<String> = Vec::new();
-                    let quality = self.roll_quality(level);
+                    let quality = self.roll_quality(level * d.focus().max(0) as u32 / 100);
                     for (kind, mat, label) in recipe.produce(&used) {
                         let id = self.spawn_item(kind, mat, site);
                         let it = self.items.get_mut(&id).unwrap();
@@ -2021,6 +2035,11 @@ impl Game {
                         d.thirst = 0;
                         d.task = Task::Idle;
                         d.think("enjoyed a drink of stoutcap ale", -15, self.tick);
+                        d.satisfy(dwarf::NeedKind::Drink, 500);
+                        if self.zone_kind_at(d.pos) == Some(ZoneKind::Tavern) {
+                            d.satisfy(dwarf::NeedKind::Party, 150);
+                            d.think("drank in the tavern", -6, self.tick);
+                        }
                         // An emptied barrel is left behind now and then.
                         if self.rng.chance(0.25) {
                             self.spawn_item(ItemKind::Barrel, Mat::Wood, d.pos);
@@ -2123,6 +2142,7 @@ impl Game {
             },
             Task::Train => {
                 if Self::labor(d, 300, 0) {
+                    d.satisfy(dwarf::NeedKind::Fight, 300);
                     d.task = Task::Idle;
                 } else if d.work % 2 == 0 {
                     d.fight_xp += self.drill_xp(d);
@@ -2500,6 +2520,29 @@ mod bench {
 
     #[test]
     #[ignore]
+    fn peaceful_year() {
+        let mut g = Game::new(5);
+        let e = g.embark;
+        g.designate(e.offset(-15, -15, -1), e.offset(15, 15, 1), Desig::Chop);
+        g.add_zone(e.offset(-8, 3, -1), e.offset(-1, 9, 1), ZoneKind::Stockpile(StockFilter::All));
+        g.add_zone(e.offset(-8, -8, -1), e.offset(-2, -3, 1), ZoneKind::Farm);
+        for i in 0..YEAR {
+            g.step();
+            if i % 50 == 0 {
+                g.creatures.retain(|_, c| !c.hostile());
+            }
+        }
+        let alive: Vec<&Dwarf> = g.dwarves.iter().filter(|d| d.alive).collect();
+        let n = alive.len().max(1) as i32;
+        eprintln!("PEACE alive {}/{} tantrums {} mean stress {} items {} drinks {} meals {}", alive.len(), g.dwarves.len(),
+            g.log.iter().filter(|l| l.text.ends_with("is throwing a tantrum!")).count(),
+            alive.iter().map(|d| d.stress).sum::<i32>() / n, g.items.len(),
+            g.items.values().filter(|it| it.kind == ItemKind::Drink).count(),
+            g.items.values().filter(|it| it.kind == ItemKind::Meal).count());
+    }
+
+    #[test]
+    #[ignore]
     fn one_year_timing() {
         let mut g = Game::new(5);
         let e = g.embark;
@@ -2511,6 +2554,20 @@ mod bench {
             g.step();
         }
         eprintln!("1 year: {:?}, alive {}/{}, items {}", t.elapsed(), g.alive_count(), g.dwarves.len(), g.items.len());
+        let tantrums = g.log.iter().filter(|l| l.text.ends_with("is throwing a tantrum!")).count();
+        let alive: Vec<&Dwarf> = g.dwarves.iter().filter(|d| d.alive).collect();
+        let n = alive.len().max(1) as i32;
+        eprintln!(
+            "  tantrums {}, mean stress {}, mean focus {}%, crafts {}",
+            tantrums,
+            alive.iter().map(|d| d.stress).sum::<i32>() / n,
+            alive.iter().map(|d| d.focus()).sum::<i32>() / n,
+            g.items.values().filter(|it| it.kind == ItemKind::Craft).count()
+        );
+        for d in &alive {
+            let unmet: Vec<String> = d.needs.iter().filter(|x| x.level <= dwarf::NEED_UNMET).map(|x| format!("{}{}", x.kind.name(), x.strength)).collect();
+            eprintln!("    {:<22} stress {:>4} focus {:>3}% unmet {:?}", d.name, d.stress, d.focus(), unmet);
+        }
         for l in g.log.iter().rev().take(12) {
             eprintln!("  {}", l.text);
         }

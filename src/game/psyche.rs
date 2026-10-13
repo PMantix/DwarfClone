@@ -271,6 +271,7 @@ impl Game {
                 self.go_insane(d, "has been stricken by melancholy");
                 return;
             }
+            self.needs_tick(d);
             self.socialize(d);
         }
         if d.personality.sociability > 25 && tick > d.last_chat + 3 * DAY && tick % DAY == d.id as u64 % DAY {
@@ -311,6 +312,7 @@ impl Game {
         };
         d.adjust_regard(oid, delta);
         d.last_chat = tick;
+        d.satisfy(crate::dwarf::NeedKind::Socialize, 250);
         let regard = d.regard(oid);
         if argue {
             d.think(&format!("argued with {}", oname), 8, tick);
@@ -323,6 +325,7 @@ impl Game {
         let o = &mut self.dwarves[j];
         o.adjust_regard(d.id, delta);
         o.last_chat = tick;
+        o.satisfy(crate::dwarf::NeedKind::Socialize, 250);
         if argue {
             o.think(&format!("argued with {}", dname), 8, tick);
         } else if o.regard(d.id) >= 50 {
@@ -342,6 +345,7 @@ impl Game {
                 o.body.wound(part, 4, false);
                 o.adjust_regard(d.id, -25);
                 o.think(&format!("was punched by {}", d.name), 12, tick);
+                d.satisfy(crate::dwarf::NeedKind::Fight, 150);
                 let oname = o.name.clone();
                 let oid = o.id;
                 d.adjust_regard(oid, -10);
@@ -700,6 +704,7 @@ impl Game {
         let li = m.labor.idx();
         d.skills[li] = d.skills[li].max(4000);
         d.think("created an artifact!", -200, tick);
+        d.satisfy(crate::dwarf::NeedKind::Craft, 1000);
         d.task = Task::Idle;
         let who = d.name.clone();
         self.msg(&format!("{} has created {}!", who, desc), (255, 215, 60));

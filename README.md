@@ -69,11 +69,20 @@ civilization in autumn, if they are at peace with you. Haul goods to the depot a
 (they want a tenth on top).
 
 **Zones & idling.** Zones (`i`) cover meeting areas, bedrooms, dormitories, dining halls,
-offices, farm plots and a garbage dump. Bedrooms and offices are given to a dwarf from look
+offices, farm plots, a garbage dump, temples and taverns (a tavern doubles as a meeting area). Bedrooms and offices are given to a dwarf from look
 mode (`k`, then `o`); dormitory beds are shared; dining hall seats are taken first; items
 marked with `d` go to the dump. Dwarves with nothing
 to do gather at the meeting area and chat there more often; without one they at least keep
 out of corridors. A stroll always gives way to real work.
+
+**Needs and focus.** Each dwarf has a few needs, shaped by personality: socializing,
+drinking, crafting, fighting, learning, praying and making merry. Needs fade over time and
+are met by doing those things: chatting, drinking ale, finishing workshop jobs, training or
+fighting, picking up new skills. A temple zone (`i`, `t`) and a tavern zone (`i`, `v`) cover
+prayer and merrymaking; a dwarf whose need has gone unmet takes a break to go there. Unmet
+needs lower focus (down to 70%), met ones raise it (up to 120%); focus scales work speed and
+the quality of crafted goods. The dwarf screen shows focus and each need, and the status
+screen (`z`) lists what the fortress is short of.
 
 **Animals.** The expedition brings dogs, goats and a cat. Pastures (`i`, `u`) keep them in and
 they breed there. From look mode: `p` assigns a pasture, `w` makes a dog the war dog of a

@@ -168,6 +168,7 @@ impl Game {
         let msg = self.strike(&att, &def, &mut body);
         d.attack_cd = 9 + d.body.limp();
         d.fight_xp += 8;
+        d.satisfy(crate::dwarf::NeedKind::Fight, 60);
         if let Some(m) = msg {
             self.msg(&m, (235, 225, 130));
         }

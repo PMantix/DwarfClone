@@ -222,6 +222,119 @@ impl Personality {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NeedKind {
+    Socialize,
+    Drink,
+    Craft,
+    Fight,
+    Learn,
+    Pray,
+    Party,
+}
+
+pub const NEED_KINDS: [NeedKind; 7] =
+    [NeedKind::Socialize, NeedKind::Drink, NeedKind::Craft, NeedKind::Fight, NeedKind::Learn, NeedKind::Pray, NeedKind::Party];
+
+impl NeedKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            NeedKind::Socialize => "Socialize",
+            NeedKind::Drink => "Drink",
+            NeedKind::Craft => "Craft",
+            NeedKind::Fight => "Fight",
+            NeedKind::Learn => "Learn",
+            NeedKind::Pray => "Pray",
+            NeedKind::Party => "Make merry",
+        }
+    }
+
+    /// "is unable to ..." / "was able to ... at last".
+    pub fn verb(self) -> &'static str {
+        match self {
+            NeedKind::Socialize => "spend time with others",
+            NeedKind::Drink => "have a drink",
+            NeedKind::Craft => "make something",
+            NeedKind::Fight => "pick a fight",
+            NeedKind::Learn => "learn something",
+            NeedKind::Pray => "pray",
+            NeedKind::Party => "make merry",
+        }
+    }
+}
+
+/// Level a need starts to weigh on a dwarf's mind, and where it hurts.
+pub const NEED_UNMET: i32 = -300;
+pub const NEED_BADLY: i32 = -600;
+pub const NEED_MIN: i32 = -1000;
+pub const NEED_MAX: i32 = 400;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Need {
+    pub kind: NeedKind,
+    /// 1 to 3: how much it matters to this dwarf.
+    pub strength: u8,
+    /// From NEED_MIN (long unmet) to NEED_MAX (just satisfied).
+    pub level: i32,
+    /// Set once the need went badly unmet, until it is met again.
+    #[serde(default)]
+    pub low: bool,
+}
+
+impl Need {
+    pub fn status(&self) -> &'static str {
+        match self.level {
+            l if l >= 150 => "satisfied",
+            l if l > NEED_UNMET => "not a concern",
+            l if l > NEED_BADLY => "unfulfilled",
+            _ => "badly unfulfilled",
+        }
+    }
+}
+
+/// Which needs a dwarf has, shaped by personality.
+pub fn random_needs(p: &Personality, rng: &mut Rng) -> Vec<Need> {
+    let by = |x: i32| -> u8 {
+        if x >= 25 {
+            3
+        } else if x >= 0 {
+            2
+        } else if x >= -25 {
+            1
+        } else {
+            0
+        }
+    };
+    let mut v = Vec::new();
+    for k in NEED_KINDS {
+        let strength = match k {
+            NeedKind::Socialize => by(p.sociability),
+            NeedKind::Drink => rng.range(1, 4) as u8,
+            NeedKind::Craft => by(p.artistry),
+            NeedKind::Fight => by(p.temper).saturating_sub(1),
+            NeedKind::Learn => rng.range(0, 3) as u8,
+            NeedKind::Pray => {
+                if rng.chance(0.4) {
+                    0
+                } else {
+                    rng.range(1, 4) as u8
+                }
+            }
+            NeedKind::Party => {
+                if p.sociability >= 10 || rng.chance(0.4) {
+                    rng.range(1, 3) as u8
+                } else {
+                    0
+                }
+            }
+        };
+        if strength > 0 {
+            v.push(Need { kind: k, strength, level: rng.range(100, 300), low: false });
+        }
+    }
+    v
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Noble {
     Leader,
     Mayor,
@@ -348,6 +461,12 @@ pub struct Dwarf {
     /// Crossbow bolts in the quiver.
     #[serde(default)]
     pub ammo: u32,
+    /// Personal needs; empty in older saves until first checked.
+    #[serde(default)]
+    pub needs: Vec<Need>,
+    /// Taking a break to pray or carouse until this tick.
+    #[serde(default)]
+    pub break_until: u64,
 }
 
 impl Dwarf {
@@ -360,7 +479,52 @@ impl Dwarf {
     }
 
     pub fn gain_xp(&mut self, l: Labor, xp: u32) {
+        let before = skill_level(self.skills[l.idx()]);
         self.skills[l.idx()] += xp;
+        // Picking up a new trade feeds the urge to learn; plain hauling doesn't.
+        if l != Labor::Hauling {
+            if before < 5 {
+                self.satisfy(NeedKind::Learn, xp as i32 * 2);
+            }
+            if skill_level(self.skills[l.idx()]) > before {
+                self.satisfy(NeedKind::Learn, 300);
+            }
+        }
+    }
+
+    pub fn need(&self, k: NeedKind) -> Option<&Need> {
+        self.needs.iter().find(|n| n.kind == k)
+    }
+
+    pub fn satisfy(&mut self, k: NeedKind, amount: i32) {
+        if let Some(n) = self.needs.iter_mut().find(|n| n.kind == k) {
+            n.level = (n.level + amount).min(NEED_MAX);
+        }
+    }
+
+    /// Work focus in percent: unmet needs distract (down to 70%), met ones
+    /// sharpen (up to 120%).
+    pub fn focus(&self) -> i32 {
+        let total: i32 = self.needs.iter().map(|n| n.strength as i32).sum();
+        if total == 0 {
+            return 100;
+        }
+        let avg = self.needs.iter().map(|n| n.level.clamp(NEED_MIN, NEED_MAX) * n.strength as i32).sum::<i32>() / total;
+        if avg < 0 {
+            100 + avg * 3 / 100
+        } else {
+            100 + avg / 20
+        }
+    }
+
+    pub fn focus_word(&self) -> &'static str {
+        match self.focus() {
+            f if f >= 112 => "very focused",
+            f if f >= 104 => "focused",
+            f if f > 92 => "",
+            f if f > 76 => "distracted",
+            _ => "badly distracted",
+        }
     }
 
     pub fn profession(&self) -> &'static str {
@@ -529,6 +693,8 @@ pub fn new_dwarf(id: u32, pos: Pos, rng: &mut Rng, specialties: &[Labor]) -> Dwa
         labors[l.idx()] = true;
         skills[l.idx()] = if i == 0 { 900 + rng.range(0, 600) as u32 } else { 400 + rng.range(0, 300) as u32 };
     }
+    let personality = Personality::random(rng);
+    let needs = random_needs(&personality, rng);
     Dwarf {
         id,
         name: random_name(rng),
@@ -541,7 +707,8 @@ pub fn new_dwarf(id: u32, pos: Pos, rng: &mut Rng, specialties: &[Labor]) -> Dwa
         fatigue: rng.range(0, 800) as u32,
         color: *rng.pick(&COLORS),
         idle_cd: rng.range(0, 20) as u32,
-        personality: Personality::random(rng),
+        personality,
+        needs,
         likes_mat: *rng.pick(&LIKED_MATS),
         likes_food: Some(*rng.pick(&[ItemKind::Mushroom, ItemKind::Meat, ItemKind::Meal])),
         ..Default::default()

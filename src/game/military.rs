@@ -264,6 +264,7 @@ impl Game {
         d.ammo -= 1;
         d.attack_cd = 14;
         d.fight_xp += 6;
+        d.satisfy(crate::dwarf::NeedKind::Fight, 40);
         let att = super::combat::Fighter {
             name: d.name.clone(),
             skill: d.fight_level(),

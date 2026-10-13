@@ -16,21 +16,11 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W09 onward, in tier order.
+Suggested order: W10 onward, in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
 ### Tier 2: what makes a fortress a fortress
-
-#### W09 Personality needs (M)
-- **DF:** about 30 needs (pray, drink, socialise, craft, fight, learn, wander…); unmet needs lower focus, which changes skill by up to ±50%.
-- **Us:** thirst, hunger and sleep; 5 traits; thoughts; friendships and grudges (`psyche.rs`).
-- **Steps:**
-  - [ ] Needs framework: per-dwarf need levels from personality; decay; satisfied by activities
-  - [ ] First needs: socialise, drink alcohol, craft, fight, learn
-  - [ ] Focus affects work speed and item quality
-  - [ ] Temple and tavern zones meet pray and party needs
-- **Done when:** a test keeps a dwarf from crafting and their focus drops; crafting restores it.
 
 #### W10 Death, family and aging (M)
 - **DF:** burial, coffins, tombs, memorial slabs, ghosts from unburied dead, old age, marriage, children.
@@ -137,13 +127,16 @@ Ideas not ranked yet. Add a line on why each matters.
 - Grazing and animal hunger, milking and shearing, animal trainers and training levels, egg-laying fowl.
 - Pick a room's owner from a list instead of cycling through dwarves with `o`.
 - Announcements history screen (DF's report log): find out what happened while you weren't looking.
+- More needs (DF has ~30): wander, see family, admire art, eat good food, be creative; a library to meet "learn" with books (B08).
+- Deities and prayer to a specific god; temples dedicated to one (B14); drinking water could meet the drink need a little.
 - Mini-map and saved camera spots: get around a 96×64 map faster.
 - Adventure mode: explore the generated world. Out of scope until fortress mode is deep.
 - Hunting labor and hunters with crossbows (after W04's crossbows).
 
 ## Done
 
-- **W08 Animals** (this commit): dogs, cats and goats (a pair of dogs, a pair of goats and a cat on embark); tame animals never turn hostile, never leave, use doors; pasture zones keep assigned animals in (new pastures take in loose goats); breeding with pregnancies, litters and young that grow up in a season (herds cap at 24 per species); war dogs follow their soldier and attack nearby hostiles; caged animals can be tamed and kept animals slaughtered by a butcher.
+- **W09 Personality needs** (this commit): seven needs (socialize, drink, craft, fight, learn, pray, make merry), each 1–3 strong by personality; they fade and are met by chatting, drinking, finishing workshop jobs, training and fighting, learning skills, and leisure in the new temple (`i`, `t`) and tavern (`i`, `v`) zones; dwarves take breaks to pray or carouse when those needs go unmet. Focus (70–120%) follows needs and scales work speed and craft quality; shown on the dwarf screen and summed up on the status screen.
+- **W08 Animals** (b543de8): dogs, cats and goats (a pair of dogs, a pair of goats and a cat on embark); tame animals never turn hostile, never leave, use doors; pasture zones keep assigned animals in (new pastures take in loose goats); breeding with pregnancies, litters and young that grow up in a season (herds cap at 24 per species); war dogs follow their soldier and attack nearby hostiles; caged animals can be tamed and kept animals slaughtered by a butcher.
 - **W05 Health care** (this commit): Medicine labor (doctors) and a hospital zone whose beds the wounded use first; doctors suture bleeding (thread), clean dirty wounds, splint mangled limbs (faster mending, less limping) and fit crutches for lost legs; uncleaned cuts can fester into infections that stop healing and slowly do harm. Thread is spun from stoutcap fiber until W12 brings cloth.
 - **W04 Squads and the military screen** (this commit): named squads with members, a station, orders (train, hold station, kill a chosen creature) and a uniform (weapon type, armor on/off); a barracks zone where soldiers train and spar for faster learning; wooden crossbows and bolts from the carpenter, marksdwarves shooting up to 10 tiles with a clear line of fire (through fortifications), archery targets for practice.
 - **W06 Mechanisms, levers and traps** (this commit): Mechanics labor and Mechanic's workshop (mechanisms from stone); wooden cages at the carpenter; buildings that take several parts; cage traps (catch a creature, then need a new cage), weapon traps (strike up to three times, re-arm themselves), stone-fall traps (one heavy hit, then need a new boulder); levers linked to doors and drawbridges (linking uses a mechanism), pulled by any civilian; a raised drawbridge blocks everyone and can't be battered down.

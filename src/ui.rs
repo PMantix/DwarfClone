@@ -396,6 +396,11 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
     }
     let iname = |id: u32| g.items.get(&id).map_or("something".to_string(), |it| it.name());
     match &d.task {
+        Task::Wander { .. } | Task::Idle if g.tick < d.break_until => match g.zone_kind_at(d.pos) {
+            Some(ZoneKind::Temple) => "Praying".into(),
+            Some(ZoneKind::Tavern) => "Making merry".into(),
+            _ => "On break".into(),
+        },
         Task::Idle => "No job".into(),
         Task::Wander { .. } => "Wandering".into(),
         Task::Dig { target, .. } => {
@@ -1126,6 +1131,24 @@ fn bar(label: &str, value: u32, warn: u32) -> Line<'static> {
     ])
 }
 
+fn focus_line(d: &Dwarf) -> Line<'static> {
+    let f = d.focus();
+    let col = if f >= 104 {
+        Color::Rgb(120, 220, 120)
+    } else if f > 92 {
+        TEXT
+    } else if f > 76 {
+        Color::Rgb(230, 200, 60)
+    } else {
+        Color::Rgb(240, 120, 80)
+    };
+    let word = d.focus_word();
+    Line::from(vec![
+        Span::styled("Focus: ", Style::default().fg(TEXT)),
+        Span::styled(if word.is_empty() { format!("{}%", f) } else { format!("{}% ({})", f, word) }, Style::default().fg(col)),
+    ])
+}
+
 fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
     let (mood, mc) = d.mood();
     let mut v = vec![
@@ -1142,6 +1165,7 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
             Span::styled(mood, Style::default().fg(rgb(mc))),
         ]),
         plain(if d.alive { task_desc(g, d) } else { "Deceased".into() }, KEY),
+        focus_line(d),
         Line::default(),
         bar("Thirst", d.thirst, THIRSTY),
         bar("Hunger", d.hunger, HUNGRY),
@@ -1176,6 +1200,21 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
         _ => "stoutcaps",
     };
     v.push(plain(format!("  Likes {} and {}", d.likes_mat.name(), food), MUTED));
+    if !d.needs.is_empty() {
+        v.push(Line::default());
+        v.push(header("Needs"));
+        for n in &d.needs {
+            let col = match n.level {
+                l if l >= 150 => Color::Rgb(120, 220, 120),
+                l if l > crate::dwarf::NEED_UNMET => MUTED,
+                l if l > crate::dwarf::NEED_BADLY => Color::Rgb(230, 200, 60),
+                _ => Color::Rgb(240, 120, 80),
+            };
+            // Dots show how much the need matters to this dwarf.
+            let weight = "•".repeat(n.strength.min(3) as usize);
+            v.push(plain(format!("  {:<4}{:<11}{}", weight, n.kind.name(), n.status()), col));
+        }
+    }
     let mut rel: Vec<(u32, i32)> = d.relations.iter().copied().filter(|r| r.1 >= 30 || r.1 <= -30).collect();
     rel.sort_by_key(|r| std::cmp::Reverse(r.1.abs()));
     for (oid, r) in rel.into_iter().take(3) {
@@ -2258,9 +2297,12 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
             let mut acts: HashMap<&'static str, usize> = HashMap::new();
             for d in &alive {
                 let a = match d.task {
-                    Task::Idle | Task::Wander { .. } => {
-                        if g.in_meeting_area(d.pos) { "At the meeting area" } else { "Idle" }
-                    }
+                    Task::Idle | Task::Wander { .. } => match g.zone_kind_at(d.pos) {
+                        Some(ZoneKind::Temple) => "Praying",
+                        Some(ZoneKind::Tavern) => "In the tavern",
+                        _ if g.in_meeting_area(d.pos) => "At the meeting area",
+                        _ => "Idle",
+                    },
                     Task::Sleep { .. } => "Sleeping",
                     Task::Rest { .. } => "Resting injuries",
                     Task::Eat { .. } | Task::Dine { .. } | Task::DrinkItem { .. } | Task::DrinkWater { .. } => "Eating or drinking",
@@ -2290,6 +2332,30 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
             moods.sort_by_key(|x| std::cmp::Reverse(x.2));
             for (m, c, k) in moods {
                 v.push(plain(format!("  {:>3}  {}", k, m), rgb(c)));
+            }
+            v.push(Line::default());
+            let avg = if alive.is_empty() { 100 } else { alive.iter().map(|d| d.focus()).sum::<i32>() / alive.len() as i32 };
+            v.push(header(&format!("Focus: {}% on average", avg)));
+            let mut unmet: Vec<(crate::dwarf::NeedKind, usize)> = Vec::new();
+            for d in &alive {
+                for n in d.needs.iter().filter(|n| n.level <= crate::dwarf::NEED_UNMET) {
+                    match unmet.iter_mut().find(|u| u.0 == n.kind) {
+                        Some(u) => u.1 += 1,
+                        None => unmet.push((n.kind, 1)),
+                    }
+                }
+            }
+            unmet.sort_by_key(|u| std::cmp::Reverse(u.1));
+            if unmet.is_empty() {
+                v.push(plain("  Everyone's needs are being met".into(), MUTED));
+            }
+            for (k, n) in unmet {
+                let hint = match k {
+                    crate::dwarf::NeedKind::Pray if !g.zones.values().any(|z| z.kind == ZoneKind::Temple) => " (no temple: i, t)",
+                    crate::dwarf::NeedKind::Party if !g.zones.values().any(|z| z.kind == ZoneKind::Tavern) => " (no tavern: i, v)",
+                    _ => "",
+                };
+                v.push(plain(format!("  {:>3}  unable to {}{}", n, k.verb(), hint), Color::Rgb(230, 200, 60)));
             }
             let mut herd: Vec<(&'static str, usize)> = Vec::new();
             for c in g.creatures.values().filter(|c| c.tame && c.alive) {

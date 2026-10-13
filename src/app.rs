@@ -64,11 +64,13 @@ pub enum ZoneTool {
     Barracks,
     Hospital,
     Pasture,
+    Temple,
+    Tavern,
     Erase,
 }
 
 impl ZoneTool {
-    pub const ALL: [ZoneTool; 11] = [
+    pub const ALL: [ZoneTool; 13] = [
         ZoneTool::Meeting,
         ZoneTool::Bedroom,
         ZoneTool::Dormitory,
@@ -79,6 +81,8 @@ impl ZoneTool {
         ZoneTool::Barracks,
         ZoneTool::Hospital,
         ZoneTool::Pasture,
+        ZoneTool::Temple,
+        ZoneTool::Tavern,
         ZoneTool::Erase,
     ];
 
@@ -94,6 +98,8 @@ impl ZoneTool {
             ZoneTool::Barracks => 'a',
             ZoneTool::Hospital => 'p',
             ZoneTool::Pasture => 'u',
+            ZoneTool::Temple => 't',
+            ZoneTool::Tavern => 'v',
             ZoneTool::Erase => 'x',
         }
     }
@@ -110,6 +116,8 @@ impl ZoneTool {
             ZoneTool::Barracks => Some(ZoneKind::Barracks),
             ZoneTool::Hospital => Some(ZoneKind::Hospital),
             ZoneTool::Pasture => Some(ZoneKind::Pasture),
+            ZoneTool::Temple => Some(ZoneKind::Temple),
+            ZoneTool::Tavern => Some(ZoneKind::Tavern),
             ZoneTool::Erase => None,
         }
     }
@@ -134,6 +142,8 @@ impl ZoneTool {
             ZoneTool::Barracks => &["Soldiers with nothing to do train", "here, and spar with each other,", "which teaches them faster."],
             ZoneTool::Hospital => &["Lay over beds. The wounded rest", "here first; doctors (Medicine) suture,", "clean, splint and fit crutches."],
             ZoneTool::Pasture => &["Goats without a pasture move in.", "Assign other animals with k, then p.", "Kept animals breed here."],
+            ZoneTool::Temple => &["Dwarves who need to pray come here", "on their breaks. Unmet needs hurt", "focus, which slows work."],
+            ZoneTool::Tavern => &["A meeting hall for making merry.", "Drinking here cheers dwarves more;", "it also counts as a meeting area."],
             ZoneTool::Erase => &["Removes zones other than", "stockpiles (stockpiles: p, then x)."],
         }
     }
