@@ -200,7 +200,7 @@ impl BuildingKind {
     pub fn recipes(self) -> &'static [Recipe] {
         use Recipe::*;
         match self {
-            BuildingKind::Carpenter => &[WoodBed, WoodTable, WoodChair, WoodDoor, Barrel, Bin, WoodCage, WoodCrossbow, Bolts],
+            BuildingKind::Carpenter => &[WoodBed, WoodTable, WoodChair, WoodDoor, Barrel, Bin, WoodCage, WoodCrossbow, Bolts, Splint, Crutch],
             BuildingKind::Mechanic => &[Mechanism],
             BuildingKind::Mason => &[Blocks, StoneTable, StoneChair, StoneDoor],
             BuildingKind::Still => &[Brew],
@@ -218,7 +218,7 @@ impl BuildingKind {
                 ForgeBreastplate,
                 ForgeShield,
             ],
-            BuildingKind::Craftsdwarf => &[StoneCraft, BoneCraft, CutGem],
+            BuildingKind::Craftsdwarf => &[StoneCraft, BoneCraft, CutGem, SpinThread],
             _ => &[],
         }
     }
@@ -353,6 +353,9 @@ pub enum Recipe {
     WoodCage,
     WoodCrossbow,
     Bolts,
+    Splint,
+    Crutch,
+    SpinThread,
 }
 
 impl Recipe {
@@ -390,6 +393,9 @@ impl Recipe {
             WoodCage => "Make wooden cage",
             WoodCrossbow => "Make wooden crossbow",
             Bolts => "Make wooden bolts",
+            Splint => "Make splint",
+            Crutch => "Make crutch",
+            SpinThread => "Spin stoutcap thread",
         }
     }
 
@@ -419,6 +425,9 @@ impl Recipe {
             WoodCage => 'g',
             WoodCrossbow => 'x',
             Bolts => 'l',
+            Splint => 's',
+            Crutch => 'c',
+            SpinThread => 't',
         }
     }
 
@@ -435,14 +444,18 @@ impl Recipe {
             | ForgeShield => Labor::Smithing,
             StoneCraft | BoneCraft | CutGem => Labor::Crafting,
             Mechanism => Labor::Mechanics,
-            WoodCage | WoodCrossbow | Bolts => Labor::Carpentry,
+            WoodCage | WoodCrossbow | Bolts | Splint | Crutch => Labor::Carpentry,
+            SpinThread => Labor::Crafting,
         }
     }
 
     pub fn inputs(self) -> &'static [Input] {
         use Recipe::*;
         match self {
-            WoodBed | WoodTable | WoodChair | WoodDoor | Barrel | Bin | Charcoal | WoodCage | WoodCrossbow | Bolts => &[Input::Log],
+            WoodBed | WoodTable | WoodChair | WoodDoor | Barrel | Bin | Charcoal | WoodCage | WoodCrossbow | Bolts | Splint | Crutch => {
+                &[Input::Log]
+            }
+            SpinThread => &[Input::Mushroom],
             Blocks | StoneTable | StoneChair | StoneDoor | StoneCraft | Mechanism => &[Input::Stone],
             Brew => &[Input::Mushroom],
             Cook => &[Input::Edible],
@@ -521,6 +534,9 @@ impl Recipe {
             WoodCage => one(ItemKind::Cage),
             WoodCrossbow => one(ItemKind::Crossbow),
             Bolts => vec![(ItemKind::Bolt, m, None); 2],
+            Splint => one(ItemKind::Splint),
+            Crutch => one(ItemKind::Crutch),
+            SpinThread => vec![(ItemKind::Thread, Mat::Stoutcap, None); 2],
         }
     }
 

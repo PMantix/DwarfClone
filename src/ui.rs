@@ -440,6 +440,10 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
         }
         Task::Dine { .. } => "Eating at a table".into(),
         Task::PullLever { .. } => "Pulling a lever".into(),
+        Task::Treat { patient, what, .. } => {
+            let who = g.dwarves.iter().find(|p| p.id == *patient).map_or("a patient".to_string(), |p| p.name.clone());
+            format!("Treating {}: {}", who, what.name())
+        }
         Task::BuildTile { con, .. } => match g.constructions.get(con).map(|c| c.kind) {
             Some(crate::game::ConstructKind::Remove) => "Removing construction".into(),
             Some(k) => format!("Constructing {}", k.name().to_lowercase()),
@@ -1152,6 +1156,11 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
         v.push(header("Health"));
         if d.body.bleeding > 0 {
             v.push(plain(format!("  Bleeding (blood {}%)", d.body.blood * 100 / d.body.max_blood), Color::Rgb(255, 60, 60)));
+        }
+        if d.body.infected() {
+            v.push(plain("  An infected wound".into(), Color::Rgb(220, 160, 60)));
+        } else if d.body.dirty {
+            v.push(plain("  A dirty wound (needs cleaning)".into(), Color::Rgb(200, 180, 90)));
         }
         v.extend(hurt);
     }
@@ -2305,6 +2314,17 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
                 }
                 if matches!(d.task, Task::Rest { .. }) {
                     flags.push("resting".into());
+                }
+                if d.body.infected() {
+                    flags.push("infected wound".into());
+                } else if d.body.dirty {
+                    flags.push("dirty wound".into());
+                }
+                if d.body.splint.iter().any(|s| *s) {
+                    flags.push("splinted".into());
+                }
+                if d.body.crutch {
+                    flags.push("on a crutch".into());
                 }
                 if d.thirst > THIRSTY * 2 {
                     flags.push("dehydrated".into());

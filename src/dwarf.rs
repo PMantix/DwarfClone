@@ -21,9 +21,10 @@ pub enum Labor {
     Hauling,
     Building,
     Mechanics,
+    Medicine,
 }
 
-pub const NUM_LABORS: usize = 14;
+pub const NUM_LABORS: usize = 15;
 
 pub const LABORS: [Labor; NUM_LABORS] = [
     Labor::Mining,
@@ -40,6 +41,7 @@ pub const LABORS: [Labor; NUM_LABORS] = [
     Labor::Hauling,
     Labor::Building,
     Labor::Mechanics,
+    Labor::Medicine,
 ];
 
 impl Labor {
@@ -63,6 +65,7 @@ impl Labor {
             Labor::Hauling => "Hauling",
             Labor::Building => "Construction",
             Labor::Mechanics => "Mechanics",
+            Labor::Medicine => "Medicine",
         }
     }
 
@@ -80,6 +83,7 @@ impl Labor {
             Labor::Smithing => "Smith",
             Labor::Crafting => "Craftsdwarf",
             Labor::Mechanics => "Mechanic",
+            Labor::Medicine => "Doctor",
             Labor::Hauling | Labor::Building => "Peasant",
         }
     }
@@ -101,6 +105,7 @@ impl Labor {
             Labor::Hauling => "Hau",
             Labor::Building => "Con",
             Labor::Mechanics => "Mec",
+            Labor::Medicine => "Med",
         }
     }
 
@@ -174,6 +179,8 @@ pub enum Task {
     BuildTile { con: u32, item: Option<u32>, stand: Option<Pos> },
     /// Go and throw a lever.
     PullLever { bld: u32 },
+    /// Treat a patient, bringing supplies if needed.
+    Treat { patient: u32, what: crate::game::Treatment, item: Option<u32> },
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

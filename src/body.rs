@@ -82,7 +82,22 @@ pub struct Body {
     pub max_blood: i32,
     pub bleeding: i32,
     pub dead: bool,
+    /// An open wound that hasn't been cleaned; it may fester.
+    #[serde(default)]
+    pub dirty: bool,
+    /// Grows while a wound is dirty; from INFECTED on it stops healing and does harm.
+    #[serde(default)]
+    pub infection: i32,
+    /// Limbs set in a splint.
+    #[serde(default)]
+    pub splint: [bool; 7],
+    /// Walks with a crutch (for a lost leg).
+    #[serde(default)]
+    pub crutch: bool,
 }
+
+/// Infection level at which a wound has festered.
+pub const INFECTED: i32 = 300;
 
 impl Default for Body {
     fn default() -> Self {
@@ -97,7 +112,19 @@ impl Body {
             max[p.idx()] = (p.base_hp() * scale).round().max(4.0) as i32;
         }
         let blood = (100.0 * scale) as i32;
-        Body { hp: max, max, lost: [false; 7], blood, max_blood: blood, bleeding: 0, dead: false }
+        Body {
+            hp: max,
+            max,
+            lost: [false; 7],
+            blood,
+            max_blood: blood,
+            bleeding: 0,
+            dead: false,
+            dirty: false,
+            infection: 0,
+            splint: [false; 7],
+            crutch: false,
+        }
     }
 
     pub fn pick_part(&self, rng: &mut Rng) -> Part {
@@ -117,6 +144,9 @@ impl Body {
         let i = part.idx();
         self.hp[i] -= dmg;
         self.bleeding += if edged { dmg / 3 + 1 } else { dmg / 6 };
+        if edged && dmg >= 3 {
+            self.dirty = true;
+        }
         let hp = self.hp[i];
         let max = self.max[i];
         if part == Part::Head && hp <= 0 || part == Part::UpperBody && hp <= -max / 2 {
@@ -151,15 +181,35 @@ impl Body {
         } else if self.blood < self.max_blood {
             self.blood += 1;
         }
+        // Dirty wounds fester; a body that lives long enough fights it off.
+        if self.dirty {
+            self.infection += 1;
+            if self.infection >= 3 * INFECTED {
+                self.dirty = false;
+            }
+        } else if self.infection > 0 {
+            self.infection = (self.infection - 2).max(0);
+        }
+        if self.infected() && self.infection % 50 == 0 {
+            if let Some(i) = (0..7).filter(|&i| !self.lost[i]).min_by_key(|&i| self.hp[i] * 100 / self.max[i].max(1)) {
+                self.hp[i] -= 1;
+            }
+        }
+    }
+
+    pub fn infected(&self) -> bool {
+        self.infection >= INFECTED
     }
 
     pub fn heal(&mut self, amount: i32) {
-        if self.bleeding > 0 {
+        if self.bleeding > 0 || self.infected() {
             return;
         }
         for i in 0..7 {
             if !self.lost[i] {
-                self.hp[i] = (self.hp[i] + amount).min(self.max[i]);
+                // A set bone mends twice as fast.
+                let a = if self.splint[i] { amount * 2 } else { amount };
+                self.hp[i] = (self.hp[i] + a).min(self.max[i]);
             }
         }
     }
@@ -174,16 +224,26 @@ impl Body {
         !self.dead && (self.blood < self.max_blood / 3 || self.hp[Part::Head.idx()] < self.max[Part::Head.idx()] / 4)
     }
 
-    fn leg_ok(&self, p: Part) -> bool {
-        !self.lost[p.idx()] && self.hp[p.idx()] > 0
+    /// Extra ticks per step from one leg: splints and crutches help.
+    fn leg_drag(&self, p: Part) -> u32 {
+        let i = p.idx();
+        if self.lost[i] {
+            if self.crutch { 2 } else { 5 }
+        } else if self.hp[i] <= 0 {
+            if self.splint[i] { 1 } else { 3 }
+        } else {
+            0
+        }
     }
 
     /// Extra ticks per step from leg injuries.
     pub fn limp(&self) -> u32 {
-        match (self.leg_ok(Part::LeftLeg), self.leg_ok(Part::RightLeg)) {
-            (true, true) => 0,
-            (true, false) | (false, true) => 3,
-            (false, false) => 10,
+        let (l, r) = (self.leg_drag(Part::LeftLeg), self.leg_drag(Part::RightLeg));
+        // Both legs gone or broken is much worse than either alone.
+        if l > 0 && r > 0 {
+            l + r + 4
+        } else {
+            l + r
         }
     }
 
@@ -193,6 +253,7 @@ impl Body {
 
     pub fn needs_rest(&self) -> bool {
         self.bleeding > 0
+            || self.infected()
             || PARTS.iter().any(|p| !self.lost[p.idx()] && self.hp[p.idx()] * 10 < self.max[p.idx()] * 6)
     }
 

@@ -16,20 +16,9 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W05 (medicine) → W08 onward.
+Suggested order: W08 onward, in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
-
-#### W05 Health care (M)
-- **DF:** a hospital zone and a chief medical dwarf, diagnosis before treatment, surgery, sutures, bone setting, cleaning and dressing wounds, splints, casts, crutches; thread, cloth and soap; infection from dirty water.
-- **Us:** wounds, bleeding and severed limbs (`body.rs`); faster healing in bed.
-- **Plan:** a hospital zone (W03) and a doctor labor. Patients are carried or walk there; treatments are tasks on the patient.
-- **Steps:**
-  - [ ] Hospital zone and doctor labor; wounded dwarves go there instead of any bed
-  - [ ] Suturing stops bleeding (needs thread; a stand-in item until W12)
-  - [ ] Splints stop limping sooner; crutches for lost legs
-  - [ ] Infection: untreated wounds can worsen; cleaning with water prevents it
-- **Done when:** a test wounds a dwarf, a doctor sutures them, and they stop bleeding sooner than an untreated one.
 
 ### Tier 2: what makes a fortress a fortress
 
@@ -154,6 +143,7 @@ Ideas not ranked yet. Add a line on why each matters.
 - Linking a lever consumes a mechanism instantly; DF has a mechanic walk over and install it.
 - Caged animals could be tamed (W08) and caged goblins interrogated (B04).
 - Squad schedules (DF's monthly alerts) and patrol routes; metal crossbows and bolts at the forge.
+- Diagnosis, surgery and soap (DF's fuller medicine); a chief medical dwarf (W15).
 - Pick a room's owner from a list instead of cycling through dwarves with `o`.
 - Announcements history screen (DF's report log): find out what happened while you weren't looking.
 - Mini-map and saved camera spots: get around a 96×64 map faster.
@@ -162,6 +152,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **W05 Health care** (this commit): Medicine labor (doctors) and a hospital zone whose beds the wounded use first; doctors suture bleeding (thread), clean dirty wounds, splint mangled limbs (faster mending, less limping) and fit crutches for lost legs; uncleaned cuts can fester into infections that stop healing and slowly do harm. Thread is spun from stoutcap fiber until W12 brings cloth.
 - **W04 Squads and the military screen** (this commit): named squads with members, a station, orders (train, hold station, kill a chosen creature) and a uniform (weapon type, armor on/off); a barracks zone where soldiers train and spar for faster learning; wooden crossbows and bolts from the carpenter, marksdwarves shooting up to 10 tiles with a clear line of fire (through fortifications), archery targets for practice.
 - **W06 Mechanisms, levers and traps** (this commit): Mechanics labor and Mechanic's workshop (mechanisms from stone); wooden cages at the carpenter; buildings that take several parts; cage traps (catch a creature, then need a new cage), weapon traps (strike up to three times, re-arm themselves), stone-fall traps (one heavy hit, then need a new boulder); levers linked to doors and drawbridges (linking uses a mechanism), pulled by any civilian; a raised drawbridge blocks everyone and can't be battered down.
 - **W07 Burrows and traffic** (this commit): `w` paints up to eight burrows and picks who must stay in each (members only path and work inside); one burrow can be the civilian alert burrow, and `m` then `c` sends every non-soldier into it (status bar shows the alert); `o` paints high, normal, low or restricted traffic, which changes dwarves' path costs.

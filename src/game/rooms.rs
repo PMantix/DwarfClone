@@ -21,6 +21,7 @@ impl ZoneKind {
             ZoneKind::Office => "Office".into(),
             ZoneKind::Dump => "Garbage dump".into(),
             ZoneKind::Barracks => "Barracks".into(),
+            ZoneKind::Hospital => "Hospital".into(),
         }
     }
 
@@ -28,7 +29,13 @@ impl ZoneKind {
     pub fn holds_furniture(self) -> bool {
         matches!(
             self,
-            ZoneKind::Meeting | ZoneKind::Bedroom | ZoneKind::Dormitory | ZoneKind::Dining | ZoneKind::Office | ZoneKind::Barracks
+            ZoneKind::Meeting
+                | ZoneKind::Bedroom
+                | ZoneKind::Dormitory
+                | ZoneKind::Dining
+                | ZoneKind::Office
+                | ZoneKind::Barracks
+                | ZoneKind::Hospital
         )
     }
 
@@ -134,7 +141,7 @@ impl Game {
                 None => (None, None),
             };
             match kind {
-                Some(ZoneKind::Dormitory) => self.buildings.get_mut(&bid).unwrap().owner = None,
+                Some(ZoneKind::Dormitory | ZoneKind::Hospital) => self.buildings.get_mut(&bid).unwrap().owner = None,
                 Some(ZoneKind::Bedroom) if owner.is_some() => {
                     let o = owner.unwrap();
                     // Their other beds go back into the pool.
@@ -158,7 +165,7 @@ impl Game {
     /// Whether automatic assignment may hand out this bed.
     pub(super) fn bed_assignable(&self, pos: Pos) -> bool {
         match self.zone_at(pos) {
-            Some(z) if z.kind == ZoneKind::Dormitory => false,
+            Some(z) if z.kind == ZoneKind::Dormitory || z.kind == ZoneKind::Hospital => false,
             Some(z) if z.kind == ZoneKind::Bedroom => z.owner.is_none(),
             _ => true,
         }

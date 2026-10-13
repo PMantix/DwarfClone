@@ -75,6 +75,10 @@ marked with `d` go to the dump. Dwarves with nothing
 to do gather at the meeting area and chat there more often; without one they at least keep
 out of corridors. A stroll always gives way to real work.
 
+**Medicine.** Give someone the Medicine labor and zone a hospital over some beds. Doctors
+suture bleeding wounds (thread from the craftsdwarf), clean cuts before they fester, splint
+broken limbs and fit crutches (from the carpenter). Untended wounds can turn infected.
+
 **Squads.** The military screen (`m`) forms named squads, gives them uniforms (weapon type,
 armor) and orders: train, hold a station, or kill a chosen creature. Soldiers train in the
 barracks zone and learn faster sparring together. Crossbows and bolts come from the

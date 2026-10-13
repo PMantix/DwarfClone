@@ -40,6 +40,9 @@ pub enum ItemKind {
     Crossbow,
     /// A bundle of ten crossbow bolts.
     Bolt,
+    Thread,
+    Splint,
+    Crutch,
 }
 
 /// Items that fit in a barrel or a bin, ten to a container.
@@ -92,6 +95,8 @@ impl ItemKind {
             Cage => 6,
             Crossbow => 20,
             Bolt => 3,
+            Thread => 2,
+            Splint | Crutch => 4,
         }
     }
 
@@ -201,7 +206,7 @@ impl StockFilter {
             StockFilter::Food => matches!(k, Mushroom | Drink | Seed | Meat | Meal),
             StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin | Cage),
             StockFilter::Metal => matches!(k, Bar | Charcoal),
-            StockFilter::Goods => matches!(k, Craft | Gem | Bone | Leather | Mechanism),
+            StockFilter::Goods => matches!(k, Craft | Gem | Bone | Leather | Mechanism | Thread | Splint | Crutch),
             StockFilter::Refuse => matches!(k, Corpse | Carcass),
             StockFilter::Equipment => k.is_equipment(),
         }
@@ -304,6 +309,9 @@ impl Item {
             Mechanism => format!("{} mechanism", m.adj()),
             Crossbow => format!("{} crossbow", m.adj()),
             Bolt => format!("{} bolts (10)", m.adj()),
+            Thread => "stoutcap-fiber thread".into(),
+            Splint => format!("{} splint", m.adj()),
+            Crutch => format!("{} crutch", m.adj()),
             Cage => match self.label.as_deref() {
                 Some(beast) => format!("{} cage (holding a {})", m.adj(), beast),
                 None => format!("{} cage", m.adj()),
@@ -348,6 +356,9 @@ impl Item {
             Cage => '#',
             Crossbow => '}',
             Bolt => '/',
+            Thread => '§',
+            Splint => '|',
+            Crutch => '|',
         };
         let col = match self.kind {
             Drink => Color::Rgb(230, 170, 60),

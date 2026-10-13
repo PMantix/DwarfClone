@@ -25,6 +25,8 @@ mod construct;
 mod burrows;
 mod traps;
 mod military;
+mod medicine;
+pub use medicine::Treatment;
 pub use military::{Squad, SquadOrder};
 #[cfg(test)]
 pub fn military_weapon_for_tests() -> military::UniformWeapon {
@@ -82,6 +84,8 @@ pub enum ZoneKind {
     Dump,
     /// Soldiers train and spar here.
     Barracks,
+    /// The wounded rest here and doctors work.
+    Hospital,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -175,6 +179,9 @@ pub struct Game {
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
+    /// Patients a doctor is already on the way to.
+    #[serde(skip)]
+    treating: HashSet<u32>,
 }
 
 impl Game {
@@ -271,6 +278,7 @@ impl Game {
             dig_version: 0,
             dig_fail: [None, None],
             haul_retry: 0,
+            treating: HashSet::new(),
         }
     }
 
@@ -1047,6 +1055,12 @@ impl Game {
                     b.worker = None;
                 }
             }
+            Task::Treat { patient, item, .. } => {
+                self.treating.remove(&patient);
+                if let Some(item) = item {
+                    self.unclaim(item);
+                }
+            }
             Task::BuildTile { con, item, .. } => {
                 if let Some(item) = item {
                     self.unclaim(item);
@@ -1226,6 +1240,9 @@ impl Game {
         if self.find_lever_pull(d) {
             return;
         }
+        if d.has(Labor::Medicine) && self.find_patient(d) {
+            return;
+        }
         if d.has(Labor::Building) && (self.find_construct(d) || self.find_build_tile(d)) {
             return;
         }
@@ -1382,6 +1399,18 @@ impl Game {
             .values()
             .find(|b| b.kind == BuildingKind::Bed && b.built && b.occupant.is_none() && b.owner == Some(d.id))
             .map(|b| (b.pos, b.id));
+        let hospital = if rest { self.hospital_beds() } else { HashMap::new() };
+        if !hospital.is_empty() {
+            if let Some((p, path)) = path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| hospital.contains_key(&p)) {
+                let bed = hospital[&p];
+                if let Some(b) = self.buildings.get_mut(&bed) {
+                    b.occupant = Some(d.id);
+                }
+                d.task = task(Some(bed), p);
+                Self::set_path(d, path);
+                return;
+            }
+        }
         let beds: HashMap<Pos, u32> = match own {
             Some((p, id)) => [(p, id)].into_iter().collect(),
             None => self
@@ -1704,6 +1733,7 @@ impl Game {
             Task::Idle => {}
             Task::BuildTile { con, item, stand } => self.do_build_tile(d, con, item, stand),
             Task::PullLever { bld } => self.do_pull_lever(d, bld),
+            Task::Treat { patient, what, item } => self.do_treat(d, patient, what, item),
             Task::Wander { target } => match self.travel(d, target) {
                 Travel::Moving => {}
                 Travel::Arrived => d.task = Task::Idle,

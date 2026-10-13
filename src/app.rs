@@ -62,11 +62,12 @@ pub enum ZoneTool {
     Office,
     Dump,
     Barracks,
+    Hospital,
     Erase,
 }
 
 impl ZoneTool {
-    pub const ALL: [ZoneTool; 9] = [
+    pub const ALL: [ZoneTool; 10] = [
         ZoneTool::Meeting,
         ZoneTool::Bedroom,
         ZoneTool::Dormitory,
@@ -75,6 +76,7 @@ impl ZoneTool {
         ZoneTool::Farm,
         ZoneTool::Dump,
         ZoneTool::Barracks,
+        ZoneTool::Hospital,
         ZoneTool::Erase,
     ];
 
@@ -88,6 +90,7 @@ impl ZoneTool {
             ZoneTool::Office => 'o',
             ZoneTool::Dump => 'g',
             ZoneTool::Barracks => 'a',
+            ZoneTool::Hospital => 'p',
             ZoneTool::Erase => 'x',
         }
     }
@@ -102,6 +105,7 @@ impl ZoneTool {
             ZoneTool::Office => Some(ZoneKind::Office),
             ZoneTool::Dump => Some(ZoneKind::Dump),
             ZoneTool::Barracks => Some(ZoneKind::Barracks),
+            ZoneTool::Hospital => Some(ZoneKind::Hospital),
             ZoneTool::Erase => None,
         }
     }
@@ -124,6 +128,7 @@ impl ZoneTool {
             ZoneTool::Office => &["A room for a noble. Assign it with", "k then o. Nobles will want one."],
             ZoneTool::Dump => &["Items marked for dumping (k, then", "d or D) are thrown here and left."],
             ZoneTool::Barracks => &["Soldiers with nothing to do train", "here, and spar with each other,", "which teaches them faster."],
+            ZoneTool::Hospital => &["Lay over beds. The wounded rest", "here first; doctors (Medicine) suture,", "clean, splint and fit crutches."],
             ZoneTool::Erase => &["Removes zones other than", "stockpiles (stockpiles: p, then x)."],
         }
     }
