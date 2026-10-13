@@ -22,3 +22,6 @@ A Dwarf Fortress-style colony sim in Rust with ratatui. See README.md for featur
   Re-check it after changing job search or pathing.
 - For multi-line source patches, use Python scripts in the scratchpad. Shell heredocs
   break on apostrophes in Rust code.
+- To look at a player's save: copy it out of `saves/` first, then
+  `FORT=<copy> cargo test --release inspect_fort -- --ignored --nocapture` prints buildings,
+  zones, dwarves, the most frequent announcements and a month of simulation timing.

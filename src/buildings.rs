@@ -374,7 +374,14 @@ impl Recipe {
                 v.push((ItemKind::Seed, Mat::Stoutcap, None));
                 v
             }
-            Cook => vec![(ItemKind::Meal, m, None); 2],
+            Cook => {
+                let mut v = vec![(ItemKind::Meal, m, None); 2];
+                // Cooking a stoutcap leaves its spawn, like eating one does.
+                if inputs.first().map_or(false, |i| i.kind == ItemKind::Mushroom) {
+                    v.push((ItemKind::Seed, Mat::Stoutcap, None));
+                }
+                v
+            }
             Butcher => {
                 let label = inputs.first().and_then(|i| i.label.clone());
                 let meat = match label.as_deref() {

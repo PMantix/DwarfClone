@@ -152,6 +152,9 @@ pub struct Game {
     /// Cells holding water, rebuilt from the map when missing (e.g. after loading).
     #[serde(skip)]
     water_cells: Option<Vec<usize>>,
+    /// After a fruitless search for hauling work, nobody looks again until this tick.
+    #[serde(skip)]
+    haul_retry: u64,
 }
 
 impl Game {
@@ -241,6 +244,7 @@ impl Game {
             constructions: BTreeMap::new(),
             dig_version: 0,
             dig_fail: [None, None],
+            haul_retry: 0,
         }
     }
 
@@ -829,6 +833,7 @@ impl Game {
                 d.stress += 4;
             }
             d.stress -= d.stress.signum();
+            d.stress = d.stress.max(crate::dwarf::STRESS_FLOOR);
         }
 
         self.psyche_tick(d);
@@ -1354,9 +1359,11 @@ impl Game {
                 return true;
             }
             self.buildings.get_mut(&bid).unwrap().retry_tick = self.tick + 300;
+            // One warning per kind of building, not one per building.
+            let waiting = self.buildings.values().filter(|b| b.kind == kind && !b.built).count();
             self.warn(
-                &format!("need{}", bid),
-                &format!("{} construction needs {}.", kind.name(), kind.needs_desc()),
+                &format!("need{}", kind.name()),
+                &format!("{} {} waiting to be built: each needs {}.", waiting, kind.name().to_lowercase(), kind.needs_desc()),
                 (230, 200, 90),
             );
         }
@@ -1511,6 +1518,18 @@ impl Game {
     }
 
     fn find_haul(&mut self, d: &mut Dwarf) -> bool {
+        // Idle dwarves ask constantly; a failed search holds for a moment.
+        if self.tick < self.haul_retry || !self.zones.values().any(|z| matches!(z.kind, ZoneKind::Stockpile(_))) {
+            return false;
+        }
+        let found = self.search_haul(d);
+        if !found {
+            self.haul_retry = self.tick + 40;
+        }
+        found
+    }
+
+    fn search_haul(&mut self, d: &mut Dwarf) -> bool {
         let occupied: HashSet<Pos> = self
             .items
             .values()
@@ -1570,15 +1589,23 @@ impl Game {
         if free.is_empty() && boxes.is_empty() && !spare_box {
             return false;
         }
+        // Work out once per kind (not once per item) where things could go.
+        let kinds: HashSet<ItemKind> = self.items.values().map(|it| it.kind).collect();
+        let has_free: HashSet<ItemKind> = kinds.iter().copied().filter(|&k| free.iter().any(|(_, f)| stock_ok(*f, k))).collect();
+        let boxable: HashSet<ItemKind> = kinds.iter().copied().filter(|&k| k.stored_in().is_some() && box_for(k).next().is_some()).collect();
+        let box_room: HashSet<ItemKind> = kinds
+            .iter()
+            .copied()
+            .filter(|&k| k.is_container() && on_tile.keys().any(|p| absorb_ok(*p, k) && filter_at(*p).map_or(false, |f| stock_ok(f, k))))
+            .collect();
         let haulable = |it: &Item| {
             if it.to_depot || it.dump || it.container.is_some() || (it.kind.is_container() && fill.contains_key(&it.id)) {
                 return false;
             }
             let stored = self.stockpile_accepts(it.pos, it.kind);
             // Loose goods already in their stockpile still move into a container if one has room.
-            let could_box = it.kind.stored_in().is_some() && box_for(it.kind).next().is_some();
-            let room_for_box = it.kind.is_container() && on_tile.keys().any(|p| absorb_ok(*p, it.kind) && filter_at(*p).map_or(false, |f| stock_ok(f, it.kind)));
-            (!stored && (free.iter().any(|(_, f)| stock_ok(*f, it.kind)) || could_box || room_for_box)) || (stored && could_box)
+            let could_box = boxable.contains(&it.kind);
+            (!stored && (has_free.contains(&it.kind) || could_box || box_room.contains(&it.kind))) || (stored && could_box)
         };
         let Some((item, path)) = self.find_item(d.pos, haulable) else { return false };
         let (ipos, kind) = {
@@ -2336,3 +2363,46 @@ mod traffic_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod fort_check {
+    use super::*;
+    #[test]
+    #[ignore]
+    fn inspect_fort() {
+        let path = std::env::var("FORT").unwrap();
+        let mut g: Game = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let mut kinds: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+        for b in g.buildings.values() {
+            let e = kinds.entry(b.kind.name().to_string()).or_default();
+            e.0 += 1;
+            e.1 += b.built as usize;
+        }
+        eprintln!("buildings (total, built): {:?}", kinds);
+        let mut zk: BTreeMap<String, usize> = BTreeMap::new();
+        for z in g.zones.values() { *zk.entry(z.kind.name()).or_default() += z.tiles.len(); }
+        eprintln!("zone tiles: {:?}", zk);
+        eprintln!("designations {} constructions {} items {} creatures {}", g.designations.len(), g.constructions.len(), g.items.len(), g.creatures.len());
+        for d in g.dwarves.iter() {
+            eprintln!("  {:<20} {:<16} alive {} stress {:>4} task {:?} labors {:?}", d.name, d.profession(), d.alive, d.stress,
+                format!("{:?}", d.task).split(' ').next().unwrap().to_string(),
+                crate::dwarf::LABORS.iter().filter(|l| d.has(**l)).map(|l| l.short()).collect::<Vec<_>>());
+        }
+        let mut warns: BTreeMap<String, usize> = BTreeMap::new();
+        for l in &g.log { *warns.entry(l.text.chars().take(60).collect()).or_default() += 1; }
+        let mut w: Vec<_> = warns.into_iter().collect();
+        w.sort_by_key(|x| std::cmp::Reverse(x.1));
+        eprintln!("most frequent announcements:");
+        for (t, n) in w.iter().take(15) { eprintln!("  {:>4}  {}", n, t); }
+        // A month forward: does anything stall or blow up?
+        let t = std::time::Instant::now();
+        let mut idle = 0u64;
+        for _ in 0..MONTH {
+            g.step();
+            idle += g.dwarves.iter().filter(|d| d.alive && matches!(d.task, Task::Idle | Task::Wander { .. })).count() as u64;
+        }
+        eprintln!("month simulated in {:?}; avg idle dwarves {:.1}; alive {}", t.elapsed(), idle as f64 / MONTH as f64, g.alive_count());
+        for l in g.log.iter().rev().take(15).collect::<Vec<_>>().into_iter().rev() { eprintln!("  {}", l.text); }
+    }
+}
+

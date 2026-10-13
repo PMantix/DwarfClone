@@ -411,13 +411,17 @@ impl Dwarf {
         } else {
             stress * (100 - self.personality.anxiety / 2) / 100
         };
-        self.stress += stress;
+        // Happiness doesn't bank forever: a contented dwarf can still be brought low.
+        self.stress = (self.stress + stress).max(STRESS_FLOOR);
         self.thoughts.push(Thought { text: text.to_string(), stress, tick });
         if self.thoughts.len() > 8 {
             self.thoughts.remove(0);
         }
     }
 }
+
+/// The happiest a dwarf's stress can get.
+pub const STRESS_FLOOR: i32 = -400;
 
 const FIRST: [&str; 32] = [
     "Dagna", "Kolvar", "Ulmek", "Ostra", "Brumli", "Tharva", "Grenda", "Morik", "Halvi", "Esk",
