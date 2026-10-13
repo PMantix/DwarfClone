@@ -1,6 +1,6 @@
 //! Doctors, hospitals and treatment: sutures, cleaning, splints and crutches.
 
-use super::{Game, Travel, ZoneKind, SEARCH_LIMIT};
+use super::{Game, Travel, ZoneKind, SEARCH_LIMIT, THIRSTY};
 use crate::body::{Part, PARTS};
 use crate::dwarf::{Dwarf, Labor, Task};
 use crate::geom::Pos;
@@ -20,6 +20,8 @@ pub enum Treatment {
     Splint,
     /// Fit a crutch for a lost leg (needs a crutch).
     Crutch,
+    /// Bring a bucket of well water to someone lying in bed.
+    Water,
 }
 
 impl Treatment {
@@ -29,6 +31,7 @@ impl Treatment {
             Treatment::Clean => "cleaning wounds",
             Treatment::Splint => "setting a bone",
             Treatment::Crutch => "fitting a crutch",
+            Treatment::Water => "bringing water",
         }
     }
 
@@ -38,6 +41,7 @@ impl Treatment {
             Treatment::Clean => None,
             Treatment::Splint => Some(ItemKind::Splint),
             Treatment::Crutch => Some(ItemKind::Crutch),
+            Treatment::Water => Some(ItemKind::Bucket),
         }
     }
 
@@ -47,6 +51,7 @@ impl Treatment {
             Treatment::Clean => 30,
             Treatment::Splint => 70,
             Treatment::Crutch => 30,
+            Treatment::Water => 15,
         }
     }
 }
@@ -92,12 +97,18 @@ impl Game {
     /// A doctor looks for a patient lying down who needs something they can give.
     pub(super) fn find_patient(&mut self, d: &mut Dwarf) -> bool {
         let mut patients: HashMap<Pos, (u32, Treatment)> = HashMap::new();
+        let wells = !self.working_wells().is_empty();
         for p in self.dwarves.iter().filter(|p| p.alive && p.id != d.id && !self.treating.contains(&p.id)) {
             let lying = (p.asleep && matches!(p.task, Task::Rest { .. })) || p.body.unconscious();
             if !lying {
                 continue;
             }
-            for t in needed(p) {
+            let mut wants = needed(p);
+            // With a well, nobody has to get out of bed for a drink.
+            if wells && p.thirst > THIRSTY / 2 {
+                wants.push(Treatment::Water);
+            }
+            for t in wants {
                 let have = t.supply().map_or(true, |k| self.items.values().any(|it| it.kind == k && it.carried_by.is_none() && it.claimed_by.is_none()));
                 if have {
                     patients.insert(p.pos, (p.id, t));
@@ -139,6 +150,25 @@ impl Game {
                 Some(true) => {}
             }
         }
+        if what == Treatment::Water && item.map_or(false, |b| self.items.get(&b).map_or(false, |it| it.label.is_none())) {
+            // Fill the bucket at the nearest well first.
+            let Some(stand) = self.well_stand(d.pos) else {
+                self.release_task(d);
+                return;
+            };
+            match self.travel(d, stand) {
+                Travel::Moving => {}
+                Travel::Failed => self.release_task(d),
+                Travel::Arrived => {
+                    if Self::labor(d, 20, 0) {
+                        if let Some(it) = item.and_then(|b| self.items.get_mut(&b)) {
+                            it.label = Some("water".into());
+                        }
+                    }
+                }
+            }
+            return;
+        }
         let beside = ppos.z == d.pos.z && (ppos.x - d.pos.x).abs() <= 1 && (ppos.y - d.pos.y).abs() <= 1;
         if !beside {
             // Walk to the patient (who may have moved).
@@ -151,7 +181,18 @@ impl Game {
             return;
         }
         if let Some(id) = d.carrying.take() {
-            self.items.remove(&id);
+            if what == Treatment::Water {
+                // The bucket is set down empty, ready for next time.
+                let pos = self.world.settle(d.pos);
+                if let Some(it) = self.items.get_mut(&id) {
+                    it.label = None;
+                    it.carried_by = None;
+                    it.claimed_by = None;
+                    it.pos = pos;
+                }
+            } else {
+                self.items.remove(&id);
+            }
         }
         let doctor = d.name.clone();
         let skill = d.skill(Labor::Medicine);
@@ -174,6 +215,7 @@ impl Game {
                 }
             }
             Treatment::Crutch => b.crutch = true,
+            Treatment::Water => p.thirst = 0,
         }
         let pname = p.name.clone();
         let tick = self.tick;

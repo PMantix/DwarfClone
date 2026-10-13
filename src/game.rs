@@ -30,6 +30,7 @@ mod animals;
 mod needs;
 mod family;
 pub use family::ADULT_AGE;
+mod wells;
 pub use medicine::Treatment;
 pub use military::{Squad, SquadOrder};
 #[cfg(test)]
@@ -544,6 +545,9 @@ impl Game {
     }
 
     pub fn can_place(&self, kind: BuildingKind, top_left: Pos) -> bool {
+        if kind == BuildingKind::Well {
+            return self.can_place_well(top_left);
+        }
         let s = kind.size();
         for dy in 0..s {
             for dx in 0..s {
@@ -623,9 +627,12 @@ impl Game {
                 BuildingKind::Door => ItemKind::Door,
                 BuildingKind::Coffin => ItemKind::Coffin,
                 BuildingKind::Slab => ItemKind::Slab,
+                BuildingKind::Well => ItemKind::Bucket,
                 _ => ItemKind::Boulder,
             };
-            let id = self.spawn_item(kind, b.mat, b.center());
+            // A well gives back its bucket, at the edge rather than down the hole.
+            let mat = if b.kind == BuildingKind::Well { b.load.map_or(Mat::Wood, |l| l.1) } else { b.mat };
+            let id = self.spawn_item(kind, mat, self.work_spot(b.center()));
             self.items.get_mut(&id).unwrap().quality = b.quality;
         }
     }
@@ -1362,12 +1369,14 @@ impl Game {
             Self::set_path(d, path);
             return true;
         }
+        let wells = self.working_wells();
         let w = &self.world;
         let water_near = |p: Pos| {
             DIRS8.iter().any(|&(dx, dy)| {
                 let q = p.offset(dx, dy, 0);
                 let below = q.down();
-                w.get(q).map_or(false, |t| t.water > 0)
+                wells.contains(&q)
+                    || w.get(q).map_or(false, |t| t.water > 0)
                     || (w.kind(q) == Some(TileKind::Open) && w.get(below).map_or(false, |t| t.water > 0))
             })
         };
@@ -1880,7 +1889,7 @@ impl Game {
                 },
             },
             Task::Construct { bld, item } => {
-                let Some(site) = self.buildings.get(&bld).map(|b| b.center()) else {
+                let Some(site) = self.buildings.get(&bld).map(|b| self.work_spot(b.center())) else {
                     self.release_task(d);
                     return;
                 };
@@ -2090,7 +2099,11 @@ impl Game {
                     if Self::labor(d, 25, 0) {
                         d.thirst = 0;
                         d.task = Task::Idle;
-                        d.think("had to drink water; there was no ale", 12, self.tick);
+                        if self.beside_well(d.pos) {
+                            d.think("drank clean water from the well; there was no ale", 6, self.tick);
+                        } else {
+                            d.think("had to drink water; there was no ale", 12, self.tick);
+                        }
                     }
                 }
             },

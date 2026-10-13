@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W11 onward, in tier order.
+Suggested order: finish W11 (floodgates next), then onward in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -27,7 +27,7 @@ Suggested order: W11 onward, in tier order.
 #### W11 Fluid machines and magma (L)
 - **DF:** wells, pumps, floodgates, water wheels, magma forges and smelters, aquifers.
 - **Us:** water that falls and levels out (`game.rs` `fluids`).
-- **Steps:** [ ] well (clean water, ties to W05) · [ ] floodgate on a lever (needs W06) · [ ] magma sea and magma workshops · [ ] aquifer layers
+- **Steps:** [x] well (clean water, ties to W05) (this commit) · [ ] floodgate on a lever (needs W06) · [ ] magma sea and magma workshops · [ ] aquifer layers
 
 #### W12 More workshops and clothing (M)
 - **DF:** leather, loom, clothier, glass, kiln, jeweler, soap and siege workshops; clothes wear out.
@@ -121,6 +121,8 @@ Ideas not ranked yet. Add a line on why each matters.
 - Deities and prayer to a specific god; temples dedicated to one (B14); drinking water could meet the drink need a little.
 - Violent ghosts, ghosts that move objects, and haunting that varies with how the dwarf died (DF has several kinds).
 - Nursing babies, children who follow their mother, and a playground or school; sibling and grandparent ties.
+- Pumps and water wheels (DF's screw pumps lift water a level; wheels make power); wells that freeze in winter.
+- Murky or stagnant water drunk from puddles should feel worse than river water; doctors could clean wounds with well water and soap.
 - Corpses that rot (miasma) and refuse that needs a stockpile far from the halls.
 - Mini-map and saved camera spots: get around a 96×64 map faster.
 - Adventure mode: explore the generated world. Out of scope until fortress mode is deep.
@@ -128,7 +130,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
-- **W10 Death, family and aging** (this commit): coffins (carpenter or mason) and a tomb zone; haulers bury citizens' corpses, tombs first, comforting their friends; dead left unburied for two weeks may rise as ghosts that drift about and frighten the living until buried or remembered on a memorial slab (mason). Dwarves have an age and sex, die of old age past 130, marry close friends, and have children (mother's family name, no work, come of age at twelve). Grief is heavier for spouses, parents and children. Shown on the dwarf, look and status screens.
+- **W10 Death, family and aging** (bb1c008): coffins (carpenter or mason) and a tomb zone; haulers bury citizens' corpses, tombs first, comforting their friends; dead left unburied for two weeks may rise as ghosts that drift about and frighten the living until buried or remembered on a memorial slab (mason). Dwarves have an age and sex, die of old age past 130, marry close friends, and have children (mother's family name, no work, come of age at twelve). Grief is heavier for spouses, parents and children. Shown on the dwarf, look and status screens.
 - **W09 Personality needs** (a739cdc): seven needs (socialize, drink, craft, fight, learn, pray, make merry), each 1–3 strong by personality; they fade and are met by chatting, drinking, finishing workshop jobs, training and fighting, learning skills, and leisure in the new temple (`i`, `t`) and tavern (`i`, `v`) zones; dwarves take breaks to pray or carouse when those needs go unmet. Focus (70–120%) follows needs and scales work speed and craft quality; shown on the dwarf screen and summed up on the status screen.
 - **W08 Animals** (b543de8): dogs, cats and goats (a pair of dogs, a pair of goats and a cat on embark); tame animals never turn hostile, never leave, use doors; pasture zones keep assigned animals in (new pastures take in loose goats); breeding with pregnancies, litters and young that grow up in a season (herds cap at 24 per species); war dogs follow their soldier and attack nearby hostiles; caged animals can be tamed and kept animals slaughtered by a butcher.
 - **W05 Health care** (this commit): Medicine labor (doctors) and a hospital zone whose beds the wounded use first; doctors suture bleeding (thread), clean dirty wounds, splint mangled limbs (faster mending, less limping) and fit crutches for lost legs; uncleaned cuts can fester into infections that stop healing and slowly do harm. Thread is spun from stoutcap fiber until W12 brings cloth.

@@ -30,10 +30,11 @@ pub enum BuildingKind {
     ArcheryTarget,
     Coffin,
     Slab,
+    Well,
 }
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 23] = [
+    pub const ALL: [BuildingKind; 24] = [
         BuildingKind::Carpenter,
         BuildingKind::Mason,
         BuildingKind::Still,
@@ -57,6 +58,7 @@ impl BuildingKind {
         BuildingKind::ArcheryTarget,
         BuildingKind::Coffin,
         BuildingKind::Slab,
+        BuildingKind::Well,
     ];
 
     pub fn name(self) -> &'static str {
@@ -84,6 +86,7 @@ impl BuildingKind {
             BuildingKind::ArcheryTarget => "Archery target",
             BuildingKind::Coffin => "Coffin",
             BuildingKind::Slab => "Memorial slab",
+            BuildingKind::Well => "Well",
         }
     }
 
@@ -112,6 +115,7 @@ impl BuildingKind {
             BuildingKind::ArcheryTarget => 'z',
             BuildingKind::Coffin => 'y',
             BuildingKind::Slab => 'g',
+            BuildingKind::Well => 'q',
         }
     }
 
@@ -130,6 +134,7 @@ impl BuildingKind {
                 | BuildingKind::ArcheryTarget
                 | BuildingKind::Coffin
                 | BuildingKind::Slab
+                | BuildingKind::Well
         )
     }
 
@@ -140,7 +145,7 @@ impl BuildingKind {
     /// How many items go into building it, delivered one at a time.
     pub fn parts(self) -> u8 {
         match self {
-            BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap | BuildingKind::Bridge => 2,
+            BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap | BuildingKind::Bridge | BuildingKind::Well => 2,
             _ => 1,
         }
     }
@@ -155,6 +160,8 @@ impl BuildingKind {
             (WeaponTrap, _) => matches!(item.kind, ItemKind::Sword | ItemKind::Spear | ItemKind::Axe | ItemKind::Hammer),
             (StoneTrap, _) => item.kind == ItemKind::Boulder && item.mat.is_building_stone(),
             (Bridge, _) => matches!(item.kind, ItemKind::Log | ItemKind::Block),
+            (Well, 0) => item.kind == ItemKind::Block || (item.kind == ItemKind::Boulder && item.mat.is_building_stone()),
+            (Well, _) => item.kind == ItemKind::Bucket,
             _ => self.needs(item),
         }
     }
@@ -167,6 +174,8 @@ impl BuildingKind {
             (WeaponTrap, _) => "a weapon",
             (StoneTrap, _) => "a stone boulder",
             (Bridge, _) => "a log or blocks",
+            (Well, 0) => "stone blocks or a boulder",
+            (Well, _) => "a bucket",
             _ => self.needs_desc(),
         }
     }
@@ -207,6 +216,7 @@ impl BuildingKind {
             BuildingKind::WeaponTrap => "a mechanism + a weapon",
             BuildingKind::StoneTrap => "a mechanism + a boulder",
             BuildingKind::Bridge => "a log or blocks + a mechanism",
+            BuildingKind::Well => "blocks or a boulder + a bucket",
             _ => "a stone boulder",
         }
     }
@@ -214,7 +224,7 @@ impl BuildingKind {
     pub fn recipes(self) -> &'static [Recipe] {
         use Recipe::*;
         match self {
-            BuildingKind::Carpenter => &[WoodBed, WoodTable, WoodChair, WoodDoor, Barrel, Bin, WoodCage, WoodCrossbow, Bolts, Splint, Crutch, WoodCoffin],
+            BuildingKind::Carpenter => &[WoodBed, WoodTable, WoodChair, WoodDoor, Barrel, Bin, WoodCage, WoodCrossbow, Bolts, Splint, Crutch, WoodCoffin, Bucket],
             BuildingKind::Mechanic => &[Mechanism],
             BuildingKind::Mason => &[Blocks, StoneTable, StoneChair, StoneDoor, StoneCoffin, Slab],
             BuildingKind::Still => &[Brew],
@@ -252,6 +262,7 @@ impl BuildingKind {
             BuildingKind::Mechanic => Color::Rgb(170, 190, 210),
             BuildingKind::Lever => Color::Rgb(220, 200, 120),
             BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap => Color::Rgb(230, 120, 120),
+            BuildingKind::Well => Color::Rgb(110, 170, 255),
             _ => Color::Rgb(200, 200, 200),
         }
     }
@@ -279,6 +290,7 @@ impl BuildingKind {
             BuildingKind::ArcheryTarget => '◎',
             BuildingKind::Coffin => 'Ω',
             BuildingKind::Slab => '▬',
+            BuildingKind::Well => '○',
         }
     }
 }
@@ -375,6 +387,7 @@ pub enum Recipe {
     WoodCoffin,
     StoneCoffin,
     Slab,
+    Bucket,
 }
 
 impl Recipe {
@@ -418,6 +431,7 @@ impl Recipe {
             WoodCoffin => "Make wooden coffin",
             StoneCoffin => "Carve stone coffin",
             Slab => "Carve memorial slab",
+            Bucket => "Make bucket",
         }
     }
 
@@ -452,6 +466,7 @@ impl Recipe {
             SpinThread => 't',
             WoodCoffin | StoneCoffin => 'o',
             Slab => 's',
+            Bucket => 'u',
         }
     }
 
@@ -470,7 +485,7 @@ impl Recipe {
             Mechanism => Labor::Mechanics,
             WoodCage | WoodCrossbow | Bolts | Splint | Crutch => Labor::Carpentry,
             SpinThread => Labor::Crafting,
-            WoodCoffin => Labor::Carpentry,
+            WoodCoffin | Bucket => Labor::Carpentry,
             StoneCoffin | Slab => Labor::Masonry,
         }
     }
@@ -478,7 +493,7 @@ impl Recipe {
     pub fn inputs(self) -> &'static [Input] {
         use Recipe::*;
         match self {
-            WoodBed | WoodTable | WoodChair | WoodDoor | Barrel | Bin | Charcoal | WoodCage | WoodCrossbow | Bolts | Splint | Crutch | WoodCoffin => {
+            WoodBed | WoodTable | WoodChair | WoodDoor | Barrel | Bin | Charcoal | WoodCage | WoodCrossbow | Bolts | Splint | Crutch | WoodCoffin | Bucket => {
                 &[Input::Log]
             }
             SpinThread => &[Input::Mushroom],
@@ -565,6 +580,7 @@ impl Recipe {
             SpinThread => vec![(ItemKind::Thread, Mat::Stoutcap, None); 2],
             WoodCoffin | StoneCoffin => one(ItemKind::Coffin),
             Slab => one(ItemKind::Slab),
+            Bucket => one(ItemKind::Bucket),
         }
     }
 

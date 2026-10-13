@@ -100,6 +100,12 @@ soldier, `b` marks an animal for the butcher, and `t` tames whatever a cage trap
 suture bleeding wounds (thread from the craftsdwarf), clean cuts before they fester, splint
 broken limbs and fit crutches (from the carpenter). Untended wounds can turn infected.
 
+**Wells.** Channel down to water (an underground pool, or a river a few levels below) and
+build a well (`b`, `q`) over the hole from stone blocks or a boulder and a bucket
+(carpenter). Thirsty dwarves drink its clean water when there's no ale, which bothers them
+less than drinking from a river, and doctors carry buckets of it to patients in bed so
+they needn't get up.
+
 **Squads.** The military screen (`m`) forms named squads, gives them uniforms (weapon type,
 armor) and orders: train, hold a station, or kill a chosen creature. Soldiers train in the
 barracks zone and learn faster sparring together. Crossbows and bolts come from the

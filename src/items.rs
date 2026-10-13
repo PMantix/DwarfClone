@@ -46,6 +46,8 @@ pub enum ItemKind {
     Coffin,
     /// A memorial slab.
     Slab,
+    /// Labelled "water" while full.
+    Bucket,
 }
 
 /// Items that fit in a barrel or a bin, ten to a container.
@@ -84,7 +86,7 @@ impl ItemKind {
             Boulder | Log | Bone | Charcoal => 1,
             Seed | Corpse | Carcass => 0,
             Mushroom | Drink | Meat => 2,
-            Block | Leather => 3,
+            Block | Leather | Bucket => 3,
             Barrel | Bin => 5,
             Meal => 6,
             Bed | Table | Chair | Door => 10,
@@ -208,7 +210,7 @@ impl StockFilter {
             StockFilter::Stone => matches!(k, Boulder | Block),
             StockFilter::Wood => k == Log,
             StockFilter::Food => matches!(k, Mushroom | Drink | Seed | Meat | Meal),
-            StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin | Cage | Coffin | Slab),
+            StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin | Cage | Coffin | Slab | Bucket),
             StockFilter::Metal => matches!(k, Bar | Charcoal),
             StockFilter::Goods => matches!(k, Craft | Gem | Bone | Leather | Mechanism | Thread | Splint | Crutch),
             StockFilter::Refuse => matches!(k, Corpse | Carcass),
@@ -318,6 +320,8 @@ impl Item {
             Crutch => format!("{} crutch", m.adj()),
             Coffin => format!("{} coffin", m.adj()),
             Slab => format!("{} slab", m.adj()),
+            Bucket if self.label.as_deref() == Some("water") => format!("{} bucket of water", m.adj()),
+            Bucket => format!("{} bucket", m.adj()),
             Cage => match self.label.as_deref() {
                 Some(beast) => format!("{} cage (holding a {})", m.adj(), beast),
                 None => format!("{} cage", m.adj()),
@@ -367,6 +371,7 @@ impl Item {
             Crutch => '|',
             Coffin => 'Ω',
             Slab => '▬',
+            Bucket => '¤',
         };
         let col = match self.kind {
             Drink => Color::Rgb(230, 170, 60),

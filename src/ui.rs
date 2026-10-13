@@ -733,6 +733,10 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             title = "Place".to_string();
             v.push(plain(format!("Placing: {}", kind.name()), KEY));
             v.push(plain(format!("Needs {}", kind.needs_desc()), TEXT));
+            if *kind == BuildingKind::Well {
+                v.push(plain("Place over a channel (open space)".into(), MUTED));
+                v.push(plain("with water up to 10 levels below.".into(), MUTED));
+            }
             v.push(Line::default());
             v.push(plain("Move the cursor; Enter to place.".into(), TEXT));
             v.push(plain("Esc: back".into(), MUTED));
@@ -809,6 +813,14 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                     v.push(plain(format!("Armed with {}", what), TEXT));
                     v.push(plain("Fires on any creature but merchants;".into(), MUTED));
                     v.push(plain("dwarves never set off their own traps.".into(), MUTED));
+                }
+                if b.kind == BuildingKind::Well {
+                    if g.well_has_water(b.pos) {
+                        v.push(plain("Water below: clean drinking water".into(), Color::Rgb(110, 170, 255)));
+                    } else {
+                        v.push(plain("Dry: no water within 10 levels below".into(), Color::Rgb(230, 200, 60)));
+                    }
+                    v.push(plain("Doctors bring well water to patients in bed.".into(), MUTED));
                 }
                 if b.kind == BuildingKind::Bridge && b.built {
                     v.push(plain(if b.raised { "Raised: nobody can pass".into() } else { "Lowered: open to all".into() }, TEXT));
