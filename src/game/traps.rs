@@ -24,7 +24,7 @@ impl Game {
             let victim = self
                 .creatures
                 .values()
-                .find(|c| c.alive && c.pos == pos && c.species != Species::Merchant)
+                .find(|c| c.alive && c.pos == pos && c.species != Species::Merchant && !c.tame)
                 .map(|c| c.id);
             if let Some(cid) = victim {
                 self.spring_trap(tid, cid);

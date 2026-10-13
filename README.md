@@ -75,6 +75,10 @@ marked with `d` go to the dump. Dwarves with nothing
 to do gather at the meeting area and chat there more often; without one they at least keep
 out of corridors. A stroll always gives way to real work.
 
+**Animals.** The expedition brings dogs, goats and a cat. Pastures (`i`, `u`) keep them in and
+they breed there. From look mode: `p` assigns a pasture, `w` makes a dog the war dog of a
+soldier, `b` marks an animal for the butcher, and `t` tames whatever a cage trap caught.
+
 **Medicine.** Give someone the Medicine labor and zone a hospital over some beds. Doctors
 suture bleeding wounds (thread from the craftsdwarf), clean cuts before they fester, splint
 broken limbs and fit crutches (from the carpenter). Untended wounds can turn infected.

@@ -179,6 +179,8 @@ pub enum Task {
     BuildTile { con: u32, item: Option<u32>, stand: Option<Pos> },
     /// Go and throw a lever.
     PullLever { bld: u32 },
+    /// Kill a tame animal marked for slaughter.
+    Slaughter { creature: u32 },
     /// Treat a patient, bringing supplies if needed.
     Treat { patient: u32, what: crate::game::Treatment, item: Option<u32> },
 }

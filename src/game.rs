@@ -26,6 +26,7 @@ mod burrows;
 mod traps;
 mod military;
 mod medicine;
+mod animals;
 pub use medicine::Treatment;
 pub use military::{Squad, SquadOrder};
 #[cfg(test)]
@@ -86,6 +87,8 @@ pub enum ZoneKind {
     Barracks,
     /// The wounded rest here and doctors work.
     Hospital,
+    /// Tame animals assigned here stay inside and breed.
+    Pasture,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -182,6 +185,9 @@ pub struct Game {
     /// Patients a doctor is already on the way to.
     #[serde(skip)]
     treating: HashSet<u32>,
+    /// Animals a butcher is already on the way to.
+    #[serde(skip)]
+    slaughtering: HashSet<u32>,
 }
 
 impl Game {
@@ -223,6 +229,7 @@ impl Game {
         let embark = find_embark(&world);
         let mut g = Game::from_world(world, seed, ow, (sx, sy), embark);
         g.settle_expedition(embark);
+        g.bring_animals(embark);
         report("Strike the earth!", 1.0);
         g
     }
@@ -279,6 +286,7 @@ impl Game {
             dig_fail: [None, None],
             haul_retry: 0,
             treating: HashSet::new(),
+            slaughtering: HashSet::new(),
         }
     }
 
@@ -1055,6 +1063,9 @@ impl Game {
                     b.worker = None;
                 }
             }
+            Task::Slaughter { creature } => {
+                self.slaughtering.remove(&creature);
+            }
             Task::Treat { patient, item, .. } => {
                 self.treating.remove(&patient);
                 if let Some(item) = item {
@@ -1243,6 +1254,9 @@ impl Game {
         if d.has(Labor::Medicine) && self.find_patient(d) {
             return;
         }
+        if d.has(Labor::Butchery) && self.find_slaughter(d) {
+            return;
+        }
         if d.has(Labor::Building) && (self.find_construct(d) || self.find_build_tile(d)) {
             return;
         }
@@ -1359,7 +1373,11 @@ impl Game {
             let at: HashMap<Pos, u32> = self
                 .creatures
                 .values()
-                .filter(|c| (c.hostile() || (self.hunt && c.species != crate::creature::Species::Merchant)) && !c.leaving && self.creature_active(c))
+                .filter(|c| {
+                    (c.hostile() || (self.hunt && !c.tame && c.species != crate::creature::Species::Merchant))
+                        && !c.leaving
+                        && self.creature_active(c)
+                })
                 .map(|c| (c.pos, c.id))
                 .collect();
             if !at.is_empty() {
@@ -1734,6 +1752,7 @@ impl Game {
             Task::BuildTile { con, item, stand } => self.do_build_tile(d, con, item, stand),
             Task::PullLever { bld } => self.do_pull_lever(d, bld),
             Task::Treat { patient, what, item } => self.do_treat(d, patient, what, item),
+            Task::Slaughter { creature } => self.do_slaughter(d, creature),
             Task::Wander { target } => match self.travel(d, target) {
                 Travel::Moving => {}
                 Travel::Arrived => d.task = Task::Idle,
@@ -2471,6 +2490,10 @@ mod bench {
             g.step();
         }
         eprintln!("large map, 1 year: {:?}, alive {}/{}, items {}", t.elapsed(), g.alive_count(), g.dwarves.len(), g.items.len());
+        for l in g.log.iter().filter(|l| l.color == (255, 60, 60)).take(8) {
+            eprintln!("  t{} {}", l.tick, l.text);
+        }
+        eprintln!("  creatures: {} ({} tame)", g.creatures.len(), g.creatures.values().filter(|c| c.tame).count());
         let s = serde_json::to_string(&g).unwrap();
         eprintln!("large map save: {} bytes", s.len());
     }

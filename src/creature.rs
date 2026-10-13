@@ -12,6 +12,9 @@ pub enum Species {
     Troglodyte,
     Goblin,
     Merchant,
+    Dog,
+    Cat,
+    Goat,
 }
 
 pub struct SpeciesInfo {
@@ -32,12 +35,95 @@ pub struct SpeciesInfo {
 }
 
 impl Species {
+    pub const ALL: [Species; 10] = [
+        Species::Deer,
+        Species::Wolf,
+        Species::Bear,
+        Species::GiantSpider,
+        Species::Troglodyte,
+        Species::Goblin,
+        Species::Merchant,
+        Species::Dog,
+        Species::Cat,
+        Species::Goat,
+    ];
+
+    /// Animals that can be kept (people and cave folk can't).
+    pub fn tameable(self) -> bool {
+        !matches!(self, Species::Goblin | Species::Troglodyte | Species::Merchant)
+    }
+
+    /// Most young in one birth.
+    pub fn litter(self) -> i32 {
+        match self {
+            Species::Dog | Species::Cat => 3,
+            Species::Goat => 2,
+            _ => 1,
+        }
+    }
+
+    pub fn young(self) -> &'static str {
+        match self {
+            Species::Dog | Species::Wolf => "pup",
+            Species::Cat => "kitten",
+            Species::Goat => "kid",
+            Species::Deer => "fawn",
+            Species::Bear => "cub",
+            _ => "young",
+        }
+    }
+
     pub fn info(self) -> SpeciesInfo {
         match self {
+            Species::Dog => SpeciesInfo {
+                name: "dog",
+                plural: "dogs",
+                glyph: 'd',
+                color: (200, 170, 120),
+                scale: 0.5,
+                damage: 5.0,
+                verb: "bites",
+                move_delay: 2,
+                attack_delay: 9,
+                aggro: 0,
+                skill: 3,
+                mover: Mover::Beast,
+                edged: false,
+            },
+            Species::Cat => SpeciesInfo {
+                name: "cat",
+                plural: "cats",
+                glyph: 'c',
+                color: (220, 200, 170),
+                scale: 0.25,
+                damage: 2.0,
+                verb: "scratches",
+                move_delay: 2,
+                attack_delay: 8,
+                aggro: 0,
+                skill: 2,
+                mover: Mover::Beast,
+                edged: true,
+            },
+            Species::Goat => SpeciesInfo {
+                name: "goat",
+                plural: "goats",
+                glyph: 'g',
+                color: (215, 215, 200),
+                scale: 0.6,
+                damage: 3.0,
+                verb: "butts",
+                move_delay: 3,
+                attack_delay: 12,
+                aggro: 0,
+                skill: 1,
+                mover: Mover::Beast,
+                edged: false,
+            },
             Species::Deer => SpeciesInfo {
                 name: "deer",
                 plural: "deer",
-                glyph: 'd',
+                glyph: 'D',
                 color: (190, 150, 100),
                 scale: 0.9,
                 damage: 3.0,
@@ -168,6 +254,31 @@ pub struct Creature {
     /// Door being battered down.
     pub bash: Option<Pos>,
     pub bash_work: u32,
+    /// Kept by the fortress: never hostile, never leaves, uses doors.
+    #[serde(default)]
+    pub tame: bool,
+    #[serde(default)]
+    pub female: bool,
+    #[serde(default = "yes")]
+    pub adult: bool,
+    /// Tick of birth (tame young grow up after a season).
+    #[serde(default)]
+    pub born: u64,
+    /// Tick the young are due, 0 if not expecting.
+    #[serde(default)]
+    pub pregnant: u64,
+    /// The soldier a war dog guards.
+    #[serde(default)]
+    pub owner: Option<u32>,
+    /// The pasture zone it's kept in.
+    #[serde(default)]
+    pub pasture: Option<u32>,
+    #[serde(default)]
+    pub slaughter: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Creature {
@@ -190,11 +301,28 @@ impl Creature {
             siege: false,
             bash: None,
             bash_work: 0,
+            tame: false,
+            female: false,
+            adult: true,
+            born: 0,
+            pregnant: 0,
+            owner: None,
+            pasture: None,
+            slaughter: false,
         }
     }
 
     pub fn hostile(&self) -> bool {
-        self.species.info().aggro > 0
+        self.species.info().aggro > 0 && !self.tame
+    }
+
+    /// Tame animals go through doors like dwarves.
+    pub fn mover(&self) -> Mover {
+        if self.tame {
+            Mover::Dwarf
+        } else {
+            self.species.info().mover
+        }
     }
 
     pub fn name(&self) -> &'static str {

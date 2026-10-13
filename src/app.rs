@@ -63,11 +63,12 @@ pub enum ZoneTool {
     Dump,
     Barracks,
     Hospital,
+    Pasture,
     Erase,
 }
 
 impl ZoneTool {
-    pub const ALL: [ZoneTool; 10] = [
+    pub const ALL: [ZoneTool; 11] = [
         ZoneTool::Meeting,
         ZoneTool::Bedroom,
         ZoneTool::Dormitory,
@@ -77,6 +78,7 @@ impl ZoneTool {
         ZoneTool::Dump,
         ZoneTool::Barracks,
         ZoneTool::Hospital,
+        ZoneTool::Pasture,
         ZoneTool::Erase,
     ];
 
@@ -91,6 +93,7 @@ impl ZoneTool {
             ZoneTool::Dump => 'g',
             ZoneTool::Barracks => 'a',
             ZoneTool::Hospital => 'p',
+            ZoneTool::Pasture => 'u',
             ZoneTool::Erase => 'x',
         }
     }
@@ -106,6 +109,7 @@ impl ZoneTool {
             ZoneTool::Dump => Some(ZoneKind::Dump),
             ZoneTool::Barracks => Some(ZoneKind::Barracks),
             ZoneTool::Hospital => Some(ZoneKind::Hospital),
+            ZoneTool::Pasture => Some(ZoneKind::Pasture),
             ZoneTool::Erase => None,
         }
     }
@@ -129,6 +133,7 @@ impl ZoneTool {
             ZoneTool::Dump => &["Items marked for dumping (k, then", "d or D) are thrown here and left."],
             ZoneTool::Barracks => &["Soldiers with nothing to do train", "here, and spar with each other,", "which teaches them faster."],
             ZoneTool::Hospital => &["Lay over beds. The wounded rest", "here first; doctors (Medicine) suture,", "clean, splint and fit crutches."],
+            ZoneTool::Pasture => &["Goats without a pasture move in.", "Assign other animals with k, then p.", "Kept animals breed here."],
             ZoneTool::Erase => &["Removes zones other than", "stockpiles (stockpiles: p, then x)."],
         }
     }
@@ -1220,6 +1225,38 @@ impl App {
                     });
                 }
             }
+            KeyCode::Char('p') => {
+                if let Some(LookEntry::Creature(id)) = entries.get(sel.min(n - 1)) {
+                    self.flash = Some(match self.game.cycle_pasture(*id) {
+                        Some(z) => format!("Assigned to {}.", z),
+                        None => "Only tame animals can be pastured.".into(),
+                    });
+                }
+            }
+            KeyCode::Char('w') => {
+                if let Some(LookEntry::Creature(id)) = entries.get(sel.min(n - 1)) {
+                    self.flash = Some(match self.game.cycle_dog_owner(*id) {
+                        Some(who) => format!("War dog of {}.", who),
+                        None => "Only tame dogs can be war dogs.".into(),
+                    });
+                }
+            }
+            KeyCode::Char('b') => {
+                if let Some(LookEntry::Creature(id)) = entries.get(sel.min(n - 1)) {
+                    self.flash = Some(match self.game.toggle_slaughter(*id) {
+                        Some(true) => "Marked for slaughter.".into(),
+                        Some(false) => "No longer marked for slaughter.".into(),
+                        None => "Only tame animals can be slaughtered.".into(),
+                    });
+                }
+            }
+            KeyCode::Char('t') => {
+                if let Some(LookEntry::Item(id)) = entries.get(sel.min(n - 1)) {
+                    self.flash = Some(match self.game.tame_from_cage(*id) {
+                        Ok(m) | Err(m) => m,
+                    });
+                }
+            }
             KeyCode::Char('D') => {
                 let k = self.game.dump_tile(self.cursor);
                 self.flash = Some(format!("{} items marked for the garbage dump.", k));
@@ -1454,6 +1491,13 @@ impl App {
                         0 if kind == ZoneKind::Farm => "Farm plots need revealed soil floor.".into(),
                         0 => "Zones need clear, revealed floor not already zoned.".into(),
                         n => {
+                            if kind == ZoneKind::Pasture {
+                                let zid = self.game.world.t(c).zone;
+                                let moved = self.game.assign_grazers(zid);
+                                if moved > 0 {
+                                    self.game.msg(&format!("{} animals moved into the new pasture.", moved), (160, 230, 160));
+                                }
+                            }
                             let hint = match kind {
                                 ZoneKind::Meeting => " Idle dwarves will gather here.",
                                 k if k.ownable() => " Assign it with k, then o.",

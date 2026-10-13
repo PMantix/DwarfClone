@@ -517,7 +517,18 @@ impl Game {
 
     pub(super) fn update_creatures(&mut self) {
         let ids: Vec<u32> = self.creatures.keys().copied().collect();
+        let body_tick = self.tick % 10 == 0;
         for id in ids {
+            // Tame animals mostly wait out a step; do that in place, it's most of their ticks.
+            if !body_tick {
+                if let Some(c) = self.creatures.get_mut(&id) {
+                    if c.tame && c.move_cd > 1 {
+                        c.move_cd -= 1;
+                        c.attack_cd = c.attack_cd.saturating_sub(1);
+                        continue;
+                    }
+                }
+            }
             let Some(mut c) = self.creatures.remove(&id) else { continue };
             if self.creature_tick(&mut c) {
                 self.creatures.insert(id, c);
@@ -580,6 +591,9 @@ impl Game {
         }
         if !self.creature_active(c) {
             return true;
+        }
+        if c.tame {
+            return self.tame_tick(c);
         }
         // Animals lose their nerve when hurt; goblins only when close to death.
         let breaking = if c.siege { c.body.blood * 10 < c.body.max_blood * 4 } else { c.body.badly_hurt() };
@@ -683,12 +697,12 @@ impl Game {
         true
     }
 
-    fn creature_step(&mut self, c: &mut Creature, delay: u32) {
+    pub(super) fn creature_step(&mut self, c: &mut Creature, delay: u32) {
         if c.move_cd > 0 {
             return;
         }
         let Some(next) = c.path.pop() else { return };
-        let mover = c.species.info().mover;
+        let mover = c.mover();
         let mut nb = Vec::new();
         self.world.neighbors(c.pos, &mut nb, mover);
         if nb.iter().any(|&(q, _)| q == next) {

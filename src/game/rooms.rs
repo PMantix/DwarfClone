@@ -22,6 +22,7 @@ impl ZoneKind {
             ZoneKind::Dump => "Garbage dump".into(),
             ZoneKind::Barracks => "Barracks".into(),
             ZoneKind::Hospital => "Hospital".into(),
+            ZoneKind::Pasture => "Pasture".into(),
         }
     }
 

@@ -440,6 +440,7 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
         }
         Task::Dine { .. } => "Eating at a table".into(),
         Task::PullLever { .. } => "Pulling a lever".into(),
+        Task::Slaughter { creature } => format!("Slaughtering a {}", g.creatures.get(creature).map_or("beast", |c| c.name())),
         Task::Treat { patient, what, .. } => {
             let who = g.dwarves.iter().find(|p| p.id == *patient).map_or("a patient".to_string(), |p| p.name.clone());
             format!("Treating {}: {}", who, what.name())
@@ -2080,6 +2081,8 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 v.push(header(&cap(info.name)));
                 let state = if c.body.unconscious() {
                     "Unconscious"
+                } else if c.tame {
+                    "Tame"
                 } else if c.leaving {
                     "Leaving the area"
                 } else if c.hostile() {
@@ -2093,6 +2096,24 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 }
                 for a in c.armor.iter().filter_map(|id| g.items.get(id)) {
                     v.push(plain(format!("Wears {}", a.name()), detail_col));
+                }
+                if c.tame {
+                    let sex = if c.female { "female" } else { "male" };
+                    let age = if c.adult { "adult" } else { "young" };
+                    v.push(plain(format!("{} {}{}", cap(age), sex, if c.pregnant > 0 { ", expecting" } else { "" }), detail_col));
+                    if let Some(z) = c.pasture.and_then(|z| g.zones.get(&z)) {
+                        v.push(plain(format!("Kept in a pasture of {} tiles", z.tiles.len()), detail_col));
+                    }
+                    if let Some(o) = c.owner.and_then(|o| g.dwarves.iter().find(|d| d.id == o)) {
+                        v.push(plain(format!("War dog of {}", o.name), detail_col));
+                    }
+                    if c.slaughter {
+                        v.push(plain("Marked for slaughter".into(), Color::Rgb(220, 140, 120)));
+                    }
+                    v.push(plain("p pasture · b slaughter".into(), MUTED));
+                    if c.species == crate::creature::Species::Dog {
+                        v.push(plain("w war dog of the next soldier".into(), MUTED));
+                    }
                 }
                 if c.body.bleeding > 0 {
                     v.push(plain("Bleeding".into(), Color::Rgb(255, 60, 60)));
@@ -2133,6 +2154,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 }
                 if it.dump {
                     v.push(plain("Marked for the garbage dump".into(), Color::Rgb(200, 170, 90)));
+                }
+                if it.kind == ItemKind::Cage && it.label.is_some() {
+                    v.push(plain("t: tame what's inside".into(), KEY));
                 }
                 v.push(plain("d: dump this · D: dump everything here".into(), MUTED));
                 if it.kind.is_container() {
@@ -2266,6 +2290,20 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
             moods.sort_by_key(|x| std::cmp::Reverse(x.2));
             for (m, c, k) in moods {
                 v.push(plain(format!("  {:>3}  {}", k, m), rgb(c)));
+            }
+            let mut herd: Vec<(&'static str, usize)> = Vec::new();
+            for c in g.creatures.values().filter(|c| c.tame && c.alive) {
+                match herd.iter_mut().find(|h| h.0 == c.species.info().plural) {
+                    Some(h) => h.1 += 1,
+                    None => herd.push((c.species.info().plural, 1)),
+                }
+            }
+            if !herd.is_empty() {
+                v.push(Line::default());
+                v.push(header("Animals"));
+                for (name, n) in herd {
+                    v.push(plain(format!("  {:>3}  {}", n, name), TEXT));
+                }
             }
             let hostiles = g.hostile_count();
             if hostiles > 0 {
