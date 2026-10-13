@@ -380,7 +380,8 @@ impl Game {
 
     pub(super) fn populate_caverns(&mut self) {
         let mut floors = Vec::new();
-        for z in 5..=8 {
+        let bands = self.world.caverns.clone();
+        for z in bands.iter().flat_map(|&(lo, hi)| lo..=hi) {
             for y in 0..self.world.h {
                 for x in 0..self.world.w {
                     let p = Pos::new(x, y, z);

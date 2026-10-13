@@ -30,8 +30,9 @@ Browse it all in the legends viewer (`L`). You choose
 your embark site; the biome shapes the map (relief, forest, lakes, savage wildlife) and
 nearby goblins decide how often sieges come.
 
-**Fortress.** 96×64×32 region: soil over sedimentary and igneous rock, ore veins, gems,
-and a hidden cavern layer with pools, tower mushrooms and things that wake when you
+**Fortress.** A small (64×48), medium (96×64) or large (144×96, 48 levels deep) region, picked
+with `s` on the world map: soil over sedimentary and igneous rock, ore veins, gems,
+and hidden cavern layers (two on deep maps) with pools, tower mushrooms and things that wake when you
 break in. Designate mining, channels, stairs, ramps and tree felling. Water falls and
 levels out.
 

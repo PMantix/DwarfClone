@@ -16,19 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W23 (starting a game, asked for 2026-10-12) → W07, W06 (siege defense) → W04, W05.
-
-### Tier 1b: starting a game (prioritized by request)
-
-#### W23 Embark size and fortress map size (M–L)
-- **DF:** pick the embark rectangle on the world map; maps are deep (dozens to 100+ levels) with several caverns and a magma sea.
-- **Us:** a fixed 96×64×32 map (`world.rs` `W`, `H`, `D`).
-- **Plan:** embark size chosen on the world map (small, medium, large), with dimensions passed into `world::generate`. Deeper maps once W18 adds more cavern layers. Check job search, fluids and pathing costs with `one_year_timing` at each size.
-- **Steps:**
-  - [ ] Map dimensions as data, not constants
-  - [ ] Embark size choice with the footprint shown on the world map
-  - [ ] Performance budget: a large map still simulates a year in under ~20 s
-- **Done when:** tests run a season on the smallest and largest sizes.
+Suggested order: W07, W06 (siege defense) → W04, W05.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -193,6 +181,7 @@ Ideas not ranked yet. Add a line on why each matters.
 - Workshop orders that wait on missing materials still announce often ("Cut a gem needs rough gem"); fold into W14's global orders.
 - Overlapping zones: a tile holds one zone, so a dining hall can't also be the meeting area as it often is in DF.
 - Bridges and drawbridges (with W06 levers), roads, grates, bars, windows, supports: the rest of DF's constructions.
+- A large embark's footprint spans several world cells but takes its biome from the cursor cell only; blend neighbouring biomes into the map.
 - Pick a room's owner from a list instead of cycling through dwarves with `o`.
 - Announcements history screen (DF's report log): find out what happened while you weren't looking.
 - Mini-map and saved camera spots: get around a 96×64 map faster.
@@ -201,6 +190,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **W23 Embark and map size** (this commit): `s` on the world map picks Small 64×48×32, Medium 96×64×32 (unchanged) or Large 144×96×48 with a second, deeper cavern layer; the footprint is outlined on the world map. Saves are run-length encoded (a medium save is well under 4 MB, was ~25 MB; old saves still load). A large map simulates a year in ~12 s.
 - **W22 Larger world map** (this commit): small 64×32, medium 128×64 or large 256×128 worlds (civilizations and megabeasts scale with the land; a large world generates in under 0.1 s); the world map scrolls with the cursor and shows a minimap with the visible area outlined; the generation screen shrinks the world to fit; seas, lakes, mountain ranges, forests, plains, deserts, tundra and swamps get unique names, shown in the site panel, a Regions legends tab and the founding legend.
 - **W21 World generation screen** (this commit): New world opens a settings screen (preset, seed, history length, civilizations, savagery, minerals), then the world is drawn row by row and history plays out year by year with running totals and the latest events (Space hurries); accept, regenerate or go back to the settings. Generation is resumable and gives the same world stepped or in one go.
 - **Fixes from a played fort** (0e62fd1): hauling search 22× cheaper, one construction warning per kind, stress floor, cooking leaves spawn.

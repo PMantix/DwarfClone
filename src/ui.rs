@@ -1109,7 +1109,22 @@ fn draw_world(f: &mut Frame, app: &mut App, cx: i32, cy: i32) {
     let inner = block.inner(cols[0]);
     f.render_widget(block, cols[0]);
     let view = paint_world(f, inner, ow, ow.h, Some((cx, cy)));
-    let lines = world_info(ow, cx, cy, &app.flash);
+    // Outline the land the fortress map will cover, east and south of the cursor.
+    let size = crate::world::MapSize::ALL[app.embark_size];
+    let (fw, fh) = embark_footprint(app.embark_size);
+    paint_footprint(f, inner, ow, view, (cx, cy), (fw, fh));
+    let mut lines = world_info(ow, cx, cy, &app.flash);
+    lines.insert(
+        1,
+        Line::from(vec![
+            Span::styled("Embark: ", Style::default().fg(MUTED)),
+            Span::styled(
+                format!("{} {}×{}, {} deep", crate::world::MapSize::NAMES[app.embark_size], size.w, size.h, size.d),
+                Style::default().fg(KEY),
+            ),
+            Span::styled("  (s)", Style::default().fg(MUTED)),
+        ]),
+    );
     let mut side = cols[1];
     if view.cols < ow.w || view.rows < ow.h {
         let mh = (side.width.saturating_sub(2) as i32 * ow.h / ow.w.max(1)).clamp(4, 18) as u16 + 2;
@@ -1217,6 +1232,33 @@ fn paint_world(f: &mut Frame, inner: Rect, ow: &Overworld, rows: i32, cursor: Op
         }
     }
     view
+}
+
+/// How many world cells an embark of each size covers (wide, high).
+fn embark_footprint(size: usize) -> (i32, i32) {
+    [(1, 1), (2, 1), (3, 2)][size.min(2)]
+}
+
+/// Tint the cells an embark at `at` would cover (the cursor cell itself is already marked).
+fn paint_footprint(f: &mut Frame, inner: Rect, ow: &Overworld, view: WorldView, at: (i32, i32), (fw, fh): (i32, i32)) {
+    if view.scale != 1 {
+        return;
+    }
+    let cw = if ow.w * 2 <= inner.width as i32 && ow.h <= inner.height as i32 { 2 } else { 1 };
+    let ox = inner.x as i32 + ((inner.width as i32 - view.cols * cw) / 2).max(0);
+    let oy = inner.y as i32 + ((inner.height as i32 - view.rows) / 2).max(0);
+    let buf = f.buffer_mut();
+    for y in at.1..at.1 + fh {
+        for x in at.0..at.0 + fw {
+            if (x, y) == at || x >= ow.w || y >= ow.h || x < view.x0 || y < view.y0 || x >= view.x0 + view.cols || y >= view.y0 + view.rows {
+                continue;
+            }
+            let (sx, sy) = (ox + (x - view.x0) * cw, oy + (y - view.y0));
+            for dx in 0..cw {
+                buf.get_mut((sx + dx) as u16, sy as u16).set_bg(Color::Rgb(120, 105, 20));
+            }
+        }
+    }
 }
 
 /// The whole world shrunk into `area`, with the part the main map shows outlined.
@@ -2599,9 +2641,15 @@ mod tests {
         app.on_key(key(KeyCode::Enter));
         assert!(matches!(app.mode, Mode::WorldMap { .. }), "after worldgen: {:?}", app.mode);
         check(&mut app, "Choose a site");
+        check(&mut app, "Embark: Medium 96×64");
+        app.on_key(key(KeyCode::Char('s')));
+        check(&mut app, "Embark: Large 144×96, 48 deep");
+        app.on_key(key(KeyCode::Char('s')));
+        check(&mut app, "Embark: Small 64×48");
 
         app.on_key(key(KeyCode::Enter));
         wait(&mut app, "Embarking");
+        assert_eq!((app.game.world.w, app.game.world.h), (64, 48), "embarked at the wrong size");
         assert_eq!(app.mode, Mode::Help);
         app.on_key(key(KeyCode::Esc));
         let name = app.game.fortress_name.clone();

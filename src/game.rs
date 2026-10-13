@@ -182,14 +182,15 @@ impl Game {
 
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn embark(seed: u64, ow: Overworld, sx: i32, sy: i32) -> Game {
-        Self::embark_with(seed, ow, sx, sy, &|_, _| {})
+        Self::embark_with(seed, ow, sx, sy, world::MapSize::MEDIUM, &|_, _| {})
     }
 
-    pub fn embark_with(seed: u64, ow: Overworld, sx: i32, sy: i32, report: &dyn Fn(&str, f32)) -> Game {
+    pub fn embark_with(seed: u64, ow: Overworld, sx: i32, sy: i32, size: world::MapSize, report: &dyn Fn(&str, f32)) -> Game {
         report("Surveying the site", 0.05);
         let cell = ow.cell(sx, sy).clone();
         let mut params = cell.biome.params();
         params.minerals = ow.minerals;
+        params.size = size;
         let world = world::generate(seed ^ ((sx as u64) << 20) ^ ((sy as u64) << 40), &params);
         report("Loading the wagon", 0.8);
         let embark = find_embark(&world);
@@ -2292,6 +2293,50 @@ mod tests {
     }
 
     #[test]
+    fn smallest_and_largest_maps_run_a_season() {
+        use crate::world::MapSize;
+        for (i, seed) in [(0usize, 61u64), (2, 62)] {
+            let ow = Overworld::generate(seed);
+            let (x, y) = ow.default_site();
+            let size = MapSize::ALL[i];
+            let t = std::time::Instant::now();
+            let mut g = Game::embark_with(seed, ow, x, y, size, &|_, _| {});
+            assert_eq!((g.world.w, g.world.h, g.world.d), (size.w, size.h, size.d));
+            assert!(g.dwarves.iter().all(|d| g.world.walkable(d.pos)), "{:?}: dwarves embarked inside rock", size);
+            if size.d > 32 {
+                assert_eq!(g.world.caverns.len(), 2, "deep maps have two cavern layers");
+            }
+            let e = g.embark;
+            g.designate(e.offset(-10, -10, -1), e.offset(10, 10, 1), Desig::Chop);
+            g.add_zone(e.offset(-6, 3, -1), e.offset(-1, 7, 1), ZoneKind::Stockpile(StockFilter::All));
+            let mut farm = 0;
+            for (dx, dy) in [(-10, -10), (2, -10), (-10, 10), (2, 10)] {
+                if farm < 20 {
+                    farm += g.add_zone(e.offset(dx, dy, -2), e.offset(dx + 7, dy + 5, 2), ZoneKind::Farm);
+                }
+            }
+            assert!(farm > 0, "{:?}: no farmable soil", size);
+            for _ in 0..SEASON {
+                g.step();
+            }
+            eprintln!("{:?}: embark + season in {:?}, {} alive", size, t.elapsed(), g.alive_count());
+            let dead: Vec<&str> = g.log.iter().filter(|l| l.color == (255, 60, 60)).map(|l| l.text.as_str()).collect();
+            assert!(g.dwarves.iter().all(|d| d.alive), "{:?}: deaths in the first season: {:?}", size, dead);
+            assert!(t.elapsed().as_secs() < 20, "{:?}: a season took {:?}", size, t.elapsed());
+        }
+    }
+
+    #[test]
+    fn saves_are_run_length_encoded() {
+        let g = Game::new(9);
+        let s = serde_json::to_string(&g).unwrap();
+        assert!(s.len() < 4_000_000, "save is {} bytes", s.len());
+        let g2: Game = serde_json::from_str(&s).unwrap();
+        assert!(g2.world.tiles == g.world.tiles);
+        assert_eq!(g2.world.caverns, g.world.caverns);
+    }
+
+    #[test]
     fn save_roundtrip() {
         let mut g = Game::new(9);
         run(&mut g, 500);
@@ -2306,6 +2351,25 @@ mod tests {
 #[cfg(test)]
 mod bench {
     use super::*;
+    #[test]
+    #[ignore]
+    fn one_year_timing_large() {
+        let ow = Overworld::generate(5);
+        let (x, y) = ow.default_site();
+        let mut g = Game::embark_with(5, ow, x, y, crate::world::MapSize::ALL[2], &|_, _| {});
+        let e = g.embark;
+        g.designate(e.offset(-15, -15, -1), e.offset(15, 15, 1), Desig::Chop);
+        g.add_zone(e.offset(-8, 3, -1), e.offset(-1, 9, 1), ZoneKind::Stockpile(StockFilter::All));
+        g.add_zone(e.offset(-8, -8, -1), e.offset(-2, -3, 1), ZoneKind::Farm);
+        let t = std::time::Instant::now();
+        for _ in 0..YEAR {
+            g.step();
+        }
+        eprintln!("large map, 1 year: {:?}, alive {}/{}, items {}", t.elapsed(), g.alive_count(), g.dwarves.len(), g.items.len());
+        let s = serde_json::to_string(&g).unwrap();
+        eprintln!("large map save: {} bytes", s.len());
+    }
+
     #[test]
     #[ignore]
     fn one_year_timing() {

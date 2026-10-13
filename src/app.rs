@@ -226,6 +226,8 @@ pub struct App {
     pub worldgen: Option<WorldGen>,
     /// Skip the pacing and generate as fast as possible.
     pub gen_fast: bool,
+    /// Index into `MapSize::ALL` for the next embark.
+    pub embark_size: usize,
 }
 
 impl App {
@@ -268,6 +270,7 @@ impl App {
             world_params: WorldParams { seed, ..WorldParams::default() },
             worldgen: None,
             gen_fast: false,
+            embark_size: 1,
         }
     }
 
@@ -411,7 +414,8 @@ impl App {
     fn start_embark(&mut self, x: i32, y: i32) {
         let ow = self.game.overworld.clone();
         let seed = self.seed;
-        self.run_job("Embarking", move |report| Ok(JobDone::Embarked(Game::embark_with(seed, ow, x, y, report))));
+        let size = crate::world::MapSize::ALL[self.embark_size];
+        self.run_job("Embarking", move |report| Ok(JobDone::Embarked(Game::embark_with(seed, ow, x, y, size, report))));
     }
 
     /// Save on a worker thread; the game is handed back when it's done.
@@ -1074,6 +1078,10 @@ impl App {
             KeyCode::Down => ny += step,
             KeyCode::Left => nx -= step,
             KeyCode::Right => nx += step,
+            KeyCode::Char('s') | KeyCode::Char('S') => {
+                self.embark_size = (self.embark_size + 1) % crate::world::MapSize::ALL.len();
+                return;
+            }
             KeyCode::Char('l') | KeyCode::Char('L') => {
                 self.mode = Mode::Legends { tab: 0, scroll: usize::MAX, from_world: true };
                 return;

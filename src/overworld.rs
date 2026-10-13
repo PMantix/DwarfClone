@@ -32,6 +32,8 @@ pub struct EmbarkParams {
     pub savagery: f64,
     /// Multiplier on ore veins and gems.
     pub minerals: f64,
+    /// Fortress map dimensions.
+    pub size: crate::world::MapSize,
 }
 
 impl Biome {
@@ -62,7 +64,7 @@ impl Biome {
     }
 
     pub fn params(self) -> EmbarkParams {
-        let p = |relief, forest, lake, savagery| EmbarkParams { relief, forest, lake, savagery, minerals: 1.0 };
+        let p = |relief, forest, lake, savagery| EmbarkParams { relief, forest, lake, savagery, minerals: 1.0, size: crate::world::MapSize::MEDIUM };
         match self {
             Biome::Mountain => p(1.6, 0.3, 0.03, 0.3),
             Biome::Hills => p(1.2, 0.7, 0.06, 0.2),

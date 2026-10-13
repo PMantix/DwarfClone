@@ -6,9 +6,23 @@ use crate::overworld::EmbarkParams;
 use crate::rng::Rng;
 use serde::{Deserialize, Serialize};
 
-pub const W: i32 = 96;
-pub const H: i32 = 64;
-pub const D: i32 = 32;
+/// Fortress map dimensions, chosen at embark.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MapSize {
+    pub w: i32,
+    pub h: i32,
+    pub d: i32,
+}
+
+impl MapSize {
+    pub const ALL: [MapSize; 3] = [
+        MapSize { w: 64, h: 48, d: 32 },
+        MapSize { w: 96, h: 64, d: 32 },
+        MapSize { w: 144, h: 96, d: 48 },
+    ];
+    pub const NAMES: [&'static str; 3] = ["Small", "Medium", "Large"];
+    pub const MEDIUM: MapSize = MapSize::ALL[1];
+}
 
 /// What occupies a cell. Cells with a floor (Floor, Ramp, stairs, Shrub) can be stood on;
 /// Open cells have no floor, and Wall/Tree are solid.
@@ -96,7 +110,7 @@ impl Desig {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Tile {
     pub kind: TileKind,
     pub mat: Mat,
@@ -139,14 +153,65 @@ pub struct World {
     pub w: i32,
     pub h: i32,
     pub d: i32,
+    /// Saved run-length encoded; plain arrays from older saves still load.
+    #[serde(with = "tiles_rle")]
     pub tiles: Vec<Tile>,
     pub surface: Vec<i32>,
+    /// Cavern layers as (lowest z, highest z), deepest first.
+    #[serde(default = "default_caverns")]
+    pub caverns: Vec<(i32, i32)>,
+}
+
+fn default_caverns() -> Vec<(i32, i32)> {
+    vec![(5, 8)]
+}
+
+/// Most of a map is long runs of identical rock, so saves store (count, tile) pairs.
+mod tiles_rle {
+    use super::Tile;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Serialize)]
+    struct Out<'a> {
+        rle: Vec<(u32, &'a Tile)>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum In {
+        Rle { rle: Vec<(u32, Tile)> },
+        Plain(Vec<Tile>),
+    }
+
+    pub fn serialize<S: Serializer>(tiles: &[Tile], s: S) -> Result<S::Ok, S::Error> {
+        let mut rle: Vec<(u32, &Tile)> = Vec::new();
+        for t in tiles {
+            match rle.last_mut() {
+                Some((n, last)) if *last == t => *n += 1,
+                _ => rle.push((1, t)),
+            }
+        }
+        Out { rle }.serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<Tile>, D::Error> {
+        Ok(match In::deserialize(d)? {
+            In::Plain(v) => v,
+            In::Rle { rle } => {
+                let mut v = Vec::with_capacity(rle.iter().map(|(n, _)| *n as usize).sum());
+                for (n, t) in rle {
+                    v.extend(std::iter::repeat(t).take(n as usize));
+                }
+                v
+            }
+        })
+    }
 }
 
 impl World {
     /// A one-cell stand-in used before a fortress exists.
     pub fn empty() -> World {
-        World { w: 1, h: 1, d: 1, tiles: vec![Tile::default()], surface: vec![0] }
+        World { w: 1, h: 1, d: 1, tiles: vec![Tile::default()], surface: vec![0], caverns: Vec::new() }
     }
 
     pub fn in_bounds(&self, p: Pos) -> bool {
@@ -331,7 +396,9 @@ impl World {
 
 /// Generate a fresh embark region.
 pub fn generate(seed: u64, params: &EmbarkParams) -> World {
-    let (w, h, d) = (W, H, D);
+    let MapSize { w, h, d } = params.size;
+    // Deeper maps add rock below the usual layers (and room for a second cavern).
+    let base = (d - 32).max(0);
     let height_n = Noise::new(seed);
     let soil_n = Noise::new(seed ^ 0x1111);
     let rock_n = Noise::new(seed ^ 0x2222);
@@ -347,7 +414,8 @@ pub fn generate(seed: u64, params: &EmbarkParams) -> World {
     for y in 0..h {
         for x in 0..w {
             let v = height_n.fbm2(x as f64 / 34.0, y as f64 / 34.0, 4);
-            surf[(y * w + x) as usize] = (18.0 + (v - 0.5) * 18.0 * params.relief).round().clamp(9.0, 27.0) as i32;
+            let lo = (9 + base) as f64;
+            surf[(y * w + x) as usize] = (18.0 + base as f64 + (v - 0.5) * 18.0 * params.relief).round().clamp(lo, lo + 18.0) as i32;
         }
     }
     loop {
@@ -387,7 +455,9 @@ pub fn generate(seed: u64, params: &EmbarkParams) -> World {
         d,
         tiles: vec![Tile::default(); (w * h * d) as usize],
         surface: surf.clone(),
+        caverns: if base >= 12 { vec![(5, 8), (5 + base, 8 + base)] } else { vec![(5 + base, 8 + base)] },
     };
+    let bands = world.caverns.clone();
 
     for y in 0..h {
         for x in 0..w {
@@ -410,7 +480,7 @@ pub fn generate(seed: u64, params: &EmbarkParams) -> World {
                         } else {
                             Mat::Sand
                         }
-                    } else if z >= 13 {
+                    } else if z >= 13 + base {
                         if rock_n.fbm3(x as f64 / 20.0, y as f64 / 20.0, z as f64 / 3.0, 2) < 0.5 {
                             Mat::Sandstone
                         } else {
@@ -474,8 +544,8 @@ pub fn generate(seed: u64, params: &EmbarkParams) -> World {
         }
     }
 
-    // A cavern layer deep underground.
-    for z in 5..=8 {
+    // Cavern layers deep underground.
+    for z in bands.iter().flat_map(|&(lo, hi)| lo..=hi) {
         for y in 1..h - 1 {
             for x in 1..w - 1 {
                 let hh = surf[(y * w + x) as usize];
@@ -491,7 +561,7 @@ pub fn generate(seed: u64, params: &EmbarkParams) -> World {
             }
         }
     }
-    for z in 5..=8 {
+    for z in bands.iter().flat_map(|&(lo, hi)| lo..=hi) {
         for y in 1..h - 1 {
             for x in 1..w - 1 {
                 let p = Pos::new(x, y, z);
@@ -506,7 +576,7 @@ pub fn generate(seed: u64, params: &EmbarkParams) -> World {
         }
     }
     // Cavern ramps where the cavern floor steps up by one level.
-    for z in 5..=8 {
+    for z in bands.iter().flat_map(|&(lo, hi)| lo..=hi) {
         for y in 1..h - 1 {
             for x in 1..w - 1 {
                 let p = Pos::new(x, y, z);
@@ -523,7 +593,7 @@ pub fn generate(seed: u64, params: &EmbarkParams) -> World {
         }
     }
     // Cavern pools and towering mushroom trees.
-    for z in 5..=8 {
+    for z in bands.iter().flat_map(|&(lo, hi)| lo..=hi) {
         for y in 1..h - 1 {
             for x in 1..w - 1 {
                 let p = Pos::new(x, y, z);
