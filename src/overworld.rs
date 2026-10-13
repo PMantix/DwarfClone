@@ -6,8 +6,6 @@ use crate::rng::Rng;
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 
-pub const OW_W: i32 = 64;
-pub const OW_H: i32 = 32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Biome {
@@ -165,6 +163,53 @@ pub struct Cell {
     pub evil: bool,
     /// Site id + 1, or 0.
     pub site: u32,
+    /// Region id + 1, or 0 for a patch too small to name.
+    #[serde(default)]
+    pub region: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RegionKind {
+    Ocean,
+    Sea,
+    Lake,
+    Mountains,
+    Hills,
+    Forest,
+    Plains,
+    Desert,
+    Tundra,
+    Swamp,
+}
+
+impl RegionKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            RegionKind::Ocean => "ocean",
+            RegionKind::Sea => "sea",
+            RegionKind::Lake => "lake",
+            RegionKind::Mountains => "mountain range",
+            RegionKind::Hills => "hills",
+            RegionKind::Forest => "forest",
+            RegionKind::Plains => "plains",
+            RegionKind::Desert => "desert",
+            RegionKind::Tundra => "tundra",
+            RegionKind::Swamp => "swamp",
+        }
+    }
+}
+
+/// A named stretch of land or water: a sea, a mountain range, a forest...
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Region {
+    pub id: u32,
+    pub kind: RegionKind,
+    pub name: String,
+    /// Number of world cells.
+    pub size: u32,
+    /// One of its cells, for "show me where".
+    pub x: i32,
+    pub y: i32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -244,6 +289,8 @@ pub struct Overworld {
     /// Ore and gem abundance multiplier chosen at world creation.
     #[serde(default = "one")]
     pub minerals: f64,
+    #[serde(default)]
+    pub regions: Vec<Region>,
 }
 
 fn one() -> f64 {
@@ -262,22 +309,36 @@ pub struct WorldParams {
     pub savagery: u8,
     /// 0 sparse, 1 normal, 2 rich ore and gems.
     pub minerals: u8,
+    /// 0 small (64×32), 1 medium (128×64), 2 large (256×128).
+    #[serde(default)]
+    pub size: u8,
 }
 
 impl Default for WorldParams {
     fn default() -> Self {
-        WorldParams { seed: 0, history: 200, civs: 1, savagery: 1, minerals: 1 }
+        WorldParams { seed: 0, history: 200, civs: 1, savagery: 1, minerals: 1, size: 0 }
     }
 }
 
 impl WorldParams {
     pub fn civ_plan(&self) -> Vec<Race> {
         use Race::*;
-        match self.civs {
+        let one: Vec<Race> = match self.civs {
             0 => vec![Dwarf, Human, Elf, Goblin],
             1 => vec![Dwarf, Dwarf, Human, Human, Elf, Goblin, Goblin],
             _ => vec![Dwarf, Dwarf, Dwarf, Human, Human, Human, Elf, Elf, Goblin, Goblin, Goblin],
-        }
+        };
+        // Bigger worlds hold more peoples.
+        one.iter().copied().cycle().take(one.len() * self.scale()).collect()
+    }
+
+    pub fn dims(&self) -> (i32, i32) {
+        [(64, 32), (128, 64), (256, 128)][self.size.min(2) as usize]
+    }
+
+    /// How many times more land than a small world, roughly (for civs and beasts).
+    pub fn scale(&self) -> usize {
+        [1, 2, 4][self.size.min(2) as usize]
     }
 
     pub fn savagery_mult(&self) -> f64 {
@@ -316,7 +377,7 @@ impl WorldGen {
     pub fn new(params: WorldParams) -> WorldGen {
         let seed = params.seed;
         let mut rng = Rng::new(seed ^ 0xBADC0DE);
-        let (w, h) = (OW_W, OW_H);
+        let (w, h) = params.dims();
         // The terrain uses only noise, so naming the world first draws the
         // same random numbers as naming it afterwards.
         let name = format!("The {} {}", word(&mut rng, Race::Elf, 2), rng.pick(&["Continent", "Expanse", "Reaches", "Wilds"]));
@@ -332,6 +393,7 @@ impl WorldGen {
             name,
             savagery: params.savagery_mult(),
             minerals: params.minerals_mult(),
+            regions: Vec::new(),
         };
         WorldGen {
             params,
@@ -369,6 +431,7 @@ impl WorldGen {
                     self.row += 1;
                 }
                 if self.row >= self.ow.h {
+                    self.name_regions();
                     self.stage = GenStage::Civs;
                 }
             }
@@ -448,7 +511,7 @@ impl WorldGen {
                 Biome::Grassland
             };
             let ev = biome != Biome::Ocean && self.evil.fbm2(fx * 1.6, fy * 1.6, 2) > 0.66;
-            self.ow.cells.push(Cell { biome, evil: ev, site: 0 });
+            self.ow.cells.push(Cell { biome, evil: ev, site: 0, region: 0 });
         }
     }
 
@@ -490,10 +553,85 @@ impl WorldGen {
         }
     }
 
+    /// Flood-fill stretches of similar land or water and name the bigger ones.
+    /// Naming has its own random stream so history comes out the same.
+    fn name_regions(&mut self) {
+        let (w, h) = (self.ow.w, self.ow.h);
+        let mut rng = Rng::new(self.params.seed ^ 0x2E610);
+        let class = |b: Biome| match b {
+            Biome::Ocean => 0,
+            Biome::Mountain => 1,
+            Biome::Hills => 2,
+            Biome::Forest => 3,
+            Biome::Grassland => 4,
+            Biome::Desert => 5,
+            Biome::Tundra => 6,
+            Biome::Swamp => 7,
+        };
+        let mut seen = vec![false; (w * h) as usize];
+        for start in 0..(w * h) as usize {
+            if seen[start] {
+                continue;
+            }
+            let k = class(self.ow.cells[start].biome);
+            let mut cells = vec![start];
+            let mut stack = vec![start];
+            seen[start] = true;
+            let mut edge = false;
+            while let Some(i) = stack.pop() {
+                let (x, y) = (i as i32 % w, i as i32 / w);
+                if x == 0 || y == 0 || x == w - 1 || y == h - 1 {
+                    edge = true;
+                }
+                for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx < 0 || ny < 0 || nx >= w || ny >= h {
+                        continue;
+                    }
+                    let j = (ny * w + nx) as usize;
+                    if !seen[j] && class(self.ow.cells[j].biome) == k {
+                        seen[j] = true;
+                        cells.push(j);
+                        stack.push(j);
+                    }
+                }
+            }
+            if cells.len() < 3 {
+                continue;
+            }
+            let kind = match self.ow.cells[start].biome {
+                Biome::Ocean if edge && cells.len() > 400 => RegionKind::Ocean,
+                Biome::Ocean if edge => RegionKind::Sea,
+                Biome::Ocean => RegionKind::Lake,
+                Biome::Mountain => RegionKind::Mountains,
+                Biome::Hills => RegionKind::Hills,
+                Biome::Forest => RegionKind::Forest,
+                Biome::Grassland => RegionKind::Plains,
+                Biome::Desert => RegionKind::Desert,
+                Biome::Tundra => RegionKind::Tundra,
+                Biome::Swamp => RegionKind::Swamp,
+            };
+            let id = self.ow.regions.len() as u32;
+            // Names are unique; after a few tries fall back to a numbered one.
+            let mut name = region_name(&mut rng, kind);
+            for attempt in 0..12 {
+                if !self.ow.regions.iter().any(|r| r.name == name) {
+                    break;
+                }
+                name = if attempt < 11 { region_name(&mut rng, kind) } else { format!("{} {}", name, id + 1) };
+            }
+            let mid = cells[cells.len() / 2];
+            self.ow.regions.push(Region { id, kind, name, size: cells.len() as u32, x: mid as i32 % w, y: mid as i32 / w });
+            for i in cells {
+                self.ow.cells[i].region = id + 1;
+            }
+        }
+    }
+
     fn place_beasts(&mut self) {
         let (w, h) = (self.ow.w, self.ow.h);
         // Megabeasts in remote lairs.
-        for i in 0..3 {
+        for i in 0..3 * self.params.scale() {
             let (kind, part) = BEASTS[(i + self.rng.range(0, 5) as usize) % BEASTS.len()];
             let mut spot = None;
             for _ in 0..300 {
@@ -543,6 +681,30 @@ fn race_idx(r: Race) -> usize {
 fn cap(s: &str) -> String {
     let mut c = s.chars();
     c.next().map_or(String::new(), |f| f.to_uppercase().collect::<String>() + c.as_str())
+}
+
+const REGION_ADJ: [&str; 16] = [
+    "Shimmering", "Endless", "Howling", "Silent", "Golden", "Grey", "Bitter", "Frozen", "Whispering", "Ashen",
+    "Verdant", "Sunken", "Broken", "Iron", "Crimson", "Pale",
+];
+
+fn region_name(rng: &mut Rng, kind: RegionKind) -> String {
+    let adj = *rng.pick(&REGION_ADJ);
+    let race = if rng.chance(0.5) { Race::Elf } else { Race::Human };
+    let w = word(rng, race, 2);
+    let pick = |rng: &mut Rng, a: String, b: String| if rng.chance(0.5) { a } else { b };
+    match kind {
+        RegionKind::Ocean => pick(rng, format!("The {} Ocean", adj), format!("The Ocean of {}", w)),
+        RegionKind::Sea => pick(rng, format!("The {} Sea", adj), format!("The Sea of {}", w)),
+        RegionKind::Lake => format!("Lake {}", w),
+        RegionKind::Mountains => pick(rng, format!("The {} Peaks", w), format!("The {} Mountains", adj)),
+        RegionKind::Hills => pick(rng, format!("The {} Hills", w), format!("The {} Downs", adj)),
+        RegionKind::Forest => pick(rng, format!("The {} Wood", adj), format!("{} Forest", w)),
+        RegionKind::Plains => pick(rng, format!("The {} Plains", w), format!("The {} Steppe", adj)),
+        RegionKind::Desert => pick(rng, format!("The {} Waste", adj), format!("The {} Sands", w)),
+        RegionKind::Tundra => pick(rng, format!("The {} Barrens", adj), format!("{} Tundra", w)),
+        RegionKind::Swamp => pick(rng, format!("The {} Mire", w), format!("The {} Fen", adj)),
+    }
 }
 
 fn word(rng: &mut Rng, r: Race, syllables: i32) -> String {
@@ -620,6 +782,14 @@ impl Overworld {
 
     pub fn civ(&self, id: u32) -> &Civ {
         &self.civs[id as usize]
+    }
+
+    /// The named region a cell lies in, if any.
+    pub fn region_at(&self, x: i32, y: i32) -> Option<&Region> {
+        match self.cell(x, y).region {
+            0 => None,
+            r => self.regions.get(r as usize - 1),
+        }
     }
 
     pub fn embarkable(&self, x: i32, y: i32) -> bool {
@@ -744,7 +914,7 @@ impl Overworld {
         Overworld {
             w: 1,
             h: 1,
-            cells: vec![Cell { biome: Biome::Ocean, evil: false, site: 0 }],
+            cells: vec![Cell { biome: Biome::Ocean, evil: false, site: 0, region: 0 }],
             civs: Vec::new(),
             sites: Vec::new(),
             figures: Vec::new(),
@@ -753,6 +923,7 @@ impl Overworld {
             name: String::new(),
             savagery: 1.0,
             minerals: 1.0,
+            regions: Vec::new(),
         }
     }
 
@@ -1030,7 +1201,7 @@ mod tests {
     #[test]
     fn stepwise_generation_matches_one_go() {
         for seed in [3u64, 99] {
-            let params = WorldParams { seed, history: 60, civs: 2, savagery: 0, minerals: 2 };
+            let params = WorldParams { seed, history: 60, civs: 2, savagery: 0, minerals: 2, size: 1 };
             let mut g = WorldGen::new(params);
             let mut steps = 0;
             while !g.step(1, 1) {

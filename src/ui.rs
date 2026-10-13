@@ -1108,8 +1108,24 @@ fn draw_world(f: &mut Frame, app: &mut App, cx: i32, cy: i32) {
         .title(Span::styled(" World map ", Style::default().fg(KEY)));
     let inner = block.inner(cols[0]);
     f.render_widget(block, cols[0]);
-    paint_world(f, inner, ow, ow.h, Some((cx, cy)));
+    let view = paint_world(f, inner, ow, ow.h, Some((cx, cy)));
     let lines = world_info(ow, cx, cy, &app.flash);
+    let mut side = cols[1];
+    if view.cols < ow.w || view.rows < ow.h {
+        let mh = (side.width.saturating_sub(2) as i32 * ow.h / ow.w.max(1)).clamp(4, 18) as u16 + 2;
+        let parts = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(mh), Constraint::Min(5)])
+            .split(side);
+        let mb = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(MUTED))
+            .title(Span::styled(format!(" {}×{} ", ow.w, ow.h), Style::default().fg(KEY)));
+        let mi = mb.inner(parts[0]);
+        f.render_widget(mb, parts[0]);
+        paint_minimap(f, mi, ow, view);
+        side = parts[1];
+    }
     f.render_widget(
         Paragraph::new(lines)
             .block(
@@ -1119,42 +1135,111 @@ fn draw_world(f: &mut Frame, app: &mut App, cx: i32, cy: i32) {
                     .title(Span::styled(" Site ", Style::default().fg(KEY))),
             )
             .wrap(Wrap { trim: false }),
-        cols[1],
+        side,
     );
 }
 
-/// Draw the world map into `inner`, only the first `rows` rows (the rest is
-/// still being generated), with an optional highlighted cell.
-fn paint_world(f: &mut Frame, inner: Rect, ow: &Overworld, rows: i32, cursor: Option<(i32, i32)>) {
-    // Each world cell is two characters wide so the map isn't squashed.
-    let ox = inner.x as i32 + ((inner.width as i32 - ow.w * 2) / 2).max(0);
-    let oy = inner.y as i32 + ((inner.height as i32 - ow.h) / 2).max(0);
+/// What part of the world a map view shows: top-left cell, size in cells,
+/// and how many world cells each character stands for.
+#[derive(Clone, Copy)]
+struct WorldView {
+    x0: i32,
+    y0: i32,
+    cols: i32,
+    rows: i32,
+    scale: i32,
+}
+
+/// Draw the world map into `inner`. Only the first `rows` rows exist yet
+/// (during generation). With a cursor the view scrolls to keep it in sight;
+/// without one the whole world is shrunk to fit.
+fn paint_world(f: &mut Frame, inner: Rect, ow: &Overworld, rows: i32, cursor: Option<(i32, i32)>) -> WorldView {
+    let (iw, ih) = (inner.width as i32, inner.height as i32);
     let rows = rows.min(ow.cells.len() as i32 / ow.w.max(1));
+    // Two characters per cell when it fits, so the map isn't squashed.
+    let wide = ow.w * 2 <= iw && ow.h <= ih;
+    let cw = if wide { 2 } else { 1 };
+    let mut view = if wide || cursor.is_some() {
+        let (cols, vrows) = ((iw / cw).min(ow.w), ih.min(ow.h));
+        let (cx, cy) = cursor.unwrap_or((ow.w / 2, ow.h / 2));
+        WorldView {
+            x0: (cx - cols / 2).clamp(0, (ow.w - cols).max(0)),
+            y0: (cy - vrows / 2).clamp(0, (ow.h - vrows).max(0)),
+            cols,
+            rows: vrows,
+            scale: 1,
+        }
+    } else {
+        let scale = ((ow.w + iw - 1) / iw.max(1)).max((ow.h + ih - 1) / ih.max(1)).max(1);
+        WorldView { x0: 0, y0: 0, cols: (ow.w + scale - 1) / scale, rows: (ow.h + scale - 1) / scale, scale }
+    };
+    view.cols = view.cols.min(iw / cw);
+    let ox = inner.x as i32 + ((iw - view.cols * cw) / 2).max(0);
+    let oy = inner.y as i32 + ((ih - view.rows) / 2).max(0);
     let buf = f.buffer_mut();
-    for y in 0..rows {
-        for x in 0..ow.w {
-            let (sx, sy) = (ox + x * 2, oy + y);
-            if sx + 1 >= (inner.x + inner.width) as i32 || sy >= (inner.y + inner.height) as i32 {
+    for vy in 0..view.rows {
+        for vx in 0..view.cols {
+            let (x, y) = (view.x0 + vx * view.scale, view.y0 + vy * view.scale);
+            if y >= rows || x >= ow.w {
                 continue;
             }
-            let c = ow.cell(x, y);
+            // When shrunk, a settlement anywhere in the block shows through.
+            let mut pick = (x, y);
+            'block: for by in y..(y + view.scale).min(rows) {
+                for bx in x..(x + view.scale).min(ow.w) {
+                    if ow.cell(bx, by).site > 0 {
+                        pick = (bx, by);
+                        break 'block;
+                    }
+                }
+            }
+            let c = ow.cell(pick.0, pick.1);
             let (mut ch, mut fg) = c.biome.glyph();
             let mut bg = if c.evil { Color::Rgb(45, 10, 55) } else { BLACK };
             if c.site > 0 {
-                let s = &ow.sites[(c.site - 1) as usize];
-                ch = if s.ruined { '×' } else { s.kind.glyph() };
-                fg = match s.civ {
-                    Some(civ) if !s.ruined => ow.civs[civ as usize].race.color(),
+                let st = &ow.sites[(c.site - 1) as usize];
+                ch = if st.ruined { '×' } else { st.kind.glyph() };
+                fg = match st.civ {
+                    Some(civ) if !st.ruined => ow.civs[civ as usize].race.color(),
                     _ => Color::Rgb(150, 150, 150),
                 };
             }
-            if cursor == Some((x, y)) {
-                bg = Color::Rgb(220, 200, 0);
-                fg = BLACK;
+            if let Some((cx, cy)) = cursor {
+                if cx >= x && cx < x + view.scale && cy >= y && cy < y + view.scale {
+                    bg = Color::Rgb(220, 200, 0);
+                    fg = BLACK;
+                }
             }
-            for dx in 0..2 {
-                let cell = buf.get_mut((sx + dx) as u16, sy as u16);
-                cell.set_char(if dx == 0 { ch } else { ' ' }).set_fg(fg).set_bg(bg);
+            let (sx, sy) = (ox + vx * cw, oy + vy);
+            for dx in 0..cw {
+                buf.get_mut((sx + dx) as u16, sy as u16).set_char(if dx == 0 { ch } else { ' ' }).set_fg(fg).set_bg(bg);
+            }
+        }
+    }
+    view
+}
+
+/// The whole world shrunk into `area`, with the part the main map shows outlined.
+fn paint_minimap(f: &mut Frame, area: Rect, ow: &Overworld, shown: WorldView) {
+    let mini = paint_world(f, area, ow, ow.h, None);
+    let (iw, ih) = (area.width as i32, area.height as i32);
+    let ox = area.x as i32 + ((iw - mini.cols) / 2).max(0);
+    let oy = area.y as i32 + ((ih - mini.rows) / 2).max(0);
+    let buf = f.buffer_mut();
+    let (x1, y1) = (shown.x0 + shown.cols - 1, shown.y0 + shown.rows - 1);
+    for vy in 0..mini.rows {
+        for vx in 0..mini.cols {
+            let (x, y) = (vx * mini.scale, vy * mini.scale);
+            let inside = |a: i32, lo: i32, hi: i32| a + mini.scale > lo && a <= hi;
+            if !(inside(x, shown.x0, x1) && inside(y, shown.y0, y1)) {
+                continue;
+            }
+            let on_edge = !inside(x - mini.scale, shown.x0, x1)
+                || !inside(x + mini.scale, shown.x0, x1)
+                || !inside(y - mini.scale, shown.y0, y1)
+                || !inside(y + mini.scale, shown.y0, y1);
+            if on_edge {
+                buf.get_mut((ox + vx) as u16, (oy + vy) as u16).set_bg(Color::Rgb(90, 80, 30));
             }
         }
     }
@@ -1167,6 +1252,10 @@ fn draw_world_setup(f: &mut Frame, app: &App, sel: usize) {
     let values = [
         preset_name(p).to_string(),
         format!("{}", p.seed),
+        {
+            let (w, h) = p.dims();
+            format!("{} {}×{}", LEVELS[3][p.size.min(2) as usize], w, h)
+        },
         format!("{} years", p.history),
         LEVELS[0][p.civs.min(2) as usize].to_string(),
         LEVELS[1][p.savagery.min(2) as usize].to_string(),
@@ -1176,6 +1265,8 @@ fn draw_world_setup(f: &mut Frame, app: &App, sel: usize) {
     let notes = [
         "Quick, Standard, Long history, Harsh",
         "type digits · r random",
+        "bigger worlds hold more peoples",
+
         "years simulated before you arrive",
         "how many peoples share the world",
         "how dangerous the wildlife is",
@@ -1300,6 +1391,9 @@ fn world_info(ow: &Overworld, x: i32, y: i32, flash: &Option<String>) -> Vec<Lin
             Span::styled(format!("  ({}, {})", x, y), Style::default().fg(MUTED)),
         ]),
     ];
+    if let Some(r) = ow.region_at(x, y) {
+        v.push(plain(format!("{}, a {} of {} cells", r.name, r.kind.name(), r.size), Color::Rgb(170, 200, 230)));
+    }
     if c.evil {
         v.push(plain("An evil taint lies on this land.".into(), Color::Rgb(200, 120, 255)));
     }
@@ -1362,6 +1456,20 @@ fn cap_first(s: &str) -> String {
 }
 
 fn legends_lines(ow: &Overworld, tab: usize) -> Vec<Line<'static>> {
+    if tab == 4 {
+        let mut regions: Vec<&crate::overworld::Region> = ow.regions.iter().collect();
+        regions.sort_by(|a, b| b.size.cmp(&a.size));
+        return regions
+            .into_iter()
+            .map(|r| {
+                Line::from(vec![
+                    Span::styled(format!("{:<34}", r.name), Style::default().fg(TEXT)),
+                    Span::styled(format!("{:<16}", r.kind.name()), Style::default().fg(Color::Rgb(170, 200, 230))),
+                    Span::styled(format!("{:>6} cells  around ({}, {})", r.size, r.x, r.y), Style::default().fg(MUTED)),
+                ])
+            })
+            .collect();
+    }
     match tab {
         0 => ow.events.iter().map(|e| {
             Line::from(vec![
@@ -1415,7 +1523,7 @@ fn draw_legends(f: &mut Frame, area: Rect, ow: &Overworld, tab: usize, scroll: u
     let visible = h.saturating_sub(4) as usize;
     let max = lines.len().saturating_sub(visible);
     let scroll = scroll.min(max);
-    let names = ["1 History", "2 Civilizations", "3 Sites", "4 Figures"];
+    let names = ["1 History", "2 Civilizations", "3 Sites", "4 Figures", "5 Regions"];
     let mut tabs: Vec<Span> = Vec::new();
     for (i, n) in names.iter().enumerate() {
         let st = if i == tab { Style::default().fg(BLACK).bg(KEY) } else { Style::default().fg(TEXT) };
@@ -1433,7 +1541,7 @@ fn draw_legends(f: &mut Frame, area: Rect, ow: &Overworld, tab: usize, scroll: u
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(KEY))
                     .title(Span::styled(format!(" Legends of {} ", ow.name), Style::default().fg(KEY)))
-                    .title_bottom(Span::styled(" Tab/1-4 switch · ↑↓ PgUp/PgDn scroll · Esc back ", Style::default().fg(MUTED))),
+                    .title_bottom(Span::styled(" Tab/1-5 switch · ↑↓ PgUp/PgDn scroll · Esc back ", Style::default().fg(MUTED))),
             ),
         r,
     );

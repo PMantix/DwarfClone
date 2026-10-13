@@ -301,8 +301,9 @@ impl Game {
             (255, 255, 120),
         );
         let civ_name = g.civ.map_or("a band of wanderers".to_string(), |c| format!("the {}", g.overworld.civ(c).name));
-        let biome = g.biome.name();
-        g.legend(format!("The dwarves of {} founded the outpost of {} in the {}.", civ_name, name, biome));
+        let (sx, sy) = g.site;
+        let place = g.overworld.region_at(sx, sy).map_or(format!("the {}", g.biome.name()), |r| r.name.clone());
+        g.legend(format!("The dwarves of {} founded the outpost of {} in {}.", civ_name, name, place));
     }
 
     fn new_id(&mut self) -> u32 {
@@ -2259,6 +2260,35 @@ mod tests {
             g.fluids();
         }
         assert!(g.world.t(p.down()).water > 0 || g.world.t(p).water > 0, "water didn't flow");
+    }
+
+    #[test]
+    fn large_world_and_far_corner_embark() {
+        use crate::overworld::{WorldGen, WorldParams};
+        let t = std::time::Instant::now();
+        let ow = WorldGen::new(WorldParams { seed: 11, size: 2, ..WorldParams::default() }).finish();
+        let took = t.elapsed();
+        eprintln!("large world: {:?}, {} civs, {} sites, {} regions", took, ow.civs.len(), ow.sites.len(), ow.regions.len());
+        assert_eq!((ow.w, ow.h), (256, 128));
+        assert!(took.as_secs_f32() < 10.0, "large world took {:?}", took);
+        assert!(ow.civs.len() >= 20, "too few civilizations for a large world");
+        assert!(ow.regions.iter().any(|r| r.kind == crate::overworld::RegionKind::Mountains), "no named mountains");
+        assert!(ow.regions.iter().all(|r| !r.name.is_empty()));
+        let names: std::collections::HashSet<&str> = ow.regions.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names.len(), ow.regions.len(), "region names repeat");
+        // The embarkable cell nearest the bottom-right corner.
+        let (x, y) = (0..ow.h)
+            .flat_map(|y| (0..ow.w).map(move |x| (x, y)))
+            .filter(|&(x, y)| ow.embarkable(x, y))
+            .max_by_key(|&(x, y)| x + y)
+            .unwrap();
+        assert!(x + y > (ow.w + ow.h) / 2, "nothing embarkable out in the far half");
+        let mut g = Game::embark(11, ow, x, y);
+        assert_eq!(g.alive_count(), 7);
+        for _ in 0..DAY {
+            g.step();
+        }
+        assert_eq!(g.alive_count(), 7);
     }
 
     #[test]

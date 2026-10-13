@@ -17,9 +17,10 @@ pub const SAVE_DIR: &str = "saves";
 pub const TITLE_MENU: [&str; 4] = ["New world", "Continue", "Load game", "Quit"];
 
 /// Rows of the world settings screen.
-pub const SETUP_ROWS: [&str; 7] = ["Preset", "Seed", "History", "Civilizations", "Savagery", "Minerals", "Generate world"];
+pub const SETUP_ROWS: [&str; 8] = ["Preset", "Seed", "World size", "History", "Civilizations", "Savagery", "Minerals", "Generate world"];
 pub const HISTORY_CHOICES: [i32; 5] = [50, 100, 200, 300, 500];
-pub const LEVELS: [[&str; 3]; 3] = [["Few", "Normal", "Many"], ["Calm", "Normal", "Savage"], ["Sparse", "Normal", "Rich"]];
+pub const LEVELS: [[&str; 3]; 4] =
+    [["Few", "Normal", "Many"], ["Calm", "Normal", "Savage"], ["Sparse", "Normal", "Rich"], ["Small", "Medium", "Large"]];
 
 /// (name, history, civs, savagery, minerals)
 pub const PRESETS: [(&str, i32, u8, u8, u8); 4] = [
@@ -370,14 +371,15 @@ impl App {
                     (p.history, p.civs, p.savagery, p.minerals) = (h, c, s, m);
                 }
                 1 => p.seed = random_seed(),
-                2 => {
+                2 => p.size = step(p.size, right),
+                3 => {
                     let i = HISTORY_CHOICES.iter().position(|&h| h >= p.history).unwrap_or(2);
                     let i = if right { (i + 1).min(HISTORY_CHOICES.len() - 1) } else { i.saturating_sub(1) };
                     p.history = HISTORY_CHOICES[i];
                 }
-                3 => p.civs = step(p.civs, right),
-                4 => p.savagery = step(p.savagery, right),
-                5 => p.minerals = step(p.minerals, right),
+                4 => p.civs = step(p.civs, right),
+                5 => p.savagery = step(p.savagery, right),
+                6 => p.minerals = step(p.minerals, right),
                 _ => {}
             },
             _ => {}
@@ -814,9 +816,9 @@ impl App {
                 };
                 match k.code {
                     KeyCode::Esc | KeyCode::Char('q') => self.mode = back,
-                    KeyCode::Tab | KeyCode::Right => self.mode = Mode::Legends { tab: (tab + 1) % 4, scroll: 0, from_world },
-                    KeyCode::Left => self.mode = Mode::Legends { tab: (tab + 3) % 4, scroll: 0, from_world },
-                    KeyCode::Char(c @ '1'..='4') => {
+                    KeyCode::Tab | KeyCode::Right => self.mode = Mode::Legends { tab: (tab + 1) % 5, scroll: 0, from_world },
+                    KeyCode::Left => self.mode = Mode::Legends { tab: (tab + 4) % 5, scroll: 0, from_world },
+                    KeyCode::Char(c @ '1'..='5') => {
                         self.mode = Mode::Legends { tab: c as usize - '1' as usize, scroll: 0, from_world }
                     }
                     KeyCode::Up => self.mode = Mode::Legends { tab, scroll: scroll.saturating_sub(1), from_world },
@@ -1064,8 +1066,8 @@ impl App {
     }
 
     fn key_world(&mut self, k: KeyEvent, x: i32, y: i32) {
-        let step = if k.modifiers.contains(KeyModifiers::SHIFT) { 5 } else { 1 };
         let ow = &self.game.overworld;
+        let step = if k.modifiers.contains(KeyModifiers::SHIFT) { (ow.w / 12).max(5) } else { 1 };
         let (mut nx, mut ny) = (x, y);
         match k.code {
             KeyCode::Up => ny -= step,

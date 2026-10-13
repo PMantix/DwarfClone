@@ -17,15 +17,16 @@ Press `?` in game for keys.
 
 ## Features
 
-**World creation.** New world opens a settings screen: preset, seed, history length,
-number of civilizations, savagery and minerals. Then you watch the continent appear and its
+**World creation.** New world opens a settings screen: preset, seed, world size (up to
+256×128), history length, number of civilizations, savagery and minerals. Then you watch the continent appear and its
 history play out year by year (Space hurries it), and accept it or roll another.
 
-**World & history.** A 64×32 continent of biomes (mountains, hills, forests, grassland,
+**World & history.** A continent of biomes (mountains, hills, forests, grassland,
 desert, tundra, swamp, evil-tainted land) with dwarven, human, elven and goblin
 civilizations. Two centuries of history are simulated before you arrive: settlements are
 founded, wars declared, sites sacked or conquered, rulers succeed one another, megabeasts
-ravage towns and heroes slay them. Browse it all in the legends viewer (`L`). You choose
+ravage towns and heroes slay them. Seas, mountain ranges, forests and plains carry names. Big worlds scroll, with a minimap.
+Browse it all in the legends viewer (`L`). You choose
 your embark site; the biome shapes the map (relief, forest, lakes, savage wildlife) and
 nearby goblins decide how often sieges come.
 

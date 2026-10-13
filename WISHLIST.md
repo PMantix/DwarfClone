@@ -16,19 +16,9 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W22, W23 (starting a game, asked for 2026-10-12) → W07, W06 (siege defense) → W04, W05.
+Suggested order: W23 (starting a game, asked for 2026-10-12) → W07, W06 (siege defense) → W04, W05.
 
 ### Tier 1b: starting a game (prioritized by request)
-
-#### W22 Larger world map (M)
-- **DF:** world sizes from pocket (17×17) to large (257×257), a scrolling world map, region names.
-- **Us:** a fixed 64×32 world that fits on one screen (`OW_W`, `OW_H`).
-- **Plan:** world size becomes a generation parameter (small 64×32, medium 128×64, large 256×128). The world map scrolls with the cursor and gets a zoomed-out overview. History scales with the land (more sites and civs).
-- **Steps:**
-  - [ ] Size parameter through `Overworld` (no fixed `OW_W`/`OW_H`)
-  - [ ] Scrolling world map with cursor-follow, plus a minimap
-  - [ ] Named regions (mountain ranges, forests, seas), shown on the map and in legends
-- **Done when:** a large world generates in a few seconds, and an embark in a far corner works.
 
 #### W23 Embark size and fortress map size (M–L)
 - **DF:** pick the embark rectangle on the world map; maps are deep (dozens to 100+ levels) with several caverns and a magma sea.
@@ -211,6 +201,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **W22 Larger world map** (this commit): small 64×32, medium 128×64 or large 256×128 worlds (civilizations and megabeasts scale with the land; a large world generates in under 0.1 s); the world map scrolls with the cursor and shows a minimap with the visible area outlined; the generation screen shrinks the world to fit; seas, lakes, mountain ranges, forests, plains, deserts, tundra and swamps get unique names, shown in the site panel, a Regions legends tab and the founding legend.
 - **W21 World generation screen** (this commit): New world opens a settings screen (preset, seed, history length, civilizations, savagery, minerals), then the world is drawn row by row and history plays out year by year with running totals and the latest events (Space hurries); accept, regenerate or go back to the settings. Generation is resumable and gives the same world stepped or in one go.
 - **Fixes from a played fort** (0e62fd1): hauling search 22× cheaper, one construction warning per kind, stress floor, cooking leaves spawn.
 - **W24 Title and loading screens** (this commit): title menu (New world, Continue, Load game, Quit); world generation, embarking, saving and loading run on a worker thread behind a loading screen with stage, progress bar and tips; save slots per fortress in `saves/` with a load menu (delete with confirmation); autosave each season; quitting offers save-and-quit and save-and-return-to-title.
