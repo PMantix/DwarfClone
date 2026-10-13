@@ -22,6 +22,8 @@ mod labor;
 pub use labor::WorkDetail;
 mod rooms;
 mod construct;
+mod burrows;
+pub use burrows::{Burrow, MAX_BURROWS, TRAFFIC_NAMES};
 pub use construct::{BuildMat, ConstructKind, Construction};
 mod trade;
 pub use trade::Caravan;
@@ -138,6 +140,13 @@ pub struct Game {
     /// Planned walls, floors, stairs and removals.
     #[serde(default)]
     pub constructions: BTreeMap<u32, Construction>,
+    #[serde(default)]
+    pub burrows: Vec<Burrow>,
+    /// Bit of the burrow civilians flee to when the alert is raised.
+    #[serde(default)]
+    pub alert_burrow: Option<u8>,
+    #[serde(default)]
+    pub civ_alert: bool,
     #[serde(skip)]
     pub pause_request: bool,
     /// Set at each new season; the app saves an autosave and clears it.
@@ -244,6 +253,9 @@ impl Game {
             caravan: None,
             work_details: labor::default_details(),
             constructions: BTreeMap::new(),
+            burrows: Vec::new(),
+            alert_burrow: None,
+            civ_alert: false,
             dig_version: 0,
             dig_fail: [None, None],
             haul_retry: 0,
@@ -616,7 +628,9 @@ impl Game {
         for i in 0..self.dwarves.len() {
             if self.dwarves[i].alive {
                 let mut d = std::mem::take(&mut self.dwarves[i]);
+                self.world.restrict = self.burrow_turn(&mut d);
                 self.update_dwarf(&mut d);
+                self.world.restrict = 0;
                 self.dwarves[i] = d;
             }
         }
@@ -881,7 +895,11 @@ impl Game {
             }
         }
         // An idle stroll gives way as soon as there's real work.
-        if matches!(d.task, Task::Wander { .. }) && d.tantrum == 0 && self.tick % 30 == d.id as u64 % 30 {
+        if matches!(d.task, Task::Wander { .. })
+            && d.tantrum == 0
+            && self.tick % 30 == d.id as u64 % 30
+            && !self.returning_to_burrow(d)
+        {
             let stroll = std::mem::take(&mut d.task);
             self.choose_task(d);
             if d.task == Task::Idle {

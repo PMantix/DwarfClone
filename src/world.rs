@@ -129,6 +129,12 @@ pub struct Tile {
     /// What a construction here was built from (None = natural).
     #[serde(default)]
     pub built_from: Option<ItemKind>,
+    /// One bit per burrow this tile belongs to.
+    #[serde(default)]
+    pub burrows: u8,
+    /// 0 normal, 1 high, 2 low, 3 restricted (dwarves only).
+    #[serde(default)]
+    pub traffic: u8,
 }
 
 impl Default for Tile {
@@ -144,6 +150,8 @@ impl Default for Tile {
             farm: 0,
             door: DOOR_NONE,
             built_from: None,
+            burrows: 0,
+            traffic: 0,
         }
     }
 }
@@ -160,6 +168,9 @@ pub struct World {
     /// Cavern layers as (lowest z, highest z), deepest first.
     #[serde(default = "default_caverns")]
     pub caverns: Vec<(i32, i32)>,
+    /// Burrow bits the dwarf currently moving is kept to (0 = anywhere).
+    #[serde(skip)]
+    pub restrict: u8,
 }
 
 fn default_caverns() -> Vec<(i32, i32)> {
@@ -211,7 +222,7 @@ mod tiles_rle {
 impl World {
     /// A one-cell stand-in used before a fortress exists.
     pub fn empty() -> World {
-        World { w: 1, h: 1, d: 1, tiles: vec![Tile::default()], surface: vec![0], caverns: Vec::new() }
+        World { w: 1, h: 1, d: 1, tiles: vec![Tile::default()], surface: vec![0], caverns: Vec::new(), restrict: 0 }
     }
 
     pub fn in_bounds(&self, p: Pos) -> bool {
@@ -338,6 +349,20 @@ impl World {
                 }
             }
         }
+        // Dwarves keep to their burrow and follow traffic designations.
+        if m == Mover::Dwarf {
+            if self.restrict != 0 {
+                out.retain(|(q, _)| self.t(*q).burrows & self.restrict != 0);
+            }
+            for (q, c) in out.iter_mut() {
+                match self.t(*q).traffic {
+                    1 => *c = *c * 7 / 10,
+                    2 => *c *= 3,
+                    3 => *c *= 12,
+                    _ => {}
+                }
+            }
+        }
     }
 
     /// Reveal the cells around a freshly dug position. Returns true if this
@@ -456,6 +481,7 @@ pub fn generate(seed: u64, params: &EmbarkParams) -> World {
         tiles: vec![Tile::default(); (w * h * d) as usize],
         surface: surf.clone(),
         caverns: if base >= 12 { vec![(5, 8), (5 + base, 8 + base)] } else { vec![(5 + base, 8 + base)] },
+        restrict: 0,
     };
     let bands = world.caverns.clone();
 

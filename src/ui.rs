@@ -138,6 +138,8 @@ fn selection_box(app: &App) -> Option<(Pos, Pos)> {
         Mode::Designate { corner, .. }
         | Mode::Stockpile { corner, .. }
         | Mode::Zone { corner, .. }
+        | Mode::Burrows { corner, .. }
+        | Mode::Traffic { corner, .. }
         | Mode::Construct { corner, .. } => *corner,
         _ => None,
     }?;
@@ -316,6 +318,22 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                     bg = Color::Rgb(70, 0, 0);
                 }
             }
+            match app.mode {
+                Mode::Burrows { sel, .. } => {
+                    if let Some(b) = g.burrows.get(sel) {
+                        if t.burrows & b.mask() != 0 {
+                            bg = Color::Rgb(70, 40, 100);
+                        }
+                    }
+                }
+                Mode::Traffic { .. } => match t.traffic {
+                    1 => bg = Color::Rgb(20, 70, 30),
+                    2 => bg = Color::Rgb(80, 70, 10),
+                    3 => bg = Color::Rgb(90, 20, 20),
+                    _ => {}
+                },
+                _ => {}
+            }
             if let Some(k) = planned.get(&(wx, wy)) {
                 bg = Color::Rgb(25, 40, 90);
                 if units.get(&(wx, wy)).is_none() {
@@ -456,6 +474,17 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
     if let Some(c) = g.construction_at(p) {
         v.push(plain(format!("Planned: {} ({})", c.kind.name(), c.mat.name()), Color::Rgb(150, 180, 255)));
     }
+    let in_burrows: Vec<&str> = g.burrows.iter().filter(|b| t.burrows & b.mask() != 0).map(|b| b.name.as_str()).collect();
+    if !in_burrows.is_empty() || t.traffic != 0 {
+        let mut s = Vec::new();
+        if !in_burrows.is_empty() {
+            s.push(format!("In {}", in_burrows.join(", ")));
+        }
+        if t.traffic != 0 {
+            s.push(format!("{} traffic", crate::game::TRAFFIC_NAMES[t.traffic as usize]));
+        }
+        v.push(plain(s.join(" · "), Color::Rgb(190, 150, 230)));
+    }
     if let Some(z) = g.zones.get(&t.zone) {
         match z.kind {
             ZoneKind::Farm => {
@@ -586,6 +615,8 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(key_line("z", "Fortress status", false));
             v.push(key_line("u", "Unit list", false));
             v.push(key_line("y", "Labors & work details", false));
+            v.push(key_line("w", "Burrows", false));
+            v.push(key_line("o", "Traffic", false));
             v.push(key_line("m", "Military", false));
             v.push(key_line("n", "Nobles, mandates & rooms", false));
             v.push(key_line("L", "Legends of the world", false));
@@ -779,6 +810,71 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.extend(unit_view(g, d, *sel));
             }
         }
+        Mode::Burrows { sel, corner, erase } => {
+            title = "Burrows".to_string();
+            if g.burrows.is_empty() {
+                v.push(plain("No burrows yet.".into(), MUTED));
+            }
+            for (i, b) in g.burrows.iter().enumerate() {
+                let alert = if g.alert_burrow == Some(b.bit) { " [alert]" } else { "" };
+                v.push(key_line(
+                    &format!("{}", i + 1),
+                    &format!("{}: {} tiles, {} dwarves{}", b.name, b.tiles, b.members.len(), alert),
+                    i == *sel,
+                ));
+            }
+            v.push(Line::default());
+            v.push(key_line("n", "New burrow", false));
+            v.push(key_line("[ ]", "Select burrow", false));
+            v.push(key_line("e", if *erase { "Mode: ERASE tiles" } else { "Mode: add tiles" }, *erase));
+            v.push(key_line("u", "Who must stay inside", false));
+            v.push(key_line("A", "Use as civilian alert burrow", false));
+            v.push(key_line("X", "Delete burrow", false));
+            v.push(Line::default());
+            v.push(plain("Members only take jobs inside. When".into(), MUTED));
+            v.push(plain("the civilian alert is raised (m, c)".into(), MUTED));
+            v.push(plain("every civilian goes to the alert one.".into(), MUTED));
+            v.push(plain(
+                if corner.is_some() { "Enter: set second corner".into() } else { "Enter: set first corner".into() },
+                KEY,
+            ));
+            v.push(Line::default());
+            v.extend(cursor_info(g, app.cursor));
+        }
+        Mode::BurrowMembers { burrow, sel } => {
+            let b = g.burrows.get(*burrow);
+            title = b.map_or("Burrow".into(), |b| b.name.clone());
+            v.push(plain("Who must stay inside:".into(), TEXT));
+            for (i, d) in g.dwarves.iter().filter(|d| d.alive).enumerate() {
+                let on = b.map_or(false, |b| b.members.contains(&d.id));
+                let style = if i == *sel { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
+                v.push(Line::from(vec![
+                    Span::styled(if on { " [x] " } else { " [ ] " }, style.fg(if on { Color::Rgb(90, 220, 90) } else { MUTED })),
+                    Span::styled(format!("{:<20}", d.name), style.fg(TEXT)),
+                    Span::styled(d.profession().to_string(), style.fg(MUTED)),
+                ]));
+            }
+            v.push(Line::default());
+            v.push(plain("Enter toggle · a everyone · Esc back".into(), MUTED));
+        }
+        Mode::Traffic { level, corner } => {
+            title = "Traffic".to_string();
+            for (key, l) in [("n", 0u8), ("h", 1), ("l", 2), ("r", 3)] {
+                v.push(key_line(key, crate::game::TRAFFIC_NAMES[l as usize], *level == l));
+            }
+            v.push(Line::default());
+            v.push(plain("Dwarves prefer high-traffic tiles,".into(), MUTED));
+            v.push(plain("avoid low ones and only cross".into(), MUTED));
+            v.push(plain("restricted ones when there's no".into(), MUTED));
+            v.push(plain("other way. Keeps them out of".into(), MUTED));
+            v.push(plain("bedrooms and off trap corridors.".into(), MUTED));
+            v.push(plain(
+                if corner.is_some() { "Enter: set second corner".into() } else { "Enter: set first corner".into() },
+                KEY,
+            ));
+            v.push(Line::default());
+            v.extend(cursor_info(g, app.cursor));
+        }
         Mode::Look { sel } => {
             title = "Look".to_string();
             v.extend(look_lines(g, app.cursor, *sel));
@@ -868,6 +964,11 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             let alert = if g.alert { "ENGAGE hostiles" } else { "Stand down" };
             v.push(key_line("a", &format!("Orders: {}", alert), g.alert));
             v.push(key_line("h", if g.hunt { "Hunting game: ON" } else { "Hunting game: off" }, g.hunt));
+            v.push(key_line(
+                "c",
+                if g.civ_alert { "Civilian alert: RAISED" } else { "Civilian alert: off" },
+                g.civ_alert,
+            ));
             v.push(key_line("s", "Station soldiers at cursor", false));
             v.push(key_line("x", "Clear station", false));
             if let Some(st) = g.station {
@@ -1049,6 +1150,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("q", "query building: queue work orders"),
         k("u / v", "unit list / view dwarf (m drafts)"),
         k("y", "labors: who does what, work details"),
+        k("w / o", "burrows / traffic designations"),
         k("m", "military: station point, engage orders"),
         k("n", "nobles, mandates, bedrooms, wealth"),
         k("L", "legends: history, civs, sites, figures"),
@@ -1711,6 +1813,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         } else {
             Span::raw("")
         },
+        if g.civ_alert {
+            Span::styled(" CIVILIAN ALERT ", Style::default().fg(BLACK).bg(Color::Rgb(255, 170, 60)))
+        } else {
+            Span::raw("")
+        },
         Span::raw(" "),
         speed,
         Span::styled("  ? help", Style::default().fg(MUTED)),
@@ -1945,6 +2052,7 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
         keep += (t.water > 0) as usize;
         keep += (t.desig != Desig::None) as usize;
         keep += g.construction_at(p).is_some() as usize;
+        keep += (g.burrows.iter().any(|b| t.burrows & b.mask() != 0) || t.traffic != 0) as usize;
         if let Some(z) = g.zones.get(&t.zone) {
             // Room zones add a value line under their name.
             keep += 1 + (z.kind.holds_furniture() && z.kind != ZoneKind::Meeting) as usize;

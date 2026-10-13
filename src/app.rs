@@ -177,6 +177,12 @@ pub enum Mode {
     Look { sel: usize },
     /// Fortress overview screens.
     Status { tab: usize, scroll: usize },
+    /// Paint burrows. `sel` is the burrow being edited; `erase` paints it away.
+    Burrows { sel: usize, corner: Option<Pos>, erase: bool },
+    /// Choose who belongs to a burrow.
+    BurrowMembers { burrow: usize, sel: usize },
+    /// Paint traffic levels (0 normal, 1 high, 2 low, 3 restricted).
+    Traffic { level: u8, corner: Option<Pos> },
     BuildMenu,
     /// Plan constructions in a box. `kind == None` cancels plans.
     Construct { kind: Option<ConstructKind>, mat: BuildMat, corner: Option<Pos> },
@@ -579,6 +585,8 @@ impl App {
                 | Mode::Designate { .. }
                 | Mode::Stockpile { .. }
                 | Mode::Zone { .. }
+                | Mode::Burrows { .. }
+                | Mode::Traffic { .. }
                 | Mode::Construct { .. }
                 | Mode::Look { .. }
                 | Mode::Place(_)
@@ -805,10 +813,54 @@ impl App {
                     self.flash = Some("Station cleared; soldiers train where they stand.".into());
                 }
                 KeyCode::Char('a') => self.game.alert = !self.game.alert,
+                KeyCode::Char('c') => {
+                    self.flash = Some(match self.game.toggle_civ_alert() {
+                        Ok(true) => "Civilian alert raised: everyone into the alert burrow.".into(),
+                        Ok(false) => "Civilian alert lowered.".into(),
+                        Err(e) => e,
+                    });
+                }
                 KeyCode::Char('h') => self.game.hunt = !self.game.hunt,
                 _ => {}
             },
             Mode::Labors { row, col, detail } => self.key_labors(k, row, col, detail),
+            Mode::Burrows { sel, corner, erase } => self.key_burrows(k, sel, corner, erase),
+            Mode::BurrowMembers { burrow, sel } => {
+                let ids: Vec<u32> = self.game.dwarves.iter().filter(|d| d.alive).map(|d| d.id).collect();
+                let n = ids.len().max(1);
+                match k.code {
+                    KeyCode::Esc => self.mode = Mode::Burrows { sel: burrow, corner: None, erase: false },
+                    KeyCode::Up => self.mode = Mode::BurrowMembers { burrow, sel: sel.saturating_sub(1) },
+                    KeyCode::Down => self.mode = Mode::BurrowMembers { burrow, sel: (sel + 1).min(n - 1) },
+                    KeyCode::Enter => {
+                        if let Some(&id) = ids.get(sel) {
+                            self.game.toggle_burrow_member(burrow, id);
+                        }
+                    }
+                    KeyCode::Char('a') => {
+                        // Everyone in, or (if everyone already is) everyone out.
+                        let all_in = self.game.burrows.get(burrow).map_or(false, |b| ids.iter().all(|i| b.members.contains(i)));
+                        for &id in &ids {
+                            let member = self.game.burrows.get(burrow).map_or(false, |b| b.members.contains(&id));
+                            if member == all_in {
+                                self.game.toggle_burrow_member(burrow, id);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Mode::Traffic { level, corner } => match k.code {
+                KeyCode::Enter => self.confirm(),
+                KeyCode::Esc => {
+                    self.mode = if corner.is_some() { Mode::Traffic { level, corner: None } } else { Mode::Normal }
+                }
+                KeyCode::Char('h') => self.mode = Mode::Traffic { level: 1, corner },
+                KeyCode::Char('n') => self.mode = Mode::Traffic { level: 0, corner },
+                KeyCode::Char('l') => self.mode = Mode::Traffic { level: 2, corner },
+                KeyCode::Char('r') => self.mode = Mode::Traffic { level: 3, corner },
+                _ => {}
+            },
             Mode::Help | Mode::Nobles => self.mode = Mode::Normal,
             Mode::WorldMap { x, y } => self.key_world(k, x, y),
             Mode::Legends { tab, scroll, from_world } => {
@@ -867,6 +919,8 @@ impl App {
             }
             KeyCode::Char('u') => self.mode = Mode::Units { sel: 0 },
             KeyCode::Char('y') => self.mode = Mode::Labors { row: 0, col: 0, detail: 0 },
+            KeyCode::Char('w') => self.mode = Mode::Burrows { sel: 0, corner: None, erase: false },
+            KeyCode::Char('o') => self.mode = Mode::Traffic { level: 2, corner: None },
             KeyCode::Char('m') => self.mode = Mode::Military,
             KeyCode::Char('n') => self.mode = Mode::Nobles,
             KeyCode::Char('L') => self.mode = Mode::Legends { tab: 0, scroll: usize::MAX, from_world: false },
@@ -968,6 +1022,66 @@ impl App {
             _ => {}
         }
         self.mode = Mode::Labors { row, col, detail };
+    }
+
+    fn key_burrows(&mut self, k: KeyEvent, sel: usize, corner: Option<Pos>, erase: bool) {
+        let n = self.game.burrows.len();
+        let sel = sel.min(n.saturating_sub(1));
+        match k.code {
+            KeyCode::Esc => {
+                self.mode = if corner.is_some() { Mode::Burrows { sel, corner: None, erase } } else { Mode::Normal };
+                return;
+            }
+            KeyCode::Enter if n > 0 => {
+                match corner {
+                    None => self.mode = Mode::Burrows { sel, corner: Some(self.cursor), erase },
+                    Some(a) => {
+                        let c = self.game.paint_burrow(sel, a, self.cursor, !erase);
+                        let name = self.game.burrows[sel].name.clone();
+                        self.flash = Some(format!("{} tiles {} {}.", c, if erase { "removed from" } else { "added to" }, name));
+                        self.mode = Mode::Burrows { sel, corner: None, erase };
+                    }
+                }
+                return;
+            }
+            KeyCode::Enter => self.flash = Some("Make a burrow first (n).".into()),
+            KeyCode::Char('n') => match self.game.new_burrow() {
+                Some(i) => {
+                    self.mode = Mode::Burrows { sel: i, corner: None, erase: false };
+                    return;
+                }
+                None => self.flash = Some(format!("At most {} burrows.", crate::game::MAX_BURROWS)),
+            },
+            KeyCode::Char('X') if n > 0 => {
+                let name = self.game.burrows[sel].name.clone();
+                self.game.delete_burrow(sel);
+                self.flash = Some(format!("Deleted {}.", name));
+                self.mode = Mode::Burrows { sel: sel.saturating_sub(1), corner: None, erase: false };
+                return;
+            }
+            KeyCode::Char(']') | KeyCode::Tab if n > 0 => {
+                self.mode = Mode::Burrows { sel: (sel + 1) % n, corner: None, erase };
+                return;
+            }
+            KeyCode::Char('[') if n > 0 => {
+                self.mode = Mode::Burrows { sel: (sel + n - 1) % n, corner: None, erase };
+                return;
+            }
+            KeyCode::Char('e') => {
+                self.mode = Mode::Burrows { sel, corner, erase: !erase };
+                return;
+            }
+            KeyCode::Char('u') if n > 0 => {
+                self.mode = Mode::BurrowMembers { burrow: sel, sel: 0 };
+                return;
+            }
+            KeyCode::Char('A') if n > 0 => {
+                self.game.set_alert_burrow(sel);
+                self.flash = Some(format!("{} is the civilian alert burrow (raise it with m, then c).", self.game.burrows[sel].name));
+            }
+            _ => {}
+        }
+        self.mode = Mode::Burrows { sel, corner, erase };
     }
 
     fn key_look(&mut self, k: KeyEvent, sel: usize) {
@@ -1176,6 +1290,20 @@ impl App {
                     None => format!("Removed {} zone tiles.", n),
                 });
                 self.mode = Mode::Stockpile { filter, corner: None };
+            }
+            Mode::Traffic { level, corner: None } => self.mode = Mode::Traffic { level, corner: Some(c) },
+            Mode::Traffic { level, corner: Some(a) } => {
+                let mut n = 0;
+                for p in crate::geom::box_iter(a, c) {
+                    if let Some(t) = self.game.world.get(p) {
+                        if t.revealed && t.traffic != level {
+                            self.game.world.t_mut(p).traffic = level;
+                            n += 1;
+                        }
+                    }
+                }
+                self.flash = Some(format!("{} tiles of {} traffic.", n, crate::game::TRAFFIC_NAMES[level as usize].to_lowercase()));
+                self.mode = Mode::Traffic { level, corner: None };
             }
             Mode::Construct { kind, mat, corner: None } => self.mode = Mode::Construct { kind, mat, corner: Some(c) },
             Mode::Construct { kind, mat, corner: Some(a) } => {

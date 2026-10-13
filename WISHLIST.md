@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W07, W06 (siege defense) → W04, W05.
+Suggested order: W06 (siege defense) → W04, W05.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -54,16 +54,6 @@ Suggested order: W07, W06 (siege defense) → W04, W05.
   - [ ] Weapon trap and stone-fall trap
   - [ ] Lever linked to a door; then a drawbridge (needs W01)
 - **Done when:** a test sends a goblin down a corridor with a weapon trap and the goblin is hurt or killed.
-
-#### W07 Burrows and traffic (S–M)
-- **DF:** burrows that restrict where dwarves may go, a civilian alert that sends everyone to a burrow, traffic designations (high, low, restricted).
-- **Us:** civilians run from threats they can see.
-- **Plan:** burrows are named tile sets; a dwarf's allowed area filters job search and pathing. Traffic is a per-tile cost multiplier in `path.rs`.
-- **Steps:**
-  - [ ] Burrows: create, paint tiles, assign dwarves; jobs outside are skipped
-  - [ ] Civilian alert: one key sends every civilian to the alert burrow
-  - [ ] Traffic designations: high, normal, low, restricted path costs
-- **Done when:** a test raises the alert and every civilian ends inside the burrow.
 
 #### W08 Animals (M)
 - **DF:** pets, livestock, breeding, pastures, milking, shearing, war and hunting dogs, taming, cages, embark animals.
@@ -190,6 +180,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **W07 Burrows and traffic** (this commit): `w` paints up to eight burrows and picks who must stay in each (members only path and work inside); one burrow can be the civilian alert burrow, and `m` then `c` sends every non-soldier into it (status bar shows the alert); `o` paints high, normal, low or restricted traffic, which changes dwarves' path costs.
 - **W23 Embark and map size** (this commit): `s` on the world map picks Small 64×48×32, Medium 96×64×32 (unchanged) or Large 144×96×48 with a second, deeper cavern layer; the footprint is outlined on the world map. Saves are run-length encoded (a medium save is well under 4 MB, was ~25 MB; old saves still load). A large map simulates a year in ~12 s.
 - **W22 Larger world map** (this commit): small 64×32, medium 128×64 or large 256×128 worlds (civilizations and megabeasts scale with the land; a large world generates in under 0.1 s); the world map scrolls with the cursor and shows a minimap with the visible area outlined; the generation screen shrinks the world to fit; seas, lakes, mountain ranges, forests, plains, deserts, tundra and swamps get unique names, shown in the site panel, a Regions legends tab and the founding legend.
 - **W21 World generation screen** (this commit): New world opens a settings screen (preset, seed, history length, civilizations, savagery, minerals), then the world is drawn row by row and history plays out year by year with running totals and the latest events (Space hurries); accept, regenerate or go back to the settings. Generation is resumable and gives the same world stepped or in one go.

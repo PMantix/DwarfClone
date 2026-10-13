@@ -75,6 +75,11 @@ marked with `d` go to the dump. Dwarves with nothing
 to do gather at the meeting area and chat there more often; without one they at least keep
 out of corridors. A stroll always gives way to real work.
 
+**Burrows & traffic.** `w` paints burrows and assigns dwarves who must stay inside them.
+Mark one as the alert burrow and raise the civilian alert from the military screen (`m`,
+`c`) to pull every civilian to safety. `o` paints high, low or restricted traffic to steer
+where dwarves walk.
+
 **Labors.** `y` shows every dwarf against every labor, with skill levels. Toggle cells or
 whole columns, apply named work details (or save your own), and mark specialists who never
 haul. A dwarf can be a miner or a woodcutter, not both, since each needs its own tool.
