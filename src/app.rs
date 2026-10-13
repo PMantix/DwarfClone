@@ -181,6 +181,8 @@ pub enum Mode {
     Burrows { sel: usize, corner: Option<Pos>, erase: bool },
     /// Choose who belongs to a burrow.
     BurrowMembers { burrow: usize, sel: usize },
+    /// Pick a door or bridge for a lever to work.
+    LinkLever { lever: u32 },
     /// Paint traffic levels (0 normal, 1 high, 2 low, 3 restricted).
     Traffic { level: u8, corner: Option<Pos> },
     BuildMenu,
@@ -587,6 +589,7 @@ impl App {
                 | Mode::Zone { .. }
                 | Mode::Burrows { .. }
                 | Mode::Traffic { .. }
+                | Mode::LinkLever { .. }
                 | Mode::Construct { .. }
                 | Mode::Look { .. }
                 | Mode::Place(_)
@@ -825,6 +828,20 @@ impl App {
             },
             Mode::Labors { row, col, detail } => self.key_labors(k, row, col, detail),
             Mode::Burrows { sel, corner, erase } => self.key_burrows(k, sel, corner, erase),
+            Mode::LinkLever { lever } => match k.code {
+                KeyCode::Esc => self.mode = Mode::Query { bld: lever, adding: false },
+                KeyCode::Enter => {
+                    let target = self.game.world.t(self.cursor).building;
+                    self.flash = Some(match self.game.link_lever(lever, target) {
+                        Ok(m) => {
+                            self.mode = Mode::Query { bld: lever, adding: false };
+                            m
+                        }
+                        Err(e) => e,
+                    });
+                }
+                _ => {}
+            },
             Mode::BurrowMembers { burrow, sel } => {
                 let ids: Vec<u32> = self.game.dwarves.iter().filter(|d| d.alive).map(|d| d.id).collect();
                 let n = ids.len().max(1);
@@ -1144,6 +1161,17 @@ impl App {
                 self.mode = Mode::Query { bld, adding: true };
             }
             KeyCode::Char('l') => self.game.toggle_lock(bld),
+            KeyCode::Char('k') if kind == BuildingKind::Lever => {
+                self.cursor = self.game.buildings[&bld].pos;
+                self.mode = Mode::LinkLever { lever: bld };
+            }
+            KeyCode::Char('p') if kind == BuildingKind::Lever => {
+                self.flash = Some(if self.game.request_pull(bld) {
+                    "Someone will go and pull it.".into()
+                } else {
+                    "Link the lever to something first (k).".into()
+                });
+            }
             KeyCode::Char('g') if kind == BuildingKind::Depot => {
                 let n = self.game.mark_for_trade(true);
                 self.flash = Some(format!("{} items marked for the depot.", n));

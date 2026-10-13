@@ -23,6 +23,7 @@ pub use labor::WorkDetail;
 mod rooms;
 mod construct;
 mod burrows;
+mod traps;
 pub use burrows::{Burrow, MAX_BURROWS, TRAFFIC_NAMES};
 pub use construct::{BuildMat, ConstructKind, Construction};
 mod trade;
@@ -539,6 +540,12 @@ impl Game {
             owner: None,
             quality: 0,
             room_value: 0,
+            parts: 0,
+            load: None,
+            trap_cd: 0,
+            links: Vec::new(),
+            pull: false,
+            raised: false,
         };
         for p in b.tiles() {
             let t = self.world.t_mut(p);
@@ -635,6 +642,7 @@ impl Game {
             }
         }
         self.update_creatures();
+        self.traps_tick();
         self.update_caravan();
         if self.tick % DAY == DAY / 2 {
             self.wildlife();
@@ -1018,6 +1026,11 @@ impl Game {
                 self.claimed.remove(&pos);
                 self.unclaim(seed);
             }
+            Task::PullLever { bld } => {
+                if let Some(b) = self.buildings.get_mut(&bld) {
+                    b.worker = None;
+                }
+            }
             Task::BuildTile { con, item, .. } => {
                 if let Some(item) = item {
                     self.unclaim(item);
@@ -1192,6 +1205,9 @@ impl Game {
         }
         if d.soldier {
             self.choose_military(d);
+            return;
+        }
+        if self.find_lever_pull(d) {
             return;
         }
         if d.has(Labor::Building) && (self.find_construct(d) || self.find_build_tile(d)) {
@@ -1371,8 +1387,8 @@ impl Game {
             .map(|b| b.id)
             .collect();
         for bid in pending {
-            let kind = self.buildings[&bid].kind;
-            if let Some((item, path)) = self.find_item(d.pos, |it| kind.needs(it)) {
+            let (kind, part) = (self.buildings[&bid].kind, self.buildings[&bid].parts);
+            if let Some((item, path)) = self.find_item(d.pos, |it| kind.needs_part(part, it)) {
                 self.claim_item(item, d.id);
                 self.buildings.get_mut(&bid).unwrap().worker = Some(d.id);
                 d.task = Task::Construct { bld: bid, item };
@@ -1384,7 +1400,7 @@ impl Game {
             let waiting = self.buildings.values().filter(|b| b.kind == kind && !b.built).count();
             self.warn(
                 &format!("need{}", kind.name()),
-                &format!("{} {} waiting to be built: each needs {}.", waiting, kind.name().to_lowercase(), kind.needs_desc()),
+                &format!("{} {} waiting to be built: it needs {}.", waiting, kind.name().to_lowercase(), kind.part_desc(part)),
                 (230, 200, 90),
             );
         }
@@ -1661,6 +1677,7 @@ impl Game {
         match d.task.clone() {
             Task::Idle => {}
             Task::BuildTile { con, item, stand } => self.do_build_tile(d, con, item, stand),
+            Task::PullLever { bld } => self.do_pull_lever(d, bld),
             Task::Wander { target } => match self.travel(d, target) {
                 Travel::Moving => {}
                 Travel::Arrived => d.task = Task::Idle,
@@ -1756,22 +1773,36 @@ impl Game {
                         }
                         Travel::Arrived => {
                             if Self::labor(d, 120, d.skill(Labor::Building)) {
-                                let (mat, quality) = self.items.remove(&item).map_or((Mat::Wood, 0), |it| (it.mat, it.quality));
+                                let (ikind, mat, quality) =
+                                    self.items.remove(&item).map_or((ItemKind::Log, Mat::Wood, 0), |it| (it.kind, it.mat, it.quality));
                                 d.carrying = None;
                                 d.gain_xp(Labor::Building, 20);
                                 d.task = Task::Idle;
+                                let mut done = false;
                                 if let Some(b) = self.buildings.get_mut(&bld) {
-                                    b.built = true;
-                                    b.mat = mat;
-                                    b.quality = quality;
                                     b.worker = None;
-                                    if b.kind == BuildingKind::Door {
+                                    // The first part decides what it's made of; the last one arms a trap.
+                                    if b.parts == 0 {
+                                        b.mat = mat;
+                                        b.quality = quality;
+                                    }
+                                    b.parts += 1;
+                                    if b.parts >= b.kind.parts() {
+                                        b.built = true;
+                                        b.load = Some((ikind, mat, quality));
+                                        done = true;
                                         let pos = b.pos;
-                                        self.world.t_mut(pos).door = DOOR_OPEN;
+                                        match b.kind {
+                                            BuildingKind::Door => self.world.t_mut(pos).door = DOOR_OPEN,
+                                            BuildingKind::Bridge => self.world.t_mut(pos).door = world::DOOR_NONE,
+                                            _ => {}
+                                        }
                                     }
                                 }
-                                let name = self.buildings[&bld].name();
-                                self.msg(&format!("{} has been completed.", name), (160, 220, 255));
+                                if done {
+                                    let name = self.buildings[&bld].name();
+                                    self.msg(&format!("{} has been completed.", name), (160, 220, 255));
+                                }
                             }
                         }
                     },

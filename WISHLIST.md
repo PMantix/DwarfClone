@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W06 (siege defense) → W04, W05.
+Suggested order: W04, W05 (military and medicine) → W08 onward.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -44,16 +44,6 @@ Suggested order: W06 (siege defense) → W04, W05.
 - **Done when:** a test wounds a dwarf, a doctor sutures them, and they stop bleeding sooner than an untreated one.
 
 ### Tier 2: what makes a fortress a fortress
-
-#### W06 Mechanisms, levers and traps (M)
-- **DF:** a mechanic's workshop making mechanisms; levers and pressure plates linked to doors, bridges and floodgates; cage, weapon, stone-fall and spike traps.
-- **Us:** doors you can lock.
-- **Steps:**
-  - [ ] Mechanic labor and workshop; mechanisms from stone
-  - [ ] Cage trap (catches a creature; the cage becomes an item)
-  - [ ] Weapon trap and stone-fall trap
-  - [ ] Lever linked to a door; then a drawbridge (needs W01)
-- **Done when:** a test sends a goblin down a corridor with a weapon trap and the goblin is hurt or killed.
 
 #### W08 Animals (M)
 - **DF:** pets, livestock, breeding, pastures, milking, shearing, war and hunting dogs, taming, cages, embark animals.
@@ -172,6 +162,9 @@ Ideas not ranked yet. Add a line on why each matters.
 - Overlapping zones: a tile holds one zone, so a dining hall can't also be the meeting area as it often is in DF.
 - Bridges and drawbridges (with W06 levers), roads, grates, bars, windows, supports: the rest of DF's constructions.
 - A large embark's footprint spans several world cells but takes its biome from the cursor cell only; blend neighbouring biomes into the map.
+- Drawbridges over open space (moats), wider than one tile, flinging what's on them; pressure plates.
+- Linking a lever consumes a mechanism instantly; DF has a mechanic walk over and install it.
+- Caged animals could be tamed (W08) and caged goblins interrogated (B04).
 - Pick a room's owner from a list instead of cycling through dwarves with `o`.
 - Announcements history screen (DF's report log): find out what happened while you weren't looking.
 - Mini-map and saved camera spots: get around a 96×64 map faster.
@@ -180,6 +173,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **W06 Mechanisms, levers and traps** (this commit): Mechanics labor and Mechanic's workshop (mechanisms from stone); wooden cages at the carpenter; buildings that take several parts; cage traps (catch a creature, then need a new cage), weapon traps (strike up to three times, re-arm themselves), stone-fall traps (one heavy hit, then need a new boulder); levers linked to doors and drawbridges (linking uses a mechanism), pulled by any civilian; a raised drawbridge blocks everyone and can't be battered down.
 - **W07 Burrows and traffic** (this commit): `w` paints up to eight burrows and picks who must stay in each (members only path and work inside); one burrow can be the civilian alert burrow, and `m` then `c` sends every non-soldier into it (status bar shows the alert); `o` paints high, normal, low or restricted traffic, which changes dwarves' path costs.
 - **W23 Embark and map size** (this commit): `s` on the world map picks Small 64×48×32, Medium 96×64×32 (unchanged) or Large 144×96×48 with a second, deeper cavern layer; the footprint is outlined on the world map. Saves are run-length encoded (a medium save is well under 4 MB, was ~25 MB; old saves still load). A large map simulates a year in ~12 s.
 - **W22 Larger world map** (this commit): small 64×32, medium 128×64 or large 256×128 worlds (civilizations and megabeasts scale with the land; a large world generates in under 0.1 s); the world map scrolls with the cursor and shows a minimap with the visible area outlined; the generation screen shrinks the world to fit; seas, lakes, mountain ranges, forests, plains, deserts, tundra and swamps get unique names, shown in the site panel, a Regions legends tab and the founding legend.

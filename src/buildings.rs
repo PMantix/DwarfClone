@@ -21,10 +21,16 @@ pub enum BuildingKind {
     Table,
     Chair,
     Door,
+    Mechanic,
+    Lever,
+    CageTrap,
+    WeaponTrap,
+    StoneTrap,
+    Bridge,
 }
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 14] = [
+    pub const ALL: [BuildingKind; 20] = [
         BuildingKind::Carpenter,
         BuildingKind::Mason,
         BuildingKind::Still,
@@ -39,6 +45,12 @@ impl BuildingKind {
         BuildingKind::Table,
         BuildingKind::Chair,
         BuildingKind::Door,
+        BuildingKind::Mechanic,
+        BuildingKind::Lever,
+        BuildingKind::CageTrap,
+        BuildingKind::WeaponTrap,
+        BuildingKind::StoneTrap,
+        BuildingKind::Bridge,
     ];
 
     pub fn name(self) -> &'static str {
@@ -57,6 +69,12 @@ impl BuildingKind {
             BuildingKind::Table => "Table",
             BuildingKind::Chair => "Chair",
             BuildingKind::Door => "Door",
+            BuildingKind::Mechanic => "Mechanic's workshop",
+            BuildingKind::Lever => "Lever",
+            BuildingKind::CageTrap => "Cage trap",
+            BuildingKind::WeaponTrap => "Weapon trap",
+            BuildingKind::StoneTrap => "Stone-fall trap",
+            BuildingKind::Bridge => "Drawbridge",
         }
     }
 
@@ -76,11 +94,66 @@ impl BuildingKind {
             BuildingKind::Table => 't',
             BuildingKind::Chair => 'h',
             BuildingKind::Door => 'd',
+            BuildingKind::Mechanic => 'n',
+            BuildingKind::Lever => 'l',
+            BuildingKind::CageTrap => 'a',
+            BuildingKind::WeaponTrap => 'v',
+            BuildingKind::StoneTrap => 'o',
+            BuildingKind::Bridge => 'i',
         }
     }
 
     pub fn is_workshop(self) -> bool {
-        !matches!(self, BuildingKind::Bed | BuildingKind::Table | BuildingKind::Chair | BuildingKind::Door)
+        !matches!(
+            self,
+            BuildingKind::Bed
+                | BuildingKind::Table
+                | BuildingKind::Chair
+                | BuildingKind::Door
+                | BuildingKind::Lever
+                | BuildingKind::CageTrap
+                | BuildingKind::WeaponTrap
+                | BuildingKind::StoneTrap
+                | BuildingKind::Bridge
+        )
+    }
+
+    pub fn is_trap(self) -> bool {
+        matches!(self, BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap)
+    }
+
+    /// How many items go into building it, delivered one at a time.
+    pub fn parts(self) -> u8 {
+        match self {
+            BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap | BuildingKind::Bridge => 2,
+            _ => 1,
+        }
+    }
+
+    /// Whether `item` fits part number `part` (0-based).
+    pub fn needs_part(self, part: u8, item: &Item) -> bool {
+        use BuildingKind::*;
+        let mechanism = item.kind == ItemKind::Mechanism;
+        match (self, part) {
+            (Lever, _) | (CageTrap, 0) | (WeaponTrap, 0) | (StoneTrap, 0) | (Bridge, 1) => mechanism,
+            (CageTrap, _) => item.kind == ItemKind::Cage && item.label.is_none(),
+            (WeaponTrap, _) => matches!(item.kind, ItemKind::Sword | ItemKind::Spear | ItemKind::Axe | ItemKind::Hammer),
+            (StoneTrap, _) => item.kind == ItemKind::Boulder && item.mat.is_building_stone(),
+            (Bridge, _) => matches!(item.kind, ItemKind::Log | ItemKind::Block),
+            _ => self.needs(item),
+        }
+    }
+
+    pub fn part_desc(self, part: u8) -> &'static str {
+        use BuildingKind::*;
+        match (self, part) {
+            (Lever, _) | (CageTrap, 0) | (WeaponTrap, 0) | (StoneTrap, 0) | (Bridge, 1) => "a mechanism",
+            (CageTrap, _) => "an empty cage",
+            (WeaponTrap, _) => "a weapon",
+            (StoneTrap, _) => "a stone boulder",
+            (Bridge, _) => "a log or blocks",
+            _ => self.needs_desc(),
+        }
     }
 
     pub fn size(self) -> i32 {
@@ -110,6 +183,11 @@ impl BuildingKind {
             BuildingKind::Table => "a table",
             BuildingKind::Chair => "a chair",
             BuildingKind::Door => "a door",
+            BuildingKind::Lever => "a mechanism",
+            BuildingKind::CageTrap => "a mechanism + an empty cage",
+            BuildingKind::WeaponTrap => "a mechanism + a weapon",
+            BuildingKind::StoneTrap => "a mechanism + a boulder",
+            BuildingKind::Bridge => "a log or blocks + a mechanism",
             _ => "a stone boulder",
         }
     }
@@ -117,7 +195,8 @@ impl BuildingKind {
     pub fn recipes(self) -> &'static [Recipe] {
         use Recipe::*;
         match self {
-            BuildingKind::Carpenter => &[WoodBed, WoodTable, WoodChair, WoodDoor, Barrel, Bin],
+            BuildingKind::Carpenter => &[WoodBed, WoodTable, WoodChair, WoodDoor, Barrel, Bin, WoodCage],
+            BuildingKind::Mechanic => &[Mechanism],
             BuildingKind::Mason => &[Blocks, StoneTable, StoneChair, StoneDoor],
             BuildingKind::Still => &[Brew],
             BuildingKind::Kitchen => &[Cook],
@@ -151,6 +230,9 @@ impl BuildingKind {
             BuildingKind::Forge => Color::Rgb(255, 90, 40),
             BuildingKind::Craftsdwarf => Color::Rgb(120, 200, 220),
             BuildingKind::Depot => Color::Rgb(240, 240, 160),
+            BuildingKind::Mechanic => Color::Rgb(170, 190, 210),
+            BuildingKind::Lever => Color::Rgb(220, 200, 120),
+            BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap => Color::Rgb(230, 120, 120),
             _ => Color::Rgb(200, 200, 200),
         }
     }
@@ -171,6 +253,10 @@ impl BuildingKind {
             BuildingKind::Table => '╥',
             BuildingKind::Chair => 'h',
             BuildingKind::Door => '+',
+            BuildingKind::Mechanic => 'N',
+            BuildingKind::Lever => '¬',
+            BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap => '^',
+            BuildingKind::Bridge => '≡',
         }
     }
 }
@@ -257,6 +343,8 @@ pub enum Recipe {
     StoneCraft,
     BoneCraft,
     CutGem,
+    Mechanism,
+    WoodCage,
 }
 
 impl Recipe {
@@ -290,6 +378,8 @@ impl Recipe {
             StoneCraft => "Make stone crafts",
             BoneCraft => "Make bone crafts",
             CutGem => "Cut a gem",
+            Mechanism => "Make mechanism",
+            WoodCage => "Make wooden cage",
         }
     }
 
@@ -315,6 +405,8 @@ impl Recipe {
             ForgeShield => 'i',
             StoneCraft => 'c',
             CutGem => 'g',
+            Mechanism => 'm',
+            WoodCage => 'g',
         }
     }
 
@@ -330,14 +422,16 @@ impl Recipe {
             ForgePick | ForgeAxe | ForgeSword | ForgeSpear | ForgeHammer | ForgeHelm | ForgeBreastplate
             | ForgeShield => Labor::Smithing,
             StoneCraft | BoneCraft | CutGem => Labor::Crafting,
+            Mechanism => Labor::Mechanics,
+            WoodCage => Labor::Carpentry,
         }
     }
 
     pub fn inputs(self) -> &'static [Input] {
         use Recipe::*;
         match self {
-            WoodBed | WoodTable | WoodChair | WoodDoor | Barrel | Bin | Charcoal => &[Input::Log],
-            Blocks | StoneTable | StoneChair | StoneDoor | StoneCraft => &[Input::Stone],
+            WoodBed | WoodTable | WoodChair | WoodDoor | Barrel | Bin | Charcoal | WoodCage => &[Input::Log],
+            Blocks | StoneTable | StoneChair | StoneDoor | StoneCraft | Mechanism => &[Input::Stone],
             Brew => &[Input::Mushroom],
             Cook => &[Input::Edible],
             Butcher => &[Input::Carcass],
@@ -411,6 +505,8 @@ impl Recipe {
             ForgeShield => one(ItemKind::Shield),
             StoneCraft | BoneCraft => one(ItemKind::Craft),
             CutGem => one(ItemKind::Gem),
+            Mechanism => one(ItemKind::Mechanism),
+            WoodCage => one(ItemKind::Cage),
         }
     }
 
@@ -458,6 +554,24 @@ pub struct Building {
     /// Value of the enclosed room around this bed or table (0 = not a room).
     #[serde(default)]
     pub room_value: u32,
+    /// Parts delivered so far (traps and bridges take more than one).
+    #[serde(default)]
+    pub parts: u8,
+    /// What a trap is loaded with: (kind, material, quality) of its last part.
+    #[serde(default)]
+    pub load: Option<(ItemKind, Mat, u8)>,
+    /// A trap can't fire again before this tick.
+    #[serde(default)]
+    pub trap_cd: u64,
+    /// Doors and bridges a lever works.
+    #[serde(default)]
+    pub links: Vec<u32>,
+    /// Someone has been asked to pull this lever.
+    #[serde(default)]
+    pub pull: bool,
+    /// A drawbridge is raised (impassable).
+    #[serde(default)]
+    pub raised: bool,
 }
 
 impl Building {
@@ -487,6 +601,9 @@ impl Building {
 
     /// Glyph for the tile at offset (dx, dy) inside the footprint.
     pub fn glyph_at(&self, dx: i32, dy: i32) -> char {
+        if self.kind == BuildingKind::Bridge && self.raised {
+            return '▀';
+        }
         if !self.kind.is_workshop() {
             return self.kind.letter();
         }

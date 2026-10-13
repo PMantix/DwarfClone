@@ -439,6 +439,7 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
             }
         }
         Task::Dine { .. } => "Eating at a table".into(),
+        Task::PullLever { .. } => "Pulling a lever".into(),
         Task::BuildTile { con, .. } => match g.constructions.get(con).map(|c| c.kind) {
             Some(crate::game::ConstructKind::Remove) => "Removing construction".into(),
             Some(k) => format!("Constructing {}", k.name().to_lowercase()),
@@ -723,7 +724,9 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             if let Some(b) = g.buildings.get(bld) {
                 v.push(plain(b.name(), b.kind.color()));
                 if !b.built {
-                    v.push(plain(format!("Awaiting construction ({})", b.kind.needs_desc()), KEY));
+                    let total = b.kind.parts();
+                    let progress = if total > 1 { format!(", part {} of {}", b.parts + 1, total) } else { String::new() };
+                    v.push(plain(format!("Awaiting {}{}", b.kind.part_desc(b.parts), progress), KEY));
                 } else if b.kind == BuildingKind::Bed {
                     let who = b.owner.and_then(|id| g.dwarves.iter().find(|d| d.id == id));
                     v.push(plain(who.map_or("Unassigned".into(), |d| format!("Owned by {}", d.name)), TEXT));
@@ -779,6 +782,36 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 if b.kind == BuildingKind::Door && b.built {
                     v.push(key_line("l", if b.locked { "Unlock door (locked)" } else { "Lock door" }, b.locked));
                 }
+                if b.kind.is_trap() && b.built {
+                    let what = b.load.map_or("nothing".to_string(), |(k, m, _)| {
+                        crate::items::Item { id: 0, kind: k, mat: m, pos: b.pos, carried_by: None, claimed_by: None, label: None, container: None, quality: 0, to_depot: false, dump: false }.name()
+                    });
+                    v.push(plain(format!("Armed with {}", what), TEXT));
+                    v.push(plain("Fires on any creature but merchants;".into(), MUTED));
+                    v.push(plain("dwarves never set off their own traps.".into(), MUTED));
+                }
+                if b.kind == BuildingKind::Bridge && b.built {
+                    v.push(plain(if b.raised { "Raised: nobody can pass".into() } else { "Lowered: open to all".into() }, TEXT));
+                    v.push(plain("Link a lever to it to raise it.".into(), MUTED));
+                }
+                if b.kind == BuildingKind::Lever && b.built {
+                    v.push(header("Linked to"));
+                    if b.links.is_empty() {
+                        v.push(plain("(nothing)".into(), MUTED));
+                    }
+                    for t in &b.links {
+                        if let Some(tb) = g.buildings.get(t) {
+                            let state = match tb.kind {
+                                BuildingKind::Bridge => if tb.raised { " (raised)" } else { " (lowered)" },
+                                BuildingKind::Door => if tb.locked { " (locked)" } else { " (open)" },
+                                _ => "",
+                            };
+                            v.push(plain(format!("  {} at ({}, {}){}", tb.name(), tb.pos.x, tb.pos.y, state), TEXT));
+                        }
+                    }
+                    v.push(key_line("k", "Link to a door or bridge (uses a mechanism)", false));
+                    v.push(key_line("p", if b.pull { "Pull requested..." } else { "Pull the lever" }, b.pull));
+                }
                 v.push(key_line("X", "Remove building", false));
                 v.push(plain("Esc: back".into(), MUTED));
             }
@@ -809,6 +842,14 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             if let Some(d) = g.dwarves.iter().find(|d| d.id == *id) {
                 v.extend(unit_view(g, d, *sel));
             }
+        }
+        Mode::LinkLever { .. } => {
+            title = "Link lever".to_string();
+            v.push(plain("Move the cursor onto a door or".into(), TEXT));
+            v.push(plain("drawbridge and press Enter.".into(), TEXT));
+            v.push(plain("Esc: back".into(), MUTED));
+            v.push(Line::default());
+            v.extend(cursor_info(g, app.cursor));
         }
         Mode::Burrows { sel, corner, erase } => {
             title = "Burrows".to_string();

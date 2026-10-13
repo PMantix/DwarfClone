@@ -81,6 +81,8 @@ pub enum Mover {
 
 pub const DOOR_NONE: u8 = 0;
 pub const DOOR_OPEN: u8 = 1;
+/// A raised drawbridge: nobody passes and it can't be battered down.
+pub const BRIDGE_RAISED: u8 = 3;
 pub const DOOR_LOCKED: u8 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -277,7 +279,7 @@ impl World {
     pub fn passable(&self, p: Pos, m: Mover) -> bool {
         match self.get(p) {
             Some(t) if t.kind.has_floor() && t.water <= 3 => match t.door {
-                DOOR_LOCKED => false,
+                DOOR_LOCKED | BRIDGE_RAISED => false,
                 DOOR_OPEN => m != Mover::Beast,
                 _ => true,
             },

@@ -35,6 +35,8 @@ pub enum ItemKind {
     Bin,
     Craft,
     Gem,
+    Mechanism,
+    Cage,
 }
 
 /// Items that fit in a barrel or a bin, ten to a container.
@@ -83,6 +85,8 @@ impl ItemKind {
             Helm | Shield => 25,
             Breastplate => 40,
             Gem => 40,
+            Mechanism => 8,
+            Cage => 6,
         }
     }
 
@@ -188,9 +192,9 @@ impl StockFilter {
             StockFilter::Stone => matches!(k, Boulder | Block),
             StockFilter::Wood => k == Log,
             StockFilter::Food => matches!(k, Mushroom | Drink | Seed | Meat | Meal),
-            StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin),
+            StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin | Cage),
             StockFilter::Metal => matches!(k, Bar | Charcoal),
-            StockFilter::Goods => matches!(k, Craft | Gem | Bone | Leather),
+            StockFilter::Goods => matches!(k, Craft | Gem | Bone | Leather | Mechanism),
             StockFilter::Refuse => matches!(k, Corpse | Carcass),
             StockFilter::Equipment => k.is_equipment(),
         }
@@ -290,6 +294,11 @@ impl Item {
             Bin => format!("{} bin", m.adj()),
             Craft => format!("{} figurine", m.adj()),
             Gem => format!("cut {}", m.name()),
+            Mechanism => format!("{} mechanism", m.adj()),
+            Cage => match self.label.as_deref() {
+                Some(beast) => format!("{} cage (holding a {})", m.adj(), beast),
+                None => format!("{} cage", m.adj()),
+            },
         }
     }
 
@@ -326,6 +335,8 @@ impl Item {
             Bin => '■',
             Craft => '☼',
             Gem => '☼',
+            Mechanism => '*',
+            Cage => '#',
         };
         let col = match self.kind {
             Drink => Color::Rgb(230, 170, 60),

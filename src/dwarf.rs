@@ -20,9 +20,10 @@ pub enum Labor {
     Crafting,
     Hauling,
     Building,
+    Mechanics,
 }
 
-pub const NUM_LABORS: usize = 13;
+pub const NUM_LABORS: usize = 14;
 
 pub const LABORS: [Labor; NUM_LABORS] = [
     Labor::Mining,
@@ -38,6 +39,7 @@ pub const LABORS: [Labor; NUM_LABORS] = [
     Labor::Crafting,
     Labor::Hauling,
     Labor::Building,
+    Labor::Mechanics,
 ];
 
 impl Labor {
@@ -60,6 +62,7 @@ impl Labor {
             Labor::Crafting => "Stonecrafting",
             Labor::Hauling => "Hauling",
             Labor::Building => "Construction",
+            Labor::Mechanics => "Mechanics",
         }
     }
 
@@ -76,6 +79,7 @@ impl Labor {
             Labor::Smelting => "Furnace operator",
             Labor::Smithing => "Smith",
             Labor::Crafting => "Craftsdwarf",
+            Labor::Mechanics => "Mechanic",
             Labor::Hauling | Labor::Building => "Peasant",
         }
     }
@@ -96,6 +100,7 @@ impl Labor {
             Labor::Crafting => "Cra",
             Labor::Hauling => "Hau",
             Labor::Building => "Con",
+            Labor::Mechanics => "Mec",
         }
     }
 
@@ -167,6 +172,8 @@ pub enum Task {
     Dine { item: u32, seat: u32 },
     /// Build or take down a construction, standing beside it.
     BuildTile { con: u32, item: Option<u32>, stand: Option<Pos> },
+    /// Go and throw a lever.
+    PullLever { bld: u32 },
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -275,7 +282,10 @@ pub struct Dwarf {
     pub name: String,
     pub pos: Pos,
     pub alive: bool,
+    /// Older saves have fewer labors; missing ones start off.
+    #[serde(deserialize_with = "pad_labors")]
     pub labors: [bool; NUM_LABORS],
+    #[serde(deserialize_with = "pad_labors")]
     pub skills: [u32; NUM_LABORS],
     pub hunger: u32,
     pub thirst: u32,
@@ -418,6 +428,19 @@ impl Dwarf {
             self.thoughts.remove(0);
         }
     }
+}
+
+fn pad_labors<'de, D, T>(d: D) -> Result<[T; NUM_LABORS], D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de> + Default + Copy,
+{
+    let v: Vec<T> = Vec::deserialize(d)?;
+    let mut a = [T::default(); NUM_LABORS];
+    for (i, x) in v.into_iter().take(NUM_LABORS).enumerate() {
+        a[i] = x;
+    }
+    Ok(a)
 }
 
 /// The happiest a dwarf's stress can get.
