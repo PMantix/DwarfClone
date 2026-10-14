@@ -1,7 +1,26 @@
-//! Seasons and weather: ice in winter.
+//! Seasons and weather: ice in winter, rain and snow.
 
 use super::*;
 use crate::overworld::Biome;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Weather {
+    #[default]
+    Clear,
+    Rain,
+    Snow,
+}
+
+impl Weather {
+    pub fn name(self) -> &'static str {
+        match self {
+            Weather::Clear => "Clear",
+            Weather::Rain => "Rain",
+            Weather::Snow => "Snow",
+        }
+    }
+}
 
 impl Game {
     /// Whether this site's winters freeze its surface water.
@@ -39,6 +58,71 @@ impl Game {
                 self.water_cells = None;
                 self.scramble_ashore();
             }
+        }
+    }
+
+    /// Each morning: what the sky does today, by climate and season.
+    pub(super) fn weather_daily(&mut self) {
+        let season = ((self.tick / SEASON) % 4) as usize;
+        let wet = match self.biome {
+            Biome::Desert => 0.03,
+            Biome::Swamp => 0.45,
+            Biome::Ocean | Biome::Forest => 0.3,
+            Biome::Mountain | Biome::Tundra => 0.25,
+            _ => 0.2,
+        };
+        let cold = self.freezes() && (season == 3 || (season == 2 && self.biome == Biome::Tundra));
+        let before = self.weather;
+        self.weather = if !self.rng.chance(wet) {
+            Weather::Clear
+        } else if cold {
+            Weather::Snow
+        } else {
+            Weather::Rain
+        };
+        if self.weather != before {
+            let text = match self.weather {
+                Weather::Rain => "It has started to rain.",
+                Weather::Snow => "Snow is falling.",
+                Weather::Clear => "The skies have cleared.",
+            };
+            self.msg(text, (170, 190, 220));
+        }
+        if self.weather == Weather::Snow {
+            // Fresh snow lies on open ground.
+            for y in 0..self.world.h {
+                for x in 0..self.world.w {
+                    let p = Pos::new(x, y, self.world.surface_z(x, y));
+                    if let Some(t) = self.world.get(p) {
+                        if t.kind.has_floor() && t.water == 0 && t.building == 0 {
+                            self.world.t_mut(p).snow = true;
+                        }
+                    }
+                }
+            }
+            self.snow_lying = true;
+        } else if self.snow_lying && season != 3 {
+            for t in self.world.tiles.iter_mut() {
+                t.snow = false;
+            }
+            self.snow_lying = false;
+        }
+    }
+
+    /// Now and then while it rains or snows, dwarves out under the sky mind it.
+    pub(super) fn weather_thoughts(&mut self) {
+        let text = match self.weather {
+            Weather::Clear => return,
+            Weather::Rain => "was caught in the rain",
+            Weather::Snow => "was out in the snow",
+        };
+        let tick = self.tick;
+        for i in 0..self.dwarves.len() {
+            let d = &self.dwarves[i];
+            if !d.alive || !self.world.outside(d.pos) || d.thoughts.iter().any(|t| t.text == text && tick < t.tick + DAY) {
+                continue;
+            }
+            self.dwarves[i].think(text, 2, tick);
         }
     }
 
@@ -110,5 +194,39 @@ mod tests {
         g.biome = Biome::Desert;
         g.seasonal_ice(3);
         assert!(!g.world.t(pond).frozen);
+    }
+
+    #[test]
+    fn it_rains_in_summer_snows_in_winter_and_dwarves_outside_mind_it() {
+        let mut g = Game::new(81);
+        g.biome = Biome::Swamp;
+        g.tick = SEASON + 5;
+        let mut seen = HashSet::new();
+        for _ in 0..40 {
+            g.weather_daily();
+            seen.insert(g.weather);
+        }
+        assert!(seen.contains(&Weather::Rain) && !seen.contains(&Weather::Snow), "summer: {:?}", seen);
+        g.biome = Biome::Tundra;
+        g.tick = 3 * SEASON + 5;
+        while g.weather != Weather::Snow {
+            g.weather_daily();
+        }
+        let e = g.embark;
+        assert!(g.world.t(Pos::new(e.x + 3, e.y + 3, g.world.surface_z(e.x + 3, e.y + 3))).snow || g.world.tiles.iter().any(|t| t.snow));
+        let id = g.dwarves[0].id;
+        assert!(g.world.outside(g.dwarves[0].pos));
+        g.weather_thoughts();
+        g.weather_thoughts();
+        let d = g.dwarves.iter().find(|d| d.id == id).unwrap();
+        assert_eq!(d.thoughts.iter().filter(|t| t.text == "was out in the snow").count(), 1, "once a day");
+        // Spring melts the snow on the first clear day.
+        g.tick = 4 * SEASON + 5;
+        g.biome = Biome::Desert;
+        while g.weather != Weather::Clear {
+            g.weather_daily();
+        }
+        g.weather_daily();
+        assert!(!g.world.tiles.iter().any(|t| t.snow));
     }
 }

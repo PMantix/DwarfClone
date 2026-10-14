@@ -305,6 +305,19 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                     None => {}
                 }
             }
+            if t.snow && t.revealed && t.zone == 0 {
+                fg = Color::Rgb(235, 240, 250);
+                if ch == '.' || ch == ',' || ch == '`' || ch == '\'' || ch == '·' {
+                    ch = '·';
+                }
+            }
+            // Falling rain or snow, flickering over open ground.
+            if g.weather != crate::game::Weather::Clear && t.revealed && g.world.outside(p) && !t.kind.solid() {
+                let h = hash2(wx * 7 + (g.tick / 3) as i32 % 97, wy * 13 + (g.tick / 5) as i32 % 89);
+                if h % 23 == 0 {
+                    (ch, fg) = if g.weather == crate::game::Weather::Snow { ('*', Color::Rgb(240, 240, 255)) } else { ('\'', Color::Rgb(110, 150, 255)) };
+                }
+            }
             if t.building != 0 {
                 if let Some(b) = g.buildings.get(&t.building) {
                     ch = b.glyph_at(wx - b.pos.x, wy - b.pos.y);
@@ -2225,6 +2238,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Span::styled(" ☼ DwarfClone ", Style::default().fg(KEY).add_modifier(Modifier::BOLD)),
         Span::styled(format!("│ {} ", g.date_string()), Style::default().fg(TEXT)),
         Span::styled(format!("│ {} dwarves ", g.alive_count()), Style::default().fg(TEXT)),
+        if g.weather != crate::game::Weather::Clear {
+            Span::styled(format!("│ {} ", g.weather.name()), Style::default().fg(Color::Rgb(150, 180, 230)))
+        } else {
+            Span::raw("")
+        },
         if g.hostile_count() > 0 {
             Span::styled(format!(" ⚠ {} hostiles ", g.hostile_count()), Style::default().fg(Color::Rgb(255, 255, 255)).bg(Color::Rgb(160, 20, 20)))
         } else {

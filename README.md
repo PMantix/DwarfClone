@@ -181,7 +181,9 @@ magma (open space or a floor above it) needs no fuel.
 **Winter.** Except in deserts, swamps and by the sea, winter freezes the water under the
 open sky: ice holds still, can be walked across (by wildlife too) and can't be fished, but
 dwarves can still break it to drink. Spring thaws it, and anyone out on the ice scrambles
-ashore.
+ashore. Each day brings clear skies, rain or (in a cold winter) snow, more or less often by
+climate; snow lies on open ground until spring, the top bar shows the weather, and dwarves
+caught out in it grumble a little.
 
 **Aquifers.** Many wet sites (the embark screen says which) have water-bearing rock two to four
 levels down, shown with a blue background. A light aquifer only dampens floors dug out of it;

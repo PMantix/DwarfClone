@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: finish W19 (rain and snow next), then onward in tier order.
+Suggested order: finish W19 (fire next), then onward in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -27,7 +27,7 @@ Suggested order: finish W19 (rain and snow next), then onward in tier order.
 #### W19 Temperature and weather (L)
 - **DF:** temperature, freezing, rain and snow, fire, burning.
 - **Us:** a calendar with seasons only.
-- **Steps:** [x] surface water freezes in winter (this commit) · [ ] rain and snow · [ ] fire spreading through wood
+- **Steps:** [x] surface water freezes in winter (dddc21f) · [x] rain and snow (this commit) · [ ] fire spreading through wood
 
 #### W20 Attributes and skill decay (S–M)
 - **DF:** body attributes (strength, agility…), skill decay, social skills, books, teaching.

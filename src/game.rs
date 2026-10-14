@@ -39,6 +39,7 @@ mod positions;
 mod justice;
 mod detail;
 mod weather;
+pub use weather::Weather;
 pub use detail::ENGRAVED;
 pub use justice::{Crime, CrimeKind};
 pub use positions::{Demand, Position};
@@ -245,6 +246,11 @@ pub struct Game {
     /// The fortress's record of crimes, newest last.
     #[serde(default)]
     pub crimes: Vec<Crime>,
+    #[serde(default)]
+    pub weather: Weather,
+    /// Some tile has snow on it (so a thaw knows to look).
+    #[serde(default)]
+    snow_lying: bool,
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
@@ -335,6 +341,8 @@ impl Game {
             positions: Vec::new(),
             demands: Vec::new(),
             crimes: Vec::new(),
+            weather: Weather::Clear,
+            snow_lying: false,
             creatures: BTreeMap::new(),
             station: None,
             alert: true,
@@ -776,6 +784,9 @@ impl Game {
         if self.tick % 25 == 0 {
             self.aquifers();
         }
+        if self.tick % 300 == 75 {
+            self.weather_thoughts();
+        }
         // A manager sees to work orders; a bookkeeper's counts let them do it
         // several times a day rather than once.
         let bookkeeper = self.has_post(Position::Bookkeeper);
@@ -805,6 +816,7 @@ impl Game {
             self.assign_rooms();
             self.families_daily();
             self.clothes_daily();
+            self.weather_daily();
             self.nobles_daily();
             self.titles_daily();
             self.check_mandate();

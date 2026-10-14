@@ -163,6 +163,9 @@ pub struct Tile {
     /// The water here has frozen: it holds still and can be walked on.
     #[serde(default, skip_serializing_if = "is_false")]
     pub frozen: bool,
+    /// Snow lies on the ground here.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub snow: bool,
 }
 
 fn is_zero(v: &u8) -> bool {
@@ -198,6 +201,7 @@ impl Default for Tile {
             smooth: 0,
             engraving: 0,
             frozen: false,
+            snow: false,
         }
     }
 }
