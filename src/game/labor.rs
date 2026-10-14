@@ -19,6 +19,7 @@ pub fn default_details() -> Vec<WorkDetail> {
         d("Woodworker", &[Woodcutting, Carpentry, Hauling]),
         d("Stoneworker", &[Masonry, Crafting, Building, Hauling]),
         d("Farmer", &[Farming, Brewing, Cooking, Butchery, Hauling]),
+        d("Leatherworker", &[Butchery, Leatherworking, Hauling]),
         d("Metalworker", &[Smelting, Smithing, Hauling]),
         d("Hauler", &[Hauling, Building]),
     ]

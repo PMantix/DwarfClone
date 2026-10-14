@@ -113,3 +113,43 @@ fn goods_go_into_barrels_and_seeds_get_planted() {
 }
 
 
+
+#[test]
+fn hides_are_tanned_and_worked_into_leather_armor() {
+    let mut g = Game::new(77);
+    g.creatures.retain(|_, c| c.tame);
+    let e = g.embark;
+    for _ in 0..4 {
+        g.spawn_item(ItemKind::Boulder, Mat::Granite, e);
+    }
+    g.spawn_item(ItemKind::Log, Mat::Wood, e);
+    for _ in 0..2 {
+        let c = g.spawn_item(ItemKind::Carcass, Mat::Flesh, e);
+        g.items.get_mut(&c).unwrap().label = Some("deer".into());
+    }
+    for d in g.dwarves.iter_mut() {
+        d.labors[Labor::Leatherworking.idx()] = true;
+        d.labors[Labor::Butchery.idx()] = true;
+    }
+    let butcher = place_near(&mut g, BuildingKind::Butcher);
+    let tannery = place_near(&mut g, BuildingKind::Tannery);
+    let works = place_near(&mut g, BuildingKind::Leatherworks);
+    run(&mut g, 3 * DAY);
+    for b in [butcher, tannery, works] {
+        assert!(g.buildings[&b].built, "{} not built", g.buildings[&b].kind.name());
+    }
+    g.add_order(butcher, Recipe::Butcher);
+    g.add_order(butcher, Recipe::Butcher);
+    run(&mut g, DAY);
+    assert_eq!(count(&g, ItemKind::Hide, None), 2, "the butcher should leave hides, not leather");
+    assert_eq!(count(&g, ItemKind::Leather, None), 0);
+    g.add_order(tannery, Recipe::Tan);
+    g.add_order(tannery, Recipe::Tan);
+    run(&mut g, 2 * DAY);
+    assert_eq!(count(&g, ItemKind::Leather, None), 2, "hides weren't tanned");
+    assert!(g.items.values().any(|it| it.kind == ItemKind::Leather && it.label.as_deref() == Some("deer")));
+    g.add_order(works, Recipe::LeatherArmor);
+    run(&mut g, 2 * DAY);
+    assert_eq!(count(&g, ItemKind::Breastplate, Some(Mat::Leather)), 1, "no leather armor");
+    assert_eq!(count(&g, ItemKind::Leather, None), 0, "leather armor takes two pieces");
+}

@@ -2607,7 +2607,7 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
 
 fn draw_labors(f: &mut Frame, area: Rect, app: &App, row: usize, col: usize, detail: usize) {
     let g = &app.game;
-    let w = area.width.saturating_sub(4).min(110);
+    let w = area.width.saturating_sub(4).min(40 + 4 * (LABORS.len() as u16 + 1));
     let h = area.height.saturating_sub(2);
     let r = Rect::new(area.x + (area.width - w) / 2, area.y + 1, w, h);
     let alive: Vec<&Dwarf> = g.dwarves.iter().filter(|d| d.alive).collect();

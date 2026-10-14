@@ -48,6 +48,8 @@ pub enum ItemKind {
     Slab,
     /// Labelled "water" while full.
     Bucket,
+    /// An untanned skin, labelled with the animal.
+    Hide,
 }
 
 /// Items that fit in a barrel or a bin, ten to a container.
@@ -85,6 +87,7 @@ impl ItemKind {
         match self {
             Boulder | Log | Bone | Charcoal => 1,
             Seed | Corpse | Carcass => 0,
+            Hide => 1,
             Mushroom | Drink | Meat => 2,
             Block | Leather | Bucket => 3,
             Barrel | Bin => 5,
@@ -213,7 +216,7 @@ impl StockFilter {
             StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin | Cage | Coffin | Slab | Bucket),
             StockFilter::Metal => matches!(k, Bar | Charcoal),
             StockFilter::Goods => matches!(k, Craft | Gem | Bone | Leather | Mechanism | Thread | Splint | Crutch),
-            StockFilter::Refuse => matches!(k, Corpse | Carcass),
+            StockFilter::Refuse => matches!(k, Corpse | Carcass | Hide),
             StockFilter::Equipment => k.is_equipment(),
         }
     }
@@ -307,6 +310,7 @@ impl Item {
             Meal => "prepared meal".into(),
             Bone => format!("{} bone", self.label.as_deref().unwrap_or("animal")),
             Leather => format!("{} leather", self.label.as_deref().unwrap_or("animal")),
+            Hide => format!("{} hide", self.label.as_deref().unwrap_or("animal")),
             Charcoal => "charcoal".into(),
             Bar => format!("{} bar", m.name()),
             Bin => format!("{} bin", m.adj()),
@@ -372,11 +376,12 @@ impl Item {
             Coffin => 'Ω',
             Slab => '▬',
             Bucket => '¤',
+            Hide => '~',
         };
         let col = match self.kind {
             Drink => Color::Rgb(230, 170, 60),
             Corpse => Color::Rgb(200, 60, 60),
-            Carcass => Color::Rgb(190, 120, 90),
+            Carcass | Hide => Color::Rgb(190, 120, 90),
             Meat => Color::Rgb(220, 90, 90),
             Meal => Color::Rgb(250, 200, 110),
             Seed => Color::Rgb(160, 120, 170),

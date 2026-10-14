@@ -34,10 +34,12 @@ pub enum BuildingKind {
     Floodgate,
     MagmaSmelter,
     MagmaForge,
+    Tannery,
+    Leatherworks,
 }
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 27] = [
+    pub const ALL: [BuildingKind; 29] = [
         BuildingKind::Carpenter,
         BuildingKind::Mason,
         BuildingKind::Still,
@@ -65,6 +67,8 @@ impl BuildingKind {
         BuildingKind::Floodgate,
         BuildingKind::MagmaSmelter,
         BuildingKind::MagmaForge,
+        BuildingKind::Tannery,
+        BuildingKind::Leatherworks,
     ];
 
     pub fn name(self) -> &'static str {
@@ -96,6 +100,8 @@ impl BuildingKind {
             BuildingKind::Floodgate => "Floodgate",
             BuildingKind::MagmaSmelter => "Magma smelter",
             BuildingKind::MagmaForge => "Magma forge",
+            BuildingKind::Tannery => "Tanner's shop",
+            BuildingKind::Leatherworks => "Leather works",
         }
     }
 
@@ -128,6 +134,8 @@ impl BuildingKind {
             BuildingKind::Floodgate => 'j',
             BuildingKind::MagmaSmelter => 'E',
             BuildingKind::MagmaForge => 'F',
+            BuildingKind::Tannery => 'T',
+            BuildingKind::Leatherworks => 'L',
         }
     }
 
@@ -264,6 +272,8 @@ impl BuildingKind {
                 ForgeShield,
             ],
             BuildingKind::Craftsdwarf => &[StoneCraft, BoneCraft, CutGem, SpinThread],
+            BuildingKind::Tannery => &[Tan],
+            BuildingKind::Leatherworks => &[LeatherArmor, LeatherHelm, LeatherCraft],
             _ => &[],
         }
     }
@@ -287,6 +297,8 @@ impl BuildingKind {
             BuildingKind::Floodgate => Color::Rgb(150, 190, 230),
             BuildingKind::MagmaSmelter => Color::Rgb(255, 120, 30),
             BuildingKind::MagmaForge => Color::Rgb(255, 70, 20),
+            BuildingKind::Tannery => Color::Rgb(170, 120, 80),
+            BuildingKind::Leatherworks => Color::Rgb(200, 150, 100),
             _ => Color::Rgb(200, 200, 200),
         }
     }
@@ -318,6 +330,8 @@ impl BuildingKind {
             BuildingKind::Floodgate => '╫',
             BuildingKind::MagmaSmelter => 'E',
             BuildingKind::MagmaForge => 'F',
+            BuildingKind::Tannery => 'T',
+            BuildingKind::Leatherworks => 'L',
         }
     }
 }
@@ -337,6 +351,8 @@ pub enum Input {
     Flux,
     Bone,
     RoughGem,
+    Hide,
+    Leather,
 }
 
 impl Input {
@@ -354,6 +370,8 @@ impl Input {
             Input::Flux => it.kind == ItemKind::Boulder && it.mat == Mat::Limestone,
             Input::Bone => it.kind == ItemKind::Bone,
             Input::RoughGem => it.kind == ItemKind::Boulder && it.mat.is_gem(),
+            Input::Hide => it.kind == ItemKind::Hide,
+            Input::Leather => it.kind == ItemKind::Leather,
         }
     }
 
@@ -371,6 +389,8 @@ impl Input {
             Input::Flux => "limestone (flux)",
             Input::Bone => "bone",
             Input::RoughGem => "rough gem",
+            Input::Hide => "hide",
+            Input::Leather => "leather",
         }
     }
 }
@@ -415,6 +435,10 @@ pub enum Recipe {
     StoneCoffin,
     Slab,
     Bucket,
+    Tan,
+    LeatherArmor,
+    LeatherHelm,
+    LeatherCraft,
 }
 
 impl Recipe {
@@ -459,6 +483,10 @@ impl Recipe {
             StoneCoffin => "Carve stone coffin",
             Slab => "Carve memorial slab",
             Bucket => "Make bucket",
+            Tan => "Tan a hide",
+            LeatherArmor => "Make leather armor",
+            LeatherHelm => "Make leather cap",
+            LeatherCraft => "Make leather crafts",
         }
     }
 
@@ -494,6 +522,10 @@ impl Recipe {
             WoodCoffin | StoneCoffin => 'o',
             Slab => 's',
             Bucket => 'u',
+            Tan => 't',
+            LeatherArmor => 'a',
+            LeatherHelm => 'h',
+            LeatherCraft => 'c',
         }
     }
 
@@ -514,6 +546,7 @@ impl Recipe {
             SpinThread => Labor::Crafting,
             WoodCoffin | Bucket => Labor::Carpentry,
             StoneCoffin | Slab => Labor::Masonry,
+            Tan | LeatherArmor | LeatherHelm | LeatherCraft => Labor::Leatherworking,
         }
     }
 
@@ -536,6 +569,9 @@ impl Recipe {
             }
             BoneCraft => &[Input::Bone],
             CutGem => &[Input::RoughGem],
+            Tan => &[Input::Hide],
+            LeatherArmor => &[Input::Leather, Input::Leather],
+            LeatherHelm | LeatherCraft => &[Input::Leather],
         }
     }
 
@@ -584,7 +620,7 @@ impl Recipe {
                 let mut v = vec![(ItemKind::Meat, Mat::Flesh, label.clone()); meat];
                 v.push((ItemKind::Bone, Mat::Bone, label.clone()));
                 v.push((ItemKind::Bone, Mat::Bone, label.clone()));
-                v.push((ItemKind::Leather, Mat::Leather, label));
+                v.push((ItemKind::Hide, Mat::Leather, label));
                 v
             }
             Charcoal => vec![(ItemKind::Charcoal, Mat::Coal, None)],
@@ -613,13 +649,17 @@ impl Recipe {
             WoodCoffin | StoneCoffin => one(ItemKind::Coffin),
             Slab => one(ItemKind::Slab),
             Bucket => one(ItemKind::Bucket),
+            Tan => vec![(ItemKind::Leather, Mat::Leather, inputs.first().and_then(|i| i.label.clone()))],
+            LeatherArmor => vec![(ItemKind::Breastplate, Mat::Leather, None)],
+            LeatherHelm => vec![(ItemKind::Helm, Mat::Leather, None)],
+            LeatherCraft => vec![(ItemKind::Craft, Mat::Leather, None)],
         }
     }
 
     pub fn work(self) -> u32 {
         use Recipe::*;
         match self {
-            Blocks | Charcoal => 90,
+            Blocks | Charcoal | Tan => 90,
             Brew | Cook => 110,
             Butcher => 120,
             SmeltOre | MakeSteel => 160,

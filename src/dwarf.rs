@@ -22,9 +22,10 @@ pub enum Labor {
     Building,
     Mechanics,
     Medicine,
+    Leatherworking,
 }
 
-pub const NUM_LABORS: usize = 15;
+pub const NUM_LABORS: usize = 16;
 
 pub const LABORS: [Labor; NUM_LABORS] = [
     Labor::Mining,
@@ -42,6 +43,7 @@ pub const LABORS: [Labor; NUM_LABORS] = [
     Labor::Building,
     Labor::Mechanics,
     Labor::Medicine,
+    Labor::Leatherworking,
 ];
 
 impl Labor {
@@ -66,6 +68,7 @@ impl Labor {
             Labor::Building => "Construction",
             Labor::Mechanics => "Mechanics",
             Labor::Medicine => "Medicine",
+            Labor::Leatherworking => "Leatherworking",
         }
     }
 
@@ -84,6 +87,7 @@ impl Labor {
             Labor::Crafting => "Craftsdwarf",
             Labor::Mechanics => "Mechanic",
             Labor::Medicine => "Doctor",
+            Labor::Leatherworking => "Leatherworker",
             Labor::Hauling | Labor::Building => "Peasant",
         }
     }
@@ -106,6 +110,7 @@ impl Labor {
             Labor::Building => "Con",
             Labor::Mechanics => "Mec",
             Labor::Medicine => "Med",
+            Labor::Leatherworking => "Lea",
         }
     }
 

@@ -44,9 +44,11 @@ roof over surface walls makes a proper room.
 **Industry.** Farming with seeds, brewing, cooking, butchery, charcoal, ore smelting,
 steel (with limestone flux), a forge for tools, weapons and armor, stone and bone crafts,
 gem cutting, furniture, barrels and bins that store goods. Multi-input recipes, repeating
-work orders, item quality from skill.
+work orders, item quality from skill. The butcher leaves hides; a tanner's shop (`b`, `T`)
+turns them into leather, and the leather works (`b`, `L`) makes leather armor, caps and
+crafts (Leatherworking labor).
 
-**Dwarves.** Thirst, hunger, sleep, 13 labors and skills, personalities (anxiety,
+**Dwarves.** Thirst, hunger, sleep, 16 labors and skills, personalities (anxiety,
 sociability, temper, diligence, artistry), favorite materials and foods, friendships and
 grudges, thoughts and stress, tantrums that punch dwarves and topple furniture, and
 melancholy when misery drags on.

@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W12 onward, in tier order.
+Suggested order: finish W12 (loom and clothier next), then onward in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -27,7 +27,7 @@ Suggested order: W12 onward, in tier order.
 #### W12 More workshops and clothing (M)
 - **DF:** leather, loom, clothier, glass, kiln, jeweler, soap and siege workshops; clothes wear out.
 - **Us:** 9 workshops, 27 recipes.
-- **Steps:** [ ] tanner and leatherworker · [ ] farm thread, loom, clothier · [ ] clothes that wear out, with a bad thought for rags · [ ] soap (ties to W05)
+- **Steps:** [x] tanner and leatherworker (this commit) · [ ] farm thread, loom, clothier · [ ] clothes that wear out, with a bad thought for rags · [ ] soap (ties to W05)
 
 #### W13 Farming depth (S–M)
 - **DF:** many crops by season and biome, surface farming, mills, plant gathering, fishing, fruit trees.
@@ -127,7 +127,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
-- **W11 Fluids and magma** (this commit; steps 003591a, 3212e8c, a6d337d): wells over a channel to water (clean drinking water; doctors carry buckets to patients in bed); lever-worked floodgates, with doors and raised bridges also holding water back; a magma sea above the bedrock that flows, burns, kills and sets into obsidian against water, heating fuel-free magma smelters and forges; aquifers by site (shown at embark), light ones dampening dug floors and heavy ones flooding anything dug beside them unless walled off with constructions.
+- **W11 Fluids and magma** (4e81b17; steps 003591a, 3212e8c, a6d337d): wells over a channel to water (clean drinking water; doctors carry buckets to patients in bed); lever-worked floodgates, with doors and raised bridges also holding water back; a magma sea above the bedrock that flows, burns, kills and sets into obsidian against water, heating fuel-free magma smelters and forges; aquifers by site (shown at embark), light ones dampening dug floors and heavy ones flooding anything dug beside them unless walled off with constructions.
 - **W10 Death, family and aging** (bb1c008): coffins (carpenter or mason) and a tomb zone; haulers bury citizens' corpses, tombs first, comforting their friends; dead left unburied for two weeks may rise as ghosts that drift about and frighten the living until buried or remembered on a memorial slab (mason). Dwarves have an age and sex, die of old age past 130, marry close friends, and have children (mother's family name, no work, come of age at twelve). Grief is heavier for spouses, parents and children. Shown on the dwarf, look and status screens.
 - **W09 Personality needs** (a739cdc): seven needs (socialize, drink, craft, fight, learn, pray, make merry), each 1–3 strong by personality; they fade and are met by chatting, drinking, finishing workshop jobs, training and fighting, learning skills, and leisure in the new temple (`i`, `t`) and tavern (`i`, `v`) zones; dwarves take breaks to pray or carouse when those needs go unmet. Focus (70–120%) follows needs and scales work speed and craft quality; shown on the dwarf screen and summed up on the status screen.
 - **W08 Animals** (b543de8): dogs, cats and goats (a pair of dogs, a pair of goats and a cat on embark); tame animals never turn hostile, never leave, use doors; pasture zones keep assigned animals in (new pastures take in loose goats); breeding with pregnancies, litters and young that grow up in a season (herds cap at 24 per species); war dogs follow their soldier and attack nearby hostiles; caged animals can be tamed and kept animals slaughtered by a butcher.
