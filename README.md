@@ -49,7 +49,9 @@ plentiful seed that suits a plot; in look mode, `c` on a farm picks one crop for
 Eating, brewing, cooking or spinning a plant gives back its seed. A gathering area
 (`i`, `w`) laid over wild shrubs lets farmers pick whatever grows there that season.
 Dwarves with the Fishing labor fish from the banks of deep water (rivers, lakes, cavern
-pools) until there are twenty fish in store; fish can be eaten or cooked.
+pools) until there are twenty fish in store; fish can be eaten or cooked. A millstone
+(`b`, `M`) grinds hollowgrain or goldoat into flour, which the kitchen bakes into three
+meals rather than two.
 
 **Industry.** Farming with seeds, brewing, cooking, butchery, charcoal, ore smelting,
 steel (with limestone flux), a forge for tools, weapons and armor, stone and bone crafts,

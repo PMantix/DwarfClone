@@ -39,10 +39,11 @@ pub enum BuildingKind {
     Loom,
     Clothier,
     Soapmaker,
+    Millstone,
 }
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 32] = [
+    pub const ALL: [BuildingKind; 33] = [
         BuildingKind::Carpenter,
         BuildingKind::Mason,
         BuildingKind::Still,
@@ -75,6 +76,7 @@ impl BuildingKind {
         BuildingKind::Loom,
         BuildingKind::Clothier,
         BuildingKind::Soapmaker,
+        BuildingKind::Millstone,
     ];
 
     pub fn name(self) -> &'static str {
@@ -111,6 +113,7 @@ impl BuildingKind {
             BuildingKind::Loom => "Loom",
             BuildingKind::Clothier => "Clothier's shop",
             BuildingKind::Soapmaker => "Soap maker's workshop",
+            BuildingKind::Millstone => "Millstone",
         }
     }
 
@@ -148,6 +151,7 @@ impl BuildingKind {
             BuildingKind::Loom => 'W',
             BuildingKind::Clothier => 'K',
             BuildingKind::Soapmaker => 'P',
+            BuildingKind::Millstone => 'M',
         }
     }
 
@@ -273,6 +277,7 @@ impl BuildingKind {
             BuildingKind::Butcher => &[Butcher],
             BuildingKind::WoodFurnace => &[Charcoal, Ash],
             BuildingKind::Soapmaker => &[MakeSoap],
+            BuildingKind::Millstone => &[Mill],
             BuildingKind::Smelter | BuildingKind::MagmaSmelter => &[SmeltOre, MakeSteel],
             BuildingKind::Forge | BuildingKind::MagmaForge => &[
                 ForgePick,
@@ -317,6 +322,7 @@ impl BuildingKind {
             BuildingKind::Loom => Color::Rgb(200, 170, 220),
             BuildingKind::Clothier => Color::Rgb(220, 160, 200),
             BuildingKind::Soapmaker => Color::Rgb(240, 240, 200),
+            BuildingKind::Millstone => Color::Rgb(210, 200, 170),
             _ => Color::Rgb(200, 200, 200),
         }
     }
@@ -353,6 +359,7 @@ impl BuildingKind {
             BuildingKind::Loom => 'W',
             BuildingKind::Clothier => 'K',
             BuildingKind::Soapmaker => 'P',
+            BuildingKind::Millstone => 'M',
         }
     }
 }
@@ -379,6 +386,7 @@ pub enum Input {
     Cloth,
     Ash,
     Tallow,
+    Grain,
 }
 
 impl Input {
@@ -388,7 +396,7 @@ impl Input {
             Input::Stone => it.kind == ItemKind::Boulder && it.mat.is_building_stone(),
             Input::Brewable => it.kind == ItemKind::Plant && it.mat.crop().map_or(true, |c| c.brew.is_some()),
             Input::Fiber => it.kind == ItemKind::Plant && it.mat.crop().map_or(true, |c| c.fiber),
-            Input::Edible => (it.kind == ItemKind::Plant && it.is_food()) || matches!(it.kind, ItemKind::Meat | ItemKind::Fish),
+            Input::Edible => (it.kind == ItemKind::Plant && it.is_food()) || matches!(it.kind, ItemKind::Meat | ItemKind::Fish | ItemKind::Flour),
             Input::Carcass => it.kind == ItemKind::Carcass,
             Input::Ore => it.kind == ItemKind::Boulder && it.mat.smelts_to().is_some(),
             Input::Fuel => it.kind == ItemKind::Charcoal || (it.kind == ItemKind::Boulder && it.mat == Mat::Coal),
@@ -403,6 +411,7 @@ impl Input {
             Input::Cloth => it.kind == ItemKind::Cloth,
             Input::Ash => it.kind == ItemKind::Ash,
             Input::Tallow => it.kind == ItemKind::Tallow,
+            Input::Grain => it.kind == ItemKind::Plant && it.mat.crop().map_or(false, |c| c.mill),
         }
     }
 
@@ -412,7 +421,7 @@ impl Input {
             Input::Stone => "stone boulder",
             Input::Brewable => "brewable plant",
             Input::Fiber => "fiber plant",
-            Input::Edible => "edible plant, meat or fish",
+            Input::Edible => "edible plant, meat, fish or flour",
             Input::Carcass => "carcass",
             Input::Ore => "metal ore",
             Input::Fuel => "fuel (charcoal or coal)",
@@ -427,6 +436,7 @@ impl Input {
             Input::Cloth => "cloth",
             Input::Ash => "ash",
             Input::Tallow => "tallow",
+            Input::Grain => "grain (hollowgrain or goldoat)",
         }
     }
 }
@@ -481,6 +491,7 @@ pub enum Recipe {
     ClothTrousers,
     Ash,
     MakeSoap,
+    Mill,
 }
 
 impl Recipe {
@@ -535,6 +546,7 @@ impl Recipe {
             ClothTrousers => "Sew trousers",
             Ash => "Burn wood to ash",
             MakeSoap => "Make soap",
+            Mill => "Mill grain into flour",
         }
     }
 
@@ -580,6 +592,7 @@ impl Recipe {
             ClothTrousers => 't',
             Ash => 'a',
             MakeSoap => 's',
+            Mill => 'm',
         }
     }
 
@@ -604,6 +617,7 @@ impl Recipe {
             Weave | ClothShirt | ClothTrousers => Labor::Clothesmaking,
             Ash => Labor::Smelting,
             MakeSoap => Labor::Soapmaking,
+            Mill => Labor::Farming,
         }
     }
 
@@ -633,6 +647,7 @@ impl Recipe {
             ClothShirt | ClothTrousers => &[Input::Cloth],
             Ash => &[Input::Log],
             MakeSoap => &[Input::Ash, Input::Tallow],
+            Mill => &[Input::Grain],
         }
     }
 
@@ -665,7 +680,9 @@ impl Recipe {
                 v
             }
             Cook => {
-                let mut v = vec![(ItemKind::Meal, m, None); 2];
+                // Flour stretches further: bread and dumplings.
+                let flour = inputs.first().map_or(false, |i| i.kind == ItemKind::Flour);
+                let mut v = vec![(ItemKind::Meal, m, None); if flour { 3 } else { 2 }];
                 // Cooking a stoutcap leaves its spawn, like eating one does.
                 if inputs.first().map_or(false, |i| i.kind == ItemKind::Plant) {
                     v.push((ItemKind::Seed, m, None));
@@ -721,6 +738,7 @@ impl Recipe {
             ClothShirt => one(ItemKind::Shirt),
             ClothTrousers => one(ItemKind::Trousers),
             Ash => vec![(ItemKind::Ash, Mat::Wood, None)],
+            Mill => vec![(ItemKind::Flour, m, None), (ItemKind::Flour, m, None), (ItemKind::Seed, m, None)],
             MakeSoap => {
                 let fat = inputs.get(1).and_then(|i| i.label.clone());
                 vec![(ItemKind::Soap, Mat::Flesh, fat.clone()), (ItemKind::Soap, Mat::Flesh, fat)]

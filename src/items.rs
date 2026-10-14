@@ -64,6 +64,8 @@ pub enum ItemKind {
     Soap,
     /// A caught fish, labelled with its kind.
     Fish,
+    /// Ground grain, for the kitchen.
+    Flour,
 }
 
 /// Items that fit in a barrel or a bin, ten to a container.
@@ -89,7 +91,7 @@ impl ItemKind {
     pub fn stored_in(self) -> Option<ItemKind> {
         use ItemKind::*;
         match self {
-            Plant | Drink | Seed | Meat | Meal | Tallow | Fish => Some(Barrel),
+            Plant | Drink | Seed | Meat | Meal | Tallow | Fish | Flour => Some(Barrel),
             Bar | Charcoal | Craft | Gem | Bone | Leather | Block | Cloth | Shirt | Trousers | Shoes | Ash | Soap => Some(Bin),
             k if k.is_equipment() => Some(Bin),
             _ => None,
@@ -106,7 +108,7 @@ impl ItemKind {
             Soap => 5,
             Cloth => 5,
             Shirt | Trousers | Shoes => 10,
-            Plant | Drink | Meat | Fish => 2,
+            Plant | Drink | Meat | Fish | Flour => 2,
             Block | Leather | Bucket => 3,
             Barrel | Bin => 5,
             Meal => 6,
@@ -240,7 +242,7 @@ impl StockFilter {
             StockFilter::All => true,
             StockFilter::Stone => matches!(k, Boulder | Block),
             StockFilter::Wood => k == Log,
-            StockFilter::Food => matches!(k, Plant | Drink | Seed | Meat | Meal | Fish),
+            StockFilter::Food => matches!(k, Plant | Drink | Seed | Meat | Meal | Fish | Flour),
             StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin | Cage | Coffin | Slab | Bucket),
             StockFilter::Metal => matches!(k, Bar | Charcoal),
             StockFilter::Goods => {
@@ -366,6 +368,7 @@ impl Item {
             Tallow => format!("{} tallow", self.label.as_deref().unwrap_or("animal")),
             Soap => format!("{} soap", self.label.as_deref().unwrap_or("tallow")),
             Fish => self.label.clone().unwrap_or_else(|| "fish".into()),
+            Flour => format!("{} flour", m.name()),
             Charcoal => "charcoal".into(),
             Bar => format!("{} bar", m.name()),
             Bin => format!("{} bin", m.adj()),
@@ -449,6 +452,7 @@ impl Item {
             Tallow => '%',
             Soap => '=',
             Fish => 'α',
+            Flour => '∙',
         };
         let col = match self.kind {
             Drink => Color::Rgb(230, 170, 60),

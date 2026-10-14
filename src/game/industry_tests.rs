@@ -311,3 +311,34 @@ fn a_surface_farm_set_to_sunberries_grows_them_and_they_brew_into_wine() {
     run(&mut g, DAY);
     assert!(g.items.values().any(|it| it.kind == ItemKind::Drink && it.name() == "barrel of sunberry wine"), "no wine");
 }
+
+#[test]
+fn grain_is_milled_into_flour_and_baked_into_more_meals() {
+    let mut g = Game::new(77);
+    g.creatures.retain(|_, c| c.tame);
+    let e = g.embark;
+    for _ in 0..4 {
+        g.spawn_item(ItemKind::Boulder, Mat::Granite, e);
+    }
+    // Only grain in the larder, so the cook can't pick anything else.
+    g.items.retain(|_, it| !it.kind.is_food());
+    g.spawn_item(ItemKind::Plant, Mat::Goldoat, e);
+    for d in g.dwarves.iter_mut() {
+        d.labors[Labor::Farming.idx()] = true;
+        d.labors[Labor::Cooking.idx()] = true;
+        d.hunger = 0;
+    }
+    let mill = place_near(&mut g, BuildingKind::Millstone);
+    let kitchen = place_near(&mut g, BuildingKind::Kitchen);
+    run(&mut g, 2 * DAY);
+    assert!(g.buildings[&mill].built && g.buildings[&kitchen].built);
+    g.add_order(mill, Recipe::Mill);
+    run(&mut g, DAY);
+    assert_eq!(count(&g, ItemKind::Flour, Some(Mat::Goldoat)), 2, "no flour");
+    assert!(g.items.values().any(|it| it.kind == ItemKind::Seed && it.mat == Mat::Goldoat), "milling should leave seed");
+    assert!(!g.items.values().find(|it| it.kind == ItemKind::Flour).unwrap().is_food(), "flour isn't eaten raw");
+    let meals = count(&g, ItemKind::Meal, None);
+    g.add_order(kitchen, Recipe::Cook);
+    run(&mut g, DAY);
+    assert_eq!(count(&g, ItemKind::Meal, None), meals + 3, "flour should make three meals");
+}
