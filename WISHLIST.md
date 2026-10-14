@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: finish W13 (fishing next), then onward in tier order.
+Suggested order: finish W13 (mill and flour next), then onward in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -27,7 +27,7 @@ Suggested order: finish W13 (fishing next), then onward in tier order.
 #### W13 Farming depth (S–M)
 - **DF:** many crops by season and biome, surface farming, mills, plant gathering, fishing, fruit trees.
 - **Us:** one crop year-round, with seeds.
-- **Steps:** [x] 4–6 crops by season and surface or underground (9bf1b98) · [x] plant gathering zone (this commit) · [ ] fishing · [ ] mill and flour
+- **Steps:** [x] 4–6 crops by season and surface or underground (9bf1b98) · [x] plant gathering zone (0b9c76f) · [x] fishing (this commit) · [ ] mill and flour
 
 #### W14 Work orders and item management (M)
 - **DF:** global work orders with conditions; workshop profiles; forbid, dump, melt; detailed stockpile settings; minecarts.

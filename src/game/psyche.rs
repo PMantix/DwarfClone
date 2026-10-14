@@ -201,6 +201,7 @@ impl Game {
         match kind {
             ItemKind::Meal => d.think("enjoyed a fine prepared meal", -12, tick),
             ItemKind::Meat => d.think("ate some roasted meat", -4, tick),
+            ItemKind::Fish => d.think("ate a grilled fish", -4, tick),
             _ => {
                 let plant = mat.crop().map_or("stoutcaps", |c| c.plant);
                 d.think(&format!("ate raw {}", plant), 0, tick);

@@ -443,6 +443,7 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
         Task::Plant { .. } => "Planting stoutcaps".into(),
         Task::Harvest { .. } => "Harvesting".into(),
         Task::Gather { .. } => "Gathering plants".into(),
+        Task::Fish { .. } => "Fishing".into(),
         Task::Eat { .. } => "Eating".into(),
         Task::DrinkItem { .. } | Task::DrinkWater { .. } => "Drinking".into(),
         Task::Sleep { .. } => if d.asleep { "Sleeping".into() } else { "Going to sleep".into() },

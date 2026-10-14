@@ -888,6 +888,7 @@ impl Game {
             Labor::Leatherworking,
             Labor::Clothesmaking,
             Labor::Soapmaking,
+            Labor::Fishing,
         ];
         for _ in 0..n {
             let id = self.new_id();
@@ -1385,6 +1386,9 @@ impl Game {
             return;
         }
         if d.has(Labor::Farming) && (self.find_farm(d) || self.find_gather(d)) {
+            return;
+        }
+        if d.has(Labor::Fishing) && self.find_fishing(d) {
             return;
         }
         if d.has(Labor::Hauling) && !d.specialist && !self.find_depot_haul(d) && !self.find_dump_haul(d) {
@@ -2127,6 +2131,7 @@ impl Game {
                 }
             }
             Task::Gather { pos } => self.do_gather(d, pos),
+            Task::Fish { stand } => self.do_fish(d, stand),
             Task::Plant { pos, .. } | Task::Harvest { pos } => {
                 let harvest = matches!(d.task, Task::Harvest { .. });
                 let f = self.world.t(pos).farm;

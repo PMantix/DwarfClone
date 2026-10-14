@@ -48,6 +48,8 @@ eat, brew into wine) and goldoat (surface, summer and autumn; mill). Farmers pla
 plentiful seed that suits a plot; in look mode, `c` on a farm picks one crop for it.
 Eating, brewing, cooking or spinning a plant gives back its seed. A gathering area
 (`i`, `w`) laid over wild shrubs lets farmers pick whatever grows there that season.
+Dwarves with the Fishing labor fish from the banks of deep water (rivers, lakes, cavern
+pools) until there are twenty fish in store; fish can be eaten or cooked.
 
 **Industry.** Farming with seeds, brewing, cooking, butchery, charcoal, ore smelting,
 steel (with limestone flux), a forge for tools, weapons and armor, stone and bone crafts,
@@ -62,7 +64,7 @@ wood furnace also burns wood to ash, the butcher leaves tallow, and the soap mak
 workshop (`b`, `P`, Soapmaking labor) turns the two into soap; doctors who clean wounds
 with soap clear infection outright.
 
-**Dwarves.** Thirst, hunger, sleep, 18 labors and skills, personalities (anxiety,
+**Dwarves.** Thirst, hunger, sleep, 19 labors and skills, personalities (anxiety,
 sociability, temper, diligence, artistry), favorite materials and foods, friendships and
 grudges, thoughts and stress, tantrums that punch dwarves and topple furniture, and
 melancholy when misery drags on.

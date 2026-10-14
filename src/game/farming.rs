@@ -1,4 +1,4 @@
-//! Gathering wild plants from shrubs.
+//! Gathering wild plants from shrubs, and fishing.
 
 use super::*;
 use crate::material::CROPS;
@@ -73,6 +73,51 @@ impl Game {
         }
     }
 
+    /// Fishers cast from beside deep water, unless the larder is already
+    /// full of fish.
+    pub(super) fn find_fishing(&mut self, d: &mut Dwarf) -> bool {
+        let fish = self.items.values().filter(|it| it.kind == ItemKind::Fish).count();
+        if fish >= 20 {
+            return false;
+        }
+        let w = &self.world;
+        let deep = |q: Pos| w.get(q).map_or(false, |t| t.water >= 4 && t.magma == 0);
+        let bank = |p: Pos| {
+            DIRS8.iter().any(|&(dx, dy)| {
+                let q = p.offset(dx, dy, 0);
+                deep(q) || (w.kind(q) == Some(TileKind::Open) && deep(q.down()))
+            })
+        };
+        let Some((stand, path)) = path::search(w, d.pos, SEARCH_LIMIT, Mover::Dwarf, bank) else { return false };
+        d.task = Task::Fish { stand };
+        Self::set_path(d, path);
+        true
+    }
+
+    pub(super) fn do_fish(&mut self, d: &mut Dwarf, stand: Pos) {
+        match self.travel(d, stand) {
+            Travel::Moving => {}
+            Travel::Failed => self.release_task(d),
+            Travel::Arrived => {
+                let skill = d.skill(Labor::Fishing);
+                if Self::labor(d, 200, skill) {
+                    d.task = Task::Idle;
+                    d.gain_xp(Labor::Fishing, 15);
+                    if self.rng.chance(0.4 + 0.04 * skill as f64) {
+                        let kinds: &[&str] = if self.world.outside(stand) {
+                            &["mudperch", "silverfin", "river pike"]
+                        } else {
+                            &["blind eel", "glowfin", "cave carp"]
+                        };
+                        let name = kinds[self.rng.range(0, kinds.len() as i32) as usize];
+                        let id = self.spawn_item(ItemKind::Fish, Mat::Flesh, stand);
+                        self.items.get_mut(&id).unwrap().label = Some(name.into());
+                    }
+                }
+            }
+        }
+    }
+
     /// A new season: picked shrubs bear again.
     pub(super) fn regrow_shrubs(&mut self) {
         let tiles: Vec<Pos> =
@@ -129,5 +174,37 @@ mod tests {
         // Winter: nothing bears on the surface.
         g.tick = 3 * SEASON + 10;
         assert!(g.wild_crop(shrubs[0]).is_none());
+    }
+
+    #[test]
+    fn a_fisherdwarf_catches_fish_from_deep_water() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        // A pond beside the wagon.
+        let e = g.embark;
+        let pond = (2..20)
+            .map(|r| e.offset(r, -3, 0))
+            .map(|p| Pos::new(p.x, p.y, g.world.surface_z(p.x, p.y)))
+            .find(|&p| g.world.walkable(p) && g.world.t(p).building == 0 && g.world.walkable(p.offset(-1, 0, 0)))
+            .unwrap();
+        g.world.t_mut(pond).water = 7;
+        g.world.t_mut(pond).kind = TileKind::Open;
+        g.world.t_mut(pond.down()).kind = TileKind::Open;
+        g.world.t_mut(pond.down()).water = 7;
+        g.water_cells = None;
+        let id = g.dwarves[0].id;
+        g.set_labor(id, Labor::Fishing, true);
+        for _ in 0..DAY {
+            g.step();
+            for d in g.dwarves.iter_mut() {
+                d.hunger = 0;
+            }
+            if g.items.values().any(|it| it.kind == ItemKind::Fish) {
+                break;
+            }
+        }
+        let fish = g.items.values().find(|it| it.kind == ItemKind::Fish).expect("no fish caught");
+        assert!(["mudperch", "silverfin", "river pike"].contains(&fish.name().as_str()), "caught a {}", fish.name());
+        assert!(fish.is_food());
     }
 }

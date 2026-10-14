@@ -25,9 +25,10 @@ pub enum Labor {
     Leatherworking,
     Clothesmaking,
     Soapmaking,
+    Fishing,
 }
 
-pub const NUM_LABORS: usize = 18;
+pub const NUM_LABORS: usize = 19;
 
 pub const LABORS: [Labor; NUM_LABORS] = [
     Labor::Mining,
@@ -48,6 +49,7 @@ pub const LABORS: [Labor; NUM_LABORS] = [
     Labor::Leatherworking,
     Labor::Clothesmaking,
     Labor::Soapmaking,
+    Labor::Fishing,
 ];
 
 impl Labor {
@@ -75,6 +77,7 @@ impl Labor {
             Labor::Leatherworking => "Leatherworking",
             Labor::Clothesmaking => "Weaving and tailoring",
             Labor::Soapmaking => "Soapmaking",
+            Labor::Fishing => "Fishing",
         }
     }
 
@@ -96,6 +99,7 @@ impl Labor {
             Labor::Leatherworking => "Leatherworker",
             Labor::Clothesmaking => "Clothier",
             Labor::Soapmaking => "Soaper",
+            Labor::Fishing => "Fisherdwarf",
             Labor::Hauling | Labor::Building => "Peasant",
         }
     }
@@ -121,6 +125,7 @@ impl Labor {
             Labor::Leatherworking => "Lea",
             Labor::Clothesmaking => "Clo",
             Labor::Soapmaking => "Soa",
+            Labor::Fishing => "Fsh",
         }
     }
 
@@ -202,6 +207,8 @@ pub enum Task {
     Bury { item: u32, coffin: u32 },
     /// Pick a wild shrub in a gathering zone.
     Gather { pos: Pos },
+    /// Fish from the bank at `stand`.
+    Fish { stand: Pos },
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
