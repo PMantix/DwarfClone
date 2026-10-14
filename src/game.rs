@@ -815,6 +815,7 @@ impl Game {
             self.regrow_shrubs();
             self.maybe_siege();
             self.maybe_megabeast();
+            self.maybe_cave_horror();
             self.caravan_season(season);
             self.issue_mandate();
             self.maybe_strange_mood();

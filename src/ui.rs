@@ -2383,6 +2383,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 if let Some(f) = c.figure.and_then(|f| g.overworld.figures.get(f as usize)) {
                     v.push(plain(format!("Born in the year {}; {} kills in the legends.", f.born, f.kills), Color::Rgb(255, 200, 120)));
                 }
+                if let Some(desc) = &c.desc {
+                    v.push(plain(desc.clone(), Color::Rgb(210, 160, 255)));
+                }
                 let state = if c.body.unconscious() {
                     "Unconscious"
                 } else if c.tame {

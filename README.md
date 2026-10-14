@@ -69,6 +69,9 @@ does not.
 lairs on the world map. Once the fortress has stood a year, one whose lair is near may come
 for it in any season (more likely the richer you are). It hunts every dwarf, batters doors,
 never flees, and leaves after ten days if it lives; slaying it is written into the legends.
+Once you've broken into the caverns, a cave horror may crawl up out of them: a one-of-a-kind
+creature with its own name and look ("a bloated spider of crystal with many eyes") that hunts
+until it's killed.
 
 **Justice.** Punches and wrecked furniture in a tantrum, and the dwarf blamed for an unmet
 mandate, go on the fortress's record of crimes, shown on the nobles screen. Appoint a sheriff

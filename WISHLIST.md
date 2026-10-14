@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: finish W17 (forgotten beasts next), then onward in tier order.
+Suggested order: finish W17 (thieves next), then onward in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -27,7 +27,7 @@ Suggested order: finish W17 (forgotten beasts next), then onward in tier order.
 #### W17 Monsters (M)
 - **DF:** megabeasts, titans, forgotten beasts, werebeasts, vampires, undead, thieves and kidnappers.
 - **Us:** 5 wild species plus goblin sieges (`creature.rs`, `combat.rs`).
-- **Steps:** [x] megabeasts from our own world history attack the fort (`overworld.rs` figures) (this commit) · [ ] forgotten beasts in the caverns · [ ] thieves who steal goods
+- **Steps:** [x] megabeasts from our own world history attack the fort (`overworld.rs` figures) (bc802c7) · [x] forgotten beasts in the caverns (this commit; ours are "cave horrors") · [ ] thieves who steal goods
 
 #### W18 Geology and engraving (M)
 - **DF:** smoothing and engraving walls, multiple cavern layers, magma sea, prospecting.

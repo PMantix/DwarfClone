@@ -17,6 +17,8 @@ pub enum Species {
     Goat,
     /// A named beast out of the world's history (dragon, titan...).
     Megabeast,
+    /// A one-of-a-kind horror that crawls up out of the caverns.
+    CaveHorror,
 }
 
 pub struct SpeciesInfo {
@@ -37,7 +39,7 @@ pub struct SpeciesInfo {
 }
 
 impl Species {
-    pub const ALL: [Species; 11] = [
+    pub const ALL: [Species; 12] = [
         Species::Deer,
         Species::Wolf,
         Species::Bear,
@@ -49,11 +51,12 @@ impl Species {
         Species::Cat,
         Species::Goat,
         Species::Megabeast,
+        Species::CaveHorror,
     ];
 
     /// Animals that can be kept (people and cave folk can't).
     pub fn tameable(self) -> bool {
-        !matches!(self, Species::Goblin | Species::Troglodyte | Species::Merchant | Species::Megabeast)
+        !matches!(self, Species::Goblin | Species::Troglodyte | Species::Merchant | Species::Megabeast | Species::CaveHorror)
     }
 
     /// Most young in one birth.
@@ -198,6 +201,21 @@ impl Species {
                 mover: Mover::Goblin,
                 edged: true,
             },
+            Species::CaveHorror => SpeciesInfo {
+                name: "cave horror",
+                plural: "cave horrors",
+                glyph: 'H',
+                color: (190, 120, 255),
+                scale: 3.0,
+                damage: 12.0,
+                verb: "lashes",
+                move_delay: 3,
+                attack_delay: 11,
+                aggro: 40,
+                skill: 6,
+                mover: Mover::Goblin,
+                edged: false,
+            },
             Species::Troglodyte => SpeciesInfo {
                 name: "troglodyte",
                 plural: "troglodytes",
@@ -299,6 +317,9 @@ pub struct Creature {
     /// Its name, if it has one ("Ashwing the dragon").
     #[serde(default)]
     pub label: Option<String>,
+    /// What it looks like, for one-of-a-kind creatures.
+    #[serde(default)]
+    pub desc: Option<String>,
 }
 
 fn yes() -> bool {
@@ -335,7 +356,14 @@ impl Creature {
             slaughter: false,
             figure: None,
             label: None,
+            desc: None,
         }
+    }
+
+    /// Megabeasts and cave horrors: they hunt to the death and their end
+    /// is history.
+    pub fn legendary(&self) -> bool {
+        self.figure.is_some() || self.species == Species::CaveHorror
     }
 
     pub fn hostile(&self) -> bool {

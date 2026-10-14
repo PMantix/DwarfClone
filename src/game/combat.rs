@@ -511,6 +511,71 @@ impl Game {
         Some(id)
     }
 
+    /// Once the caverns are found, now and then something crawls up out of them.
+    pub(super) fn maybe_cave_horror(&mut self) {
+        if self.tick < SEASON * 2 || self.creatures.values().any(|c| c.species == Species::CaveHorror) || !self.rng.chance(0.3) {
+            return;
+        }
+        let floors = self.cavern_floors();
+        if !floors.iter().any(|&p| self.world.t(p).revealed) {
+            return;
+        }
+        let far: Vec<Pos> = floors
+            .iter()
+            .copied()
+            .filter(|p| self.dwarves.iter().filter(|d| d.alive).all(|d| (d.pos.x - p.x).abs() + (d.pos.y - p.y).abs() + 4 * (d.pos.z - p.z).abs() > 20))
+            .collect();
+        let pool = if far.is_empty() { floors } else { far };
+        let p = *self.rng.pick(&pool);
+        self.spawn_cave_horror(p);
+    }
+
+    /// Open cavern floor (dry, not under the sky).
+    pub(super) fn cavern_floors(&self) -> Vec<Pos> {
+        let mut v = Vec::new();
+        for z in self.world.caverns.iter().flat_map(|&(lo, hi)| lo..=hi) {
+            for y in 0..self.world.h {
+                for x in 0..self.world.w {
+                    let p = Pos::new(x, y, z);
+                    let t = self.world.t(p);
+                    if t.kind == TileKind::Floor && t.water == 0 && t.magma == 0 && !self.world.outside(p) {
+                        v.push(p);
+                    }
+                }
+            }
+        }
+        v
+    }
+
+    pub(super) fn spawn_cave_horror(&mut self, p: Pos) -> u32 {
+        const SYL: [&str; 14] = ["oz", "ul", "thra", "gim", "vex", "oth", "rhu", "zal", "mor", "quo", "sk", "yth", "ash", "nug"];
+        const SIZE: [&str; 5] = ["towering", "hulking", "bloated", "spindly", "enormous"];
+        const SHAPE: [&str; 7] = ["blob", "serpent", "spider", "beetle", "lizard", "worm", "bat"];
+        const STUFF: [&str; 7] = ["crystal", "bone", "slime", "iron", "ash", "fungus", "shadow"];
+        const MARK: [&str; 6] = ["many eyes", "a gaping maw", "barbed tentacles", "glowing veins", "a long lashing tail", "no eyes at all"];
+        let n = self.rng.range(2, 4);
+        let mut name: String = (0..n).map(|_| *self.rng.pick(&SYL)).collect();
+        name = name[..1].to_uppercase() + &name[1..];
+        let desc = format!(
+            "A {} {} of {} with {}.",
+            self.rng.pick(&SIZE),
+            self.rng.pick(&SHAPE),
+            self.rng.pick(&STUFF),
+            self.rng.pick(&MARK)
+        );
+        let id = self.spawn_creature(Species::CaveHorror, p, u64::MAX);
+        let label = format!("{} the cave horror", name);
+        let c = self.creatures.get_mut(&id).unwrap();
+        c.siege = true;
+        c.label = Some(label.clone());
+        c.desc = Some(desc.clone());
+        self.msg(&format!("{} has come up from the caverns! {}", label, desc), (230, 120, 255));
+        let fort = self.fortress_name.clone();
+        self.legend(format!("{} emerged from the depths beneath {}.", label, fort));
+        self.pause_request = true;
+        id
+    }
+
     pub(super) fn maybe_siege(&mut self) {
         let pop = self.alive_count() as f64;
         let goblins = self.neighbors.iter().filter(|n| n.race == Race::Goblin).map(|n| n.dist).min();
@@ -622,14 +687,23 @@ impl Game {
             for d in self.dwarves.iter_mut().filter(|d| d.alive) {
                 d.think(&format!("rejoiced at the death of {}", label), -15, tick);
             }
+        } else if c.species == Species::CaveHorror {
+            let label = c.title();
+            let fort = self.fortress_name.clone();
+            self.legend(format!("{} was slain at {}.", label, fort));
+            self.msg(&format!("{} has been slain!", label), (255, 215, 60));
+            let tick = self.tick;
+            for d in self.dwarves.iter_mut().filter(|d| d.alive) {
+                d.think(&format!("rejoiced at the death of {}", label), -10, tick);
+            }
         } else if c.hostile() {
             self.msg(&format!("The {} has been slain.", info.name), (160, 230, 160));
         }
-        if c.siege && c.figure.is_none() && !self.siege_routed {
-            let left = self.creatures.values().filter(|o| o.siege && o.figure.is_none() && o.alive).count() as u32;
+        if c.siege && !c.legendary() && !self.siege_routed {
+            let left = self.creatures.values().filter(|o| o.siege && !o.legendary() && o.alive).count() as u32;
             if left * 2 < self.siege_size {
                 self.siege_routed = true;
-                for o in self.creatures.values_mut().filter(|o| o.siege && o.figure.is_none()) {
+                for o in self.creatures.values_mut().filter(|o| o.siege && !o.legendary()) {
                     o.leaving = true;
                     o.target = None;
                     o.path.clear();
@@ -665,7 +739,7 @@ impl Game {
         }
         // Animals lose their nerve when hurt; goblins only when close to death;
         // megabeasts never.
-        let breaking = if c.figure.is_some() {
+        let breaking = if c.legendary() {
             false
         } else if c.siege {
             c.body.blood * 10 < c.body.max_blood * 4
@@ -1078,5 +1152,36 @@ mod profile {
         assert!(g.dwarves.iter().filter(|d| d.alive).all(|d| d.thoughts.iter().any(|t| t.text.starts_with("rejoiced"))));
         // A dead beast doesn't come again.
         assert!(!g.overworld.beasts_near(g.site.0, g.site.1, 1000).contains(&f));
+    }
+
+    #[test]
+    fn cave_horrors_come_only_from_discovered_caverns() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        g.tick = 3 * SEASON;
+        let floors = g.cavern_floors();
+        assert!(!floors.is_empty());
+        for p in &floors {
+            g.world.t_mut(*p).revealed = false;
+        }
+        for _ in 0..50 {
+            g.maybe_cave_horror();
+        }
+        assert!(!g.creatures.values().any(|c| c.species == Species::CaveHorror), "nobody has found the caverns yet");
+        g.world.t_mut(floors[0]).revealed = true;
+        for _ in 0..50 {
+            g.maybe_cave_horror();
+        }
+        let c = g.creatures.values().find(|c| c.species == Species::CaveHorror).expect("no horror after the caverns were found");
+        assert!(c.label.as_deref().unwrap().ends_with("the cave horror"));
+        assert!(c.desc.as_deref().unwrap().starts_with("A "));
+        assert!(c.legendary() && c.hostile());
+        assert_eq!(g.creatures.values().filter(|c| c.species == Species::CaveHorror).count(), 1, "one at a time");
+        let id = c.id;
+        let label = c.label.clone().unwrap();
+        let mut c = g.creatures.remove(&id).unwrap();
+        c.body.dead = true;
+        g.creature_died(c);
+        assert!(g.overworld.events.iter().any(|e| e.text.contains(&label) && e.text.contains("slain")));
     }
 }
