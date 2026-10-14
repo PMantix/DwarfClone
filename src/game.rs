@@ -446,6 +446,7 @@ impl Game {
                 to_depot: false,
                 dump: false,
                 wear: 0,
+                forbidden: false,
             },
         );
         id
@@ -1408,7 +1409,7 @@ impl Game {
     fn loose_items<F: Fn(&Item) -> bool>(&self, f: F) -> HashMap<Pos, u32> {
         let mut at = HashMap::new();
         for it in self.items.values() {
-            if it.carried_by.is_none() && it.claimed_by.is_none() && f(it) {
+            if it.free() && f(it) {
                 at.entry(it.pos).or_insert(it.id);
             }
         }
@@ -1714,7 +1715,7 @@ impl Game {
         let season = ((self.tick / SEASON) % 4) as usize;
         // Seed on hand, by crop.
         let mut seeds: BTreeMap<Mat, usize> = BTreeMap::new();
-        for it in self.items.values().filter(|it| it.kind == ItemKind::Seed && it.carried_by.is_none() && it.claimed_by.is_none()) {
+        for it in self.items.values().filter(|it| it.kind == ItemKind::Seed && it.free()) {
             *seeds.entry(it.mat).or_default() += 1;
         }
         // Plot -> None to harvest, or Some(crop) to plant.
@@ -1854,7 +1855,7 @@ impl Game {
         let absorb_ok = |p: Pos, ck: ItemKind| {
             !self.reserved.contains(&p)
                 && on_tile.get(&p).map_or(false, |v| {
-                    v.len() < CONTAINER_CAP && v.iter().all(|it| it.claimed_by.is_none() && it.kind.stored_in() == Some(ck))
+                    v.len() < CONTAINER_CAP && v.iter().all(|it| it.claimed_by.is_none() && !it.forbidden && it.kind.stored_in() == Some(ck))
                 })
         };
         let filter_at = |p: Pos| match self.zones.get(&self.world.t(p).zone).map(|z| z.kind) {
@@ -1990,7 +1991,7 @@ impl Game {
                                     break;
                                 }
                                 if it.pos == dest && it.id != item && it.carried_by.is_none() && it.container.is_none()
-                                    && it.claimed_by.is_none() && it.kind.stored_in() == Some(ck)
+                                    && it.claimed_by.is_none() && !it.forbidden && it.kind.stored_in() == Some(ck)
                                 {
                                     it.container = Some(item);
                                     room -= 1;

@@ -191,9 +191,31 @@ impl Game {
             return None;
         }
         it.dump = !it.dump;
+        it.forbidden = false;
         it.to_depot = false;
         it.container = None;
         Some(it.dump)
+    }
+
+    /// Forbid or allow an item. None if someone is carrying it.
+    pub fn toggle_forbid(&mut self, item: u32) -> Option<bool> {
+        let it = self.items.get_mut(&item)?;
+        if it.carried_by.is_some() {
+            return None;
+        }
+        it.forbidden = !it.forbidden;
+        Some(it.forbidden)
+    }
+
+    /// Forbid everything loose on a tile, or allow it all again if it's all
+    /// forbidden already. Returns (how many, now forbidden).
+    pub fn forbid_tile(&mut self, p: Pos) -> (usize, bool) {
+        let here: Vec<u32> = self.items.values().filter(|it| it.pos == p && it.carried_by.is_none()).map(|it| it.id).collect();
+        let forbid = here.iter().any(|id| !self.items[id].forbidden);
+        for id in &here {
+            self.items.get_mut(id).unwrap().forbidden = forbid;
+        }
+        (here.len(), forbid)
     }
 
     pub fn dump_tile(&mut self, p: Pos) -> usize {
@@ -367,5 +389,42 @@ mod tests {
             "went for {:?}",
             g.dwarves[0].task
         );
+    }
+
+    #[test]
+    fn forbidden_items_are_left_alone_until_allowed() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        let e = g.embark;
+        assert!(g.add_zone(e.offset(-8, 3, -1), e.offset(-1, 9, 1), ZoneKind::Stockpile(crate::items::StockFilter::Wood)) > 0);
+        let spot = (4..20).map(|r| e.offset(r, -4, 0)).find(|p| g.world.walkable(*p) && g.world.t(*p).zone == 0).unwrap();
+        let log = g.spawn_item(ItemKind::Log, crate::material::Mat::Wood, spot);
+        let p0 = g.items[&log].pos;
+        assert_eq!(g.toggle_forbid(log), Some(true));
+        // Forbidden food isn't eaten either.
+        for it in g.items.values_mut().filter(|it| it.kind.is_food()) {
+            it.forbidden = true;
+        }
+        let food = g.items.values().filter(|it| it.kind.is_food()).count();
+        for d in g.dwarves.iter_mut() {
+            d.hunger = crate::game::HUNGRY + 1;
+        }
+        for _ in 0..DAY {
+            g.step();
+        }
+        assert_eq!(g.items[&log].pos, p0, "a forbidden log was hauled");
+        assert_eq!(g.items.values().filter(|it| it.kind.is_food()).count(), food, "forbidden food was eaten");
+        assert_eq!(g.toggle_forbid(log), Some(false));
+        for it in g.items.values_mut() {
+            it.forbidden = false;
+        }
+        for _ in 0..2 * DAY {
+            g.step();
+        }
+        let p = g.items[&log].pos;
+        assert!(matches!(g.zone_kind_at(p), Some(ZoneKind::Stockpile(_))), "allowed log never reached the stockpile");
+        let (n, on) = g.forbid_tile(p);
+        assert!(n >= 1 && on);
+        assert!(g.items[&log].forbidden);
     }
 }

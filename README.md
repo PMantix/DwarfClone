@@ -55,7 +55,9 @@ meals rather than two.
 
 **Work orders.** `j` lists standing orders: each keeps a number of something in stock
 (beds, barrels, meals, blocks...) by queuing jobs at the least busy workshop that can do
-them, a few at a time. `n` adds one, Left/Right change the number, `x` deletes.
+them, a few at a time. `n` adds one, Left/Right change the number, `x` deletes. In look
+mode, `f` forbids an item (nobody hauls, uses or eats it) and `F` forbids everything on the
+tile; `d` and `D` mark things for the garbage dump.
 
 **Industry.** Farming with seeds, brewing, cooking, butchery, charcoal, ore smelting,
 steel (with limestone flux), a forge for tools, weapons and armor, stone and bone crafts,

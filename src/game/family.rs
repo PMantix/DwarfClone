@@ -42,7 +42,7 @@ impl Game {
             .map(|b| b.id);
         let Some(coffin) = coffin else { return false };
         let corpses: HashSet<u32> =
-            self.items.values().filter(|it| it.carried_by.is_none() && it.claimed_by.is_none() && self.burial_corpse(it)).map(|it| it.id).collect();
+            self.items.values().filter(|it| it.free() && self.burial_corpse(it)).map(|it| it.id).collect();
         if corpses.is_empty() {
             return false;
         }

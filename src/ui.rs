@@ -846,7 +846,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 }
                 if b.kind.is_trap() && b.built {
                     let what = b.load.map_or("nothing".to_string(), |(k, m, _)| {
-                        crate::items::Item { id: 0, kind: k, mat: m, pos: b.pos, carried_by: None, claimed_by: None, label: None, container: None, quality: 0, to_depot: false, dump: false, wear: 0 }.name()
+                        crate::items::Item { id: 0, kind: k, mat: m, pos: b.pos, carried_by: None, claimed_by: None, label: None, container: None, quality: 0, to_depot: false, dump: false, wear: 0, forbidden: false }.name()
                     });
                     v.push(plain(format!("Armed with {}", what), TEXT));
                     v.push(plain("Fires on any creature but merchants;".into(), MUTED));
@@ -2232,7 +2232,7 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
             }
             LookEntry::Item(id) => {
                 let Some(it) = g.items.get(&id) else { continue };
-                item_line(it, "", i == sel)
+                item_line(it, if it.forbidden { " (forbidden)" } else { "" }, i == sel)
             }
         };
         v.push(line);
@@ -2358,10 +2358,14 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 if it.dump {
                     v.push(plain("Marked for the garbage dump".into(), Color::Rgb(200, 170, 90)));
                 }
+                if it.forbidden {
+                    v.push(plain("Forbidden: nobody will touch it".into(), Color::Rgb(230, 120, 120)));
+                }
                 if it.kind == ItemKind::Cage && it.label.is_some() {
                     v.push(plain("t: tame what's inside".into(), KEY));
                 }
                 v.push(plain("d: dump this · D: dump everything here".into(), MUTED));
+                v.push(plain("f: forbid/allow · F: forbid everything here".into(), MUTED));
                 if it.kind.is_container() {
                     let mut inside: Vec<&Item> = g.items.values().filter(|c| c.container == Some(it.id)).collect();
                     inside.sort_by_key(|c| c.name());

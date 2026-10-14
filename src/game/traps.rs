@@ -130,7 +130,7 @@ impl Game {
         let Some(mech) = self
             .items
             .values()
-            .find(|it| it.kind == ItemKind::Mechanism && it.carried_by.is_none() && it.claimed_by.is_none())
+            .find(|it| it.kind == ItemKind::Mechanism && it.free())
             .map(|it| it.id)
         else {
             return Err("Linking needs a spare mechanism.".into());

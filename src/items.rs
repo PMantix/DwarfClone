@@ -281,6 +281,9 @@ pub struct Item {
     /// Days of wear on clothing.
     #[serde(default)]
     pub wear: u16,
+    /// Left alone: nobody hauls, uses or eats it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub forbidden: bool,
 }
 
 pub const ARTIFACT: u8 = 6;
@@ -389,6 +392,11 @@ impl Item {
                 None => format!("{} cage", m.adj()),
             },
         }
+    }
+
+    /// Lying loose for anyone to take: not carried, claimed or forbidden.
+    pub fn free(&self) -> bool {
+        self.carried_by.is_none() && self.claimed_by.is_none() && !self.forbidden
     }
 
     /// Food a dwarf can eat as it is (grain has to be milled or brewed first).

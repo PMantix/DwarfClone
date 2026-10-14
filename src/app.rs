@@ -1342,6 +1342,19 @@ impl App {
                 let k = self.game.dump_tile(self.cursor);
                 self.flash = Some(format!("{} items marked for the garbage dump.", k));
             }
+            KeyCode::Char('f') => {
+                if let Some(LookEntry::Item(id)) = entries.get(sel.min(n - 1)) {
+                    self.flash = Some(match self.game.toggle_forbid(*id) {
+                        Some(true) => "Forbidden: dwarves will leave it alone.".into(),
+                        Some(false) => "No longer forbidden.".into(),
+                        None => "That's being carried.".into(),
+                    });
+                }
+            }
+            KeyCode::Char('F') => {
+                let (k, on) = self.game.forbid_tile(self.cursor);
+                self.flash = Some(format!("{} items {}.", k, if on { "forbidden" } else { "allowed again" }));
+            }
             KeyCode::Enter => match entries.get(sel.min(n - 1)) {
                 Some(LookEntry::Dwarf(id)) => self.mode = Mode::Unit { id: *id, sel: 0 },
                 Some(LookEntry::Building(b)) => self.mode = Mode::Query { bld: *b, adding: false },

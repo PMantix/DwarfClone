@@ -94,6 +94,7 @@ impl Game {
                     to_depot: false,
                     dump: false,
                     wear: 0,
+                    forbidden: false,
                 });
             }
         }
@@ -235,7 +236,7 @@ impl Game {
             let goods = matches!(it.kind, Craft | Gem | Bar | Block | Leather | Bed | Table | Chair | Door)
                 || it.kind.is_equipment()
                 || it.quality > 0;
-            if on && goods && it.carried_by.is_none() && it.claimed_by.is_none() && it.quality < crate::items::ARTIFACT {
+            if on && goods && it.free() && it.quality < crate::items::ARTIFACT {
                 if !it.to_depot {
                     it.to_depot = true;
                     it.container = None;

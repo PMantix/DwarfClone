@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: finish W14 (forbid and dump next), then onward in tier order.
+Suggested order: finish W14 (stockpile material filters next), then onward in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -27,7 +27,7 @@ Suggested order: finish W14 (forbid and dump next), then onward in tier order.
 #### W14 Work orders and item management (M)
 - **DF:** global work orders with conditions; workshop profiles; forbid, dump, melt; detailed stockpile settings; minecarts.
 - **Us:** per-workshop order queues with repeat.
-- **Steps:** [x] global orders with "keep N in stock" conditions (this commit) · [ ] forbid and dump on items (look mode) · [ ] stockpile material filters · [ ] workshop profiles (who may work there)
+- **Steps:** [x] global orders with "keep N in stock" conditions (4d0bec8) · [x] forbid and dump on items (look mode) (this commit) · [ ] stockpile material filters · [ ] workshop profiles (who may work there)
 
 #### W15 Noble positions (M)
 - **DF:** broker, bookkeeper, manager, sheriff, militia commander, chief medical dwarf; titles rising with wealth up to monarch.
@@ -112,6 +112,7 @@ Ideas not ranked yet. Add a line on why each matters.
 - Glass furnace, kiln (pottery, glazes), jeweler (gem setting) and siege workshop (ballistae, catapults): the rest of DF's workshops from W12's list.
 - Dyes and dyed clothes; clothing preferences; cloaks, gloves, hoods; children outgrowing clothes.
 - Fish stocks that run out with overfishing; fish that must be cleaned at a fishery; bees, honey and mead; fruit trees and orchards.
+- Melting metal items back into bars at the smelter (DF's melt mark), and forbidding by area from the designation menu.
 - Murky or stagnant water drunk from puddles should feel worse than river water; doctors could clean wounds with well water and soap.
 - Corpses that rot (miasma) and refuse that needs a stockpile far from the halls.
 - Mini-map and saved camera spots: get around a 96×64 map faster.

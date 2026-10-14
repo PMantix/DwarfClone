@@ -109,7 +109,7 @@ impl Game {
                 wants.push(Treatment::Water);
             }
             for t in wants {
-                let have = t.supply().map_or(true, |k| self.items.values().any(|it| it.kind == k && it.carried_by.is_none() && it.claimed_by.is_none()));
+                let have = t.supply().map_or(true, |k| self.items.values().any(|it| it.kind == k && it.free()));
                 if have {
                     patients.insert(p.pos, (p.id, t));
                     break;
