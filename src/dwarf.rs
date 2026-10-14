@@ -24,9 +24,10 @@ pub enum Labor {
     Medicine,
     Leatherworking,
     Clothesmaking,
+    Soapmaking,
 }
 
-pub const NUM_LABORS: usize = 17;
+pub const NUM_LABORS: usize = 18;
 
 pub const LABORS: [Labor; NUM_LABORS] = [
     Labor::Mining,
@@ -46,6 +47,7 @@ pub const LABORS: [Labor; NUM_LABORS] = [
     Labor::Medicine,
     Labor::Leatherworking,
     Labor::Clothesmaking,
+    Labor::Soapmaking,
 ];
 
 impl Labor {
@@ -72,6 +74,7 @@ impl Labor {
             Labor::Medicine => "Medicine",
             Labor::Leatherworking => "Leatherworking",
             Labor::Clothesmaking => "Weaving and tailoring",
+            Labor::Soapmaking => "Soapmaking",
         }
     }
 
@@ -92,6 +95,7 @@ impl Labor {
             Labor::Medicine => "Doctor",
             Labor::Leatherworking => "Leatherworker",
             Labor::Clothesmaking => "Clothier",
+            Labor::Soapmaking => "Soaper",
             Labor::Hauling | Labor::Building => "Peasant",
         }
     }
@@ -116,6 +120,7 @@ impl Labor {
             Labor::Medicine => "Med",
             Labor::Leatherworking => "Lea",
             Labor::Clothesmaking => "Clo",
+            Labor::Soapmaking => "Soa",
         }
     }
 

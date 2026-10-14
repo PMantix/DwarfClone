@@ -49,9 +49,12 @@ turns them into leather, and the leather works (`b`, `L`) makes leather armor, c
 crafts (Leatherworking labor) and leather shoes. A loom (`b`, `W`) weaves thread into cloth
 and the clothier's shop (`b`, `K`) sews shirts and trousers (Weaving and tailoring labor).
 Every dwarf wears a shirt, trousers and shoes, which wear out over about a year; rags
-embarrass them, and they change into fresh clothes from stock when theirs are worn.
+embarrass them, and they change into fresh clothes from stock when theirs are worn. The
+wood furnace also burns wood to ash, the butcher leaves tallow, and the soap maker's
+workshop (`b`, `P`, Soapmaking labor) turns the two into soap; doctors who clean wounds
+with soap clear infection outright.
 
-**Dwarves.** Thirst, hunger, sleep, 17 labors and skills, personalities (anxiety,
+**Dwarves.** Thirst, hunger, sleep, 18 labors and skills, personalities (anxiety,
 sociability, temper, diligence, artistry), favorite materials and foods, friendships and
 grudges, thoughts and stress, tantrums that punch dwarves and topple furniture, and
 melancholy when misery drags on.

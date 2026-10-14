@@ -192,3 +192,62 @@ fn thread_is_woven_into_cloth_and_sewn_into_clothes() {
     assert_eq!(loose(&g, ItemKind::Shirt, Mat::Stoutcap), 1);
     assert_eq!(loose(&g, ItemKind::Trousers, Mat::Stoutcap), 1);
 }
+
+#[test]
+fn soap_from_ash_and_tallow_lets_doctors_clear_infection() {
+    let mut g = Game::new(77);
+    g.creatures.retain(|_, c| c.tame);
+    let e = g.embark;
+    for _ in 0..4 {
+        g.spawn_item(ItemKind::Boulder, Mat::Granite, e);
+    }
+    g.spawn_item(ItemKind::Log, Mat::Wood, e);
+    let c = g.spawn_item(ItemKind::Carcass, Mat::Flesh, e);
+    g.items.get_mut(&c).unwrap().label = Some("goat".into());
+    for d in g.dwarves.iter_mut() {
+        d.labors[Labor::Soapmaking.idx()] = true;
+        d.labors[Labor::Smelting.idx()] = true;
+        d.labors[Labor::Butchery.idx()] = true;
+        d.labors[Labor::Medicine.idx()] = false;
+    }
+    let furnace = place_near(&mut g, BuildingKind::WoodFurnace);
+    let butcher = place_near(&mut g, BuildingKind::Butcher);
+    let soaper = place_near(&mut g, BuildingKind::Soapmaker);
+    run(&mut g, 3 * DAY);
+    for b in [furnace, butcher, soaper] {
+        assert!(g.buildings[&b].built, "{} not built", g.buildings[&b].kind.name());
+    }
+    g.add_order(furnace, Recipe::Ash);
+    g.add_order(butcher, Recipe::Butcher);
+    run(&mut g, DAY);
+    assert_eq!(count(&g, ItemKind::Ash, None), 1, "no ash");
+    assert_eq!(count(&g, ItemKind::Tallow, None), 1, "no tallow");
+    g.add_order(soaper, Recipe::MakeSoap);
+    run(&mut g, DAY);
+    assert_eq!(count(&g, ItemKind::Soap, None), 2, "no soap");
+    assert!(g.items.values().any(|it| it.kind == ItemKind::Soap && it.name() == "goat soap"));
+
+    // A patient with a festering cut, and one doctor.
+    let doc = g.dwarves[1].id;
+    g.set_labor(doc, Labor::Medicine, true);
+    let id = g.dwarves[0].id;
+    {
+        let d = &mut g.dwarves[0];
+        d.body.wound(crate::body::Part::LeftArm, 4, true);
+        d.body.bleeding = 0;
+        d.body.infection = 300;
+        d.task = Task::Rest { bed: None, stand: d.pos };
+        d.asleep = true;
+    }
+    for _ in 0..DAY {
+        g.step();
+        let p = g.dwarves.iter().find(|d| d.id == id).unwrap();
+        if !p.body.dirty {
+            break;
+        }
+    }
+    let p = g.dwarves.iter().find(|d| d.id == id).unwrap();
+    assert!(!p.body.dirty, "the wound was never cleaned");
+    assert_eq!(p.body.infection, 0, "soap should clear the infection");
+    assert_eq!(count(&g, ItemKind::Soap, None), 1, "cleaning should use up a bar of soap");
+}

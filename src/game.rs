@@ -876,6 +876,7 @@ impl Game {
             Labor::Crafting,
             Labor::Leatherworking,
             Labor::Clothesmaking,
+            Labor::Soapmaking,
         ];
         for _ in 0..n {
             let id = self.new_id();

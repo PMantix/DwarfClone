@@ -55,6 +55,11 @@ pub enum ItemKind {
     Shirt,
     Trousers,
     Shoes,
+    /// Wood ash from the furnace, for lye.
+    Ash,
+    /// Rendered animal fat.
+    Tallow,
+    Soap,
 }
 
 /// Items that fit in a barrel or a bin, ten to a container.
@@ -80,8 +85,8 @@ impl ItemKind {
     pub fn stored_in(self) -> Option<ItemKind> {
         use ItemKind::*;
         match self {
-            Mushroom | Drink | Seed | Meat | Meal => Some(Barrel),
-            Bar | Charcoal | Craft | Gem | Bone | Leather | Block | Cloth | Shirt | Trousers | Shoes => Some(Bin),
+            Mushroom | Drink | Seed | Meat | Meal | Tallow => Some(Barrel),
+            Bar | Charcoal | Craft | Gem | Bone | Leather | Block | Cloth | Shirt | Trousers | Shoes | Ash | Soap => Some(Bin),
             k if k.is_equipment() => Some(Bin),
             _ => None,
         }
@@ -92,7 +97,9 @@ impl ItemKind {
         match self {
             Boulder | Log | Bone | Charcoal => 1,
             Seed | Corpse | Carcass => 0,
-            Hide => 1,
+            Hide | Ash => 1,
+            Tallow => 2,
+            Soap => 5,
             Cloth => 5,
             Shirt | Trousers | Shoes => 10,
             Mushroom | Drink | Meat => 2,
@@ -233,7 +240,10 @@ impl StockFilter {
             StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin | Cage | Coffin | Slab | Bucket),
             StockFilter::Metal => matches!(k, Bar | Charcoal),
             StockFilter::Goods => {
-                matches!(k, Craft | Gem | Bone | Leather | Mechanism | Thread | Splint | Crutch | Cloth | Shirt | Trousers | Shoes)
+                matches!(
+                    k,
+                    Craft | Gem | Bone | Leather | Mechanism | Thread | Splint | Crutch | Cloth | Shirt | Trousers | Shoes | Ash | Tallow | Soap
+                )
             }
             StockFilter::Refuse => matches!(k, Corpse | Carcass | Hide),
             StockFilter::Equipment => k.is_equipment(),
@@ -348,6 +358,9 @@ impl Item {
             Shirt => format!("{} shirt", m.name()),
             Trousers => format!("{} trousers", m.name()),
             Shoes => format!("{} shoes", m.name()),
+            Ash => "wood ash".into(),
+            Tallow => format!("{} tallow", self.label.as_deref().unwrap_or("animal")),
+            Soap => format!("{} soap", self.label.as_deref().unwrap_or("tallow")),
             Charcoal => "charcoal".into(),
             Bar => format!("{} bar", m.name()),
             Bin => format!("{} bin", m.adj()),
@@ -422,6 +435,9 @@ impl Item {
             Cloth => '≈',
             Shirt | Trousers => '(',
             Shoes => '{',
+            Ash => '*',
+            Tallow => '%',
+            Soap => '=',
         };
         let col = match self.kind {
             Drink => Color::Rgb(230, 170, 60),
@@ -431,6 +447,9 @@ impl Item {
             Meal => Color::Rgb(250, 200, 110),
             Seed => Color::Rgb(160, 120, 170),
             Charcoal => Color::Rgb(90, 90, 90),
+            Ash => Color::Rgb(170, 170, 170),
+            Tallow => Color::Rgb(240, 230, 180),
+            Soap => Color::Rgb(250, 250, 220),
             Bin | Barrel => Mat::Wood.color(),
             _ => self.mat.color(),
         };

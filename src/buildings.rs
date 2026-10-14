@@ -38,10 +38,11 @@ pub enum BuildingKind {
     Leatherworks,
     Loom,
     Clothier,
+    Soapmaker,
 }
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 31] = [
+    pub const ALL: [BuildingKind; 32] = [
         BuildingKind::Carpenter,
         BuildingKind::Mason,
         BuildingKind::Still,
@@ -73,6 +74,7 @@ impl BuildingKind {
         BuildingKind::Leatherworks,
         BuildingKind::Loom,
         BuildingKind::Clothier,
+        BuildingKind::Soapmaker,
     ];
 
     pub fn name(self) -> &'static str {
@@ -108,6 +110,7 @@ impl BuildingKind {
             BuildingKind::Leatherworks => "Leather works",
             BuildingKind::Loom => "Loom",
             BuildingKind::Clothier => "Clothier's shop",
+            BuildingKind::Soapmaker => "Soap maker's workshop",
         }
     }
 
@@ -144,6 +147,7 @@ impl BuildingKind {
             BuildingKind::Leatherworks => 'L',
             BuildingKind::Loom => 'W',
             BuildingKind::Clothier => 'K',
+            BuildingKind::Soapmaker => 'P',
         }
     }
 
@@ -267,7 +271,8 @@ impl BuildingKind {
             BuildingKind::Still => &[Brew],
             BuildingKind::Kitchen => &[Cook],
             BuildingKind::Butcher => &[Butcher],
-            BuildingKind::WoodFurnace => &[Charcoal],
+            BuildingKind::WoodFurnace => &[Charcoal, Ash],
+            BuildingKind::Soapmaker => &[MakeSoap],
             BuildingKind::Smelter | BuildingKind::MagmaSmelter => &[SmeltOre, MakeSteel],
             BuildingKind::Forge | BuildingKind::MagmaForge => &[
                 ForgePick,
@@ -311,6 +316,7 @@ impl BuildingKind {
             BuildingKind::Leatherworks => Color::Rgb(200, 150, 100),
             BuildingKind::Loom => Color::Rgb(200, 170, 220),
             BuildingKind::Clothier => Color::Rgb(220, 160, 200),
+            BuildingKind::Soapmaker => Color::Rgb(240, 240, 200),
             _ => Color::Rgb(200, 200, 200),
         }
     }
@@ -346,6 +352,7 @@ impl BuildingKind {
             BuildingKind::Leatherworks => 'L',
             BuildingKind::Loom => 'W',
             BuildingKind::Clothier => 'K',
+            BuildingKind::Soapmaker => 'P',
         }
     }
 }
@@ -369,6 +376,8 @@ pub enum Input {
     Leather,
     Thread,
     Cloth,
+    Ash,
+    Tallow,
 }
 
 impl Input {
@@ -390,6 +399,8 @@ impl Input {
             Input::Leather => it.kind == ItemKind::Leather,
             Input::Thread => it.kind == ItemKind::Thread,
             Input::Cloth => it.kind == ItemKind::Cloth,
+            Input::Ash => it.kind == ItemKind::Ash,
+            Input::Tallow => it.kind == ItemKind::Tallow,
         }
     }
 
@@ -411,6 +422,8 @@ impl Input {
             Input::Leather => "leather",
             Input::Thread => "thread",
             Input::Cloth => "cloth",
+            Input::Ash => "ash",
+            Input::Tallow => "tallow",
         }
     }
 }
@@ -463,6 +476,8 @@ pub enum Recipe {
     Weave,
     ClothShirt,
     ClothTrousers,
+    Ash,
+    MakeSoap,
 }
 
 impl Recipe {
@@ -515,6 +530,8 @@ impl Recipe {
             Weave => "Weave cloth",
             ClothShirt => "Sew a shirt",
             ClothTrousers => "Sew trousers",
+            Ash => "Burn wood to ash",
+            MakeSoap => "Make soap",
         }
     }
 
@@ -558,6 +575,8 @@ impl Recipe {
             Weave => 'w',
             ClothShirt => 's',
             ClothTrousers => 't',
+            Ash => 'a',
+            MakeSoap => 's',
         }
     }
 
@@ -580,6 +599,8 @@ impl Recipe {
             StoneCoffin | Slab => Labor::Masonry,
             Tan | LeatherArmor | LeatherHelm | LeatherCraft | LeatherShoes => Labor::Leatherworking,
             Weave | ClothShirt | ClothTrousers => Labor::Clothesmaking,
+            Ash => Labor::Smelting,
+            MakeSoap => Labor::Soapmaking,
         }
     }
 
@@ -607,6 +628,8 @@ impl Recipe {
             LeatherHelm | LeatherCraft | LeatherShoes => &[Input::Leather],
             Weave => &[Input::Thread, Input::Thread],
             ClothShirt | ClothTrousers => &[Input::Cloth],
+            Ash => &[Input::Log],
+            MakeSoap => &[Input::Ash, Input::Tallow],
         }
     }
 
@@ -655,7 +678,8 @@ impl Recipe {
                 let mut v = vec![(ItemKind::Meat, Mat::Flesh, label.clone()); meat];
                 v.push((ItemKind::Bone, Mat::Bone, label.clone()));
                 v.push((ItemKind::Bone, Mat::Bone, label.clone()));
-                v.push((ItemKind::Hide, Mat::Leather, label));
+                v.push((ItemKind::Hide, Mat::Leather, label.clone()));
+                v.push((ItemKind::Tallow, Mat::Flesh, label));
                 v
             }
             Charcoal => vec![(ItemKind::Charcoal, Mat::Coal, None)],
@@ -692,13 +716,18 @@ impl Recipe {
             Weave => vec![(ItemKind::Cloth, m, None)],
             ClothShirt => one(ItemKind::Shirt),
             ClothTrousers => one(ItemKind::Trousers),
+            Ash => vec![(ItemKind::Ash, Mat::Wood, None)],
+            MakeSoap => {
+                let fat = inputs.get(1).and_then(|i| i.label.clone());
+                vec![(ItemKind::Soap, Mat::Flesh, fat.clone()), (ItemKind::Soap, Mat::Flesh, fat)]
+            }
         }
     }
 
     pub fn work(self) -> u32 {
         use Recipe::*;
         match self {
-            Blocks | Charcoal | Tan => 90,
+            Blocks | Charcoal | Tan | Ash => 90,
             Weave => 120,
             Brew | Cook => 110,
             Butcher => 120,

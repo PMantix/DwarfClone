@@ -129,6 +129,13 @@ impl Game {
             self.claim_item(id, d.id);
             Self::set_path(d, path);
             item = Some(id);
+        } else if what == Treatment::Clean {
+            // Soap if there is any: it clears infection outright.
+            if let Some((id, path)) = self.find_item(d.pos, |it| it.kind == ItemKind::Soap) {
+                self.claim_item(id, d.id);
+                Self::set_path(d, path);
+                item = Some(id);
+            }
         }
         self.treating.insert(patient);
         d.task = Task::Treat { patient, what, item };
@@ -205,7 +212,7 @@ impl Game {
             Treatment::Suture => b.bleeding = 0,
             Treatment::Clean => {
                 b.dirty = false;
-                b.infection /= 2;
+                b.infection = if item.is_some() { 0 } else { b.infection / 2 };
             }
             Treatment::Splint => {
                 for part in PARTS {
