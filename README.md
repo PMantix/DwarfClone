@@ -46,9 +46,10 @@ steel (with limestone flux), a forge for tools, weapons and armor, stone and bon
 gem cutting, furniture, barrels and bins that store goods. Multi-input recipes, repeating
 work orders, item quality from skill. The butcher leaves hides; a tanner's shop (`b`, `T`)
 turns them into leather, and the leather works (`b`, `L`) makes leather armor, caps and
-crafts (Leatherworking labor).
+crafts (Leatherworking labor) and leather shoes. A loom (`b`, `W`) weaves thread into cloth
+and the clothier's shop (`b`, `K`) sews shirts and trousers (Weaving and tailoring labor).
 
-**Dwarves.** Thirst, hunger, sleep, 16 labors and skills, personalities (anxiety,
+**Dwarves.** Thirst, hunger, sleep, 17 labors and skills, personalities (anxiety,
 sociability, temper, diligence, artistry), favorite materials and foods, friendships and
 grudges, thoughts and stress, tantrums that punch dwarves and topple furniture, and
 melancholy when misery drags on.

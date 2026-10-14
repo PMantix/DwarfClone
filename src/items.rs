@@ -50,6 +50,11 @@ pub enum ItemKind {
     Bucket,
     /// An untanned skin, labelled with the animal.
     Hide,
+    /// A bolt of woven cloth.
+    Cloth,
+    Shirt,
+    Trousers,
+    Shoes,
 }
 
 /// Items that fit in a barrel or a bin, ten to a container.
@@ -76,7 +81,7 @@ impl ItemKind {
         use ItemKind::*;
         match self {
             Mushroom | Drink | Seed | Meat | Meal => Some(Barrel),
-            Bar | Charcoal | Craft | Gem | Bone | Leather | Block => Some(Bin),
+            Bar | Charcoal | Craft | Gem | Bone | Leather | Block | Cloth | Shirt | Trousers | Shoes => Some(Bin),
             k if k.is_equipment() => Some(Bin),
             _ => None,
         }
@@ -88,6 +93,8 @@ impl ItemKind {
             Boulder | Log | Bone | Charcoal => 1,
             Seed | Corpse | Carcass => 0,
             Hide => 1,
+            Cloth => 5,
+            Shirt | Trousers | Shoes => 10,
             Mushroom | Drink | Meat => 2,
             Block | Leather | Bucket => 3,
             Barrel | Bin => 5,
@@ -215,7 +222,9 @@ impl StockFilter {
             StockFilter::Food => matches!(k, Mushroom | Drink | Seed | Meat | Meal),
             StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin | Cage | Coffin | Slab | Bucket),
             StockFilter::Metal => matches!(k, Bar | Charcoal),
-            StockFilter::Goods => matches!(k, Craft | Gem | Bone | Leather | Mechanism | Thread | Splint | Crutch),
+            StockFilter::Goods => {
+                matches!(k, Craft | Gem | Bone | Leather | Mechanism | Thread | Splint | Crutch | Cloth | Shirt | Trousers | Shoes)
+            }
             StockFilter::Refuse => matches!(k, Corpse | Carcass | Hide),
             StockFilter::Equipment => k.is_equipment(),
         }
@@ -311,6 +320,10 @@ impl Item {
             Bone => format!("{} bone", self.label.as_deref().unwrap_or("animal")),
             Leather => format!("{} leather", self.label.as_deref().unwrap_or("animal")),
             Hide => format!("{} hide", self.label.as_deref().unwrap_or("animal")),
+            Cloth => format!("{} cloth", m.name()),
+            Shirt => format!("{} shirt", m.name()),
+            Trousers => format!("{} trousers", m.name()),
+            Shoes => format!("{} shoes", m.name()),
             Charcoal => "charcoal".into(),
             Bar => format!("{} bar", m.name()),
             Bin => format!("{} bin", m.adj()),
@@ -377,6 +390,9 @@ impl Item {
             Slab => '▬',
             Bucket => '¤',
             Hide => '~',
+            Cloth => '≈',
+            Shirt | Trousers => '(',
+            Shoes => '{',
         };
         let col = match self.kind {
             Drink => Color::Rgb(230, 170, 60),

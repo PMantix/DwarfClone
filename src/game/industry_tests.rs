@@ -153,3 +153,41 @@ fn hides_are_tanned_and_worked_into_leather_armor() {
     assert_eq!(count(&g, ItemKind::Breastplate, Some(Mat::Leather)), 1, "no leather armor");
     assert_eq!(count(&g, ItemKind::Leather, None), 0, "leather armor takes two pieces");
 }
+
+#[test]
+fn thread_is_woven_into_cloth_and_sewn_into_clothes() {
+    let mut g = Game::new(77);
+    g.creatures.retain(|_, c| c.tame);
+    let e = g.embark;
+    for _ in 0..4 {
+        g.spawn_item(ItemKind::Boulder, Mat::Granite, e);
+    }
+    for _ in 0..4 {
+        g.spawn_item(ItemKind::Thread, Mat::Stoutcap, e);
+    }
+    let hide = g.spawn_item(ItemKind::Leather, Mat::Leather, e);
+    g.items.get_mut(&hide).unwrap().label = Some("goat".into());
+    for d in g.dwarves.iter_mut() {
+        d.labors[Labor::Clothesmaking.idx()] = true;
+        d.labors[Labor::Leatherworking.idx()] = true;
+    }
+    let loom = place_near(&mut g, BuildingKind::Loom);
+    let clothier = place_near(&mut g, BuildingKind::Clothier);
+    let works = place_near(&mut g, BuildingKind::Leatherworks);
+    run(&mut g, 3 * DAY);
+    for b in [loom, clothier, works] {
+        assert!(g.buildings[&b].built, "{} not built", g.buildings[&b].kind.name());
+    }
+    g.add_order(loom, Recipe::Weave);
+    g.add_order(loom, Recipe::Weave);
+    g.add_order(works, Recipe::LeatherShoes);
+    run(&mut g, 2 * DAY);
+    assert_eq!(count(&g, ItemKind::Cloth, Some(Mat::Stoutcap)), 2, "thread wasn't woven");
+    assert_eq!(count(&g, ItemKind::Shoes, Some(Mat::Leather)), 1, "no leather shoes");
+    g.add_order(clothier, Recipe::ClothShirt);
+    g.add_order(clothier, Recipe::ClothTrousers);
+    run(&mut g, 2 * DAY);
+    assert_eq!(count(&g, ItemKind::Shirt, Some(Mat::Stoutcap)), 1);
+    assert_eq!(count(&g, ItemKind::Trousers, Some(Mat::Stoutcap)), 1);
+    assert!(g.items.values().any(|it| it.kind == ItemKind::Shirt && it.name().contains("stoutcap shirt")));
+}
