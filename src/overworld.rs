@@ -973,7 +973,23 @@ impl Overworld {
         self.sites.iter().filter(|s| s.civ == Some(civ) && !s.ruined).map(|s| s.id).collect()
     }
 
-    fn kill_figure(&mut self, f: u32, year: i32, cause: String) {
+    /// Living megabeasts whose lairs lie within `r` cells of (x, y), nearest first.
+    pub fn beasts_near(&self, x: i32, y: i32, r: i32) -> Vec<u32> {
+        let mut v: Vec<(i32, u32)> = self
+            .figures
+            .iter()
+            .filter(|f| f.alive())
+            .filter_map(|f| {
+                let lair = &self.sites[f.lair? as usize];
+                let d = (lair.x - x).abs().max((lair.y - y).abs());
+                (d <= r).then_some((d, f.id))
+            })
+            .collect();
+        v.sort();
+        v.into_iter().map(|(_, id)| id).collect()
+    }
+
+    pub fn kill_figure(&mut self, f: u32, year: i32, cause: String) {
         let fig = &mut self.figures[f as usize];
         if fig.died.is_some() {
             return;

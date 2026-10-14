@@ -814,6 +814,7 @@ impl Game {
             }
             self.regrow_shrubs();
             self.maybe_siege();
+            self.maybe_megabeast();
             self.caravan_season(season);
             self.issue_mandate();
             self.maybe_strange_mood();
@@ -2757,6 +2758,39 @@ mod bench {
         eprintln!("  creatures: {} ({} tame)", g.creatures.len(), g.creatures.values().filter(|c| c.tame).count());
         let s = serde_json::to_string(&g).unwrap();
         eprintln!("large map save: {} bytes", s.len());
+    }
+
+    /// A megabeast against a fresh fort with three spear-armed soldiers.
+    #[test]
+    #[ignore]
+    fn megabeast_fight() {
+        for seed in [81u64, 82, 83, 84, 85, 86, 87, 88] {
+            let mut g = Game::new(seed);
+            g.creatures.retain(|_, c| c.tame);
+            while g.alive_count() < 20 {
+                g.migrants();
+            }
+            for i in 0..6 {
+                for k in [ItemKind::Spear, ItemKind::Helm, ItemKind::Breastplate] {
+                    g.spawn_item(k, Mat::Iron, g.embark);
+                }
+                let id = g.dwarves[2 + i].id;
+                g.toggle_soldier(id);
+            }
+            for _ in 0..DAY / 2 {
+                g.step();
+            }
+            let Some(f) = g.overworld.figures.iter().find(|f| f.lair.is_some() && f.alive()).map(|f| f.id) else { continue };
+            let Some(id) = g.spawn_megabeast(f) else { continue };
+            let mut t = 0;
+            while t < 6 * DAY && g.creatures.contains_key(&id) {
+                g.step();
+                t += 1;
+            }
+            let dead = g.dwarves.iter().filter(|d| !d.alive).count();
+            eprintln!("BEAST seed {} {}: after {} ticks, beast {}, dwarves dead {}/{}", seed,
+                g.overworld.figures[f as usize].name, t, if g.creatures.contains_key(&id) { "alive" } else { "gone" }, dead, g.dwarves.len());
+        }
     }
 
     #[test]

@@ -78,7 +78,7 @@ impl Game {
     pub(super) fn creature_fighter(&self, c: &Creature) -> Fighter {
         let info = c.species.info();
         let mut f = Fighter {
-            name: format!("the {}", info.name),
+            name: c.title(),
             skill: info.skill,
             dmg: info.damage,
             verb: info.verb,
@@ -477,6 +477,40 @@ impl Game {
         }
     }
 
+    /// Once the fortress has stood a year, a megabeast from a nearby lair may
+    /// come for it each season, more likely the richer it is.
+    pub(super) fn maybe_megabeast(&mut self) {
+        if self.tick < YEAR || self.creatures.values().any(|c| c.figure.is_some()) {
+            return;
+        }
+        let (sx, sy) = self.site;
+        let Some(&f) = self.overworld.beasts_near(sx, sy, 30).first() else { return };
+        let chance = (0.12 + self.wealth() as f64 / 300_000.0).min(0.5);
+        if !self.rng.chance(chance) {
+            return;
+        }
+        self.spawn_megabeast(f);
+    }
+
+    pub(super) fn spawn_megabeast(&mut self, f: u32) -> Option<u32> {
+        let entry = self.edge_entry()?;
+        let (name, kind) = {
+            let fig = self.overworld.figures.get(f as usize)?;
+            (fig.name.clone(), fig.kind.clone())
+        };
+        let id = self.spawn_creature(Species::Megabeast, entry, DAY * 10);
+        let label = format!("{} the {}", name, kind);
+        let c = self.creatures.get_mut(&id).unwrap();
+        c.siege = true;
+        c.figure = Some(f);
+        c.label = Some(label.clone());
+        let fort = self.fortress_name.clone();
+        self.msg(&format!("{} has come to {}! A {} of legend is upon you!", label, fort, kind), (255, 60, 60));
+        self.legend(format!("{} attacked {}.", label, fort));
+        self.pause_request = true;
+        Some(id)
+    }
+
     pub(super) fn maybe_siege(&mut self) {
         let pop = self.alive_count() as f64;
         let goblins = self.neighbors.iter().filter(|n| n.race == Race::Goblin).map(|n| n.dist).min();
@@ -573,14 +607,29 @@ impl Game {
         if let Some(it) = self.items.get_mut(&id) {
             it.label = Some(info.name.to_string());
         }
-        if c.hostile() {
+        if let Some(f) = c.figure {
+            let label = c.title();
+            let kind = self.overworld.figures.get(f as usize).map_or("beast".to_string(), |x| x.kind.clone());
+            if let Some(it) = self.items.get_mut(&id) {
+                it.label = Some(kind);
+            }
+            let year = self.start_year + (self.tick / YEAR) as i32;
+            let fort = self.fortress_name.clone();
+            self.overworld.kill_figure(f, year, format!("slain at {}", fort));
+            self.legend(format!("{} was slain at {}.", label, fort));
+            self.msg(&format!("{} has been slain! The fortress rejoices.", label), (255, 215, 60));
+            let tick = self.tick;
+            for d in self.dwarves.iter_mut().filter(|d| d.alive) {
+                d.think(&format!("rejoiced at the death of {}", label), -15, tick);
+            }
+        } else if c.hostile() {
             self.msg(&format!("The {} has been slain.", info.name), (160, 230, 160));
         }
-        if c.siege && !self.siege_routed {
-            let left = self.creatures.values().filter(|o| o.siege && o.alive).count() as u32;
+        if c.siege && c.figure.is_none() && !self.siege_routed {
+            let left = self.creatures.values().filter(|o| o.siege && o.figure.is_none() && o.alive).count() as u32;
             if left * 2 < self.siege_size {
                 self.siege_routed = true;
-                for o in self.creatures.values_mut().filter(|o| o.siege) {
+                for o in self.creatures.values_mut().filter(|o| o.siege && o.figure.is_none()) {
                     o.leaving = true;
                     o.target = None;
                     o.path.clear();
@@ -614,8 +663,15 @@ impl Game {
         if c.tame {
             return self.tame_tick(c);
         }
-        // Animals lose their nerve when hurt; goblins only when close to death.
-        let breaking = if c.siege { c.body.blood * 10 < c.body.max_blood * 4 } else { c.body.badly_hurt() };
+        // Animals lose their nerve when hurt; goblins only when close to death;
+        // megabeasts never.
+        let breaking = if c.figure.is_some() {
+            false
+        } else if c.siege {
+            c.body.blood * 10 < c.body.max_blood * 4
+        } else {
+            c.body.badly_hurt()
+        };
         if c.hostile() && !c.leaving && breaking && !c.species.dwells_underground() {
             c.leaving = true;
             c.target = None;
@@ -991,5 +1047,36 @@ mod profile {
             count("tantrum"), g.dwarves.iter().filter(|d| d.insane).count(), count("become friends"), count("grudge"),
             count("fey mood"), count("has created"), count("fulfilled"), count("went unmet"), stress
         );
+    }
+
+    #[test]
+    fn a_megabeast_from_the_legends_attacks_and_its_death_is_recorded() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        let f = g.overworld.figures.iter().find(|f| f.lair.is_some() && f.alive()).expect("no megabeasts in this world").id;
+        let id = g.spawn_megabeast(f).expect("no way in");
+        let label = g.creatures[&id].label.clone().unwrap();
+        assert!(label.contains(&g.overworld.figures[f as usize].name));
+        let mut hunted = false;
+        for _ in 0..600 {
+            g.step();
+            match g.creatures.get(&id) {
+                Some(c) => hunted |= c.target.is_some(),
+                None => break,
+            }
+        }
+        assert!(hunted, "the beast never went after anyone");
+        // Slay it outright and check the world remembers.
+        if let Some(mut c) = g.creatures.remove(&id) {
+            c.body.dead = true;
+            g.creature_died(c);
+        }
+        assert!(!g.overworld.figures[f as usize].alive(), "the figure should be dead in the legends");
+        assert!(g.overworld.figures[f as usize].cause.as_deref().unwrap_or("").starts_with("slain at"));
+        let kind = g.overworld.figures[f as usize].kind.clone();
+        assert!(g.items.values().any(|it| it.kind == ItemKind::Carcass && it.label.as_deref() == Some(kind.as_str())));
+        assert!(g.dwarves.iter().filter(|d| d.alive).all(|d| d.thoughts.iter().any(|t| t.text.starts_with("rejoiced"))));
+        // A dead beast doesn't come again.
+        assert!(!g.overworld.beasts_near(g.site.0, g.site.1, 1000).contains(&f));
     }
 }

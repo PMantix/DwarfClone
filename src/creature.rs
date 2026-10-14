@@ -15,6 +15,8 @@ pub enum Species {
     Dog,
     Cat,
     Goat,
+    /// A named beast out of the world's history (dragon, titan...).
+    Megabeast,
 }
 
 pub struct SpeciesInfo {
@@ -35,7 +37,7 @@ pub struct SpeciesInfo {
 }
 
 impl Species {
-    pub const ALL: [Species; 10] = [
+    pub const ALL: [Species; 11] = [
         Species::Deer,
         Species::Wolf,
         Species::Bear,
@@ -46,11 +48,12 @@ impl Species {
         Species::Dog,
         Species::Cat,
         Species::Goat,
+        Species::Megabeast,
     ];
 
     /// Animals that can be kept (people and cave folk can't).
     pub fn tameable(self) -> bool {
-        !matches!(self, Species::Goblin | Species::Troglodyte | Species::Merchant)
+        !matches!(self, Species::Goblin | Species::Troglodyte | Species::Merchant | Species::Megabeast)
     }
 
     /// Most young in one birth.
@@ -180,6 +183,21 @@ impl Species {
                 mover: Mover::Beast,
                 edged: true,
             },
+            Species::Megabeast => SpeciesInfo {
+                name: "megabeast",
+                plural: "megabeasts",
+                glyph: 'M',
+                color: (255, 170, 50),
+                scale: 4.0,
+                damage: 14.0,
+                verb: "rends",
+                move_delay: 3,
+                attack_delay: 12,
+                aggro: 40,
+                skill: 7,
+                mover: Mover::Goblin,
+                edged: true,
+            },
             Species::Troglodyte => SpeciesInfo {
                 name: "troglodyte",
                 plural: "troglodytes",
@@ -275,6 +293,12 @@ pub struct Creature {
     pub pasture: Option<u32>,
     #[serde(default)]
     pub slaughter: bool,
+    /// The historical figure this is (megabeasts).
+    #[serde(default)]
+    pub figure: Option<u32>,
+    /// Its name, if it has one ("Ashwing the dragon").
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 fn yes() -> bool {
@@ -309,6 +333,8 @@ impl Creature {
             owner: None,
             pasture: None,
             slaughter: false,
+            figure: None,
+            label: None,
         }
     }
 
@@ -327,5 +353,10 @@ impl Creature {
 
     pub fn name(&self) -> &'static str {
         self.species.info().name
+    }
+
+    /// Its own name if it has one, otherwise "the wolf".
+    pub fn title(&self) -> String {
+        self.label.clone().unwrap_or_else(|| format!("the {}", self.name()))
     }
 }

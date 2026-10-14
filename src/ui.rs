@@ -2329,7 +2329,7 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 let info = c.species.info();
                 Line::from(vec![
                     Span::styled(format!("{} ", info.glyph), hi(i).fg(rgb(info.color))),
-                    Span::styled(cap(info.name), hi(i).fg(TEXT)),
+                    Span::styled(c.label.clone().unwrap_or_else(|| cap(info.name)), hi(i).fg(TEXT)),
                 ])
             }
             LookEntry::Building(id) => {
@@ -2379,7 +2379,10 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
         LookEntry::Creature(id) => {
             if let Some(c) = g.creatures.get(&id) {
                 let info = c.species.info();
-                v.push(header(&cap(info.name)));
+                v.push(header(&c.label.clone().unwrap_or_else(|| cap(info.name))));
+                if let Some(f) = c.figure.and_then(|f| g.overworld.figures.get(f as usize)) {
+                    v.push(plain(format!("Born in the year {}; {} kills in the legends.", f.born, f.kills), Color::Rgb(255, 200, 120)));
+                }
                 let state = if c.body.unconscious() {
                     "Unconscious"
                 } else if c.tame {

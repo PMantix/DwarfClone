@@ -65,6 +65,11 @@ nobles expect grand bedrooms and now and then demand a piece of furniture of a g
 material in their bedroom or office; meeting it within half a year pleases them, ignoring it
 does not.
 
+**Megabeasts.** The dragons, titans, hydras, rocs and colossi of your world's history live in
+lairs on the world map. Once the fortress has stood a year, one whose lair is near may come
+for it in any season (more likely the richer you are). It hunts every dwarf, batters doors,
+never flees, and leaves after ten days if it lives; slaying it is written into the legends.
+
 **Justice.** Punches and wrecked furniture in a tantrum, and the dwarf blamed for an unmet
 mandate, go on the fortress's record of crimes, shown on the nobles screen. Appoint a sheriff
 (`n`, `6`) and they seek out each culprit and beat them, closing every charge against them;
