@@ -67,11 +67,12 @@ pub enum ZoneTool {
     Temple,
     Tavern,
     Tomb,
+    Gathering,
     Erase,
 }
 
 impl ZoneTool {
-    pub const ALL: [ZoneTool; 14] = [
+    pub const ALL: [ZoneTool; 15] = [
         ZoneTool::Meeting,
         ZoneTool::Bedroom,
         ZoneTool::Dormitory,
@@ -85,6 +86,7 @@ impl ZoneTool {
         ZoneTool::Temple,
         ZoneTool::Tavern,
         ZoneTool::Tomb,
+        ZoneTool::Gathering,
         ZoneTool::Erase,
     ];
 
@@ -103,6 +105,7 @@ impl ZoneTool {
             ZoneTool::Temple => 't',
             ZoneTool::Tavern => 'v',
             ZoneTool::Tomb => 'c',
+            ZoneTool::Gathering => 'w',
             ZoneTool::Erase => 'x',
         }
     }
@@ -122,6 +125,7 @@ impl ZoneTool {
             ZoneTool::Temple => Some(ZoneKind::Temple),
             ZoneTool::Tavern => Some(ZoneKind::Tavern),
             ZoneTool::Tomb => Some(ZoneKind::Tomb),
+            ZoneTool::Gathering => Some(ZoneKind::Gathering),
             ZoneTool::Erase => None,
         }
     }
@@ -136,7 +140,7 @@ impl ZoneTool {
     /// What the zone is for, a few short lines for the sidebar.
     pub fn help(self) -> &'static [&'static str] {
         match self {
-            ZoneTool::Farm => &["Mark soil floor (grass, loam, clay,", "sand) as farmland. Farmers plant", "stoutcaps; brewers turn them to ale."],
+            ZoneTool::Farm => &["Mark soil floor (grass, loam, clay,", "sand) as farmland. Farmers plant", "seed that suits; k, c picks a crop."],
             ZoneTool::Meeting => &["Dwarves with nothing to do gather", "here and chat (and make friends)", "instead of loitering in corridors."],
             ZoneTool::Bedroom => &["Lay over a bed. Give it to a dwarf", "with k then o; otherwise beds are", "handed out automatically."],
             ZoneTool::Dormitory => &["Beds here are shared and never", "owned. Better than the floor, but", "nobody likes a crowded dormitory."],
@@ -149,6 +153,7 @@ impl ZoneTool {
             ZoneTool::Temple => &["Dwarves who need to pray come here", "on their breaks. Unmet needs hurt", "focus, which slows work."],
             ZoneTool::Tavern => &["A meeting hall for making merry.", "Drinking here cheers dwarves more;", "it also counts as a meeting area."],
             ZoneTool::Tomb => &["Lay over coffins (b, y). The dead", "are buried here first, which", "comforts those who mourn them."],
+            ZoneTool::Gathering => &["Lay over wild shrubs. Farmers pick", "whatever grows there this season;", "shrubs bear again next season."],
             ZoneTool::Erase => &["Removes zones other than", "stockpiles (stockpiles: p, then x)."],
         }
     }

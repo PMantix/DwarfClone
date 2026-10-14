@@ -200,6 +200,8 @@ pub enum Task {
     Treat { patient: u32, what: crate::game::Treatment, item: Option<u32> },
     /// Carry a citizen's corpse to a coffin.
     Bury { item: u32, coffin: u32 },
+    /// Pick a wild shrub in a gathering zone.
+    Gather { pos: Pos },
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

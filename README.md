@@ -46,7 +46,8 @@ brew, spin), hollowgrain (underground, autumn and winter; brew, mill), threadree
 (underground, spring and summer; spin into thread), sunberries (surface, spring and summer;
 eat, brew into wine) and goldoat (surface, summer and autumn; mill). Farmers plant the most
 plentiful seed that suits a plot; in look mode, `c` on a farm picks one crop for it.
-Eating, brewing, cooking or spinning a plant gives back its seed.
+Eating, brewing, cooking or spinning a plant gives back its seed. A gathering area
+(`i`, `w`) laid over wild shrubs lets farmers pick whatever grows there that season.
 
 **Industry.** Farming with seeds, brewing, cooking, butchery, charcoal, ore smelting,
 steel (with limestone flux), a forge for tools, weapons and armor, stone and bone crafts,

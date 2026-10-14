@@ -32,6 +32,7 @@ mod family;
 pub use family::ADULT_AGE;
 mod water;
 mod clothing;
+mod farming;
 pub use medicine::Treatment;
 pub use military::{Squad, SquadOrder};
 #[cfg(test)]
@@ -100,6 +101,8 @@ pub enum ZoneKind {
     Tavern,
     /// Coffins here are used first; burial in a tomb comforts mourners more.
     Tomb,
+    /// Farmers pick wild shrubs here for whatever is in season.
+    Gathering,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -751,6 +754,7 @@ impl Game {
             if season == 1 || season == 2 {
                 self.migrants();
             }
+            self.regrow_shrubs();
             self.maybe_siege();
             self.caravan_season(season);
             self.issue_mandate();
@@ -1180,7 +1184,7 @@ impl Game {
                     c.worker = None;
                 }
             }
-            Task::Harvest { pos } => {
+            Task::Harvest { pos } | Task::Gather { pos } => {
                 self.claimed.remove(&pos);
             }
             Task::Eat { item } | Task::DrinkItem { item } | Task::Equip { item } => self.unclaim(item),
@@ -1380,7 +1384,7 @@ impl Game {
         if d.has(Labor::Woodcutting) && self.find_dig(d, true) {
             return;
         }
-        if d.has(Labor::Farming) && self.find_farm(d) {
+        if d.has(Labor::Farming) && (self.find_farm(d) || self.find_gather(d)) {
             return;
         }
         if d.has(Labor::Hauling) && !d.specialist && !self.find_depot_haul(d) && !self.find_dump_haul(d) {
@@ -2122,6 +2126,7 @@ impl Game {
                     self.msg(&format!("{} has made {}.", who, n), (190, 190, 190));
                 }
             }
+            Task::Gather { pos } => self.do_gather(d, pos),
             Task::Plant { pos, .. } | Task::Harvest { pos } => {
                 let harvest = matches!(d.task, Task::Harvest { .. });
                 let f = self.world.t(pos).farm;

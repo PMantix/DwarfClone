@@ -442,6 +442,7 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
             .map_or("Crafting".into(), |o| o.recipe.name().to_string()),
         Task::Plant { .. } => "Planting stoutcaps".into(),
         Task::Harvest { .. } => "Harvesting".into(),
+        Task::Gather { .. } => "Gathering plants".into(),
         Task::Eat { .. } => "Eating".into(),
         Task::DrinkItem { .. } | Task::DrinkWater { .. } => "Drinking".into(),
         Task::Sleep { .. } => if d.asleep { "Sleeping".into() } else { "Going to sleep".into() },
@@ -535,6 +536,16 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
                 v.push(plain(format!("Farm plot ({})", s), Color::Rgb(200, 150, 90)));
                 let grows = z.crop.and_then(|m| m.crop()).map_or("whatever suits the season".to_string(), |c| format!("{} ({})", c.plant, c.where_when()));
                 v.push(plain(format!("Grows {} (k, c: change)", grows), MUTED));
+            }
+            ZoneKind::Gathering => {
+                let s = if t.kind != TileKind::Shrub {
+                    "nothing to pick".to_string()
+                } else if t.farm > 0 {
+                    "picked this season".to_string()
+                } else {
+                    g.wild_crop(p).and_then(|m| m.crop()).map_or("bare this season".to_string(), |c| format!("bearing {}", c.plant))
+                };
+                v.push(plain(format!("Gathering area ({})", s), Color::Rgb(120, 190, 100)));
             }
             ZoneKind::Stockpile(f) => v.push(plain(format!("Stockpile: {}", f.name()), Color::Rgb(150, 150, 220))),
             k => {
