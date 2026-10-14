@@ -16,18 +16,13 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: finish W17 (thieves next), then onward in tier order.
+Suggested order: W18 onward, in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
 ### Tier 2: what makes a fortress a fortress
 
 ### Tier 3: depth
-
-#### W17 Monsters (M)
-- **DF:** megabeasts, titans, forgotten beasts, werebeasts, vampires, undead, thieves and kidnappers.
-- **Us:** 5 wild species plus goblin sieges (`creature.rs`, `combat.rs`).
-- **Steps:** [x] megabeasts from our own world history attack the fort (`overworld.rs` figures) (bc802c7) · [x] forgotten beasts in the caverns (this commit; ours are "cave horrors") · [ ] thieves who steal goods
 
 #### W18 Geology and engraving (M)
 - **DF:** smoothing and engraving walls, multiple cavern layers, magma sea, prospecting.
@@ -101,6 +96,7 @@ Ideas not ranked yet. Add a line on why each matters.
 - Minecarts and tracks (DF's hauling network); stockpile links that feed a workshop; minimum skill on workshop profiles.
 - A monarch arriving at the top of the titles; nobles' demands for specific artifacts, banishment and the hammerer; noble offices with a minimum value.
 - Theft and other crimes with witnesses and interrogation; the hammerer; chains and cages in the jail; prisoners fed by others.
+- Werebeasts, vampires and the undead; dragons breathing fire; kidnappers; thieves who are caught and jailed (W16).
 - Murky or stagnant water drunk from puddles should feel worse than river water; doctors could clean wounds with well water and soap.
 - Corpses that rot (miasma) and refuse that needs a stockpile far from the halls.
 - Mini-map and saved camera spots: get around a 96×64 map faster.
@@ -109,6 +105,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **W17 Monsters** (this commit; steps bc802c7, d226620): megabeasts from the world's own history come for a rich fortress after its first year, hunt to the death, and their slaying is written into the legends; generated cave horrors crawl up once the caverns are found; skulkers slip in unseen to steal the most valuable thing lying about, and bolt when a dwarf spots them.
 - **W16 Justice** (8f2cffb; steps 31d7368, efd4286): a record of crimes (tantrum assault and vandalism, the dwarf blamed for an unmet mandate) on the nobles screen; a sheriff who finds each culprit and beats them, or with a jail zone (`i`, `j`) sentences them to days inside, where they do no work; victims are glad to see justice done.
 - **W15 Noble positions** (df23471; steps 68ccc36, 0cbb7eb, 31a78ae): appointed manager, bookkeeper, broker, chief medical dwarf and militia commander (nobles screen, `1`-`5`); work orders need a manager and run more often with a bookkeeper; a broker cuts the merchants' markup; treatment and training speed up with their officers; the civilization makes a dwarf baron, count, then duke as wealth and population grow, and titled nobles demand furniture of a given material in their rooms, with bigger room expectations.
 - **W14 Work orders and item management** (35ccda5; steps 4d0bec8, 7b7dac9, 4bac3d8): a work orders screen (`j`) with "keep N in stock" orders that queue jobs at whichever workshop can do them; forbidding items (`f`/`F` in look mode) alongside dumping; stockpile settings (`s` on a stockpile) refusing kinds and materials; workshop profiles (`w` on a workshop) limiting who may work there.

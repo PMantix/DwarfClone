@@ -19,6 +19,8 @@ pub enum Species {
     Megabeast,
     /// A one-of-a-kind horror that crawls up out of the caverns.
     CaveHorror,
+    /// A sneak-thief that slips in unseen to steal something valuable.
+    Skulker,
 }
 
 pub struct SpeciesInfo {
@@ -39,7 +41,7 @@ pub struct SpeciesInfo {
 }
 
 impl Species {
-    pub const ALL: [Species; 12] = [
+    pub const ALL: [Species; 13] = [
         Species::Deer,
         Species::Wolf,
         Species::Bear,
@@ -52,11 +54,12 @@ impl Species {
         Species::Goat,
         Species::Megabeast,
         Species::CaveHorror,
+        Species::Skulker,
     ];
 
     /// Animals that can be kept (people and cave folk can't).
     pub fn tameable(self) -> bool {
-        !matches!(self, Species::Goblin | Species::Troglodyte | Species::Merchant | Species::Megabeast | Species::CaveHorror)
+        !matches!(self, Species::Goblin | Species::Troglodyte | Species::Merchant | Species::Megabeast | Species::CaveHorror | Species::Skulker)
     }
 
     /// Most young in one birth.
@@ -201,6 +204,21 @@ impl Species {
                 mover: Mover::Goblin,
                 edged: true,
             },
+            Species::Skulker => SpeciesInfo {
+                name: "skulker",
+                plural: "skulkers",
+                glyph: 's',
+                color: (150, 170, 110),
+                scale: 0.6,
+                damage: 4.0,
+                verb: "stabs",
+                move_delay: 2,
+                attack_delay: 10,
+                aggro: 1,
+                skill: 3,
+                mover: Mover::Goblin,
+                edged: true,
+            },
             Species::CaveHorror => SpeciesInfo {
                 name: "cave horror",
                 plural: "cave horrors",
@@ -320,6 +338,12 @@ pub struct Creature {
     /// What it looks like, for one-of-a-kind creatures.
     #[serde(default)]
     pub desc: Option<String>,
+    /// Unseen until a dwarf comes near (thieves).
+    #[serde(default)]
+    pub sneaking: bool,
+    /// What a thief has stolen.
+    #[serde(default)]
+    pub loot: Option<u32>,
 }
 
 fn yes() -> bool {
@@ -357,6 +381,8 @@ impl Creature {
             figure: None,
             label: None,
             desc: None,
+            sneaking: false,
+            loot: None,
         }
     }
 
@@ -366,8 +392,9 @@ impl Creature {
         self.figure.is_some() || self.species == Species::CaveHorror
     }
 
+    /// Dangerous and known about: sneaks don't count until they're spotted.
     pub fn hostile(&self) -> bool {
-        self.species.info().aggro > 0 && !self.tame
+        self.species.info().aggro > 0 && !self.tame && !self.sneaking
     }
 
     /// Tame animals go through doors like dwarves.

@@ -221,7 +221,7 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
         .map_or(0, |t| (t.as_millis() / 500) as usize);
     let ghosts: HashSet<(i32, i32)> = g.dwarves.iter().filter(|d| d.ghost && d.pos.z == z).map(|d| (d.pos.x, d.pos.y)).collect();
     let mut beasts: HashMap<(i32, i32), (char, Color, bool)> = HashMap::new();
-    for c in g.creatures.values().filter(|c| c.alive && c.pos.z == z && g.world.t(c.pos).revealed) {
+    for c in g.creatures.values().filter(|c| c.alive && !c.sneaking && c.pos.z == z && g.world.t(c.pos).revealed) {
         let info = c.species.info();
         beasts.insert((c.pos.x, c.pos.y), (info.glyph, rgb(info.color), c.hostile()));
     }
@@ -574,7 +574,7 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
         let st = if b.built { "" } else { " (awaiting construction)" };
         v.push(plain(format!("{}{}", b.name(), st), b.kind.color()));
     }
-    for c in g.creatures.values().filter(|c| c.alive && c.pos == p) {
+    for c in g.creatures.values().filter(|c| c.alive && !c.sneaking && c.pos == p) {
         let info = c.species.info();
         let state = if c.body.unconscious() {
             "unconscious"

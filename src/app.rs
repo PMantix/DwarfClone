@@ -181,7 +181,7 @@ pub fn look_entries(g: &Game, p: Pos) -> Vec<LookEntry> {
     }
     v.extend(g.dwarves.iter().filter(|d| (d.alive || d.ghost) && d.pos == p).map(|d| LookEntry::Dwarf(d.id)));
     if g.world.t(p).revealed {
-        v.extend(g.creatures.values().filter(|c| c.alive && c.pos == p).map(|c| LookEntry::Creature(c.id)));
+        v.extend(g.creatures.values().filter(|c| c.alive && !c.sneaking && c.pos == p).map(|c| LookEntry::Creature(c.id)));
         let b = g.world.t(p).building;
         if b != 0 {
             v.push(LookEntry::Building(b));

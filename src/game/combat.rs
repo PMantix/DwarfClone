@@ -511,6 +511,62 @@ impl Game {
         Some(id)
     }
 
+    /// A thief now and then, once there's something worth stealing.
+    pub(super) fn maybe_thief(&mut self) {
+        if self.tick < SEASON || !self.rng.chance(0.25) || !self.items.values().any(|it| it.free() && it.value() >= 20) {
+            return;
+        }
+        if let Some(entry) = self.edge_entry() {
+            self.spawn_thief(entry);
+        }
+    }
+
+    pub(super) fn spawn_thief(&mut self, p: Pos) -> u32 {
+        let id = self.spawn_creature(Species::Skulker, p, DAY * 3);
+        self.creatures.get_mut(&id).unwrap().sneaking = true;
+        id
+    }
+
+    /// Unseen, a thief makes for the most valuable thing lying about, takes
+    /// it and runs. Once a dwarf sees them, they're known and they bolt.
+    fn skulker_think(&mut self, c: &mut Creature) {
+        if c.sneaking && self.dwarves.iter().any(|d| d.alive && near(d.pos, c.pos, 5)) {
+            c.sneaking = false;
+            c.leaving = true;
+            c.path.clear();
+            let what = if c.loot.is_some() { " with stolen goods" } else { "" };
+            self.msg(&format!("A skulker has been spotted{}!", what), (255, 90, 90));
+            return;
+        }
+        if c.loot.is_some() {
+            c.leaving = true;
+            return;
+        }
+        // Standing on the prize: take it.
+        let here = self.items.values().filter(|it| it.pos == c.pos && it.free()).max_by_key(|it| it.value()).map(|it| it.id);
+        if let Some(id) = here.filter(|id| self.items[id].value() >= 10) {
+            let it = self.items.get_mut(&id).unwrap();
+            it.carried_by = Some(c.id);
+            it.container = None;
+            c.loot = Some(id);
+            c.leaving = true;
+            c.path.clear();
+            return;
+        }
+        if !c.path.is_empty() {
+            return;
+        }
+        let mut best: Vec<(u32, Pos)> = self.items.values().filter(|it| it.free() && it.value() >= 10).map(|it| (it.value(), it.pos)).collect();
+        best.sort_by_key(|b| std::cmp::Reverse(b.0));
+        let goals: HashSet<Pos> = best.iter().take(8).map(|b| b.1).collect();
+        let mover = c.species.info().mover;
+        if let Some((_, path)) = path::search(&self.world, c.pos, SEARCH_LIMIT, mover, |q| goals.contains(&q)) {
+            c.path = path.into_iter().rev().collect();
+        } else {
+            c.leaving = true;
+        }
+    }
+
     /// Once the caverns are found, now and then something crawls up out of them.
     pub(super) fn maybe_cave_horror(&mut self) {
         if self.tick < SEASON * 2 || self.creatures.values().any(|c| c.species == Species::CaveHorror) || !self.rng.chance(0.3) {
@@ -660,7 +716,7 @@ impl Game {
         for name in done {
             self.msg(&format!("{} has carried out its kill order.", name), (160, 230, 160));
         }
-        for id in c.weapon.take().into_iter().chain(c.armor.drain(..)) {
+        for id in c.weapon.take().into_iter().chain(c.armor.drain(..)).chain(c.loot.take()) {
             self.drop_item(id, c.pos);
         }
         let info = c.species.info();
@@ -766,6 +822,9 @@ impl Game {
                 for id in c.weapon.iter().chain(c.armor.iter()) {
                     self.items.remove(id);
                 }
+                if let Some(it) = c.loot.and_then(|id| self.items.remove(&id)) {
+                    self.msg(&format!("A thief has made off with {}!", it.name()), (255, 120, 90));
+                }
                 return false;
             }
             if c.path.is_empty() && c.think_cd == 0 {
@@ -867,6 +926,10 @@ impl Game {
         let dwarves: Vec<(u32, Pos)> = self.dwarves.iter().filter(|d| d.alive).map(|d| (d.id, d.pos)).collect();
         if c.species == Species::Merchant {
             self.merchant_think(c);
+            return;
+        }
+        if c.species == Species::Skulker {
+            self.skulker_think(c);
             return;
         }
         if info.aggro == 0 {
@@ -1183,5 +1246,40 @@ mod profile {
         c.body.dead = true;
         g.creature_died(c);
         assert!(g.overworld.events.iter().any(|e| e.text.contains(&label) && e.text.contains("slain")));
+    }
+
+    #[test]
+    fn an_unseen_thief_makes_off_with_the_best_thing_lying_about() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        let entry = g.edge_entry().unwrap();
+        let spot = g.spot_near(entry, 4);
+        let gold = g.spawn_item(ItemKind::Craft, Mat::Gold, spot);
+        let cheap = g.spawn_item(ItemKind::Log, Mat::Wood, spot);
+        let id = g.spawn_thief(entry);
+        assert!(!g.creatures[&id].hostile(), "an unseen thief isn't known to be hostile");
+        for _ in 0..DAY {
+            g.step();
+            if !g.creatures.contains_key(&id) {
+                break;
+            }
+        }
+        assert!(!g.creatures.contains_key(&id), "the thief never left");
+        assert!(!g.items.contains_key(&gold), "the gold craft should be gone");
+        assert!(g.items.contains_key(&cheap), "the log wasn't worth stealing");
+        assert!(g.log.iter().any(|l| l.text.starts_with("A thief has made off with")));
+    }
+
+    #[test]
+    fn a_thief_spotted_by_a_dwarf_is_known_and_runs() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        let p = g.dwarves[0].pos;
+        let at = g.spot_near(p, 2);
+        let id = g.spawn_thief(at);
+        let mut c = g.creatures.remove(&id).unwrap();
+        g.skulker_think(&mut c);
+        assert!(!c.sneaking && c.leaving && c.hostile());
+        assert!(g.log.iter().any(|l| l.text.starts_with("A skulker has been spotted")));
     }
 }
