@@ -1,4 +1,4 @@
-//! Traps that fire on creatures, and levers that work doors and drawbridges.
+//! Traps that fire on creatures, and levers that work doors, drawbridges and floodgates.
 
 use super::{Game, Travel, SEARCH_LIMIT};
 use crate::buildings::BuildingKind;
@@ -8,7 +8,7 @@ use crate::geom::{Pos, DIRS8};
 use crate::items::ItemKind;
 use crate::material::Mat;
 use crate::path;
-use crate::world::{Mover, BRIDGE_RAISED, DOOR_LOCKED, DOOR_NONE, DOOR_OPEN};
+use crate::world::{Mover, BRIDGE_RAISED, DOOR_LOCKED, DOOR_NONE, DOOR_OPEN, FLOODGATE_SHUT};
 
 impl Game {
     /// Every tick: armed traps go off on whatever creature stands on them.
@@ -117,8 +117,8 @@ impl Game {
     /// Link a lever to a door or drawbridge. Uses up a mechanism from stock.
     pub fn link_lever(&mut self, lever: u32, target: u32) -> Result<String, String> {
         let Some(t) = self.buildings.get(&target) else { return Err("Nothing to link there.".into()) };
-        if !matches!(t.kind, BuildingKind::Door | BuildingKind::Bridge) {
-            return Err("Levers work doors and drawbridges.".into());
+        if !matches!(t.kind, BuildingKind::Door | BuildingKind::Bridge | BuildingKind::Floodgate) {
+            return Err("Levers work doors, drawbridges and floodgates.".into());
         }
         let tname = t.name();
         if self.buildings.get(&lever).map_or(true, |l| l.kind != BuildingKind::Lever || !l.built) {
@@ -207,6 +207,15 @@ impl Game {
                     let raised = b.raised;
                     self.world.t_mut(pos).door = if raised { BRIDGE_RAISED } else { DOOR_NONE };
                     if raised {
+                        self.clear_tile(pos);
+                    }
+                    self.dig_version += 1;
+                }
+                BuildingKind::Floodgate if b.built => {
+                    b.locked = !b.locked;
+                    let shut = b.locked;
+                    self.world.t_mut(pos).door = if shut { FLOODGATE_SHUT } else { DOOR_NONE };
+                    if shut {
                         self.clear_tile(pos);
                     }
                     self.dig_version += 1;

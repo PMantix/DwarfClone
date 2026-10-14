@@ -106,6 +106,11 @@ build a well (`b`, `q`) over the hole from stone blocks or a boulder and a bucke
 less than drinking from a river, and doctors carry buckets of it to patients in bed so
 they needn't get up.
 
+**Floodgates.** A floodgate (`b`, `j`: blocks or a boulder plus a mechanism) is built shut and
+holds back water and walkers alike. Link a lever to it (`k` on the lever) and pull to open or
+shut it: flood a moat, fill a cistern, or seal off a leak. Doors and raised drawbridges also
+stop water.
+
 **Squads.** The military screen (`m`) forms named squads, gives them uniforms (weapon type,
 armor) and orders: train, hold a station, or kill a chosen creature. Soldiers train in the
 barracks zone and learn faster sparring together. Crossbows and bolts come from the

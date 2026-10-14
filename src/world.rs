@@ -84,6 +84,8 @@ pub const DOOR_OPEN: u8 = 1;
 /// A raised drawbridge: nobody passes and it can't be battered down.
 pub const BRIDGE_RAISED: u8 = 3;
 pub const DOOR_LOCKED: u8 = 2;
+/// A shut floodgate: holds back walkers and water alike.
+pub const FLOODGATE_SHUT: u8 = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Desig {
@@ -125,7 +127,7 @@ pub struct Tile {
     pub building: u32,
     /// Farm growth: 0 = fallow, otherwise ticks of growth.
     pub farm: u16,
-    /// DOOR_NONE / DOOR_OPEN / DOOR_LOCKED.
+    /// DOOR_NONE / DOOR_OPEN / DOOR_LOCKED / BRIDGE_RAISED / FLOODGATE_SHUT.
     #[serde(default)]
     pub door: u8,
     /// What a construction here was built from (None = natural).
@@ -266,6 +268,11 @@ impl World {
         self.get(p).map_or(true, |t| t.kind.solid())
     }
 
+    /// Water can't enter: rock, a door, a raised bridge or a shut floodgate.
+    pub fn blocks_water(&self, p: Pos) -> bool {
+        self.get(p).map_or(true, |t| t.kind.solid() || t.door != DOOR_NONE)
+    }
+
     /// Something overhead: rock, or a floor or wall built above.
     pub fn roofed(&self, p: Pos) -> bool {
         (p.z + 1..self.d).any(|z| self.kind(Pos::new(p.x, p.y, z)).map_or(false, |k| k != TileKind::Open))
@@ -279,7 +286,7 @@ impl World {
     pub fn passable(&self, p: Pos, m: Mover) -> bool {
         match self.get(p) {
             Some(t) if t.kind.has_floor() && t.water <= 3 => match t.door {
-                DOOR_LOCKED | BRIDGE_RAISED => false,
+                DOOR_LOCKED | BRIDGE_RAISED | FLOODGATE_SHUT => false,
                 DOOR_OPEN => m != Mover::Beast,
                 _ => true,
             },

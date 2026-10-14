@@ -30,7 +30,7 @@ mod animals;
 mod needs;
 mod family;
 pub use family::ADULT_AGE;
-mod wells;
+mod water;
 pub use medicine::Treatment;
 pub use military::{Squad, SquadOrder};
 #[cfg(test)]
@@ -748,7 +748,7 @@ impl Game {
             // Fall through anything without a floor.
             if matches!(t.kind, TileKind::Open | TileKind::StairDown | TileKind::StairUD) {
                 let b = p.down();
-                if self.world.in_bounds(b) && !self.world.solid(b) {
+                if self.world.in_bounds(b) && !self.world.blocks_water(b) {
                     let room = 7 - self.world.t(b).water;
                     if room > 0 {
                         let amt = room.min(t.water);
@@ -765,7 +765,7 @@ impl Game {
             // Level out sideways.
             let (dx, dy) = DIRS4[self.rng.range(0, 4) as usize];
             let q = p.offset(dx, dy, 0);
-            if !self.world.solid(q) {
+            if !self.world.blocks_water(q) {
                 let qw = self.world.t(q).water;
                 let here = self.world.tiles[i].water;
                 if qw + 1 < here || (here == 1 && qw == 0 && self.rng.chance(0.1)) {
@@ -1928,6 +1928,14 @@ impl Game {
                                         match b.kind {
                                             BuildingKind::Door => self.world.t_mut(pos).door = DOOR_OPEN,
                                             BuildingKind::Bridge => self.world.t_mut(pos).door = world::DOOR_NONE,
+                                            // A new floodgate starts shut, and the builder steps off it.
+                                            BuildingKind::Floodgate => {
+                                                b.locked = true;
+                                                self.world.t_mut(pos).door = world::FLOODGATE_SHUT;
+                                                d.pos = self.work_spot_off(pos);
+                                                d.path.clear();
+                                                self.dig_version += 1;
+                                            }
                                             _ => {}
                                         }
                                     }

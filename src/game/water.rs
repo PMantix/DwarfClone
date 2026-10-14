@@ -1,4 +1,5 @@
-//! Wells: clean water drawn up from below, for drinking and for patients.
+//! Wells (clean water drawn up from below, for drinking and for patients)
+//! and floodgates (lever-worked gates that hold water back).
 
 use super::*;
 
@@ -52,6 +53,11 @@ impl Game {
         DIRS8.iter().map(|&(dx, dy)| p.offset(dx, dy, 0)).find(|&q| self.world.walkable(q)).unwrap_or(p)
     }
 
+    /// A walkable neighbour of `p` to step aside to (or `p` if there's none).
+    pub(super) fn work_spot_off(&self, p: Pos) -> Pos {
+        DIRS8.iter().map(|&(dx, dy)| p.offset(dx, dy, 0)).find(|&q| self.world.walkable(q)).unwrap_or(p)
+    }
+
     /// Where to stand to draw from the nearest working well.
     pub(super) fn well_stand(&self, from: Pos) -> Option<Pos> {
         let mut wells = self.working_wells();
@@ -94,6 +100,91 @@ mod tests {
         b.built = true;
         b.mat = Mat::Granite;
         p
+    }
+
+    /// Carve a sealed tunnel deep in the rock: a full reservoir, a floodgate
+    /// spot, then dry floor. Returns (reservoir, gate, far end).
+    fn tunnel(g: &mut Game) -> (Pos, Pos, Pos) {
+        let e = g.embark;
+        for z in (2..e.z - 3).rev() {
+            for y in 3..g.world.h - 3 {
+                let start = Pos::new(e.x, y, z);
+                let row: Vec<Pos> = (-1..9).map(|dx| start.offset(dx, 0, 0)).collect();
+                let rock = row.iter().all(|&p| {
+                    [p, p.down(), p.up(), p.offset(0, 1, 0), p.offset(0, -1, 0)].iter().all(|&q| g.world.solid(q))
+                });
+                if !rock {
+                    continue;
+                }
+                for &p in &row[1..9] {
+                    let t = g.world.t_mut(p);
+                    t.kind = TileKind::Floor;
+                    t.revealed = true;
+                }
+                for &p in &row[1..4] {
+                    g.world.t_mut(p).water = 7;
+                }
+                g.water_cells = None;
+                return (row[1], row[4], row[8]);
+            }
+        }
+        panic!("no solid rock for a tunnel");
+    }
+
+    #[test]
+    fn a_floodgate_holds_water_until_its_lever_is_pulled() {
+        let mut g = Game::new(81);
+        let (_, gate, far) = tunnel(&mut g);
+        assert!(g.place_building(BuildingKind::Floodgate, gate));
+        let gid = g.world.t(gate).building;
+        {
+            let b = g.buildings.get_mut(&gid).unwrap();
+            b.built = true;
+            b.locked = true;
+        }
+        g.world.t_mut(gate).door = crate::world::FLOODGATE_SHUT;
+        let e = g.embark;
+        let lp = (2..20).map(|r| e.offset(r, 2, 0)).find(|&p| g.can_place(BuildingKind::Lever, p)).unwrap();
+        assert!(g.place_building(BuildingKind::Lever, lp));
+        let lid = g.world.t(lp).building;
+        g.buildings.get_mut(&lid).unwrap().built = true;
+        g.spawn_item(ItemKind::Mechanism, Mat::Granite, e);
+        g.link_lever(lid, gid).unwrap();
+        let wet_beyond = |g: &Game| (0..5).any(|i| g.world.t(far.offset(-i, 0, 0)).water > 0);
+        for _ in 0..600 {
+            g.step();
+        }
+        assert_eq!(g.world.t(gate).water, 0, "water seeped into a shut floodgate");
+        assert!(!wet_beyond(&g), "water got past a shut floodgate");
+        g.pull_lever(lid);
+        assert!(!g.buildings[&gid].locked);
+        for _ in 0..600 {
+            g.step();
+        }
+        assert!(wet_beyond(&g), "water never flowed through the open floodgate");
+        g.pull_lever(lid);
+        assert!(g.world.t(gate).door == crate::world::FLOODGATE_SHUT && !g.world.passable(gate, Mover::Dwarf));
+    }
+
+    #[test]
+    fn a_new_floodgate_starts_shut_with_nobody_inside() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        let e = g.embark;
+        let p = (2..20).map(|r| e.offset(r, -2, 0)).find(|&p| g.can_place(BuildingKind::Floodgate, p)).unwrap();
+        assert!(g.place_building(BuildingKind::Floodgate, p));
+        g.spawn_item(ItemKind::Block, Mat::Granite, e);
+        g.spawn_item(ItemKind::Mechanism, Mat::Granite, e);
+        let id = g.world.t(p).building;
+        for _ in 0..DAY {
+            g.step();
+            if g.buildings[&id].built {
+                break;
+            }
+        }
+        assert!(g.buildings[&id].built, "the floodgate was never built");
+        assert_eq!(g.world.t(p).door, crate::world::FLOODGATE_SHUT);
+        assert!(g.dwarves.iter().all(|d| d.pos != p), "the builder was left standing in the gate");
     }
 
     #[test]

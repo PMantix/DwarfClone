@@ -31,10 +31,11 @@ pub enum BuildingKind {
     Coffin,
     Slab,
     Well,
+    Floodgate,
 }
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 24] = [
+    pub const ALL: [BuildingKind; 25] = [
         BuildingKind::Carpenter,
         BuildingKind::Mason,
         BuildingKind::Still,
@@ -59,6 +60,7 @@ impl BuildingKind {
         BuildingKind::Coffin,
         BuildingKind::Slab,
         BuildingKind::Well,
+        BuildingKind::Floodgate,
     ];
 
     pub fn name(self) -> &'static str {
@@ -87,6 +89,7 @@ impl BuildingKind {
             BuildingKind::Coffin => "Coffin",
             BuildingKind::Slab => "Memorial slab",
             BuildingKind::Well => "Well",
+            BuildingKind::Floodgate => "Floodgate",
         }
     }
 
@@ -116,6 +119,7 @@ impl BuildingKind {
             BuildingKind::Coffin => 'y',
             BuildingKind::Slab => 'g',
             BuildingKind::Well => 'q',
+            BuildingKind::Floodgate => 'j',
         }
     }
 
@@ -135,6 +139,7 @@ impl BuildingKind {
                 | BuildingKind::Coffin
                 | BuildingKind::Slab
                 | BuildingKind::Well
+                | BuildingKind::Floodgate
         )
     }
 
@@ -145,7 +150,7 @@ impl BuildingKind {
     /// How many items go into building it, delivered one at a time.
     pub fn parts(self) -> u8 {
         match self {
-            BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap | BuildingKind::Bridge | BuildingKind::Well => 2,
+            BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap | BuildingKind::Bridge | BuildingKind::Well | BuildingKind::Floodgate => 2,
             _ => 1,
         }
     }
@@ -155,13 +160,14 @@ impl BuildingKind {
         use BuildingKind::*;
         let mechanism = item.kind == ItemKind::Mechanism;
         match (self, part) {
-            (Lever, _) | (CageTrap, 0) | (WeaponTrap, 0) | (StoneTrap, 0) | (Bridge, 1) => mechanism,
+            (Lever, _) | (CageTrap, 0) | (WeaponTrap, 0) | (StoneTrap, 0) | (Bridge, 1) | (Floodgate, 1) => mechanism,
             (CageTrap, _) => item.kind == ItemKind::Cage && item.label.is_none(),
             (WeaponTrap, _) => matches!(item.kind, ItemKind::Sword | ItemKind::Spear | ItemKind::Axe | ItemKind::Hammer),
             (StoneTrap, _) => item.kind == ItemKind::Boulder && item.mat.is_building_stone(),
             (Bridge, _) => matches!(item.kind, ItemKind::Log | ItemKind::Block),
             (Well, 0) => item.kind == ItemKind::Block || (item.kind == ItemKind::Boulder && item.mat.is_building_stone()),
             (Well, _) => item.kind == ItemKind::Bucket,
+            (Floodgate, _) => item.kind == ItemKind::Block || (item.kind == ItemKind::Boulder && item.mat.is_building_stone()),
             _ => self.needs(item),
         }
     }
@@ -169,13 +175,14 @@ impl BuildingKind {
     pub fn part_desc(self, part: u8) -> &'static str {
         use BuildingKind::*;
         match (self, part) {
-            (Lever, _) | (CageTrap, 0) | (WeaponTrap, 0) | (StoneTrap, 0) | (Bridge, 1) => "a mechanism",
+            (Lever, _) | (CageTrap, 0) | (WeaponTrap, 0) | (StoneTrap, 0) | (Bridge, 1) | (Floodgate, 1) => "a mechanism",
             (CageTrap, _) => "an empty cage",
             (WeaponTrap, _) => "a weapon",
             (StoneTrap, _) => "a stone boulder",
             (Bridge, _) => "a log or blocks",
             (Well, 0) => "stone blocks or a boulder",
             (Well, _) => "a bucket",
+            (Floodgate, _) => "stone blocks or a boulder",
             _ => self.needs_desc(),
         }
     }
@@ -217,6 +224,7 @@ impl BuildingKind {
             BuildingKind::StoneTrap => "a mechanism + a boulder",
             BuildingKind::Bridge => "a log or blocks + a mechanism",
             BuildingKind::Well => "blocks or a boulder + a bucket",
+            BuildingKind::Floodgate => "blocks or a boulder + a mechanism",
             _ => "a stone boulder",
         }
     }
@@ -263,6 +271,7 @@ impl BuildingKind {
             BuildingKind::Lever => Color::Rgb(220, 200, 120),
             BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap => Color::Rgb(230, 120, 120),
             BuildingKind::Well => Color::Rgb(110, 170, 255),
+            BuildingKind::Floodgate => Color::Rgb(150, 190, 230),
             _ => Color::Rgb(200, 200, 200),
         }
     }
@@ -291,6 +300,7 @@ impl BuildingKind {
             BuildingKind::Coffin => 'Ω',
             BuildingKind::Slab => '▬',
             BuildingKind::Well => '○',
+            BuildingKind::Floodgate => '╫',
         }
     }
 }
@@ -677,6 +687,9 @@ impl Building {
     pub fn glyph_at(&self, dx: i32, dy: i32) -> char {
         if self.kind == BuildingKind::Bridge && self.raised {
             return '▀';
+        }
+        if self.kind == BuildingKind::Floodgate && self.built && !self.locked {
+            return '¦';
         }
         if !self.kind.is_workshop() {
             return self.kind.letter();

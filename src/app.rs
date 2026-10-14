@@ -211,7 +211,7 @@ pub enum Mode {
     Burrows { sel: usize, corner: Option<Pos>, erase: bool },
     /// Choose who belongs to a burrow.
     BurrowMembers { burrow: usize, sel: usize },
-    /// Pick a door or bridge for a lever to work.
+    /// Pick a door, bridge or floodgate for a lever to work.
     LinkLever { lever: u32 },
     /// Pick a creature for a squad to kill.
     KillTarget { squad: usize },

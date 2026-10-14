@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: finish W11 (floodgates next), then onward in tier order.
+Suggested order: finish W11 (magma next), then onward in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -27,7 +27,7 @@ Suggested order: finish W11 (floodgates next), then onward in tier order.
 #### W11 Fluid machines and magma (L)
 - **DF:** wells, pumps, floodgates, water wheels, magma forges and smelters, aquifers.
 - **Us:** water that falls and levels out (`game.rs` `fluids`).
-- **Steps:** [x] well (clean water, ties to W05) (this commit) · [ ] floodgate on a lever (needs W06) · [ ] magma sea and magma workshops · [ ] aquifer layers
+- **Steps:** [x] well (clean water, ties to W05) (003591a) · [x] floodgate on a lever (needs W06) (this commit) · [ ] magma sea and magma workshops · [ ] aquifer layers
 
 #### W12 More workshops and clothing (M)
 - **DF:** leather, loom, clothier, glass, kiln, jeweler, soap and siege workshops; clothes wear out.

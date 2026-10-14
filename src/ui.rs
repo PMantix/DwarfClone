@@ -822,6 +822,10 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                     }
                     v.push(plain("Doctors bring well water to patients in bed.".into(), MUTED));
                 }
+                if b.kind == BuildingKind::Floodgate && b.built {
+                    v.push(plain(if b.locked { "Shut: holds back water and walkers".into() } else { "Open: water and walkers pass".into() }, TEXT));
+                    v.push(plain("Link a lever to it to open or shut it.".into(), MUTED));
+                }
                 if b.kind == BuildingKind::Bridge && b.built {
                     v.push(plain(if b.raised { "Raised: nobody can pass".into() } else { "Lowered: open to all".into() }, TEXT));
                     v.push(plain("Link a lever to it to raise it.".into(), MUTED));
@@ -836,12 +840,13 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                             let state = match tb.kind {
                                 BuildingKind::Bridge => if tb.raised { " (raised)" } else { " (lowered)" },
                                 BuildingKind::Door => if tb.locked { " (locked)" } else { " (open)" },
+                                BuildingKind::Floodgate => if tb.locked { " (shut)" } else { " (open)" },
                                 _ => "",
                             };
                             v.push(plain(format!("  {} at ({}, {}){}", tb.name(), tb.pos.x, tb.pos.y, state), TEXT));
                         }
                     }
-                    v.push(key_line("k", "Link to a door or bridge (uses a mechanism)", false));
+                    v.push(key_line("k", "Link to a door, bridge or floodgate (uses a mechanism)", false));
                     v.push(key_line("p", if b.pull { "Pull requested..." } else { "Pull the lever" }, b.pull));
                 }
                 v.push(key_line("X", "Remove building", false));
@@ -903,8 +908,8 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
         }
         Mode::LinkLever { .. } => {
             title = "Link lever".to_string();
-            v.push(plain("Move the cursor onto a door or".into(), TEXT));
-            v.push(plain("drawbridge and press Enter.".into(), TEXT));
+            v.push(plain("Move the cursor onto a door, drawbridge".into(), TEXT));
+            v.push(plain("or floodgate and press Enter.".into(), TEXT));
             v.push(plain("Esc: back".into(), MUTED));
             v.push(Line::default());
             v.extend(cursor_info(g, app.cursor));
