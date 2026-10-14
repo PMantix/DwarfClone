@@ -33,6 +33,8 @@ pub use family::ADULT_AGE;
 mod water;
 mod clothing;
 mod farming;
+mod orders;
+pub use orders::{all_recipes, WorkOrder};
 pub use medicine::Treatment;
 pub use military::{Squad, SquadOrder};
 #[cfg(test)]
@@ -207,6 +209,9 @@ pub struct Game {
     /// Every aquifer cell on the map (they never change).
     #[serde(skip)]
     aquifer_tiles: Option<Vec<usize>>,
+    /// Fortress-wide "keep N in stock" orders.
+    #[serde(default)]
+    pub work_orders: Vec<WorkOrder>,
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
@@ -293,6 +298,7 @@ impl Game {
             magma_seen: 0,
             aquifer_leaks: None,
             aquifer_tiles: None,
+            work_orders: Vec::new(),
             creatures: BTreeMap::new(),
             station: None,
             alert: true,
@@ -716,6 +722,9 @@ impl Game {
         }
         if self.tick % 25 == 0 {
             self.aquifers();
+        }
+        if self.tick % 300 == 150 {
+            self.manage_orders();
         }
         if self.tick % 10 == 0 {
             self.grow_farms();

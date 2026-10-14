@@ -216,6 +216,9 @@ pub enum Mode {
     Burrows { sel: usize, corner: Option<Pos>, erase: bool },
     /// Choose who belongs to a burrow.
     BurrowMembers { burrow: usize, sel: usize },
+    /// Fortress-wide work orders; `pick` is the cursor in the recipe list
+    /// while choosing a new one.
+    Orders { sel: usize, pick: Option<usize> },
     /// Pick a door, bridge or floodgate for a lever to work.
     LinkLever { lever: u32 },
     /// Pick a creature for a squad to kill.
@@ -806,6 +809,7 @@ impl App {
                 _ => {}
             },
             Mode::Query { bld, adding } => self.key_query(k, bld, adding),
+            Mode::Orders { sel, pick } => self.key_orders(k, sel, pick),
             Mode::Units { sel } => {
                 let n = self.game.dwarves.len();
                 match k.code {
@@ -1001,6 +1005,7 @@ impl App {
             KeyCode::Char('o') => self.mode = Mode::Traffic { level: 2, corner: None },
             KeyCode::Char('m') => self.mode = Mode::Military,
             KeyCode::Char('n') => self.mode = Mode::Nobles,
+            KeyCode::Char('j') => self.mode = Mode::Orders { sel: 0, pick: None },
             KeyCode::Char('L') => self.mode = Mode::Legends { tab: 0, scroll: usize::MAX, from_world: false },
             KeyCode::Char('v') => {
                 let c = self.cursor;
@@ -1217,6 +1222,55 @@ impl App {
             _ => {}
         }
         self.mode = Mode::Burrows { sel, corner, erase };
+    }
+
+    fn key_orders(&mut self, k: KeyEvent, sel: usize, pick: Option<usize>) {
+        let recipes = crate::game::all_recipes();
+        if let Some(p) = pick {
+            match k.code {
+                KeyCode::Esc => self.mode = Mode::Orders { sel, pick: None },
+                KeyCode::Up => self.mode = Mode::Orders { sel, pick: Some(p.saturating_sub(1)) },
+                KeyCode::Down => self.mode = Mode::Orders { sel, pick: Some((p + 1).min(recipes.len() - 1)) },
+                KeyCode::PageUp => self.mode = Mode::Orders { sel, pick: Some(p.saturating_sub(10)) },
+                KeyCode::PageDown => self.mode = Mode::Orders { sel, pick: Some((p + 10).min(recipes.len() - 1)) },
+                KeyCode::Enter => {
+                    let r = recipes[p];
+                    let (kind, per) = r.product();
+                    let keep = (self.game.stock_of(kind) as u32 + per as u32).max(5);
+                    self.game.add_work_order(r, keep);
+                    let at = self.game.work_orders.iter().position(|o| o.recipe == r).unwrap_or(0);
+                    self.flash = Some(format!("Keeping {} in stock: {}.", keep, r.name()));
+                    self.mode = Mode::Orders { sel: at, pick: None };
+                }
+                _ => {}
+            }
+            return;
+        }
+        let n = self.game.work_orders.len();
+        let step = if k.modifiers.contains(KeyModifiers::SHIFT) { 10 } else { 1 };
+        match k.code {
+            KeyCode::Esc | KeyCode::Char('j') => self.mode = Mode::Normal,
+            KeyCode::Up => self.mode = Mode::Orders { sel: sel.saturating_sub(1), pick: None },
+            KeyCode::Down => self.mode = Mode::Orders { sel: (sel + 1).min(n.saturating_sub(1)), pick: None },
+            KeyCode::Char('n') => self.mode = Mode::Orders { sel, pick: Some(0) },
+            KeyCode::Right | KeyCode::Char('+') | KeyCode::Char('=') => {
+                if let Some(o) = self.game.work_orders.get_mut(sel) {
+                    o.keep = (o.keep + step).min(999);
+                }
+            }
+            KeyCode::Left | KeyCode::Char('-') => {
+                if let Some(o) = self.game.work_orders.get_mut(sel) {
+                    o.keep = o.keep.saturating_sub(step);
+                }
+            }
+            KeyCode::Char('x') | KeyCode::Delete => {
+                if sel < n {
+                    self.game.work_orders.remove(sel);
+                    self.mode = Mode::Orders { sel: sel.min(n.saturating_sub(2)), pick: None };
+                }
+            }
+            _ => {}
+        }
     }
 
     fn key_look(&mut self, k: KeyEvent, sel: usize) {

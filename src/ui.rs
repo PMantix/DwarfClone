@@ -668,6 +668,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(key_line("k", "Look around", false));
             v.push(key_line("z", "Fortress status", false));
             v.push(key_line("u", "Unit list", false));
+            v.push(key_line("j", "Work orders (keep in stock)", false));
             v.push(key_line("y", "Labors & work details", false));
             v.push(key_line("w", "Burrows", false));
             v.push(key_line("o", "Traffic", false));
@@ -887,6 +888,49 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                     v.push(key_line("p", if b.pull { "Pull requested..." } else { "Pull the lever" }, b.pull));
                 }
                 v.push(key_line("X", "Remove building", false));
+                v.push(plain("Esc: back".into(), MUTED));
+            }
+        }
+        Mode::Orders { sel, pick } => {
+            title = "Work orders".to_string();
+            if let Some(p) = pick {
+                let recipes = crate::game::all_recipes();
+                v.push(plain("Keep in stock — pick a job:".into(), TEXT));
+                let first = p.saturating_sub(12);
+                for (i, r) in recipes.iter().enumerate().skip(first).take(26) {
+                    let style = if i == *p { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
+                    let shop = BuildingKind::ALL.iter().find(|b| b.recipes().contains(r)).map_or("", |b| b.name());
+                    v.push(Line::from(vec![
+                        Span::styled(format!("{:<26.26}", r.name()), style.fg(TEXT)),
+                        Span::styled(format!(" {:.14}", shop), style.fg(MUTED)),
+                    ]));
+                }
+                v.push(Line::default());
+                v.push(plain("Up/Down, PgUp/PgDn · Enter add · Esc back".into(), MUTED));
+            } else {
+                if g.work_orders.is_empty() {
+                    v.push(plain("No standing orders.".into(), MUTED));
+                }
+                for (i, o) in g.work_orders.iter().enumerate() {
+                    let (kind, _) = o.recipe.product();
+                    let have = g.stock_of(kind);
+                    let queued = g.queued(o.recipe);
+                    let style = if i == *sel { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
+                    let col = if have >= o.keep as usize { Color::Rgb(150, 220, 150) } else { Color::Rgb(230, 200, 90) };
+                    v.push(Line::from(vec![
+                        Span::styled(format!("{:<24.24}", o.recipe.name()), style.fg(TEXT)),
+                        Span::styled(format!(" {:>3}/{:<3}", have, o.keep), style.fg(col)),
+                        Span::styled(if queued > 0 { format!(" +{} queued", queued) } else { String::new() }, style.fg(MUTED)),
+                    ]));
+                }
+                v.push(Line::default());
+                v.push(plain("Each order keeps that many of its product".into(), MUTED));
+                v.push(plain("in stock, queuing jobs at whichever".into(), MUTED));
+                v.push(plain("workshop can do them.".into(), MUTED));
+                v.push(Line::default());
+                v.push(key_line("n", "New order", false));
+                v.push(key_line("←/→", "Fewer/more (Shift ×10)", false));
+                v.push(key_line("x", "Delete order", false));
                 v.push(plain("Esc: back".into(), MUTED));
             }
         }
@@ -3065,6 +3109,24 @@ mod tests {
         let s = dump(&mut app, 130, 45);
         println!("{}", s);
         assert!(s.contains("Bedroom (") && !s.contains("unassigned"), "bedroom not assigned");
+    }
+
+    #[test]
+    fn render_work_orders() {
+        let mut app = App::generated(42);
+        app.mode = Mode::Normal;
+        let key = |c| crossterm::event::KeyEvent::new(c, crossterm::event::KeyModifiers::NONE);
+        app.on_key(key(crossterm::event::KeyCode::Char('j')));
+        app.on_key(key(crossterm::event::KeyCode::Char('n')));
+        let s = dump(&mut app, 130, 45);
+        assert!(s.contains("pick a job") && s.contains("Make wooden bed"), "{}", s);
+        app.on_key(key(crossterm::event::KeyCode::Enter));
+        app.on_key(key(crossterm::event::KeyCode::Right));
+        let s = dump(&mut app, 130, 45);
+        println!("{}", s);
+        assert_eq!(app.game.work_orders.len(), 1);
+        assert_eq!(app.game.work_orders[0].keep, 6, "bed order starts at 5, Right adds one");
+        assert!(s.contains("Make wooden bed") && s.contains("/6"));
     }
 
     #[test]

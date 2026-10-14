@@ -53,6 +53,10 @@ pools) until there are twenty fish in store; fish can be eaten or cooked. A mill
 (`b`, `M`) grinds hollowgrain or goldoat into flour, which the kitchen bakes into three
 meals rather than two.
 
+**Work orders.** `j` lists standing orders: each keeps a number of something in stock
+(beds, barrels, meals, blocks...) by queuing jobs at the least busy workshop that can do
+them, a few at a time. `n` adds one, Left/Right change the number, `x` deletes.
+
 **Industry.** Farming with seeds, brewing, cooking, butchery, charcoal, ore smelting,
 steel (with limestone flux), a forge for tools, weapons and armor, stone and bone crafts,
 gem cutting, furniture, barrels and bins that store goods. Multi-input recipes, repeating
