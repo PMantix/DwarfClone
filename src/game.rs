@@ -756,7 +756,10 @@ impl Game {
         if self.tick % 25 == 0 {
             self.aquifers();
         }
-        if self.tick % 300 == 150 {
+        // A manager sees to work orders; a bookkeeper's counts let them do it
+        // several times a day rather than once.
+        let bookkeeper = self.holder(Position::Bookkeeper).is_some();
+        if (bookkeeper && self.tick % 300 == 150) || self.tick % DAY == DAY / 4 {
             self.manage_orders();
         }
         if self.tick % 10 == 0 {

@@ -63,6 +63,13 @@ impl Game {
     /// A few times a day: top up stocks that have fallen below their mark by
     /// queuing jobs at the least busy workshop that can do them.
     pub(super) fn manage_orders(&mut self) {
+        if self.work_orders.is_empty() {
+            return;
+        }
+        if self.holder(super::Position::Manager).is_none() {
+            self.warn("nomanager", "Work orders wait for a manager (n to appoint one).", (230, 200, 90));
+            return;
+        }
         for i in 0..self.work_orders.len() {
             let WorkOrder { recipe, keep } = self.work_orders[i];
             let (kind, per_job) = recipe.product();
@@ -123,6 +130,10 @@ mod tests {
         assert!(g.buildings[&shop].built);
         let have = g.stock_of(ItemKind::Barrel);
         g.add_work_order(Recipe::Barrel, have as u32 + 2);
+        g.manage_orders();
+        assert_eq!(g.queued(Recipe::Barrel), 0, "no manager, no work orders");
+        let m = g.dwarves[0].id;
+        g.appoint(super::super::Position::Manager, Some(m));
         g.manage_orders();
         assert_eq!(g.queued(Recipe::Barrel), 2, "should queue just enough barrels");
         g.manage_orders();

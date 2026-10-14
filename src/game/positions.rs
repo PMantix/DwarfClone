@@ -28,8 +28,8 @@ impl Position {
     /// What having one does, for the nobles screen.
     pub fn duty(self) -> &'static str {
         match self {
-            Position::Manager => "work orders are carried out",
-            Position::Bookkeeper => "stocks for work orders are counted often",
+            Position::Manager => "work orders (j) are carried out",
+            Position::Bookkeeper => "stocks are counted often, not daily",
             Position::Broker => "better prices from traders",
             Position::ChiefMedic => "doctors treat a quarter faster",
             Position::Commander => "soldiers learn a quarter faster",

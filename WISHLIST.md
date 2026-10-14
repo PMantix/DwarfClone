@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: finish W15 (manager and work orders next), then onward in tier order.
+Suggested order: finish W15 (broker next), then onward in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -27,7 +27,7 @@ Suggested order: finish W15 (manager and work orders next), then onward in tier 
 #### W15 Noble positions (M)
 - **DF:** broker, bookkeeper, manager, sheriff, militia commander, chief medical dwarf; titles rising with wealth up to monarch.
 - **Us:** expedition leader, then mayor.
-- **Steps:** [x] appoint positions screen (this commit) · [ ] manager unlocks W14 global orders · [ ] broker improves trade prices · [ ] titles by wealth, with demands
+- **Steps:** [x] appoint positions screen (68ccc36) · [x] manager unlocks W14 global orders (this commit) · [ ] broker improves trade prices · [ ] titles by wealth, with demands
 
 #### W16 Justice (S–M)
 - **DF:** sheriff, crimes, interrogation, beatings, jail, hammerer.

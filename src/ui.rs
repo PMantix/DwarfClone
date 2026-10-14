@@ -970,6 +970,11 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.push(Line::default());
                 v.push(plain("Up/Down, PgUp/PgDn · Enter add · Esc back".into(), MUTED));
             } else {
+                match (g.holder(crate::game::Position::Manager), g.holder(crate::game::Position::Bookkeeper)) {
+                    (None, _) => v.push(plain("No manager: orders wait (n to appoint).".into(), Color::Rgb(240, 130, 100))),
+                    (Some(m), None) => v.push(plain(format!("Manager {}; checked daily.", m.name), MUTED)),
+                    (Some(m), Some(_)) => v.push(plain(format!("Manager {}; bookkeeper counts often.", m.name), MUTED)),
+                }
                 if g.work_orders.is_empty() {
                     v.push(plain("No standing orders.".into(), MUTED));
                 }
