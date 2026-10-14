@@ -57,7 +57,8 @@ meals rather than two.
 (beds, barrels, meals, blocks...) by queuing jobs at the least busy workshop that can do
 them, a few at a time. `n` adds one, Left/Right change the number, `x` deletes. In look
 mode, `f` forbids an item (nobody hauls, uses or eats it) and `F` forbids everything on the
-tile; `d` and `D` mark things for the garbage dump.
+tile; `d` and `D` mark things for the garbage dump. `s` on a stockpile opens its settings:
+untick kinds of item (within its category) or materials it shouldn't take.
 
 **Industry.** Farming with seeds, brewing, cooking, butchery, charcoal, ore smelting,
 steel (with limestone flux), a forge for tools, weapons and armor, stone and bone crafts,

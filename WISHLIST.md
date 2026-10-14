@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: finish W14 (stockpile material filters next), then onward in tier order.
+Suggested order: finish W14 (workshop profiles next), then onward in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -27,7 +27,7 @@ Suggested order: finish W14 (stockpile material filters next), then onward in ti
 #### W14 Work orders and item management (M)
 - **DF:** global work orders with conditions; workshop profiles; forbid, dump, melt; detailed stockpile settings; minecarts.
 - **Us:** per-workshop order queues with repeat.
-- **Steps:** [x] global orders with "keep N in stock" conditions (4d0bec8) · [x] forbid and dump on items (look mode) (this commit) · [ ] stockpile material filters · [ ] workshop profiles (who may work there)
+- **Steps:** [x] global orders with "keep N in stock" conditions (4d0bec8) · [x] forbid and dump on items (look mode) (7b7dac9) · [x] stockpile material filters (this commit) · [ ] workshop profiles (who may work there)
 
 #### W15 Noble positions (M)
 - **DF:** broker, bookkeeper, manager, sheriff, militia commander, chief medical dwarf; titles rising with wealth up to monarch.

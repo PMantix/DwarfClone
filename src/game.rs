@@ -21,6 +21,7 @@ mod psyche_tests;
 mod labor;
 pub use labor::WorkDetail;
 mod rooms;
+pub use rooms::PileToggle;
 mod construct;
 mod burrows;
 mod traps;
@@ -118,6 +119,20 @@ pub struct Zone {
     /// The one crop a farm grows (None: whatever suits the season).
     #[serde(default)]
     pub crop: Option<Mat>,
+    /// Kinds of item a stockpile refuses, though its category takes them.
+    #[serde(default)]
+    pub deny: Vec<ItemKind>,
+    /// Materials a stockpile refuses (containers are let in regardless).
+    #[serde(default)]
+    pub deny_mats: Vec<Mat>,
+}
+
+impl Zone {
+    /// Whether this stockpile takes `kind` made of `mat`.
+    pub fn takes(&self, kind: ItemKind, mat: Mat) -> bool {
+        let ZoneKind::Stockpile(f) = self.kind else { return false };
+        stock_ok(f, kind) && !self.deny.contains(&kind) && (kind.is_container() || !self.deny_mats.contains(&mat))
+    }
 }
 
 enum Travel {
@@ -549,7 +564,7 @@ impl Game {
             }
         }
         let n = tiles.len();
-        self.zones.insert(id, Zone { id, kind, tiles, owner: None, crop: None });
+        self.zones.insert(id, Zone { id, kind, tiles, owner: None, crop: None, deny: Vec::new(), deny_mats: Vec::new() });
         n
     }
 
@@ -1788,12 +1803,8 @@ impl Game {
         })
     }
 
-    fn stockpile_accepts(&self, p: Pos, kind: ItemKind) -> bool {
-        let zid = self.world.t(p).zone;
-        match self.zones.get(&zid).map(|z| z.kind) {
-            Some(ZoneKind::Stockpile(f)) => stock_ok(f, kind),
-            _ => false,
-        }
+    fn stockpile_accepts(&self, p: Pos, kind: ItemKind, mat: Mat) -> bool {
+        self.zones.get(&self.world.t(p).zone).map_or(false, |z| z.takes(kind, mat))
     }
 
     pub fn contents(&self, container: u32) -> usize {
@@ -1837,12 +1848,12 @@ impl Game {
                 boxes.insert(it.pos, (it.id, it.kind));
             }
         }
-        let mut free: Vec<(Pos, StockFilter)> = Vec::new();
+        let mut free: Vec<(Pos, &Zone)> = Vec::new();
         for z in self.zones.values() {
-            if let ZoneKind::Stockpile(f) = z.kind {
+            if let ZoneKind::Stockpile(_) = z.kind {
                 for &p in &z.tiles {
                     if !occupied.contains(&p) && !self.reserved.contains(&p) && self.world.walkable(p) {
-                        free.push((p, f));
+                        free.push((p, z));
                     }
                 }
             }
@@ -1858,53 +1869,50 @@ impl Game {
                     v.len() < CONTAINER_CAP && v.iter().all(|it| it.claimed_by.is_none() && !it.forbidden && it.kind.stored_in() == Some(ck))
                 })
         };
-        let filter_at = |p: Pos| match self.zones.get(&self.world.t(p).zone).map(|z| z.kind) {
-            Some(ZoneKind::Stockpile(f)) => Some(f),
-            _ => None,
-        };
-        let box_for = |kind: ItemKind| {
+        let pile_at = |p: Pos| self.zones.get(&self.world.t(p).zone).filter(|z| matches!(z.kind, ZoneKind::Stockpile(_)));
+        let box_for = |kind: ItemKind, mat: Mat| {
             boxes
                 .iter()
-                .filter(move |(p, (_, ck))| kind.stored_in() == Some(*ck) && filter_at(**p).map_or(false, |f| f.accepts(kind)))
+                .filter(move |(p, (_, ck))| kind.stored_in() == Some(*ck) && pile_at(**p).map_or(false, |z| z.takes(kind, mat)))
                 .map(|(p, (id, _))| (*p, *id))
         };
         let spare_box = self.items.values().any(|it| it.kind.is_container() && it.carried_by.is_none() && !fill.contains_key(&it.id));
         if free.is_empty() && boxes.is_empty() && !spare_box {
             return false;
         }
-        // Work out once per kind (not once per item) where things could go.
-        let kinds: HashSet<ItemKind> = self.items.values().map(|it| it.kind).collect();
-        let has_free: HashSet<ItemKind> = kinds.iter().copied().filter(|&k| free.iter().any(|(_, f)| stock_ok(*f, k))).collect();
-        let boxable: HashSet<ItemKind> = kinds.iter().copied().filter(|&k| k.stored_in().is_some() && box_for(k).next().is_some()).collect();
-        let box_room: HashSet<ItemKind> = kinds
+        // Work out once per kind and material (not once per item) where things could go.
+        let kinds: HashSet<(ItemKind, Mat)> = self.items.values().map(|it| (it.kind, it.mat)).collect();
+        let has_free: HashSet<(ItemKind, Mat)> =
+            kinds.iter().copied().filter(|&(k, m)| free.iter().any(|(_, z)| z.takes(k, m))).collect();
+        let boxable: HashSet<(ItemKind, Mat)> =
+            kinds.iter().copied().filter(|&(k, m)| k.stored_in().is_some() && box_for(k, m).next().is_some()).collect();
+        let box_room: HashSet<(ItemKind, Mat)> = kinds
             .iter()
             .copied()
-            .filter(|&k| k.is_container() && on_tile.keys().any(|p| absorb_ok(*p, k) && filter_at(*p).map_or(false, |f| stock_ok(f, k))))
+            .filter(|&(k, m)| k.is_container() && on_tile.keys().any(|p| absorb_ok(*p, k) && pile_at(*p).map_or(false, |z| z.takes(k, m))))
             .collect();
         let haulable = |it: &Item| {
             if it.to_depot || it.dump || it.container.is_some() || (it.kind.is_container() && fill.contains_key(&it.id)) {
                 return false;
             }
-            let stored = self.stockpile_accepts(it.pos, it.kind);
+            let km = (it.kind, it.mat);
+            let stored = self.stockpile_accepts(it.pos, it.kind, it.mat);
             // Loose goods already in their stockpile still move into a container if one has room.
-            let could_box = boxable.contains(&it.kind);
-            (!stored && (has_free.contains(&it.kind) || could_box || box_room.contains(&it.kind))) || (stored && could_box)
+            let could_box = boxable.contains(&km);
+            (!stored && (has_free.contains(&km) || could_box || box_room.contains(&km))) || (stored && could_box)
         };
         let Some((item, path)) = self.find_item(d.pos, haulable) else { return false };
-        let (ipos, kind) = {
+        let (ipos, kind, mat) = {
             let it = &self.items[&item];
-            (it.pos, it.kind)
+            (it.pos, it.kind, it.mat)
         };
-        let into: HashMap<Pos, u32> = box_for(kind).collect();
-        let dests: HashSet<Pos> = free.iter().filter(|(_, f)| stock_ok(*f, kind)).map(|(p, _)| *p).collect();
-        let stored_now = self.stockpile_accepts(ipos, kind);
+        let into: HashMap<Pos, u32> = box_for(kind, mat).collect();
+        let dests: HashSet<Pos> = free.iter().filter(|(_, z)| z.takes(kind, mat)).map(|(p, _)| *p).collect();
+        let stored_now = self.stockpile_accepts(ipos, kind, mat);
         let found = path::search(&self.world, ipos, SEARCH_LIMIT, Mover::Dwarf, |p| {
             into.contains_key(&p)
                 || (!stored_now && dests.contains(&p))
-                || (!stored_now
-                    && kind.is_container()
-                    && absorb_ok(p, kind)
-                    && filter_at(p).map_or(false, |f| stock_ok(f, kind)))
+                || (!stored_now && kind.is_container() && absorb_ok(p, kind) && pile_at(p).map_or(false, |z| z.takes(kind, mat)))
         });
         let Some((dest, _)) = found else { return false };
         let target = into.get(&dest).copied();
@@ -2556,7 +2564,7 @@ mod tests {
             .count();
         assert!(planted > 0 || count(&g, ItemKind::Plant) > 0, "farm untouched");
         // Stockpile used.
-        let stocked = g.items.values().filter(|it| g.stockpile_accepts(it.pos, it.kind)).count();
+        let stocked = g.items.values().filter(|it| g.stockpile_accepts(it.pos, it.kind, it.mat)).count();
         assert!(stocked > 5, "hauling not working ({} stocked)", stocked);
         assert_eq!(g.alive_count(), 7, "dwarves died: {:?}", g.log.iter().rev().take(5).map(|l| &l.text).collect::<Vec<_>>());
     }

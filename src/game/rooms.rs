@@ -5,6 +5,8 @@ use super::{Game, ZoneKind, SEARCH_LIMIT};
 use crate::buildings::BuildingKind;
 use crate::dwarf::{Dwarf, Task};
 use crate::geom::{Pos, DIRS4};
+use crate::items::ItemKind;
+use crate::material::Mat;
 use crate::path;
 use crate::world::Mover;
 use std::collections::HashSet;
@@ -51,6 +53,13 @@ impl ZoneKind {
     pub fn ownable(self) -> bool {
         matches!(self, ZoneKind::Bedroom | ZoneKind::Office)
     }
+}
+
+/// One stockpile setting: a kind of item, or a material.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PileToggle {
+    Kind(ItemKind),
+    Mat(Mat),
 }
 
 impl Game {
@@ -195,6 +204,55 @@ impl Game {
         it.to_depot = false;
         it.container = None;
         Some(it.dump)
+    }
+
+    /// A stockpile's settings, one row each for the kinds of item its
+    /// category takes and for the materials of such items the fortress has
+    /// (or that it already refuses): (label, allowed, what toggling flips).
+    pub fn pile_rows(&self, zone: u32) -> Vec<(String, bool, PileToggle)> {
+        let Some(z) = self.zones.get(&zone) else { return Vec::new() };
+        let ZoneKind::Stockpile(f) = z.kind else { return Vec::new() };
+        let mut v = Vec::new();
+        for k in ItemKind::ALL {
+            if super::stock_ok(f, k) {
+                v.push((k.plural().to_string(), !z.deny.contains(&k), PileToggle::Kind(k)));
+            }
+        }
+        let mut mats: Vec<Mat> = self
+            .items
+            .values()
+            .filter(|it| super::stock_ok(f, it.kind) && !it.kind.is_container())
+            .map(|it| it.mat)
+            .chain(z.deny_mats.iter().copied())
+            .collect();
+        mats.sort();
+        mats.dedup();
+        for m in mats {
+            v.push((format!("made of {}", m.name()), !z.deny_mats.contains(&m), PileToggle::Mat(m)));
+        }
+        v
+    }
+
+    /// Flip one stockpile setting.
+    pub fn toggle_pile(&mut self, zone: u32, t: PileToggle) {
+        let Some(z) = self.zones.get_mut(&zone) else { return };
+        match t {
+            PileToggle::Kind(k) => {
+                if let Some(i) = z.deny.iter().position(|&d| d == k) {
+                    z.deny.remove(i);
+                } else {
+                    z.deny.push(k);
+                }
+            }
+            PileToggle::Mat(m) => {
+                if let Some(i) = z.deny_mats.iter().position(|&d| d == m) {
+                    z.deny_mats.remove(i);
+                } else {
+                    z.deny_mats.push(m);
+                }
+            }
+        }
+        self.haul_retry = 0;
     }
 
     /// Forbid or allow an item. None if someone is carrying it.
@@ -426,5 +484,37 @@ mod tests {
         let (n, on) = g.forbid_tile(p);
         assert!(n >= 1 && on);
         assert!(g.items[&log].forbidden);
+    }
+
+    #[test]
+    fn a_stockpile_refuses_the_kinds_and_materials_it_is_told_to() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        let e = g.embark;
+        assert!(g.add_zone(e.offset(-8, 3, -1), e.offset(-1, 9, 1), ZoneKind::Stockpile(crate::items::StockFilter::Stone)) > 0);
+        let zone = *g.zones.keys().last().unwrap();
+        let rows = g.pile_rows(zone);
+        assert!(rows.iter().any(|r| r.0 == "boulders") && rows.iter().any(|r| r.0 == "blocks"));
+        let spot = (4..20).map(|r| e.offset(r, -4, 0)).find(|p| g.world.walkable(*p) && g.world.t(*p).zone == 0).unwrap();
+        let granite = g.spawn_item(ItemKind::Boulder, Mat::Granite, spot);
+        let marble = g.spawn_item(ItemKind::Boulder, Mat::Marble, spot);
+        let block = g.spawn_item(ItemKind::Block, Mat::Marble, spot);
+        g.toggle_pile(zone, PileToggle::Mat(Mat::Granite));
+        g.toggle_pile(zone, PileToggle::Kind(ItemKind::Block));
+        let rows = g.pile_rows(zone);
+        assert!(rows.iter().any(|r| r.0 == "made of granite" && !r.1), "granite row: {:?}", rows.iter().map(|r| (&r.0, r.1)).collect::<Vec<_>>());
+        for _ in 0..DAY {
+            g.step();
+        }
+        let in_pile = |g: &Game, id: u32| g.zone_at(g.items[&id].pos).map_or(false, |z| z.id == zone);
+        assert!(in_pile(&g, marble), "marble boulder should be stored");
+        assert!(!in_pile(&g, granite), "granite was refused");
+        assert!(!in_pile(&g, block), "blocks were refused");
+        // Allowing granite again brings it in.
+        g.toggle_pile(zone, PileToggle::Mat(Mat::Granite));
+        for _ in 0..DAY {
+            g.step();
+        }
+        assert!(in_pile(&g, granite), "granite should be stored once allowed");
     }
 }

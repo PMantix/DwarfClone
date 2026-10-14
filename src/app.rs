@@ -216,6 +216,8 @@ pub enum Mode {
     Burrows { sel: usize, corner: Option<Pos>, erase: bool },
     /// Choose who belongs to a burrow.
     BurrowMembers { burrow: usize, sel: usize },
+    /// What one stockpile takes.
+    PileSettings { zone: u32, sel: usize },
     /// Fortress-wide work orders; `pick` is the cursor in the recipe list
     /// while choosing a new one.
     Orders { sel: usize, pick: Option<usize> },
@@ -810,6 +812,30 @@ impl App {
             },
             Mode::Query { bld, adding } => self.key_query(k, bld, adding),
             Mode::Orders { sel, pick } => self.key_orders(k, sel, pick),
+            Mode::PileSettings { zone, sel } => {
+                let rows = self.game.pile_rows(zone);
+                let n = rows.len().max(1);
+                match k.code {
+                    KeyCode::Esc => self.mode = Mode::Look { sel: 0 },
+                    KeyCode::Up => self.mode = Mode::PileSettings { zone, sel: sel.saturating_sub(1) },
+                    KeyCode::Down => self.mode = Mode::PileSettings { zone, sel: (sel + 1).min(n - 1) },
+                    KeyCode::PageUp => self.mode = Mode::PileSettings { zone, sel: sel.saturating_sub(10) },
+                    KeyCode::PageDown => self.mode = Mode::PileSettings { zone, sel: (sel + 10).min(n - 1) },
+                    KeyCode::Enter | KeyCode::Char(' ') => {
+                        if let Some(&(_, _, t)) = rows.get(sel) {
+                            self.game.toggle_pile(zone, t);
+                        }
+                    }
+                    KeyCode::Char('a') => {
+                        if let Some(z) = self.game.zones.get_mut(&zone) {
+                            z.deny.clear();
+                            z.deny_mats.clear();
+                        }
+                        self.flash = Some("This stockpile takes everything in its category again.".into());
+                    }
+                    _ => {}
+                }
+            }
             Mode::Units { sel } => {
                 let n = self.game.dwarves.len();
                 match k.code {
@@ -1341,6 +1367,12 @@ impl App {
             KeyCode::Char('D') => {
                 let k = self.game.dump_tile(self.cursor);
                 self.flash = Some(format!("{} items marked for the garbage dump.", k));
+            }
+            KeyCode::Char('s') => {
+                match self.game.zone_at(self.cursor).filter(|z| matches!(z.kind, crate::game::ZoneKind::Stockpile(_))).map(|z| z.id) {
+                    Some(zone) => self.mode = Mode::PileSettings { zone, sel: 0 },
+                    None => self.flash = Some("No stockpile here.".into()),
+                }
             }
             KeyCode::Char('f') => {
                 if let Some(LookEntry::Item(id)) = entries.get(sel.min(n - 1)) {

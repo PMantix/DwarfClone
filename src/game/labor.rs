@@ -176,7 +176,7 @@ mod tests {
             g.toggle_specialist(id);
         }
         // Items lying outside the stockpile; new ones (seeds, empty barrels) can appear anywhere.
-        let loose: Vec<u32> = g.items.values().filter(|it| !g.stockpile_accepts(it.pos, it.kind)).map(|it| it.id).collect();
+        let loose: Vec<u32> = g.items.values().filter(|it| !g.stockpile_accepts(it.pos, it.kind, it.mat)).map(|it| it.id).collect();
         for _ in 0..DAY {
             g.step();
             assert!(
@@ -185,8 +185,8 @@ mod tests {
             );
         }
         // Sanity check that there was something to haul.
-        assert!(g.items.values().any(|it| it.kind == ItemKind::Drink && !g.stockpile_accepts(it.pos, it.kind)));
-        let moved = loose.iter().filter_map(|id| g.items.get(id)).filter(|it| it.carried_by.is_none() && g.stockpile_accepts(it.pos, it.kind)).count();
+        assert!(g.items.values().any(|it| it.kind == ItemKind::Drink && !g.stockpile_accepts(it.pos, it.kind, it.mat)));
+        let moved = loose.iter().filter_map(|id| g.items.get(id)).filter(|it| it.carried_by.is_none() && g.stockpile_accepts(it.pos, it.kind, it.mat)).count();
         assert_eq!(moved, 0, "something was hauled to the stockpile");
     }
 }

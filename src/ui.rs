@@ -548,7 +548,10 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
                 };
                 v.push(plain(format!("Gathering area ({})", s), Color::Rgb(120, 190, 100)));
             }
-            ZoneKind::Stockpile(f) => v.push(plain(format!("Stockpile: {}", f.name()), Color::Rgb(150, 150, 220))),
+            ZoneKind::Stockpile(f) => {
+                let custom = if z.deny.is_empty() && z.deny_mats.is_empty() { "" } else { ", customized" };
+                v.push(plain(format!("Stockpile: {}{} (k, s: settings)", f.name(), custom), Color::Rgb(150, 150, 220)));
+            }
             k => {
                 let mut s = k.name();
                 if k.ownable() {
@@ -890,6 +893,30 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.push(key_line("X", "Remove building", false));
                 v.push(plain("Esc: back".into(), MUTED));
             }
+        }
+        Mode::PileSettings { zone, sel } => {
+            title = "Stockpile".to_string();
+            let rows = g.pile_rows(*zone);
+            if let Some(z) = g.zones.get(zone) {
+                v.push(plain(z.kind.name(), Color::Rgb(150, 150, 220)));
+            }
+            v.push(plain("What this stockpile takes:".into(), TEXT));
+            let first = sel.saturating_sub(14);
+            for (i, (label, on, t)) in rows.iter().enumerate().skip(first).take(30) {
+                let style = if i == *sel { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
+                let mark = if *on { "[x] " } else { "[ ] " };
+                let col = match t {
+                    crate::game::PileToggle::Mat(m) if *on => m.color(),
+                    _ if *on => TEXT,
+                    _ => MUTED,
+                };
+                v.push(Line::from(vec![Span::styled(mark, style.fg(KEY)), Span::styled(label.clone(), style.fg(col))]));
+            }
+            if rows.len() > first + 30 {
+                v.push(plain(format!("  ...{} more", rows.len() - first - 30), MUTED));
+            }
+            v.push(Line::default());
+            v.push(plain("Enter toggle · a allow all · Esc back".into(), MUTED));
         }
         Mode::Orders { sel, pick } => {
             title = "Work orders".to_string();
@@ -3131,6 +3158,22 @@ mod tests {
         assert_eq!(app.game.work_orders.len(), 1);
         assert_eq!(app.game.work_orders[0].keep, 6, "bed order starts at 5, Right adds one");
         assert!(s.contains("Make wooden bed") && s.contains("/6"));
+    }
+
+    #[test]
+    fn render_stockpile_settings() {
+        let mut app = App::generated(42);
+        let e = app.game.embark;
+        assert!(app.game.add_zone(e.offset(-8, 3, -1), e.offset(-1, 9, 1), ZoneKind::Stockpile(StockFilter::Stone)) > 0);
+        let zone = *app.game.zones.keys().last().unwrap();
+        app.cursor = app.game.zones[&zone].tiles[0];
+        app.mode = Mode::Look { sel: 0 };
+        let key = |c| crossterm::event::KeyEvent::new(c, crossterm::event::KeyModifiers::NONE);
+        app.on_key(key(crossterm::event::KeyCode::Char('s')));
+        app.on_key(key(crossterm::event::KeyCode::Enter));
+        let s = dump(&mut app, 130, 45);
+        println!("{}", s);
+        assert!(s.contains("[ ] boulders") && s.contains("[x] blocks"), "{}", s);
     }
 
     #[test]
