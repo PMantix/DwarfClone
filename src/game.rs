@@ -2720,7 +2720,7 @@ mod tests {
             assert_eq!((g.world.w, g.world.h, g.world.d), (size.w, size.h, size.d));
             assert!(g.dwarves.iter().all(|d| g.world.walkable(d.pos)), "{:?}: dwarves embarked inside rock", size);
             if size.d > 32 {
-                assert_eq!(g.world.caverns.len(), 2, "deep maps have two cavern layers");
+                assert_eq!(g.world.caverns.len(), 3, "deep maps have three cavern layers");
             }
             let e = g.embark;
             g.designate(e.offset(-10, -10, -1), e.offset(10, 10, 1), Desig::Chop);

@@ -16,18 +16,13 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: finish W18 (more cavern layers next), then onward in tier order.
+Suggested order: W19 onward, in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
 ### Tier 2: what makes a fortress a fortress
 
 ### Tier 3: depth
-
-#### W18 Geology and engraving (M)
-- **DF:** smoothing and engraving walls, multiple cavern layers, magma sea, prospecting.
-- **Us:** soil, two rock layers, ore veins, gems, one cavern layer.
-- **Steps:** [x] smooth designation (this commit) · [x] engrave (raises room value, depicts world history) (this commit) · [ ] 2–3 cavern layers
 
 #### W19 Temperature and weather (L)
 - **DF:** temperature, freezing, rain and snow, fire, burning.
@@ -97,6 +92,7 @@ Ideas not ranked yet. Add a line on why each matters.
 - A monarch arriving at the top of the titles; nobles' demands for specific artifacts, banishment and the hammerer; noble offices with a minimum value.
 - Theft and other crimes with witnesses and interrogation; the hammerer; chains and cages in the jail; prisoners fed by others.
 - Werebeasts, vampires and the undead; dragons breathing fire; kidnappers; thieves who are caught and jailed (W16).
+- Prospecting and ore visible through smoothed walls; deeper caverns holding stranger creatures; a cavern-floor fungus forest for underground wood.
 - Murky or stagnant water drunk from puddles should feel worse than river water; doctors could clean wounds with well water and soap.
 - Corpses that rot (miasma) and refuse that needs a stockpile far from the halls.
 - Mini-map and saved camera spots: get around a 96×64 map faster.
@@ -105,6 +101,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **W18 Geology and engraving** (this commit; step 59d06e8): smoothing and engraving designations and a Stone detailing labor, engravings showing scenes from the world's legends and adding to room value; two cavern layers (three on deep maps), each with its own spiders and troglodytes. (The magma sea came with W11.)
 - **W17 Monsters** (1aaaa7b; steps bc802c7, d226620): megabeasts from the world's own history come for a rich fortress after its first year, hunt to the death, and their slaying is written into the legends; generated cave horrors crawl up once the caverns are found; skulkers slip in unseen to steal the most valuable thing lying about, and bolt when a dwarf spots them.
 - **W16 Justice** (8f2cffb; steps 31d7368, efd4286): a record of crimes (tantrum assault and vandalism, the dwarf blamed for an unmet mandate) on the nobles screen; a sheriff who finds each culprit and beats them, or with a jail zone (`i`, `j`) sentences them to days inside, where they do no work; victims are glad to see justice done.
 - **W15 Noble positions** (df23471; steps 68ccc36, 0cbb7eb, 31a78ae): appointed manager, bookkeeper, broker, chief medical dwarf and militia commander (nobles screen, `1`-`5`); work orders need a manager and run more often with a bookkeeper; a broker cuts the merchants' markup; treatment and training speed up with their officers; the civilization makes a dwarf baron, count, then duke as wealth and population grow, and titled nobles demand furniture of a given material in their rooms, with bigger room expectations.

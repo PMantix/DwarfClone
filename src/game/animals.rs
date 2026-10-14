@@ -301,8 +301,9 @@ mod tests {
                 g.remove_zones(a, a.offset(5, 5, 0));
             }
         }
-        let corner = corner.expect("no room for a pasture");
-        let zid = g.world.t(corner).zone;
+        corner.expect("no room for a pasture");
+        // The corner tile itself may not be in the zone (a tree, say); the zone is the newest.
+        let zid = *g.zones.keys().max().unwrap();
         let goats: Vec<u32> = g.creatures.values().filter(|c| c.tame && c.species == Species::Goat).map(|c| c.id).collect();
         assert_eq!(goats.len(), 2, "embark should bring a pair of goats");
         for id in &goats {

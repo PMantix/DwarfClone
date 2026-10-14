@@ -3226,8 +3226,12 @@ mod tests {
                 assert!(s.contains("ghost haunts"), "no ghost warning");
             }
         }
-        app.game.plan_constructions(e.offset(2, 2, 0), e.offset(6, 2, 0), crate::game::ConstructKind::Wall, crate::game::BuildMat::Any);
-        app.cursor = e.offset(4, 2, 0);
+        let planned = (2..12)
+            .map(|dy| e.offset(2, dy, 0))
+            .find(|&a| app.game.plan_constructions(a, a.offset(4, 0, 0), crate::game::ConstructKind::Wall, crate::game::BuildMat::Any) > 0)
+            .is_some();
+        assert!(planned, "nowhere to plan a wall");
+        app.cursor = app.game.constructions.values().next().unwrap().pos;
         app.mode = Mode::Construct { kind: Some(crate::game::ConstructKind::Wall), mat: crate::game::BuildMat::Any, corner: None };
         let s = dump(&mut app, 130, 45);
         println!("{}", s);
@@ -3235,8 +3239,9 @@ mod tests {
         app.mode = Mode::Zone { tool: ZoneTool::Bedroom, corner: None };
         println!("{}", dump(&mut app, 130, 45));
         // A bedroom handed to a dwarf from look mode.
-        let spot = (2..12).map(|i| e.offset(i, -6, 0)).find(|&p| app.game.add_zone(p, p.offset(1, 1, 0), ZoneKind::Bedroom) > 0).unwrap();
-        app.cursor = spot;
+        (2..12).map(|i| e.offset(i, -6, 0)).find(|&p| app.game.add_zone(p, p.offset(1, 1, 0), ZoneKind::Bedroom) > 0).unwrap();
+        let zid = *app.game.zones.keys().max().unwrap();
+        app.cursor = app.game.zones[&zid].tiles[0];
         app.mode = Mode::Look { sel: 0 };
         app.on_key(crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Char('o'), crossterm::event::KeyModifiers::NONE));
         let s = dump(&mut app, 130, 45);

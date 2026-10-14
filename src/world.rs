@@ -540,7 +540,13 @@ pub fn generate(seed: u64, params: &EmbarkParams) -> World {
         d,
         tiles: vec![Tile::default(); (w * h * d) as usize],
         surface: surf.clone(),
-        caverns: if base >= 12 { vec![(5, 8), (5 + base, 8 + base)] } else { vec![(5 + base, 8 + base)] },
+        // Two cavern layers, three on deep maps; the upper ones only open out
+        // where there's enough rock above them.
+        caverns: if base >= 12 {
+            vec![(5, 8), (5 + base / 2, 8 + base / 2), (5 + base, 8 + base)]
+        } else {
+            vec![(5 + base, 8 + base), (11 + base, 13 + base)]
+        },
         restrict: 0,
         aquifer: params.aquifer,
     };

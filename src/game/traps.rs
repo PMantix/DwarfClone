@@ -59,9 +59,10 @@ impl Game {
                     let d = load.0.weapon_damage().unwrap_or(8.0) * load.1.weapon_mult() * (1.0 + 0.1 * load.2 as f32);
                     (d, load.0.weapon_verb(), load.0.edged(), 3)
                 };
+                // A mechanism strikes true far more often than a fighter does.
                 let att = super::combat::Fighter {
                     name: if stone { "the falling stone".into() } else { "the weapon trap".into() },
-                    skill: 5 + quality as u32,
+                    skill: 8 + quality as u32,
                     dmg,
                     verb,
                     edged,

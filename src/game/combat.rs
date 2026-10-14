@@ -421,28 +421,32 @@ impl Game {
         c
     }
 
+    /// Each cavern layer gets a spider and a band of troglodytes; the
+    /// deepest gets an extra spider.
     pub(super) fn populate_caverns(&mut self) {
-        let mut floors = Vec::new();
-        let bands = self.world.caverns.clone();
-        for z in bands.iter().flat_map(|&(lo, hi)| lo..=hi) {
-            for y in 0..self.world.h {
-                for x in 0..self.world.w {
-                    let p = Pos::new(x, y, z);
-                    let t = self.world.t(p);
-                    if !t.revealed && t.kind == TileKind::Floor && t.water == 0 {
-                        floors.push(p);
+        let mut bands = self.world.caverns.clone();
+        bands.sort();
+        for (i, &(lo, hi)) in bands.iter().enumerate() {
+            let mut floors = Vec::new();
+            for z in lo..=hi {
+                for y in 0..self.world.h {
+                    for x in 0..self.world.w {
+                        let p = Pos::new(x, y, z);
+                        let t = self.world.t(p);
+                        if !t.revealed && t.kind == TileKind::Floor && t.water == 0 {
+                            floors.push(p);
+                        }
                     }
                 }
             }
-        }
-        if floors.is_empty() {
-            return;
-        }
-        for _ in 0..2 {
-            let p = *self.rng.pick(&floors);
-            self.spawn_creature(Species::GiantSpider, p, u64::MAX);
-        }
-        for _ in 0..2 {
+            if floors.is_empty() {
+                continue;
+            }
+            let spiders = if i == 0 { 2 } else { 1 };
+            for _ in 0..spiders {
+                let p = *self.rng.pick(&floors);
+                self.spawn_creature(Species::GiantSpider, p, u64::MAX);
+            }
             let c = *self.rng.pick(&floors);
             for _ in 0..3 {
                 let p = self.spot_near(c, 2);
