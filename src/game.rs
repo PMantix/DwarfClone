@@ -35,6 +35,8 @@ mod water;
 mod clothing;
 mod farming;
 mod orders;
+mod positions;
+pub use positions::Position;
 pub use orders::{all_recipes, WorkOrder};
 pub use medicine::Treatment;
 pub use military::{Squad, SquadOrder};
@@ -227,6 +229,9 @@ pub struct Game {
     /// Fortress-wide "keep N in stock" orders.
     #[serde(default)]
     pub work_orders: Vec<WorkOrder>,
+    /// Appointed administrators: (position, dwarf id).
+    #[serde(default)]
+    pub positions: Vec<(Position, u32)>,
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
@@ -314,6 +319,7 @@ impl Game {
             aquifer_leaks: None,
             aquifer_tiles: None,
             work_orders: Vec::new(),
+            positions: Vec::new(),
             creatures: BTreeMap::new(),
             station: None,
             alert: true,

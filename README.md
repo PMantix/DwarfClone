@@ -53,6 +53,11 @@ pools) until there are twenty fish in store; fish can be eaten or cooked. A mill
 (`b`, `M`) grinds hollowgrain or goldoat into flour, which the kitchen bakes into three
 meals rather than two.
 
+**Positions.** The nobles screen (`n`) appoints a manager, bookkeeper, broker, chief medical
+dwarf and militia commander with `1`-`5` (each press hands the post to the next dwarf, then
+leaves it vacant). A chief medical dwarf makes treatment a quarter faster and a militia
+commander makes training a quarter faster.
+
 **Work orders.** `j` lists standing orders: each keeps a number of something in stock
 (beds, barrels, meals, blocks...) by queuing jobs at the least busy workshop that can do
 them, a few at a time. `n` adds one, Left/Right change the number, `x` deletes. In look

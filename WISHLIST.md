@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W15 onward, in tier order.
+Suggested order: finish W15 (manager and work orders next), then onward in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -27,7 +27,7 @@ Suggested order: W15 onward, in tier order.
 #### W15 Noble positions (M)
 - **DF:** broker, bookkeeper, manager, sheriff, militia commander, chief medical dwarf; titles rising with wealth up to monarch.
 - **Us:** expedition leader, then mayor.
-- **Steps:** [ ] appoint positions screen · [ ] manager unlocks W14 global orders · [ ] broker improves trade prices · [ ] titles by wealth, with demands
+- **Steps:** [x] appoint positions screen (this commit) · [ ] manager unlocks W14 global orders · [ ] broker improves trade prices · [ ] titles by wealth, with demands
 
 #### W16 Justice (S–M)
 - **DF:** sheriff, crimes, interrogation, beatings, jail, hammerer.
@@ -117,7 +117,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
-- **W14 Work orders and item management** (this commit; steps 4d0bec8, 7b7dac9, 4bac3d8): a work orders screen (`j`) with "keep N in stock" orders that queue jobs at whichever workshop can do them; forbidding items (`f`/`F` in look mode) alongside dumping; stockpile settings (`s` on a stockpile) refusing kinds and materials; workshop profiles (`w` on a workshop) limiting who may work there.
+- **W14 Work orders and item management** (35ccda5; steps 4d0bec8, 7b7dac9, 4bac3d8): a work orders screen (`j`) with "keep N in stock" orders that queue jobs at whichever workshop can do them; forbidding items (`f`/`F` in look mode) alongside dumping; stockpile settings (`s` on a stockpile) refusing kinds and materials; workshop profiles (`w` on a workshop) limiting who may work there.
 - **W13 Farming depth** (2e12f5a; steps 9bf1b98, 0b9c76f, 32d0e1a): five crops with their own seasons and places (stoutcap anywhere; hollowgrain and threadreed underground; sunberries and goldoat on the surface), farm plots that remember their crop and farms that can be set to one; seeds back from eating, brewing, cooking, spinning and milling; gathering areas over wild shrubs; a Fishing labor that fishes deep water; a millstone grinding grain into flour that bakes into more meals.
 - **W12 Workshops and clothing** (df5adfc; steps 8338b8b, c1fc029, db9adb8): the butcher leaves hides and tallow; a tanner's shop and leather works (leather armor, caps, shoes, crafts); a loom and clothier's shop (cloth, shirts, trousers); dwarves dress in shirt, trousers and shoes that wear out over a year, are embarrassed by rags and change into fresh clothes from stock; ash from the wood furnace and tallow make soap at the soap maker's, which lets doctors clear infection outright. Three new labors: Leatherworking, Weaving and tailoring, Soapmaking.
 - **W11 Fluids and magma** (4e81b17; steps 003591a, 3212e8c, a6d337d): wells over a channel to water (clean drinking water; doctors carry buckets to patients in bed); lever-worked floodgates, with doors and raised bridges also holding water back; a magma sea above the bedrock that flows, burns, kills and sets into obsidian against water, heating fuel-free magma smelters and forges; aquifers by site (shown at embark), light ones dampening dug floors and heavy ones flooding anything dug beside them unless walled off with constructions.

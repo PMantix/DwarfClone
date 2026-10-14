@@ -992,7 +992,20 @@ impl App {
                 KeyCode::Char('r') => self.mode = Mode::Traffic { level: 3, corner },
                 _ => {}
             },
-            Mode::Help | Mode::Nobles => self.mode = Mode::Normal,
+            Mode::Help => self.mode = Mode::Normal,
+            Mode::Nobles => match k.code {
+                KeyCode::Char(c @ '1'..='5') => {
+                    let p = crate::game::Position::ALL[(c as u8 - b'1') as usize];
+                    self.flash = Some(self.game.cycle_position(p));
+                }
+                KeyCode::Char('x') => {
+                    for p in crate::game::Position::ALL {
+                        self.game.appoint(p, None);
+                    }
+                    self.flash = Some("Every post is vacant.".into());
+                }
+                _ => self.mode = Mode::Normal,
+            },
             Mode::WorldMap { x, y } => self.key_world(k, x, y),
             Mode::Legends { tab, scroll, from_world } => {
                 let back = if from_world {

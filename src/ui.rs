@@ -1180,6 +1180,18 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.push(plain("(none)".into(), MUTED));
             }
             v.push(Line::default());
+            v.push(header("Positions"));
+            for (i, p) in crate::game::Position::ALL.iter().enumerate() {
+                let who = g.holder(*p).map_or("vacant".to_string(), |d| d.name.clone());
+                v.push(Line::from(vec![
+                    Span::styled(format!("{} ", i + 1), Style::default().fg(KEY)),
+                    Span::styled(format!("{}: ", p.title()), Style::default().fg(TEXT)),
+                    Span::styled(who, Style::default().fg(if g.holder(*p).is_some() { Color::Rgb(255, 230, 120) } else { MUTED })),
+                ]));
+                v.push(plain(format!("   {}", p.duty()), MUTED));
+            }
+            v.push(plain("1-5: appoint the next dwarf · x: vacate all".into(), MUTED));
+            v.push(Line::default());
             v.push(header("Mandate"));
             match &g.mandate {
                 Some(m) => {
@@ -1324,9 +1336,10 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
     let mut v = vec![
         Line::from(Span::styled(d.name.clone(), Style::default().fg(rgb(d.color)).add_modifier(Modifier::BOLD))),
         plain(
-            match d.noble {
-                Some(n) => format!("{} ({})", n.title(), d.profession()),
-                None => d.profession().to_string(),
+            match (d.noble, g.position_of(d.id)) {
+                (Some(n), _) => format!("{} ({})", n.title(), d.profession()),
+                (None, Some(p)) => format!("{} ({})", p.title(), d.profession()),
+                (None, None) => d.profession().to_string(),
             },
             MUTED,
         ),
@@ -3209,6 +3222,20 @@ mod tests {
         let s = dump(&mut app, 130, 45);
         println!("{}", s);
         assert!(s.contains("[ ] boulders") && s.contains("[x] blocks"), "{}", s);
+    }
+
+    #[test]
+    fn render_positions() {
+        let mut app = App::generated(42);
+        app.mode = Mode::Nobles;
+        let key = |c| crossterm::event::KeyEvent::new(c, crossterm::event::KeyModifiers::NONE);
+        app.on_key(key(crossterm::event::KeyCode::Char('1')));
+        assert!(matches!(app.mode, Mode::Nobles));
+        let s = dump(&mut app, 130, 60);
+        println!("{}", s);
+        let first = app.game.dwarves.iter().find(|d| d.alive && !d.is_child()).unwrap().name.clone();
+        assert!(s.contains(&format!("Manager: {}", first)), "{}", s);
+        assert!(s.contains("Broker: vacant"));
     }
 
     #[test]

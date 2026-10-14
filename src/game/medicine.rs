@@ -80,6 +80,15 @@ pub fn needed(d: &Dwarf) -> Vec<Treatment> {
 }
 
 impl Game {
+    /// Base time for a treatment: a chief medical dwarf runs a tighter hospital.
+    pub(super) fn treat_time(&self, base: u32) -> u32 {
+        if self.holder(super::Position::ChiefMedic).is_some() {
+            base * 3 / 4
+        } else {
+            base
+        }
+    }
+
     /// Hospital beds are shared: nobody owns them.
     pub(super) fn in_hospital(&self, p: Pos) -> bool {
         self.zone_kind_at(p) == Some(ZoneKind::Hospital)
@@ -184,7 +193,7 @@ impl Game {
             }
             return;
         }
-        if !Self::labor(d, what.work(), d.skill(Labor::Medicine)) {
+        if !Self::labor(d, self.treat_time(what.work()), d.skill(Labor::Medicine)) {
             return;
         }
         if let Some(id) = d.carrying.take() {
