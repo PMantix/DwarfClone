@@ -82,7 +82,8 @@ impl Game {
         self.punish(culprit, &d.name);
     }
 
-    /// Justice is done: a beating, and every open charge against them closed.
+    /// Justice is done: jail if the fortress has one (three days a charge,
+    /// at most ten), otherwise a beating; every open charge is closed.
     pub(super) fn punish(&mut self, culprit: u32, sheriff: &str) {
         let tick = self.tick;
         let mut victims = Vec::new();
@@ -95,19 +96,63 @@ impl Game {
         if what.is_empty() {
             return;
         }
+        let charges = what.len() as u64;
         what.dedup();
+        let jail = self.zones.values().any(|z| z.kind == ZoneKind::Jail);
         let Some(i) = self.dwarves.iter().position(|o| o.id == culprit) else { return };
         let part = self.dwarves[i].body.pick_part(&mut self.rng);
         let o = &mut self.dwarves[i];
-        o.body.wound(part, 3, false);
-        o.think(&format!("was beaten by the sheriff for {}", what.join(" and ")), 15, tick);
         let name = o.name.clone();
+        if jail {
+            let days = (3 * charges).min(10);
+            o.jailed_until = tick + days * DAY;
+            o.think(&format!("was jailed for {}", what.join(" and ")), 12, tick);
+            self.msg(&format!("{} has sentenced {} to {} days in jail for {}.", sheriff, name, days, what.join(" and ")), (200, 170, 255));
+        } else {
+            o.body.wound(part, 3, false);
+            o.think(&format!("was beaten by the sheriff for {}", what.join(" and ")), 15, tick);
+            self.msg(&format!("{} has punished {} for {}.", sheriff, name, what.join(" and ")), (200, 170, 255));
+        }
         for v in victims {
             if let Some(vd) = self.dwarves.iter_mut().find(|x| x.id == v && x.alive) {
                 vd.think("was glad to see justice done", -10, tick);
             }
         }
-        self.msg(&format!("{} has punished {} for {}.", sheriff, name, what.join(" and ")), (200, 170, 255));
+    }
+
+    /// A prisoner stays in the jail (they may still go and eat, drink and
+    /// sleep). True while serving.
+    pub(super) fn serve_sentence(&mut self, d: &mut Dwarf) -> bool {
+        if d.jailed_until == 0 {
+            return false;
+        }
+        if self.tick >= d.jailed_until {
+            d.jailed_until = 0;
+            self.msg(&format!("{} has been released from jail.", d.name), (170, 170, 200));
+            return false;
+        }
+        let cells: Vec<Pos> = self
+            .zones
+            .values()
+            .filter(|z| z.kind == ZoneKind::Jail)
+            .flat_map(|z| z.tiles.iter().copied())
+            .filter(|&p| self.world.walkable(p))
+            .collect();
+        if cells.is_empty() {
+            // The jail is gone; the sentence lapses.
+            d.jailed_until = 0;
+            return false;
+        }
+        let inside = self.zone_kind_at(d.pos) == Some(ZoneKind::Jail);
+        if inside && !self.rng.chance(0.1) {
+            d.idle_cd = 50;
+            return true;
+        }
+        let q = cells[self.rng.range(0, cells.len() as i32) as usize];
+        if q != d.pos {
+            d.task = Task::Wander { target: q };
+        }
+        true
     }
 }
 
@@ -138,6 +183,37 @@ mod tests {
         assert!(c.thoughts.iter().any(|t| t.text.starts_with("was beaten by the sheriff")));
         let v = g.dwarves.iter().find(|d| d.id == victim).unwrap();
         assert!(v.thoughts.iter().any(|t| t.text == "was glad to see justice done"));
+    }
+
+    #[test]
+    fn with_a_jail_the_culprit_serves_time_inside() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        let e = g.embark;
+        let jail_tiles = g.add_zone(e.offset(-8, -8, -1), e.offset(-5, -5, 1), ZoneKind::Jail);
+        assert!(jail_tiles > 0);
+        let (culprit, sheriff) = (g.dwarves[0].id, g.dwarves[2].id);
+        g.report_crime(CrimeKind::Vandalism, culprit, None, "toppled a chair".into());
+        g.appoint(super::super::Position::Sheriff, Some(sheriff));
+        for _ in 0..DAY {
+            g.step();
+            if g.unpunished() == 0 {
+                break;
+            }
+        }
+        let until = g.dwarves.iter().find(|d| d.id == culprit).unwrap().jailed_until;
+        assert!(until > g.tick, "not jailed");
+        let mut inside = 0;
+        for _ in 0..DAY {
+            g.step();
+            let d = g.dwarves.iter().find(|d| d.id == culprit).unwrap();
+            inside += (g.zone_kind_at(d.pos) == Some(ZoneKind::Jail)) as u32;
+        }
+        assert!(inside > DAY as u32 / 2, "the prisoner was in jail only {} ticks of a day", inside);
+        g.tick = until;
+        let mut d = std::mem::take(g.dwarves.iter_mut().find(|d| d.id == culprit).unwrap());
+        assert!(!g.serve_sentence(&mut d));
+        assert_eq!(d.jailed_until, 0, "should be released");
     }
 
     #[test]

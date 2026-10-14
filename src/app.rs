@@ -68,11 +68,12 @@ pub enum ZoneTool {
     Tavern,
     Tomb,
     Gathering,
+    Jail,
     Erase,
 }
 
 impl ZoneTool {
-    pub const ALL: [ZoneTool; 15] = [
+    pub const ALL: [ZoneTool; 16] = [
         ZoneTool::Meeting,
         ZoneTool::Bedroom,
         ZoneTool::Dormitory,
@@ -87,6 +88,7 @@ impl ZoneTool {
         ZoneTool::Tavern,
         ZoneTool::Tomb,
         ZoneTool::Gathering,
+        ZoneTool::Jail,
         ZoneTool::Erase,
     ];
 
@@ -106,6 +108,7 @@ impl ZoneTool {
             ZoneTool::Tavern => 'v',
             ZoneTool::Tomb => 'c',
             ZoneTool::Gathering => 'w',
+            ZoneTool::Jail => 'j',
             ZoneTool::Erase => 'x',
         }
     }
@@ -126,6 +129,7 @@ impl ZoneTool {
             ZoneTool::Tavern => Some(ZoneKind::Tavern),
             ZoneTool::Tomb => Some(ZoneKind::Tomb),
             ZoneTool::Gathering => Some(ZoneKind::Gathering),
+            ZoneTool::Jail => Some(ZoneKind::Jail),
             ZoneTool::Erase => None,
         }
     }
@@ -154,6 +158,7 @@ impl ZoneTool {
             ZoneTool::Tavern => &["A meeting hall for making merry.", "Drinking here cheers dwarves more;", "it also counts as a meeting area."],
             ZoneTool::Tomb => &["Lay over coffins (b, y). The dead", "are buried here first, which", "comforts those who mourn them."],
             ZoneTool::Gathering => &["Lay over wild shrubs. Farmers pick", "whatever grows there this season;", "shrubs bear again next season."],
+            ZoneTool::Jail => &["With a jail, the sheriff sentences", "culprits to days inside instead of", "a beating. Prisoners don't work."],
             ZoneTool::Erase => &["Removes zones other than", "stockpiles (stockpiles: p, then x)."],
         }
     }

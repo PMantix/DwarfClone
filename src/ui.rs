@@ -413,6 +413,9 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
         return "Tantrum!".into();
     }
     let iname = |id: u32| g.items.get(&id).map_or("something".to_string(), |it| it.name());
+    if g.tick < d.jailed_until && matches!(d.task, Task::Idle | Task::Wander { .. }) {
+        return format!("In jail ({} days left)", (d.jailed_until - g.tick) / crate::game::DAY + 1);
+    }
     match &d.task {
         Task::Wander { .. } | Task::Idle if g.tick < d.break_until => match g.zone_kind_at(d.pos) {
             Some(ZoneKind::Temple) => "Praying".into(),

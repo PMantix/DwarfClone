@@ -68,7 +68,8 @@ does not.
 **Justice.** Punches and wrecked furniture in a tantrum, and the dwarf blamed for an unmet
 mandate, go on the fortress's record of crimes, shown on the nobles screen. Appoint a sheriff
 (`n`, `6`) and they seek out each culprit and beat them, closing every charge against them;
-victims are glad to see justice done.
+victims are glad to see justice done. With a jail zone (`i`, `j`) the sheriff sentences them
+to three days a charge (at most ten) inside instead, where they do no work.
 
 **Work orders.** `j` lists standing orders: each keeps a number of something in stock
 (beds, barrels, meals, blocks...) by queuing jobs at the least busy workshop that can do

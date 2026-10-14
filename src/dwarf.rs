@@ -511,6 +511,9 @@ pub struct Dwarf {
     /// Taking a break to pray or carouse until this tick.
     #[serde(default)]
     pub break_until: u64,
+    /// Serving a jail sentence until this tick.
+    #[serde(default)]
+    pub jailed_until: u64,
     /// In years; missing in older saves until first checked.
     #[serde(default)]
     pub age: Option<u32>,

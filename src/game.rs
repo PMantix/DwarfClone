@@ -110,6 +110,8 @@ pub enum ZoneKind {
     Tomb,
     /// Farmers pick wild shrubs here for whatever is in season.
     Gathering,
+    /// Where the sheriff's prisoners serve their sentences.
+    Jail,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1404,6 +1406,9 @@ impl Game {
         }
         if d.mood.is_some() {
             d.task = Task::Mood;
+            return;
+        }
+        if self.serve_sentence(d) {
             return;
         }
         if d.want_clothes && self.find_clothes(d) {
