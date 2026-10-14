@@ -24,7 +24,7 @@ impl Game {
         let mut q = p;
         for _ in 0..=WELL_DEPTH {
             match self.world.get(q) {
-                Some(t) if t.water > 0 => return true,
+                Some(t) if t.water > 0 && !t.frozen => return true,
                 Some(t) if t.kind == TileKind::Open => q = q.down(),
                 _ => return false,
             }

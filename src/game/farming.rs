@@ -81,7 +81,7 @@ impl Game {
             return false;
         }
         let w = &self.world;
-        let deep = |q: Pos| w.get(q).map_or(false, |t| t.water >= 4 && t.magma == 0);
+        let deep = |q: Pos| w.get(q).map_or(false, |t| t.water >= 4 && t.magma == 0 && !t.frozen);
         let bank = |p: Pos| {
             DIRS8.iter().any(|&(dx, dy)| {
                 let q = p.offset(dx, dy, 0);

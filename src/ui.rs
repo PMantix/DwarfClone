@@ -54,6 +54,9 @@ fn tile_look(w: &World, p: Pos) -> (char, Color, Color) {
     if t.magma > 0 {
         return (water_glyph(t.magma), magma_fg, magma_bg);
     }
+    if t.frozen && t.water > 0 {
+        return ('≈', Color::Rgb(220, 240, 255), Color::Rgb(70, 100, 130));
+    }
     let (g, fg, bg) = match t.kind {
         TileKind::Open => {
             if t.water > 0 {
@@ -508,7 +511,8 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
     };
     v.push(plain(desc, t.mat.color()));
     if t.water > 0 {
-        v.push(plain(format!("Water {}/7", t.water), Color::Rgb(90, 160, 255)));
+        let what = if t.frozen { "Ice" } else { "Water" };
+        v.push(plain(format!("{} {}/7", what, t.water), Color::Rgb(90, 160, 255)));
     }
     if t.magma > 0 {
         v.push(plain(format!("Magma {}/7", t.magma), Color::Rgb(255, 150, 40)));

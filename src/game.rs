@@ -38,6 +38,7 @@ mod orders;
 mod positions;
 mod justice;
 mod detail;
+mod weather;
 pub use detail::ENGRAVED;
 pub use justice::{Crime, CrimeKind};
 pub use positions::{Demand, Position};
@@ -816,6 +817,7 @@ impl Game {
             if season == 0 {
                 self.new_year();
             }
+            self.seasonal_ice(season);
             if season == 1 || season == 2 {
                 self.migrants();
             }
@@ -851,6 +853,10 @@ impl Game {
             let p = self.world.pos_of(i);
             let t = self.world.tiles[i];
             if t.water == 0 {
+                continue;
+            }
+            if t.frozen {
+                wet.insert(i);
                 continue;
             }
             // Fall through anything without a floor.
@@ -1021,7 +1027,7 @@ impl Game {
             self.combat_awareness(d);
         }
 
-        if self.world.t(d.pos).water >= 6 {
+        if self.world.t(d.pos).water >= 6 && !self.world.t(d.pos).frozen {
             d.drown += 1;
             if d.drown > 400 {
                 self.kill(d, "has drowned");
@@ -1517,6 +1523,7 @@ impl Game {
             DIRS8.iter().any(|&(dx, dy)| {
                 let q = p.offset(dx, dy, 0);
                 let below = q.down();
+                // Frozen water will do: they break the ice.
                 wells.contains(&q)
                     || w.get(q).map_or(false, |t| t.water > 0)
                     || (w.kind(q) == Some(TileKind::Open) && w.get(below).map_or(false, |t| t.water > 0))

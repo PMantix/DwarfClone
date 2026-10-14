@@ -178,6 +178,11 @@ it touches, burns items that aren't stone or metal, and sets into obsidian where
 water. A magma smelter (`b`, `E`) or magma forge (`b`, `F`) built with its middle tile over
 magma (open space or a floor above it) needs no fuel.
 
+**Winter.** Except in deserts, swamps and by the sea, winter freezes the water under the
+open sky: ice holds still, can be walked across (by wildlife too) and can't be fished, but
+dwarves can still break it to drink. Spring thaws it, and anyone out on the ice scrambles
+ashore.
+
 **Aquifers.** Many wet sites (the embark screen says which) have water-bearing rock two to four
 levels down, shown with a blue background. A light aquifer only dampens floors dug out of it;
 a heavy one floods anything dug beside it. Constructed walls hold it back, and an aquifer makes

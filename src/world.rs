@@ -160,6 +160,9 @@ pub struct Tile {
     /// The legend an engraving shows (1-based event index; 0 none).
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     pub engraving: u32,
+    /// The water here has frozen: it holds still and can be walked on.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub frozen: bool,
 }
 
 fn is_zero(v: &u8) -> bool {
@@ -194,6 +197,7 @@ impl Default for Tile {
             crop: None,
             smooth: 0,
             engraving: 0,
+            frozen: false,
         }
     }
 }
@@ -321,7 +325,7 @@ impl World {
 
     /// Water can't enter: rock, a door, a raised bridge or a shut floodgate.
     pub fn blocks_water(&self, p: Pos) -> bool {
-        self.get(p).map_or(true, |t| t.kind.solid() || t.door != DOOR_NONE)
+        self.get(p).map_or(true, |t| t.kind.solid() || t.door != DOOR_NONE || t.frozen)
     }
 
     /// Something overhead: rock, or a floor or wall built above.
@@ -330,13 +334,12 @@ impl World {
     }
 
     pub fn walkable(&self, p: Pos) -> bool {
-        self.get(p)
-            .map_or(false, |t| t.kind.has_floor() && t.water <= 3 && t.magma == 0)
+        self.get(p).map_or(false, |t| t.frozen || (t.kind.has_floor() && t.water <= 3 && t.magma == 0))
     }
 
     pub fn passable(&self, p: Pos, m: Mover) -> bool {
         match self.get(p) {
-            Some(t) if t.kind.has_floor() && t.water <= 3 && t.magma == 0 => match t.door {
+            Some(t) if t.frozen || (t.kind.has_floor() && t.water <= 3 && t.magma == 0) => match t.door {
                 DOOR_LOCKED | BRIDGE_RAISED | FLOODGATE_SHUT => false,
                 DOOR_OPEN => m != Mover::Beast,
                 _ => true,
@@ -355,7 +358,7 @@ impl World {
 
     /// Lowest position an object dropped at `p` comes to rest at.
     pub fn settle(&self, mut p: Pos) -> Pos {
-        while p.z > 0 && !self.kind(p).map_or(true, |k| k.has_floor()) && !self.solid(p.down()) {
+        while p.z > 0 && !self.get(p).map_or(true, |t| t.kind.has_floor() || t.frozen) && !self.solid(p.down()) {
             p = p.down();
         }
         p
