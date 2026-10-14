@@ -2124,13 +2124,22 @@ fn draw_trade(f: &mut Frame, area: Rect, app: &App, side: usize, sel: [usize; 2]
     }
     let offer: u32 = ours.iter().filter(|it| app.trade_ours.contains(&it.id)).map(|it| it.value()).sum();
     let ask: u32 = car.goods.iter().filter(|it| app.trade_theirs.contains(&it.id)).map(|it| it.value()).sum();
-    let ok = offer * 10 >= ask * 11;
+    let ok = app.game.offer_ok(offer, ask);
+    let margin = app.game.trade_margin();
+    let broker = app.game.holder(crate::game::Position::Broker).map(|d| d.name.clone());
     let mut summary = vec![Line::from(vec![
         Span::styled(format!(" Offer ☼{}   ", offer), Style::default().fg(TEXT)),
         Span::styled(format!("Request ☼{}   ", ask), Style::default().fg(TEXT)),
         Span::styled(
-            if ok { "The merchants look interested." } else { "They want at least a tenth more." },
+            if ok { "The merchants look interested.".to_string() } else { format!("They want {}% over the value.", margin) },
             Style::default().fg(if ok { Color::Rgb(120, 255, 160) } else { Color::Rgb(240, 150, 90) }),
+        ),
+        Span::styled(
+            match broker {
+                Some(b) => format!("   Broker {} haggles ({}% markup)", b, margin),
+                None => "   No broker: 10% markup".to_string(),
+            },
+            Style::default().fg(MUTED),
         ),
     ])];
     if let Some(fl) = &app.flash {

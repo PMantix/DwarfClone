@@ -281,6 +281,20 @@ impl Game {
 
     /// Offer `ours` (item ids at the depot) for `theirs` (caravan goods ids).
     /// Merchants want a tenth on top. Returns a message either way.
+    /// The percentage over value merchants insist on: a tenth, or less with
+    /// a broker to haggle (a sociable one gets them down to nothing).
+    pub fn trade_margin(&self) -> u32 {
+        match self.holder(super::Position::Broker) {
+            Some(b) => 10u32.saturating_sub(5 + ((b.personality.sociability + 50).clamp(0, 100) / 20) as u32),
+            None => 10,
+        }
+    }
+
+    /// Whether an offer of `offer` buys goods worth `ask`.
+    pub fn offer_ok(&self, offer: u32, ask: u32) -> bool {
+        offer * 100 >= ask * (100 + self.trade_margin())
+    }
+
     pub fn trade(&mut self, ours: &[u32], theirs: &[u32]) -> Result<String, String> {
         let Some(car) = &self.caravan else { return Err("There is no caravan.".into()) };
         if !car.arrived {
@@ -288,8 +302,13 @@ impl Game {
         }
         let offer: u32 = ours.iter().filter_map(|id| self.items.get(id)).map(|it| it.value()).sum();
         let ask: u32 = car.goods.iter().filter(|g| theirs.contains(&g.id)).map(|it| it.value()).sum();
-        if offer * 10 < ask * 11 {
-            return Err(format!("\"That's not enough,\" says the merchant. (offer ☼{} vs ☼{} + 10%)", offer, ask));
+        if !self.offer_ok(offer, ask) {
+            return Err(format!(
+                "\"That's not enough,\" says the merchant. (offer ☼{} vs ☼{} + {}%)",
+                offer,
+                ask,
+                self.trade_margin()
+            ));
         }
         let depot_center = self.depot().map(|b| b.center()).unwrap_or(self.embark);
         let mut taken = Vec::new();
@@ -337,6 +356,20 @@ mod tests {
         for _ in 0..ticks {
             g.step();
         }
+    }
+
+    #[test]
+    fn a_broker_haggles_the_merchants_down() {
+        let mut g = Game::new(81);
+        assert_eq!(g.trade_margin(), 10);
+        assert!(!g.offer_ok(105, 100));
+        let id = g.dwarves[0].id;
+        g.dwarves[0].personality.sociability = 50;
+        g.appoint(crate::game::Position::Broker, Some(id));
+        assert_eq!(g.trade_margin(), 0, "a sociable broker gets full value");
+        assert!(g.offer_ok(100, 100));
+        g.dwarves[0].personality.sociability = -50;
+        assert_eq!(g.trade_margin(), 5, "even a gruff broker halves the markup");
     }
 
     #[test]

@@ -56,8 +56,10 @@ meals rather than two.
 **Positions.** The nobles screen (`n`) appoints a manager, bookkeeper, broker, chief medical
 dwarf and militia commander with `1`-`5` (each press hands the post to the next dwarf, then
 leaves it vacant). Work orders only run with a manager, checked once a day, or several
-times a day with a bookkeeper too. A chief medical dwarf makes treatment a quarter faster and
-a militia commander makes training a quarter faster.
+times a day with a bookkeeper too. Merchants want a tenth over value; a broker haggles that
+down to between a twentieth and nothing, depending on how sociable they are. A chief medical
+dwarf makes treatment a quarter faster and a militia commander makes training a quarter
+faster.
 
 **Work orders.** `j` lists standing orders: each keeps a number of something in stock
 (beds, barrels, meals, blocks...) by queuing jobs at the least busy workshop that can do
