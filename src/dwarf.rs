@@ -785,7 +785,7 @@ pub fn new_dwarf(id: u32, pos: Pos, rng: &mut Rng, specialties: &[Labor]) -> Dwa
         age: Some(rng.range(18, 100) as u32),
         female: Some(rng.chance(0.5)),
         likes_mat: *rng.pick(&LIKED_MATS),
-        likes_food: Some(*rng.pick(&[ItemKind::Mushroom, ItemKind::Meat, ItemKind::Meal])),
+        likes_food: Some(*rng.pick(&[ItemKind::Plant, ItemKind::Meat, ItemKind::Meal])),
         ..Default::default()
     }
 }

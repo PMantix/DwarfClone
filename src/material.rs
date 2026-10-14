@@ -1,7 +1,7 @@
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Mat {
     #[default]
     Air,
@@ -32,7 +32,68 @@ pub enum Mat {
     Gold,
     /// Volcanic glass, left where magma meets water.
     Obsidian,
+    Hollowgrain,
+    Threadreed,
+    Sunberry,
+    Goldoat,
 }
+
+/// A farmed plant: where and when it grows and what it's good for.
+pub struct Crop {
+    /// The harvest ("sunberries").
+    pub plant: &'static str,
+    pub seed: &'static str,
+    /// Some(true) underground only, Some(false) under the sky only, None anywhere.
+    pub underground: Option<bool>,
+    /// Spring, summer, autumn, winter.
+    pub seasons: [bool; 4],
+    pub edible: bool,
+    /// What it brews into, if anything.
+    pub brew: Option<&'static str>,
+    /// Ground into flour at a millstone.
+    pub mill: bool,
+    /// Spun into thread.
+    pub fiber: bool,
+}
+
+impl Crop {
+    pub fn grows(&self, outside: bool, season: usize) -> bool {
+        self.seasons[season % 4] && self.underground.map_or(true, |u| u != outside)
+    }
+
+    /// What the harvest is for: "eat, brew, spin".
+    pub fn uses(&self) -> String {
+        let mut v = Vec::new();
+        if self.edible {
+            v.push("eat");
+        }
+        if self.brew.is_some() {
+            v.push("brew");
+        }
+        if self.mill {
+            v.push("mill");
+        }
+        if self.fiber {
+            v.push("spin");
+        }
+        v.join(", ")
+    }
+
+    pub fn where_when(&self) -> String {
+        let names = ["spring", "summer", "autumn", "winter"];
+        let s: Vec<&str> = (0..4).filter(|&i| self.seasons[i]).map(|i| names[i]).collect();
+        let place = match self.underground {
+            Some(true) => "underground",
+            Some(false) => "on the surface",
+            None => "anywhere",
+        };
+        let when = if s.len() == 4 { "all year".to_string() } else { s.join(", ") };
+        format!("{}, {}", place, when)
+    }
+}
+
+/// Every crop, in the order a farm cycles through them.
+pub const CROPS: [Mat; 5] = [Mat::Stoutcap, Mat::Hollowgrain, Mat::Threadreed, Mat::Sunberry, Mat::Goldoat];
 
 impl Mat {
     pub fn name(self) -> &'static str {
@@ -64,6 +125,10 @@ impl Mat {
             Mat::Leather => "leather",
             Mat::Gold => "gold",
             Mat::Obsidian => "obsidian",
+            Mat::Hollowgrain => "hollowgrain",
+            Mat::Threadreed => "threadreed",
+            Mat::Sunberry => "sunberry",
+            Mat::Goldoat => "goldoat",
         }
     }
 
@@ -104,8 +169,24 @@ impl Mat {
             Mat::Leather => (160, 110, 70),
             Mat::Gold => (255, 215, 60),
             Mat::Obsidian => (70, 50, 90),
+            Mat::Hollowgrain => (200, 180, 120),
+            Mat::Threadreed => (150, 200, 140),
+            Mat::Sunberry => (240, 110, 120),
+            Mat::Goldoat => (230, 200, 80),
         };
         Color::Rgb(r, g, b)
+    }
+
+    pub fn crop(self) -> Option<Crop> {
+        let c = |plant, seed, underground, seasons, edible, brew, mill, fiber| Crop { plant, seed, underground, seasons, edible, brew, mill, fiber };
+        Some(match self {
+            Mat::Stoutcap => c("stoutcap mushroom", "stoutcap spawn", None, [true; 4], true, Some("stoutcap ale"), false, true),
+            Mat::Hollowgrain => c("hollowgrain ears", "hollowgrain seeds", Some(true), [false, false, true, true], false, Some("hollowgrain beer"), true, false),
+            Mat::Threadreed => c("threadreed stalks", "threadreed seeds", Some(true), [true, true, false, false], false, None, false, true),
+            Mat::Sunberry => c("sunberries", "sunberry seeds", Some(false), [true, true, false, false], true, Some("sunberry wine"), false, false),
+            Mat::Goldoat => c("goldoat sheaf", "goldoat seeds", Some(false), [false, true, true, false], false, None, true, false),
+            _ => return None,
+        })
     }
 
     pub fn is_soil(self) -> bool {

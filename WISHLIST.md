@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W13 onward, in tier order.
+Suggested order: finish W13 (plant gathering next), then onward in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -27,7 +27,7 @@ Suggested order: W13 onward, in tier order.
 #### W13 Farming depth (S–M)
 - **DF:** many crops by season and biome, surface farming, mills, plant gathering, fishing, fruit trees.
 - **Us:** one crop year-round, with seeds.
-- **Steps:** [ ] 4–6 crops by season and surface or underground · [ ] plant gathering zone · [ ] fishing · [ ] mill and flour
+- **Steps:** [x] 4–6 crops by season and surface or underground (this commit) · [ ] plant gathering zone · [ ] fishing · [ ] mill and flour
 
 #### W14 Work orders and item management (M)
 - **DF:** global work orders with conditions; workshop profiles; forbid, dump, melt; detailed stockpile settings; minecarts.
@@ -124,7 +124,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
-- **W12 Workshops and clothing** (this commit; steps 8338b8b, c1fc029, db9adb8): the butcher leaves hides and tallow; a tanner's shop and leather works (leather armor, caps, shoes, crafts); a loom and clothier's shop (cloth, shirts, trousers); dwarves dress in shirt, trousers and shoes that wear out over a year, are embarrassed by rags and change into fresh clothes from stock; ash from the wood furnace and tallow make soap at the soap maker's, which lets doctors clear infection outright. Three new labors: Leatherworking, Weaving and tailoring, Soapmaking.
+- **W12 Workshops and clothing** (df5adfc; steps 8338b8b, c1fc029, db9adb8): the butcher leaves hides and tallow; a tanner's shop and leather works (leather armor, caps, shoes, crafts); a loom and clothier's shop (cloth, shirts, trousers); dwarves dress in shirt, trousers and shoes that wear out over a year, are embarrassed by rags and change into fresh clothes from stock; ash from the wood furnace and tallow make soap at the soap maker's, which lets doctors clear infection outright. Three new labors: Leatherworking, Weaving and tailoring, Soapmaking.
 - **W11 Fluids and magma** (4e81b17; steps 003591a, 3212e8c, a6d337d): wells over a channel to water (clean drinking water; doctors carry buckets to patients in bed); lever-worked floodgates, with doors and raised bridges also holding water back; a magma sea above the bedrock that flows, burns, kills and sets into obsidian against water, heating fuel-free magma smelters and forges; aquifers by site (shown at embark), light ones dampening dug floors and heavy ones flooding anything dug beside them unless walled off with constructions.
 - **W10 Death, family and aging** (bb1c008): coffins (carpenter or mason) and a tomb zone; haulers bury citizens' corpses, tombs first, comforting their friends; dead left unburied for two weeks may rise as ghosts that drift about and frighten the living until buried or remembered on a memorial slab (mason). Dwarves have an age and sex, die of old age past 130, marry close friends, and have children (mother's family name, no work, come of age at twelve). Grief is heavier for spouses, parents and children. Shown on the dwarf, look and status screens.
 - **W09 Personality needs** (a739cdc): seven needs (socialize, drink, craft, fight, learn, pray, make merry), each 1–3 strong by personality; they fade and are met by chatting, drinking, finishing workshop jobs, training and fighting, learning skills, and leisure in the new temple (`i`, `t`) and tavern (`i`, `v`) zones; dwarves take breaks to pray or carouse when those needs go unmet. Focus (70–120%) follows needs and scales work speed and craft quality; shown on the dwarf screen and summed up on the status screen.

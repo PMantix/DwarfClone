@@ -145,6 +145,9 @@ pub struct Tile {
     /// Water-bearing rock: seeps into anything dug beside it.
     #[serde(default, skip_serializing_if = "is_false")]
     pub aquifer: bool,
+    /// What's planted in a farm plot (None in older saves means stoutcap).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crop: Option<Mat>,
 }
 
 fn is_zero(v: &u8) -> bool {
@@ -172,6 +175,7 @@ impl Default for Tile {
             traffic: 0,
             magma: 0,
             aquifer: false,
+            crop: None,
         }
     }
 }

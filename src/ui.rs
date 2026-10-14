@@ -262,14 +262,15 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                 match g.zones.get(&t.zone).map(|z| z.kind) {
                     Some(ZoneKind::Farm) => {
                         bg = Color::Rgb(55, 35, 15);
+                        let cc = t.crop.unwrap_or(Mat::Stoutcap).color();
                         (ch, fg) = if t.farm == 0 {
                             ('·', Color::Rgb(150, 110, 70))
                         } else if t.farm >= RIPE {
-                            ('♠', Color::Rgb(210, 130, 240))
+                            ('♠', cc)
                         } else if t.farm > RIPE / 2 {
-                            ('"', Color::Rgb(150, 110, 170))
+                            ('"', dim(cc, 0.75))
                         } else {
-                            (',', Color::Rgb(120, 100, 130))
+                            (',', dim(cc, 0.55))
                         };
                     }
                     Some(ZoneKind::Stockpile(_)) => {
@@ -523,14 +524,17 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
     if let Some(z) = g.zones.get(&t.zone) {
         match z.kind {
             ZoneKind::Farm => {
+                let plant = t.crop.unwrap_or(Mat::Stoutcap).crop().map_or("stoutcap", |c| c.plant);
                 let s = if t.farm == 0 {
                     "fallow".to_string()
                 } else if t.farm >= RIPE {
-                    "ripe!".to_string()
+                    format!("{} ripe!", plant)
                 } else {
-                    format!("growing {}%", t.farm as u32 * 100 / RIPE as u32)
+                    format!("{} growing {}%", plant, t.farm as u32 * 100 / RIPE as u32)
                 };
                 v.push(plain(format!("Farm plot ({})", s), Color::Rgb(200, 150, 90)));
+                let grows = z.crop.and_then(|m| m.crop()).map_or("whatever suits the season".to_string(), |c| format!("{} ({})", c.plant, c.where_when()));
+                v.push(plain(format!("Grows {} (k, c: change)", grows), MUTED));
             }
             ZoneKind::Stockpile(f) => v.push(plain(format!("Stockpile: {}", f.name()), Color::Rgb(150, 150, 220))),
             k => {
@@ -613,7 +617,7 @@ fn stocks(g: &Game) -> Vec<Line<'static>> {
     }
     let c = |k| counts.get(&k).copied().unwrap_or(0);
     let stone = g.items.values().filter(|it| it.kind == ItemKind::Boulder && it.mat.is_building_stone()).count();
-    let food = c(ItemKind::Mushroom) + c(ItemKind::Meat) + c(ItemKind::Meal);
+    let food = c(ItemKind::Plant) + c(ItemKind::Meat) + c(ItemKind::Meal);
     vec![
         header("Fortress"),
         Line::from(vec![
@@ -2369,7 +2373,7 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
             v.push(plain(format!("Fortress wealth ☼{}", g.wealth()), Color::Rgb(255, 215, 60)));
             v.push(Line::default());
 
-            let food = g.items.values().filter(|it| it.kind.is_food() && it.kind != ItemKind::Drink && it.kind != ItemKind::Seed).count();
+            let food = g.items.values().filter(|it| it.is_food() && it.kind != ItemKind::Drink && it.kind != ItemKind::Seed).count();
             let drink = g.items.values().filter(|it| it.kind == ItemKind::Drink).count();
             v.push(header("Supplies"));
             // A dwarf eats about every HUNGRY ticks and drinks about every THIRSTY ticks.

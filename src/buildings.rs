@@ -362,7 +362,8 @@ impl BuildingKind {
 pub enum Input {
     Log,
     Stone,
-    Mushroom,
+    Brewable,
+    Fiber,
     Edible,
     Carcass,
     Ore,
@@ -385,8 +386,9 @@ impl Input {
         match self {
             Input::Log => it.kind == ItemKind::Log,
             Input::Stone => it.kind == ItemKind::Boulder && it.mat.is_building_stone(),
-            Input::Mushroom => it.kind == ItemKind::Mushroom,
-            Input::Edible => matches!(it.kind, ItemKind::Mushroom | ItemKind::Meat),
+            Input::Brewable => it.kind == ItemKind::Plant && it.mat.crop().map_or(true, |c| c.brew.is_some()),
+            Input::Fiber => it.kind == ItemKind::Plant && it.mat.crop().map_or(true, |c| c.fiber),
+            Input::Edible => (it.kind == ItemKind::Plant && it.is_food()) || it.kind == ItemKind::Meat,
             Input::Carcass => it.kind == ItemKind::Carcass,
             Input::Ore => it.kind == ItemKind::Boulder && it.mat.smelts_to().is_some(),
             Input::Fuel => it.kind == ItemKind::Charcoal || (it.kind == ItemKind::Boulder && it.mat == Mat::Coal),
@@ -408,7 +410,8 @@ impl Input {
         match self {
             Input::Log => "log",
             Input::Stone => "stone boulder",
-            Input::Mushroom => "stoutcap",
+            Input::Brewable => "brewable plant",
+            Input::Fiber => "fiber plant",
             Input::Edible => "mushroom or meat",
             Input::Carcass => "carcass",
             Input::Ore => "metal ore",
@@ -494,7 +497,7 @@ impl Recipe {
             StoneTable => "Carve stone table",
             StoneChair => "Carve stone chair",
             StoneDoor => "Carve stone door",
-            Brew => "Brew stoutcap ale",
+            Brew => "Brew a drink",
             Cook => "Prepare meal",
             Butcher => "Butcher a carcass",
             Charcoal => "Make charcoal",
@@ -517,7 +520,7 @@ impl Recipe {
             Bolts => "Make wooden bolts",
             Splint => "Make splint",
             Crutch => "Make crutch",
-            SpinThread => "Spin stoutcap thread",
+            SpinThread => "Spin thread",
             WoodCoffin => "Make wooden coffin",
             StoneCoffin => "Carve stone coffin",
             Slab => "Carve memorial slab",
@@ -610,9 +613,9 @@ impl Recipe {
             WoodBed | WoodTable | WoodChair | WoodDoor | Barrel | Bin | Charcoal | WoodCage | WoodCrossbow | Bolts | Splint | Crutch | WoodCoffin | Bucket => {
                 &[Input::Log]
             }
-            SpinThread => &[Input::Mushroom],
+            SpinThread => &[Input::Fiber],
             Blocks | StoneTable | StoneChair | StoneDoor | StoneCraft | Mechanism | StoneCoffin | Slab => &[Input::Stone],
-            Brew => &[Input::Mushroom],
+            Brew => &[Input::Brewable],
             Cook => &[Input::Edible],
             Butcher => &[Input::Carcass],
             SmeltOre => &[Input::Ore, Input::Fuel],
@@ -656,15 +659,16 @@ impl Recipe {
             Bin => one(ItemKind::Bin),
             Blocks => vec![(ItemKind::Block, m, None); 4],
             Brew => {
-                let mut v = vec![(ItemKind::Drink, Mat::Stoutcap, None); 4];
-                v.push((ItemKind::Seed, Mat::Stoutcap, None));
+                // Brewing leaves the plant's seed behind.
+                let mut v = vec![(ItemKind::Drink, m, None); 4];
+                v.push((ItemKind::Seed, m, None));
                 v
             }
             Cook => {
                 let mut v = vec![(ItemKind::Meal, m, None); 2];
                 // Cooking a stoutcap leaves its spawn, like eating one does.
-                if inputs.first().map_or(false, |i| i.kind == ItemKind::Mushroom) {
-                    v.push((ItemKind::Seed, Mat::Stoutcap, None));
+                if inputs.first().map_or(false, |i| i.kind == ItemKind::Plant) {
+                    v.push((ItemKind::Seed, m, None));
                 }
                 v
             }
@@ -704,7 +708,7 @@ impl Recipe {
             Bolts => vec![(ItemKind::Bolt, m, None); 2],
             Splint => one(ItemKind::Splint),
             Crutch => one(ItemKind::Crutch),
-            SpinThread => vec![(ItemKind::Thread, Mat::Stoutcap, None); 2],
+            SpinThread => vec![(ItemKind::Thread, m, None), (ItemKind::Thread, m, None), (ItemKind::Seed, m, None)],
             WoodCoffin | StoneCoffin => one(ItemKind::Coffin),
             Slab => one(ItemKind::Slab),
             Bucket => one(ItemKind::Bucket),

@@ -13,7 +13,9 @@ pub enum ItemKind {
     Chair,
     Door,
     Barrel,
-    Mushroom,
+    /// A harvested crop (stoutcap mushrooms, grain, berries...).
+    #[serde(alias = "Mushroom")]
+    Plant,
     Drink,
     Corpse,
     Carcass,
@@ -74,7 +76,7 @@ pub enum Slot {
 
 impl ItemKind {
     pub fn is_food(self) -> bool {
-        matches!(self, ItemKind::Mushroom | ItemKind::Meat | ItemKind::Meal)
+        matches!(self, ItemKind::Plant | ItemKind::Meat | ItemKind::Meal)
     }
 
     pub fn is_container(self) -> bool {
@@ -85,7 +87,7 @@ impl ItemKind {
     pub fn stored_in(self) -> Option<ItemKind> {
         use ItemKind::*;
         match self {
-            Mushroom | Drink | Seed | Meat | Meal | Tallow => Some(Barrel),
+            Plant | Drink | Seed | Meat | Meal | Tallow => Some(Barrel),
             Bar | Charcoal | Craft | Gem | Bone | Leather | Block | Cloth | Shirt | Trousers | Shoes | Ash | Soap => Some(Bin),
             k if k.is_equipment() => Some(Bin),
             _ => None,
@@ -102,7 +104,7 @@ impl ItemKind {
             Soap => 5,
             Cloth => 5,
             Shirt | Trousers | Shoes => 10,
-            Mushroom | Drink | Meat => 2,
+            Plant | Drink | Meat => 2,
             Block | Leather | Bucket => 3,
             Barrel | Bin => 5,
             Meal => 6,
@@ -236,7 +238,7 @@ impl StockFilter {
             StockFilter::All => true,
             StockFilter::Stone => matches!(k, Boulder | Block),
             StockFilter::Wood => k == Log,
-            StockFilter::Food => matches!(k, Mushroom | Drink | Seed | Meat | Meal),
+            StockFilter::Food => matches!(k, Plant | Drink | Seed | Meat | Meal),
             StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin | Cage | Coffin | Slab | Bucket),
             StockFilter::Metal => matches!(k, Bar | Charcoal),
             StockFilter::Goods => {
@@ -336,8 +338,8 @@ impl Item {
             Chair => format!("{} chair", m.adj()),
             Door => format!("{} door", m.adj()),
             Barrel => format!("{} barrel", m.adj()),
-            Mushroom => "stoutcap mushroom".into(),
-            Drink => "barrel of stoutcap ale".into(),
+            Plant => m.crop().map_or("stoutcap mushroom", |c| c.plant).into(),
+            Drink => format!("barrel of {}", m.crop().and_then(|c| c.brew).unwrap_or("stoutcap ale")),
             Corpse => format!("corpse of {}", self.label.as_deref().unwrap_or("a dwarf")),
             Carcass => format!("{} carcass", self.label.as_deref().unwrap_or("animal")),
             Pick => format!("{} pick", m.adj()),
@@ -348,7 +350,7 @@ impl Item {
             Helm => format!("{} helm", m.adj()),
             Breastplate => format!("{} breastplate", m.adj()),
             Shield => format!("{} shield", m.adj()),
-            Seed => "stoutcap spawn".into(),
+            Seed => m.crop().map_or("stoutcap spawn", |c| c.seed).into(),
             Meat => format!("{} meat", self.label.as_deref().unwrap_or("animal")),
             Meal => "prepared meal".into(),
             Bone => format!("{} bone", self.label.as_deref().unwrap_or("animal")),
@@ -369,7 +371,7 @@ impl Item {
             Mechanism => format!("{} mechanism", m.adj()),
             Crossbow => format!("{} crossbow", m.adj()),
             Bolt => format!("{} bolts (10)", m.adj()),
-            Thread => "stoutcap-fiber thread".into(),
+            Thread => format!("{}-fiber thread", m.name()),
             Splint => format!("{} splint", m.adj()),
             Crutch => format!("{} crutch", m.adj()),
             Coffin => format!("{} coffin", m.adj()),
@@ -381,6 +383,11 @@ impl Item {
                 None => format!("{} cage", m.adj()),
             },
         }
+    }
+
+    /// Food a dwarf can eat as it is (grain has to be milled or brewed first).
+    pub fn is_food(&self) -> bool {
+        self.kind.is_food() && (self.kind != ItemKind::Plant || self.mat.crop().map_or(true, |c| c.edible))
     }
 
     pub fn value(&self) -> u32 {
@@ -405,7 +412,7 @@ impl Item {
             Chair => 'h',
             Door => '+',
             Barrel => '0',
-            Mushroom => '%',
+            Plant => '%',
             Drink => '!',
             Corpse | Carcass => '&',
             Pick | Axe | Sword | Spear | Hammer => '/',

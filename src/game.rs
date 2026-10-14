@@ -110,6 +110,9 @@ pub struct Zone {
     /// Bedrooms and offices belong to one dwarf.
     #[serde(default)]
     pub owner: Option<u32>,
+    /// The one crop a farm grows (None: whatever suits the season).
+    #[serde(default)]
+    pub crop: Option<Mat>,
 }
 
 enum Travel {
@@ -350,12 +353,16 @@ impl Game {
         g.populate_caverns();
         g.appoint_leader();
         let supplies = [
-            (ItemKind::Mushroom, Mat::Stoutcap, 30),
+            (ItemKind::Plant, Mat::Stoutcap, 30),
             (ItemKind::Drink, Mat::Stoutcap, 40),
             (ItemKind::Log, Mat::Wood, 6),
             (ItemKind::Axe, Mat::Copper, 1),
             (ItemKind::Pick, Mat::Copper, 1),
             (ItemKind::Seed, Mat::Stoutcap, 15),
+            (ItemKind::Seed, Mat::Hollowgrain, 5),
+            (ItemKind::Seed, Mat::Threadreed, 5),
+            (ItemKind::Seed, Mat::Sunberry, 5),
+            (ItemKind::Seed, Mat::Goldoat, 5),
             (ItemKind::Barrel, Mat::Wood, 2),
         ];
         for (kind, mat, n) in supplies {
@@ -532,7 +539,7 @@ impl Game {
             }
         }
         let n = tiles.len();
-        self.zones.insert(id, Zone { id, kind, tiles, owner: None });
+        self.zones.insert(id, Zone { id, kind, tiles, owner: None, crop: None });
         n
     }
 
@@ -1440,7 +1447,7 @@ impl Game {
 
     fn find_food(&mut self, d: &mut Dwarf) -> bool {
         let meal = self.find_item(d.pos, |it| it.kind == ItemKind::Meal);
-        if let Some((item, path)) = meal.or_else(|| self.find_item(d.pos, |it| it.kind.is_food())) {
+        if let Some((item, path)) = meal.or_else(|| self.find_item(d.pos, |it| it.is_food())) {
             self.claim_item(item, d.id);
             let seats = self.free_seats();
             let ipos = self.items[&item].pos;
@@ -1687,45 +1694,80 @@ impl Game {
     }
 
     fn find_farm(&mut self, d: &mut Dwarf) -> bool {
-        let mut plots: HashMap<Pos, bool> = HashMap::new(); // pos -> is harvest
+        let season = ((self.tick / SEASON) % 4) as usize;
+        // Seed on hand, by crop.
+        let mut seeds: BTreeMap<Mat, usize> = BTreeMap::new();
+        for it in self.items.values().filter(|it| it.kind == ItemKind::Seed && it.carried_by.is_none() && it.claimed_by.is_none()) {
+            *seeds.entry(it.mat).or_default() += 1;
+        }
+        // Plot -> None to harvest, or Some(crop) to plant.
+        let mut plots: HashMap<Pos, Option<Mat>> = HashMap::new();
+        let mut fallow = false;
         for z in self.zones.values().filter(|z| z.kind == ZoneKind::Farm) {
+            let Some(&first) = z.tiles.first() else { continue };
+            let outside = self.world.outside(first);
+            let fits = |m: Mat| seeds.get(&m).map_or(false, |&n| n > 0) && m.crop().map_or(false, |c| c.grows(outside, season));
+            // A farm set to one crop plants only that; otherwise the most plentiful seed that suits.
+            let choice = match z.crop {
+                Some(m) => Some(m).filter(|&m| fits(m)),
+                None => seeds.iter().filter(|(m, _)| fits(**m)).max_by_key(|(_, n)| **n).map(|(m, _)| *m),
+            };
             for &p in &z.tiles {
                 if self.claimed.contains(&p) {
                     continue;
                 }
                 let f = self.world.t(p).farm;
-                if f == 0 {
-                    plots.insert(p, false);
-                } else if f >= RIPE {
-                    plots.insert(p, true);
+                if f >= RIPE {
+                    plots.insert(p, None);
+                } else if f == 0 {
+                    fallow = true;
+                    if let Some(m) = choice {
+                        plots.insert(p, Some(m));
+                    }
                 }
             }
         }
         if plots.is_empty() {
+            if fallow {
+                self.warn("noseed", "Farmers have no seed that grows on your farms this season.", (230, 200, 90));
+            }
             return false;
         }
-        // Planting needs seed; without any, only ripe plots are worth visiting.
-        let seed = self.find_item(d.pos, |it| it.kind == ItemKind::Seed).map(|(id, _)| id);
-        if seed.is_none() {
-            plots.retain(|_, harvest| *harvest);
-            if plots.is_empty() {
-                self.warn("noseed", "Farmers have no stoutcap spawn to plant.", (230, 200, 90));
-                return false;
-            }
-        }
         if let Some((p, path)) = path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| plots.contains_key(&p)) {
-            self.claimed.insert(p);
-            if plots[&p] {
-                d.task = Task::Harvest { pos: p };
-                Self::set_path(d, path);
-            } else {
-                let seed = seed.unwrap();
-                self.claim_item(seed, d.id);
-                d.task = Task::Plant { pos: p, seed };
+            match plots[&p] {
+                None => {
+                    self.claimed.insert(p);
+                    d.task = Task::Harvest { pos: p };
+                    Self::set_path(d, path);
+                }
+                Some(m) => {
+                    let Some((seed, _)) = self.find_item(d.pos, |it| it.kind == ItemKind::Seed && it.mat == m) else { return false };
+                    self.claimed.insert(p);
+                    self.claim_item(seed, d.id);
+                    d.task = Task::Plant { pos: p, seed };
+                }
             }
             return true;
         }
         false
+    }
+
+    /// Cycle what a farm grows: any suitable crop, then each crop in turn.
+    pub fn cycle_farm_crop(&mut self, zone: u32) -> Option<String> {
+        let z = self.zones.get_mut(&zone).filter(|z| z.kind == ZoneKind::Farm)?;
+        let i = z.crop.and_then(|c| crate::material::CROPS.iter().position(|&m| m == c));
+        z.crop = match i {
+            None => Some(crate::material::CROPS[0]),
+            Some(i) if i + 1 < crate::material::CROPS.len() => Some(crate::material::CROPS[i + 1]),
+            Some(_) => None,
+        };
+        Some(match z.crop {
+            Some(m) => {
+                let c = m.crop().unwrap();
+                format!("This farm will grow {} ({}; {}).", c.plant, c.where_when(), c.uses())
+            }
+            None => "This farm will grow whatever suits the season.".into(),
+        })
     }
 
     fn stockpile_accepts(&self, p: Pos, kind: ItemKind) -> bool {
@@ -1990,6 +2032,7 @@ impl Game {
                                                 self.world.t_mut(pos).door = world::FLOODGATE_SHUT;
                                                 d.pos = self.work_spot_off(pos);
                                                 d.path.clear();
+                                                self.clear_tile(pos);
                                                 self.dig_version += 1;
                                             }
                                             _ => {}
@@ -2106,16 +2149,19 @@ impl Game {
                             d.gain_xp(Labor::Farming, 15);
                             d.task = Task::Idle;
                             if harvest {
-                                self.world.t_mut(pos).farm = 0;
+                                let crop = self.world.t(pos).crop.unwrap_or(Mat::Stoutcap);
+                                let t = self.world.t_mut(pos);
+                                t.farm = 0;
+                                t.crop = None;
                                 let n = 1 + (d.skill(Labor::Farming) >= 3) as u32 + self.rng.chance(0.5) as u32;
                                 for _ in 0..n {
-                                    self.spawn_item(ItemKind::Mushroom, Mat::Stoutcap, pos);
+                                    self.spawn_item(ItemKind::Plant, crop, pos);
                                 }
                             } else {
-                                if let Some(seed) = d.carrying.take() {
-                                    self.items.remove(&seed);
-                                }
-                                self.world.t_mut(pos).farm = 1;
+                                let crop = d.carrying.take().and_then(|seed| self.items.remove(&seed)).map_or(Mat::Stoutcap, |it| it.mat);
+                                let t = self.world.t_mut(pos);
+                                t.farm = 1;
+                                t.crop = Some(crop);
                             }
                         }
                     }
@@ -2126,11 +2172,11 @@ impl Game {
                 Some(false) => {}
                 Some(true) => {
                     if Self::labor(d, 40, 0) {
-                        let kind = self.items.remove(&item).map_or(ItemKind::Mushroom, |it| it.kind);
+                        let (kind, mat) = self.items.remove(&item).map_or((ItemKind::Plant, Mat::Stoutcap), |it| (it.kind, it.mat));
                         d.carrying = None;
                         d.hunger = 0;
                         d.task = Task::Idle;
-                        self.eat_thoughts(d, kind, None);
+                        self.eat_thoughts(d, kind, mat, None);
                     }
                 }
             },
@@ -2233,11 +2279,11 @@ impl Game {
                         }
                         Travel::Arrived => {
                             if Self::labor(d, 40, 0) {
-                                let kind = self.items.remove(&item).map_or(ItemKind::Mushroom, |it| it.kind);
+                                let (kind, mat) = self.items.remove(&item).map_or((ItemKind::Plant, Mat::Stoutcap), |it| (it.kind, it.mat));
                                 d.carrying = None;
                                 d.hunger = 0;
                                 d.task = Task::Idle;
-                                self.eat_thoughts(d, kind, Some(seat));
+                                self.eat_thoughts(d, kind, mat, Some(seat));
                             }
                         }
                     },
@@ -2363,7 +2409,7 @@ impl Game {
 fn stock_ok(f: StockFilter, kind: ItemKind) -> bool {
     f.accepts(kind)
         || match kind {
-            ItemKind::Barrel => f.accepts(ItemKind::Mushroom),
+            ItemKind::Barrel => f.accepts(ItemKind::Plant),
             ItemKind::Bin => f.accepts(ItemKind::Bar) || f.accepts(ItemKind::Craft) || f.accepts(ItemKind::Pick),
             _ => false,
         }
@@ -2488,7 +2534,7 @@ mod tests {
             .flat_map(|z| z.tiles.iter())
             .filter(|&&p| g.world.t(p).farm > 0)
             .count();
-        assert!(planted > 0 || count(&g, ItemKind::Mushroom) > 0, "farm untouched");
+        assert!(planted > 0 || count(&g, ItemKind::Plant) > 0, "farm untouched");
         // Stockpile used.
         let stocked = g.items.values().filter(|it| g.stockpile_accepts(it.pos, it.kind)).count();
         assert!(stocked > 5, "hauling not working ({} stocked)", stocked);

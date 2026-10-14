@@ -251,3 +251,63 @@ fn soap_from_ash_and_tallow_lets_doctors_clear_infection() {
     assert_eq!(p.body.infection, 0, "soap should clear the infection");
     assert_eq!(count(&g, ItemKind::Soap, None), 1, "cleaning should use up a bar of soap");
 }
+
+#[test]
+fn crops_grow_by_season_and_place() {
+    let sun = Mat::Sunberry.crop().unwrap();
+    assert!(sun.grows(true, 0) && !sun.grows(false, 0) && !sun.grows(true, 3));
+    let grain = Mat::Hollowgrain.crop().unwrap();
+    assert!(grain.grows(false, 2) && !grain.grows(true, 2) && !grain.grows(false, 0));
+    assert!(Mat::Stoutcap.crop().unwrap().grows(true, 3), "stoutcaps grow anywhere, all year");
+    let it = |m| Item { id: 0, kind: ItemKind::Plant, mat: m, pos: Pos::default(), carried_by: None, claimed_by: None, label: None, container: None, quality: 0, to_depot: false, dump: false, wear: 0 };
+    assert!(it(Mat::Sunberry).is_food() && !it(Mat::Goldoat).is_food(), "grain isn't eaten raw");
+    assert_eq!(it(Mat::Sunberry).name(), "sunberries");
+}
+
+#[test]
+fn a_surface_farm_set_to_sunberries_grows_them_and_they_brew_into_wine() {
+    let mut g = Game::new(77);
+    g.creatures.retain(|_, c| c.tame);
+    let e = g.embark;
+    g.items.retain(|_, it| it.kind != ItemKind::Seed);
+    for _ in 0..6 {
+        g.spawn_item(ItemKind::Seed, Mat::Sunberry, e);
+        g.spawn_item(ItemKind::Seed, Mat::Stoutcap, e);
+    }
+    let mut farm = 0;
+    for (dx, dy) in [(-8, -8), (3, -8), (-8, 3), (3, 3)] {
+        if g.add_zone(e.offset(dx, dy, -1), e.offset(dx + 3, dy + 3, 1), ZoneKind::Farm) > 0 {
+            farm = *g.zones.keys().last().unwrap();
+            break;
+        }
+    }
+    assert!(farm > 0, "no farmable soil");
+    assert!(g.world.outside(g.zones[&farm].tiles[0]));
+    // Cycle the farm to sunberries.
+    while g.zones[&farm].crop != Some(Mat::Sunberry) {
+        g.cycle_farm_crop(farm).unwrap();
+    }
+    for d in g.dwarves.iter_mut() {
+        d.labors[Labor::Farming.idx()] = true;
+    }
+    run(&mut g, DAY);
+    let tiles = g.zones[&farm].tiles.clone();
+    let planted: Vec<Option<Mat>> = tiles.iter().filter(|p| g.world.t(**p).farm > 0).map(|p| g.world.t(*p).crop).collect();
+    assert!(!planted.is_empty(), "nothing planted");
+    assert!(planted.iter().all(|&c| c == Some(Mat::Sunberry)), "planted {:?}", planted);
+    for p in &tiles {
+        if g.world.t(*p).farm > 0 {
+            g.world.t_mut(*p).farm = RIPE;
+        }
+    }
+    run(&mut g, DAY);
+    assert!(count(&g, ItemKind::Plant, Some(Mat::Sunberry)) > 0, "no sunberries harvested");
+    let still = place_near(&mut g, BuildingKind::Still);
+    g.spawn_item(ItemKind::Boulder, Mat::Granite, e);
+    run(&mut g, 2 * DAY);
+    assert!(g.buildings[&still].built);
+    g.items.retain(|_, it| !(it.kind == ItemKind::Plant && it.mat != Mat::Sunberry));
+    g.add_order(still, Recipe::Brew);
+    run(&mut g, DAY);
+    assert!(g.items.values().any(|it| it.kind == ItemKind::Drink && it.name() == "barrel of sunberry wine"), "no wine");
+}

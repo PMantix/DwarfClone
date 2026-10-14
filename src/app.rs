@@ -1221,6 +1221,13 @@ impl App {
             KeyCode::Esc => self.mode = Mode::Normal,
             KeyCode::Tab | KeyCode::Char(']') => self.mode = Mode::Look { sel: (sel + 1) % n },
             KeyCode::BackTab | KeyCode::Char('[') => self.mode = Mode::Look { sel: (sel + n - 1) % n },
+            KeyCode::Char('c') => {
+                let farm = self.game.zone_at(self.cursor).filter(|z| z.kind == crate::game::ZoneKind::Farm).map(|z| z.id);
+                self.flash = Some(match farm.and_then(|id| self.game.cycle_farm_crop(id)) {
+                    Some(s) => s,
+                    None => "No farm here.".into(),
+                });
+            }
             KeyCode::Char('o') => {
                 let zone = self.game.zone_at(self.cursor).filter(|z| z.kind.ownable()).map(|z| (z.id, z.kind));
                 self.flash = Some(match zone {

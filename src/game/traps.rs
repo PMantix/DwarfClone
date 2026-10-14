@@ -227,7 +227,7 @@ impl Game {
     }
 
     /// Whoever stands on a rising bridge is thrown off to one side.
-    fn clear_tile(&mut self, pos: Pos) {
+    pub(super) fn clear_tile(&mut self, pos: Pos) {
         let spot = DIRS8.iter().map(|&(dx, dy)| pos.offset(dx, dy, 0)).find(|&q| self.world.walkable(q));
         let Some(to) = spot else { return };
         for d in self.dwarves.iter_mut().filter(|d| d.pos == pos) {

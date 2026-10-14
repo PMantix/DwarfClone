@@ -196,15 +196,18 @@ impl Game {
             .collect()
     }
 
-    pub(super) fn eat_thoughts(&mut self, d: &mut Dwarf, kind: ItemKind, seat: Option<u32>) {
+    pub(super) fn eat_thoughts(&mut self, d: &mut Dwarf, kind: ItemKind, mat: Mat, seat: Option<u32>) {
         let tick = self.tick;
         match kind {
             ItemKind::Meal => d.think("enjoyed a fine prepared meal", -12, tick),
             ItemKind::Meat => d.think("ate some roasted meat", -4, tick),
             _ => {
-                d.think("ate raw stoutcaps", 0, tick);
-                // Eating a plant leaves its spawn behind, as in DF.
-                self.spawn_item(ItemKind::Seed, Mat::Stoutcap, d.pos);
+                let plant = mat.crop().map_or("stoutcaps", |c| c.plant);
+                d.think(&format!("ate raw {}", plant), 0, tick);
+                // Eating a plant leaves its seed behind, as in DF.
+                if mat.crop().is_some() {
+                    self.spawn_item(ItemKind::Seed, mat, d.pos);
+                }
             }
         }
         if d.likes_food == Some(kind) {
