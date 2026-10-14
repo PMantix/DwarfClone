@@ -216,6 +216,8 @@ pub enum Mode {
     Burrows { sel: usize, corner: Option<Pos>, erase: bool },
     /// Choose who belongs to a burrow.
     BurrowMembers { burrow: usize, sel: usize },
+    /// Who may work at a workshop.
+    Profile { bld: u32, sel: usize },
     /// What one stockpile takes.
     PileSettings { zone: u32, sel: usize },
     /// Fortress-wide work orders; `pick` is the cursor in the recipe list
@@ -812,6 +814,27 @@ impl App {
             },
             Mode::Query { bld, adding } => self.key_query(k, bld, adding),
             Mode::Orders { sel, pick } => self.key_orders(k, sel, pick),
+            Mode::Profile { bld, sel } => {
+                let ids: Vec<u32> = self.game.dwarves.iter().filter(|d| d.alive && !d.is_child()).map(|d| d.id).collect();
+                let n = ids.len().max(1);
+                match k.code {
+                    KeyCode::Esc => self.mode = Mode::Query { bld, adding: false },
+                    KeyCode::Up => self.mode = Mode::Profile { bld, sel: sel.saturating_sub(1) },
+                    KeyCode::Down => self.mode = Mode::Profile { bld, sel: (sel + 1).min(n - 1) },
+                    KeyCode::Enter | KeyCode::Char(' ') => {
+                        if let Some(&id) = ids.get(sel) {
+                            self.game.toggle_worker(bld, id);
+                        }
+                    }
+                    KeyCode::Char('a') => {
+                        if let Some(b) = self.game.buildings.get_mut(&bld) {
+                            b.workers.clear();
+                        }
+                        self.flash = Some("Anyone with the labor may work here.".into());
+                    }
+                    _ => {}
+                }
+            }
             Mode::PileSettings { zone, sel } => {
                 let rows = self.game.pile_rows(zone);
                 let n = rows.len().max(1);
@@ -1444,6 +1467,9 @@ impl App {
                 } else {
                     self.flash = Some("No merchants at the depot.".into());
                 }
+            }
+            KeyCode::Char('w') if kind.is_workshop() && kind != BuildingKind::Depot => {
+                self.mode = Mode::Profile { bld, sel: 0 };
             }
             KeyCode::Char('r') => {
                 if let Some(o) = self.game.buildings.get_mut(&bld).and_then(|b| b.orders.last_mut()) {

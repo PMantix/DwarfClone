@@ -16,18 +16,13 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: finish W14 (workshop profiles next), then onward in tier order.
+Suggested order: W15 onward, in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
 ### Tier 2: what makes a fortress a fortress
 
 ### Tier 3: depth
-
-#### W14 Work orders and item management (M)
-- **DF:** global work orders with conditions; workshop profiles; forbid, dump, melt; detailed stockpile settings; minecarts.
-- **Us:** per-workshop order queues with repeat.
-- **Steps:** [x] global orders with "keep N in stock" conditions (4d0bec8) · [x] forbid and dump on items (look mode) (7b7dac9) · [x] stockpile material filters (this commit) · [ ] workshop profiles (who may work there)
 
 #### W15 Noble positions (M)
 - **DF:** broker, bookkeeper, manager, sheriff, militia commander, chief medical dwarf; titles rising with wealth up to monarch.
@@ -113,6 +108,7 @@ Ideas not ranked yet. Add a line on why each matters.
 - Dyes and dyed clothes; clothing preferences; cloaks, gloves, hoods; children outgrowing clothes.
 - Fish stocks that run out with overfishing; fish that must be cleaned at a fishery; bees, honey and mead; fruit trees and orchards.
 - Melting metal items back into bars at the smelter (DF's melt mark), and forbidding by area from the designation menu.
+- Minecarts and tracks (DF's hauling network); stockpile links that feed a workshop; minimum skill on workshop profiles.
 - Murky or stagnant water drunk from puddles should feel worse than river water; doctors could clean wounds with well water and soap.
 - Corpses that rot (miasma) and refuse that needs a stockpile far from the halls.
 - Mini-map and saved camera spots: get around a 96×64 map faster.
@@ -121,6 +117,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **W14 Work orders and item management** (this commit; steps 4d0bec8, 7b7dac9, 4bac3d8): a work orders screen (`j`) with "keep N in stock" orders that queue jobs at whichever workshop can do them; forbidding items (`f`/`F` in look mode) alongside dumping; stockpile settings (`s` on a stockpile) refusing kinds and materials; workshop profiles (`w` on a workshop) limiting who may work there.
 - **W13 Farming depth** (2e12f5a; steps 9bf1b98, 0b9c76f, 32d0e1a): five crops with their own seasons and places (stoutcap anywhere; hollowgrain and threadreed underground; sunberries and goldoat on the surface), farm plots that remember their crop and farms that can be set to one; seeds back from eating, brewing, cooking, spinning and milling; gathering areas over wild shrubs; a Fishing labor that fishes deep water; a millstone grinding grain into flour that bakes into more meals.
 - **W12 Workshops and clothing** (df5adfc; steps 8338b8b, c1fc029, db9adb8): the butcher leaves hides and tallow; a tanner's shop and leather works (leather armor, caps, shoes, crafts); a loom and clothier's shop (cloth, shirts, trousers); dwarves dress in shirt, trousers and shoes that wear out over a year, are embarrassed by rags and change into fresh clothes from stock; ash from the wood furnace and tallow make soap at the soap maker's, which lets doctors clear infection outright. Three new labors: Leatherworking, Weaving and tailoring, Soapmaking.
 - **W11 Fluids and magma** (4e81b17; steps 003591a, 3212e8c, a6d337d): wells over a channel to water (clean drinking water; doctors carry buckets to patients in bed); lever-worked floodgates, with doors and raised bridges also holding water back; a magma sea above the bedrock that flows, burns, kills and sets into obsidian against water, heating fuel-free magma smelters and forges; aquifers by site (shown at embark), light ones dampening dug floors and heavy ones flooding anything dug beside them unless walled off with constructions.

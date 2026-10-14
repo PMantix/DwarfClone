@@ -809,6 +809,9 @@ pub struct Building {
     /// A drawbridge is raised (impassable).
     #[serde(default)]
     pub raised: bool,
+    /// Who may work at this workshop (empty: anyone with the labor).
+    #[serde(default)]
+    pub workers: Vec<u32>,
 }
 
 impl Building {

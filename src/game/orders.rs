@@ -134,4 +134,46 @@ mod tests {
         g.manage_orders();
         assert_eq!(g.queued(Recipe::Barrel), 0, "stock is met; nothing more to queue");
     }
+
+    #[test]
+    fn a_workshop_profile_keeps_everyone_else_out() {
+        let mut g = Game::new(77);
+        g.creatures.retain(|_, c| c.tame);
+        let e = g.embark;
+        for _ in 0..6 {
+            g.spawn_item(ItemKind::Log, Mat::Wood, e);
+        }
+        let site = (2..20)
+            .flat_map(|r| [e.offset(r, 0, 0), e.offset(-r - 2, 0, 0), e.offset(0, r, 0)])
+            .find(|&p| g.can_place(BuildingKind::Carpenter, p))
+            .unwrap();
+        assert!(g.place_building(BuildingKind::Carpenter, site));
+        let shop = g.world.t(site).building;
+        for _ in 0..2 * DAY {
+            g.step();
+        }
+        assert!(g.buildings[&shop].built);
+        for d in g.dwarves.iter_mut() {
+            d.labors[Labor::Carpentry.idx()] = true;
+        }
+        let chosen = g.dwarves[3].id;
+        g.toggle_worker(shop, chosen);
+        let before = g.dwarves.iter().find(|d| d.id == chosen).unwrap().skills[Labor::Carpentry.idx()];
+        let others: Vec<(u32, u32)> = g.dwarves.iter().filter(|d| d.id != chosen).map(|d| (d.id, d.skills[Labor::Carpentry.idx()])).collect();
+        for _ in 0..3 {
+            g.add_order(shop, Recipe::Barrel);
+        }
+        let mut seen = HashSet::new();
+        for _ in 0..2 * DAY {
+            g.step();
+            if let Some(w) = g.buildings[&shop].worker {
+                seen.insert(w);
+            }
+        }
+        assert!(seen.iter().all(|&w| w == chosen), "someone else worked the shop: {:?}", seen);
+        assert!(g.dwarves.iter().find(|d| d.id == chosen).unwrap().skills[Labor::Carpentry.idx()] > before, "the chosen carpenter never worked");
+        for (id, xp) in others {
+            assert_eq!(g.dwarves.iter().find(|d| d.id == id).unwrap().skills[Labor::Carpentry.idx()], xp);
+        }
+    }
 }

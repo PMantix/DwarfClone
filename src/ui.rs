@@ -830,6 +830,14 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                         v.push(key_line("a", "Add order", false));
                         v.push(key_line("r", "Toggle repeat on last", false));
                         v.push(key_line("x", "Remove last order", false));
+                        let who: Vec<&str> =
+                            b.workers.iter().filter_map(|id| g.dwarves.iter().find(|d| d.id == *id)).map(|d| d.name.as_str()).collect();
+                        v.push(Line::default());
+                        v.push(plain(
+                            if who.is_empty() { "Workers: anyone with the labor".into() } else { format!("Workers: {}", who.join(", ")) },
+                            MUTED,
+                        ));
+                        v.push(key_line("w", "Choose who may work here", false));
                     }
                 }
                 if b.kind == BuildingKind::Depot && b.built {
@@ -892,6 +900,33 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 }
                 v.push(key_line("X", "Remove building", false));
                 v.push(plain("Esc: back".into(), MUTED));
+            }
+        }
+        Mode::Profile { bld, sel } => {
+            title = "Workshop profile".to_string();
+            if let Some(b) = g.buildings.get(bld) {
+                v.push(plain(b.name(), b.kind.color()));
+                let labors: Vec<crate::dwarf::Labor> = b.kind.recipes().iter().map(|r| r.labor()).fold(Vec::new(), |mut acc, l| {
+                    if !acc.contains(&l) {
+                        acc.push(l);
+                    }
+                    acc
+                });
+                v.push(plain(if b.workers.is_empty() { "Anyone with the labor may work here.".into() } else { "Only those ticked may work here.".into() }, TEXT));
+                for (i, d) in g.dwarves.iter().filter(|d| d.alive && !d.is_child()).enumerate() {
+                    let style = if i == *sel { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
+                    let on = b.workers.contains(&d.id);
+                    let skill = labors.iter().map(|&l| d.skill(l)).max().unwrap_or(0);
+                    let able = labors.iter().any(|&l| d.has(l));
+                    v.push(Line::from(vec![
+                        Span::styled(if on { "[x] " } else { "[ ] " }, style.fg(KEY)),
+                        Span::styled(format!("{:<20}", d.name), style.fg(if able { TEXT } else { MUTED })),
+                        Span::styled(format!(" skill {}", skill), style.fg(MUTED)),
+                    ]));
+                }
+                v.push(Line::default());
+                v.push(plain("Grey: lacks the labor (set it with y).".into(), MUTED));
+                v.push(plain("Enter toggle · a anyone · Esc back".into(), MUTED));
             }
         }
         Mode::PileSettings { zone, sel } => {

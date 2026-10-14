@@ -640,6 +640,7 @@ impl Game {
             links: Vec::new(),
             pull: false,
             raised: false,
+            workers: Vec::new(),
         };
         for p in b.tiles() {
             let t = self.world.t_mut(p);
@@ -694,6 +695,16 @@ impl Game {
     pub fn add_order(&mut self, bld: u32, recipe: Recipe) {
         if let Some(b) = self.buildings.get_mut(&bld) {
             b.orders.push(Order { recipe, repeat: false });
+        }
+    }
+
+    /// Add a dwarf to a workshop's profile, or take them off it.
+    pub fn toggle_worker(&mut self, bld: u32, dwarf: u32) {
+        let Some(b) = self.buildings.get_mut(&bld) else { return };
+        if let Some(i) = b.workers.iter().position(|&w| w == dwarf) {
+            b.workers.remove(i);
+        } else {
+            b.workers.push(dwarf);
         }
     }
 
@@ -1631,7 +1642,7 @@ impl Game {
             .buildings
             .values()
             .filter(|b| b.built && b.worker.is_none() && !b.orders.is_empty() && b.retry_tick <= self.tick)
-            .filter(|b| d.has(b.orders[0].recipe.labor()))
+            .filter(|b| d.has(b.orders[0].recipe.labor()) && (b.workers.is_empty() || b.workers.contains(&d.id)))
             .map(|b| b.id)
             .collect();
         for bid in shops {
