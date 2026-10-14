@@ -994,7 +994,7 @@ impl App {
             },
             Mode::Help => self.mode = Mode::Normal,
             Mode::Nobles => match k.code {
-                KeyCode::Char(c @ '1'..='5') => {
+                KeyCode::Char(c @ '1'..='6') => {
                     let p = crate::game::Position::ALL[(c as u8 - b'1') as usize];
                     self.flash = Some(self.game.cycle_position(p));
                 }

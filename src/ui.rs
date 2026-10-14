@@ -466,6 +466,7 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
         Task::Dine { .. } => "Eating at a table".into(),
         Task::PullLever { .. } => "Pulling a lever".into(),
         Task::Slaughter { creature } => format!("Slaughtering a {}", g.creatures.get(creature).map_or("beast", |c| c.name())),
+        Task::Punish { culprit } => format!("Bringing {} to justice", g.dwarves.iter().find(|d| d.id == *culprit).map_or("someone", |d| d.name.as_str())),
         Task::Bury { item, .. } => format!("Burying the {}", iname(*item)),
         Task::Treat { patient, what, .. } => {
             let who = g.dwarves.iter().find(|p| p.id == *patient).map_or("a patient".to_string(), |p| p.name.clone());
@@ -1199,7 +1200,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 ]));
                 v.push(plain(format!("   {}", p.duty()), MUTED));
             }
-            v.push(plain("1-5: appoint the next dwarf · x: vacate all".into(), MUTED));
+            v.push(plain("1-6: appoint the next dwarf · x: vacate all".into(), MUTED));
             v.push(Line::default());
             v.push(header(&format!("Justice ({} unpunished)", g.unpunished())));
             if g.crimes.is_empty() {

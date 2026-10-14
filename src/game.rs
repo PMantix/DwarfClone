@@ -768,7 +768,7 @@ impl Game {
         }
         // A manager sees to work orders; a bookkeeper's counts let them do it
         // several times a day rather than once.
-        let bookkeeper = self.holder(Position::Bookkeeper).is_some();
+        let bookkeeper = self.has_post(Position::Bookkeeper);
         if (bookkeeper && self.tick % 300 == 150) || self.tick % DAY == DAY / 4 {
             self.manage_orders();
         }
@@ -1417,6 +1417,9 @@ impl Game {
             self.choose_military(d);
             return;
         }
+        if self.find_punishment(d) {
+            return;
+        }
         if self.find_lever_pull(d) {
             return;
         }
@@ -1966,6 +1969,7 @@ impl Game {
             Task::Treat { patient, what, item } => self.do_treat(d, patient, what, item),
             Task::Bury { item, coffin } => self.do_bury(d, item, coffin),
             Task::Slaughter { creature } => self.do_slaughter(d, creature),
+            Task::Punish { culprit } => self.do_punish(d, culprit),
             Task::Wander { target } => match self.travel(d, target) {
                 Travel::Moving => {}
                 Travel::Arrived => d.task = Task::Idle,

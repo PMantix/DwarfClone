@@ -82,7 +82,7 @@ pub fn needed(d: &Dwarf) -> Vec<Treatment> {
 impl Game {
     /// Base time for a treatment: a chief medical dwarf runs a tighter hospital.
     pub(super) fn treat_time(&self, base: u32) -> u32 {
-        if self.holder(super::Position::ChiefMedic).is_some() {
+        if self.has_post(super::Position::ChiefMedic) {
             base * 3 / 4
         } else {
             base

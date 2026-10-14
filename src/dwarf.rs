@@ -209,6 +209,8 @@ pub enum Task {
     Gather { pos: Pos },
     /// Fish from the bank at `stand`.
     Fish { stand: Pos },
+    /// The sheriff goes to punish a dwarf for their crimes.
+    Punish { culprit: u32 },
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

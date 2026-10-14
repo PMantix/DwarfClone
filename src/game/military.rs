@@ -227,7 +227,7 @@ impl Game {
             }
         }
         // A militia commander drills them harder: a quarter more, on average.
-        if self.holder(super::Position::Commander).is_some() && (self.tick + d.id as u64) % 4 == 0 {
+        if self.has_post(super::Position::Commander) && (self.tick + d.id as u64) % 4 == 0 {
             xp += 1;
         }
         xp

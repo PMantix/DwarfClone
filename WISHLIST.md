@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: finish W16 (sheriff and punishments next), then onward in tier order.
+Suggested order: finish W16 (jail zone next), then onward in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -27,7 +27,7 @@ Suggested order: finish W16 (sheriff and punishments next), then onward in tier 
 #### W16 Justice (S–M)
 - **DF:** sheriff, crimes, interrogation, beatings, jail, hammerer.
 - **Us:** mandates that only upset the mayor.
-- **Steps:** [x] crimes from broken mandates and tantrum vandalism (this commit) · [ ] sheriff and punishments · [ ] jail zone
+- **Steps:** [x] crimes from broken mandates and tantrum vandalism (31d7368) · [x] sheriff and punishments (this commit) · [ ] jail zone
 
 #### W17 Monsters (M)
 - **DF:** megabeasts, titans, forgotten beasts, werebeasts, vampires, undead, thieves and kidnappers.

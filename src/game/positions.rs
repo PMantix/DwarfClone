@@ -11,10 +11,12 @@ pub enum Position {
     Broker,
     ChiefMedic,
     Commander,
+    Sheriff,
 }
 
 impl Position {
-    pub const ALL: [Position; 5] = [Position::Manager, Position::Bookkeeper, Position::Broker, Position::ChiefMedic, Position::Commander];
+    pub const ALL: [Position; 6] =
+        [Position::Manager, Position::Bookkeeper, Position::Broker, Position::ChiefMedic, Position::Commander, Position::Sheriff];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -23,6 +25,7 @@ impl Position {
             Position::Broker => "Broker",
             Position::ChiefMedic => "Chief medical dwarf",
             Position::Commander => "Militia commander",
+            Position::Sheriff => "Sheriff",
         }
     }
 
@@ -34,6 +37,7 @@ impl Position {
             Position::Broker => "better prices from traders",
             Position::ChiefMedic => "doctors treat a quarter faster",
             Position::Commander => "soldiers learn a quarter faster",
+            Position::Sheriff => "crimes on the record are punished",
         }
     }
 }
@@ -62,6 +66,16 @@ impl Game {
     pub fn holder(&self, p: Position) -> Option<&Dwarf> {
         let id = self.positions.iter().find(|(q, _)| *q == p).map(|(_, id)| *id)?;
         self.dwarves.iter().find(|d| d.id == id && d.alive && !d.insane)
+    }
+
+    /// Whether a post is filled. Unlike `holder`, this also counts a holder
+    /// who is out of the dwarf list for their own turn.
+    pub fn has_post(&self, p: Position) -> bool {
+        let Some(id) = self.positions.iter().find(|(q, _)| *q == p).map(|(_, id)| *id) else { return false };
+        match self.dwarves.iter().find(|d| d.id == id) {
+            Some(d) => d.alive && !d.insane,
+            None => true,
+        }
     }
 
     pub fn position_of(&self, dwarf: u32) -> Option<Position> {

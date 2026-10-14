@@ -66,7 +66,7 @@ impl Game {
         if self.work_orders.is_empty() {
             return;
         }
-        if self.holder(super::Position::Manager).is_none() {
+        if !self.has_post(super::Position::Manager) {
             self.warn("nomanager", "Work orders wait for a manager (n to appoint one).", (230, 200, 90));
             return;
         }

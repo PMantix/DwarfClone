@@ -54,7 +54,7 @@ pools) until there are twenty fish in store; fish can be eaten or cooked. A mill
 meals rather than two.
 
 **Positions.** The nobles screen (`n`) appoints a manager, bookkeeper, broker, chief medical
-dwarf and militia commander with `1`-`5` (each press hands the post to the next dwarf, then
+dwarf, militia commander and sheriff with `1`-`6` (each press hands the post to the next dwarf, then
 leaves it vacant). Work orders only run with a manager, checked once a day, or several
 times a day with a bookkeeper too. Merchants want a tenth over value; a broker haggles that
 down to between a twentieth and nothing, depending on how sociable they are. A chief medical
@@ -66,7 +66,9 @@ material in their bedroom or office; meeting it within half a year pleases them,
 does not.
 
 **Justice.** Punches and wrecked furniture in a tantrum, and the dwarf blamed for an unmet
-mandate, go on the fortress's record of crimes, shown on the nobles screen.
+mandate, go on the fortress's record of crimes, shown on the nobles screen. Appoint a sheriff
+(`n`, `6`) and they seek out each culprit and beat them, closing every charge against them;
+victims are glad to see justice done.
 
 **Work orders.** `j` lists standing orders: each keeps a number of something in stock
 (beds, barrels, meals, blocks...) by queuing jobs at the least busy workshop that can do
