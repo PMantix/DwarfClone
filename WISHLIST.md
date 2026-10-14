@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: finish W11 (magma next), then onward in tier order.
+Suggested order: finish W11 (aquifers next), then onward in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -27,7 +27,7 @@ Suggested order: finish W11 (magma next), then onward in tier order.
 #### W11 Fluid machines and magma (L)
 - **DF:** wells, pumps, floodgates, water wheels, magma forges and smelters, aquifers.
 - **Us:** water that falls and levels out (`game.rs` `fluids`).
-- **Steps:** [x] well (clean water, ties to W05) (003591a) · [x] floodgate on a lever (needs W06) (this commit) · [ ] magma sea and magma workshops · [ ] aquifer layers
+- **Steps:** [x] well (clean water, ties to W05) (003591a) · [x] floodgate on a lever (needs W06) (3212e8c) · [x] magma sea and magma workshops (this commit) · [ ] aquifer layers
 
 #### W12 More workshops and clothing (M)
 - **DF:** leather, loom, clothier, glass, kiln, jeweler, soap and siege workshops; clothes wear out.
@@ -122,6 +122,7 @@ Ideas not ranked yet. Add a line on why each matters.
 - Violent ghosts, ghosts that move objects, and haunting that varies with how the dwarf died (DF has several kinds).
 - Nursing babies, children who follow their mother, and a playground or school; sibling and grandparent ties.
 - Pumps and water wheels (DF's screw pumps lift water a level; wheels make power); wells that freeze in winter.
+- Magma creatures (fire imps, magma crabs) in the sea; magma moved by pumps or minecarts into traps and forges higher up.
 - Murky or stagnant water drunk from puddles should feel worse than river water; doctors could clean wounds with well water and soap.
 - Corpses that rot (miasma) and refuse that needs a stockpile far from the halls.
 - Mini-map and saved camera spots: get around a 96×64 map faster.

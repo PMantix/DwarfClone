@@ -32,10 +32,12 @@ pub enum BuildingKind {
     Slab,
     Well,
     Floodgate,
+    MagmaSmelter,
+    MagmaForge,
 }
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 25] = [
+    pub const ALL: [BuildingKind; 27] = [
         BuildingKind::Carpenter,
         BuildingKind::Mason,
         BuildingKind::Still,
@@ -61,6 +63,8 @@ impl BuildingKind {
         BuildingKind::Slab,
         BuildingKind::Well,
         BuildingKind::Floodgate,
+        BuildingKind::MagmaSmelter,
+        BuildingKind::MagmaForge,
     ];
 
     pub fn name(self) -> &'static str {
@@ -90,6 +94,8 @@ impl BuildingKind {
             BuildingKind::Slab => "Memorial slab",
             BuildingKind::Well => "Well",
             BuildingKind::Floodgate => "Floodgate",
+            BuildingKind::MagmaSmelter => "Magma smelter",
+            BuildingKind::MagmaForge => "Magma forge",
         }
     }
 
@@ -120,7 +126,14 @@ impl BuildingKind {
             BuildingKind::Slab => 'g',
             BuildingKind::Well => 'q',
             BuildingKind::Floodgate => 'j',
+            BuildingKind::MagmaSmelter => 'E',
+            BuildingKind::MagmaForge => 'F',
         }
+    }
+
+    /// Workshops heated by magma below instead of fuel.
+    pub fn uses_magma(self) -> bool {
+        matches!(self, BuildingKind::MagmaSmelter | BuildingKind::MagmaForge)
     }
 
     pub fn is_workshop(self) -> bool {
@@ -239,8 +252,8 @@ impl BuildingKind {
             BuildingKind::Kitchen => &[Cook],
             BuildingKind::Butcher => &[Butcher],
             BuildingKind::WoodFurnace => &[Charcoal],
-            BuildingKind::Smelter => &[SmeltOre, MakeSteel],
-            BuildingKind::Forge => &[
+            BuildingKind::Smelter | BuildingKind::MagmaSmelter => &[SmeltOre, MakeSteel],
+            BuildingKind::Forge | BuildingKind::MagmaForge => &[
                 ForgePick,
                 ForgeAxe,
                 ForgeSword,
@@ -272,6 +285,8 @@ impl BuildingKind {
             BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap => Color::Rgb(230, 120, 120),
             BuildingKind::Well => Color::Rgb(110, 170, 255),
             BuildingKind::Floodgate => Color::Rgb(150, 190, 230),
+            BuildingKind::MagmaSmelter => Color::Rgb(255, 120, 30),
+            BuildingKind::MagmaForge => Color::Rgb(255, 70, 20),
             _ => Color::Rgb(200, 200, 200),
         }
     }
@@ -301,6 +316,8 @@ impl BuildingKind {
             BuildingKind::Slab => '▬',
             BuildingKind::Well => '○',
             BuildingKind::Floodgate => '╫',
+            BuildingKind::MagmaSmelter => 'E',
+            BuildingKind::MagmaForge => 'F',
         }
     }
 }
@@ -522,8 +539,13 @@ impl Recipe {
         }
     }
 
-    pub fn input_desc(self) -> String {
-        self.inputs().iter().map(|i| i.desc()).collect::<Vec<_>>().join(" + ")
+    /// Inputs at a given workshop: magma workshops need no fuel.
+    pub fn inputs_at(self, shop: BuildingKind) -> Vec<Input> {
+        self.inputs().iter().copied().filter(|&i| !(shop.uses_magma() && i == Input::Fuel)).collect()
+    }
+
+    pub fn input_desc_at(self, shop: BuildingKind) -> String {
+        self.inputs_at(shop).iter().map(|i| i.desc()).collect::<Vec<_>>().join(" + ")
     }
 
     /// What comes out, given the consumed inputs (in recipe order).

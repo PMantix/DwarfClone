@@ -1,5 +1,6 @@
-//! Wells (clean water drawn up from below, for drinking and for patients)
-//! and floodgates (lever-worked gates that hold water back).
+//! Wells (clean water drawn up from below, for drinking and for patients),
+//! floodgates (lever-worked gates that hold water back), and magma: the sea
+//! far below, how it flows, and the workshops it heats.
 
 use super::*;
 
@@ -56,6 +57,151 @@ impl Game {
     /// A walkable neighbour of `p` to step aside to (or `p` if there's none).
     pub(super) fn work_spot_off(&self, p: Pos) -> Pos {
         DIRS8.iter().map(|&(dx, dy)| p.offset(dx, dy, 0)).find(|&q| self.world.walkable(q)).unwrap_or(p)
+    }
+
+    // ------------------------------------------------------------------ magma
+
+    /// Every few ticks: magma falls and levels out like water, only slower.
+    /// Where it meets water both turn to obsidian; what it touches burns.
+    pub(super) fn magma(&mut self) {
+        if self.magma_seen != self.dig_version {
+            self.magma_cells = None;
+            self.magma_seen = self.dig_version;
+        }
+        let mut cells = match self.magma_cells.take() {
+            Some(c) => c,
+            None => self.world.tiles.iter().enumerate().filter(|(_, t)| t.magma > 0).map(|(i, _)| i).collect(),
+        };
+        if cells.is_empty() {
+            self.magma_cells = Some(cells);
+            return;
+        }
+        for i in (1..cells.len()).rev() {
+            let j = self.rng.range(0, i as i32 + 1) as usize;
+            cells.swap(i, j);
+        }
+        let mut active: HashSet<usize> = HashSet::new();
+        let mut moved = false;
+        for i in cells {
+            let p = self.world.pos_of(i);
+            let t = self.world.tiles[i];
+            if t.magma == 0 {
+                continue;
+            }
+            let falls = matches!(t.kind, TileKind::Open | TileKind::StairDown | TileKind::StairUD);
+            let b = p.down();
+            if falls && !self.world.blocks_water(b) {
+                if self.world.t(b).water > 0 {
+                    self.quench(b);
+                    active.insert(i);
+                    continue;
+                }
+                let room = 7 - self.world.t(b).magma;
+                if room > 0 {
+                    let amt = room.min(t.magma);
+                    self.world.t_mut(b).magma += amt;
+                    self.world.tiles[i].magma -= amt;
+                    active.insert(self.world.idx(b));
+                    if self.world.tiles[i].magma > 0 {
+                        active.insert(i);
+                    }
+                    moved = true;
+                    continue;
+                }
+            }
+            let (dx, dy) = DIRS4[self.rng.range(0, 4) as usize];
+            let q = p.offset(dx, dy, 0);
+            if !self.world.blocks_water(q) {
+                if self.world.t(q).water > 0 {
+                    self.quench(q);
+                } else {
+                    let qm = self.world.t(q).magma;
+                    let here = self.world.tiles[i].magma;
+                    if qm + 1 < here {
+                        self.world.t_mut(q).magma += 1;
+                        self.world.tiles[i].magma -= 1;
+                        active.insert(self.world.idx(q));
+                        moved = true;
+                    }
+                }
+            }
+            // Stay on the list while there's anywhere left to go.
+            let here = self.world.tiles[i].magma;
+            let restless = here > 0
+                && ((falls && !self.world.blocks_water(b) && self.world.t(b).magma < 7)
+                    || DIRS4.iter().any(|&(dx, dy)| {
+                        let q = p.offset(dx, dy, 0);
+                        !self.world.blocks_water(q) && (self.world.t(q).magma + 1 < here || self.world.t(q).water > 0)
+                    }));
+            if restless {
+                active.insert(i);
+            }
+        }
+        if moved {
+            self.burn_items();
+        }
+        let mut next: Vec<usize> = active.into_iter().collect();
+        next.sort_unstable();
+        self.magma_cells = Some(next);
+    }
+
+    /// Magma and water meet: the tile sets as obsidian.
+    pub(super) fn quench(&mut self, p: Pos) {
+        let t = self.world.t_mut(p);
+        t.kind = TileKind::Wall;
+        t.mat = Mat::Obsidian;
+        t.magma = 0;
+        t.water = 0;
+        self.dig_version += 1;
+        self.water_cells = None;
+    }
+
+    /// Anything lying in magma that isn't stone or metal is destroyed.
+    fn burn_items(&mut self) {
+        let burnt: Vec<u32> = self
+            .items
+            .values()
+            .filter(|it| it.carried_by.is_none() && !it.mat.fireproof() && self.world.get(it.pos).map_or(false, |t| t.magma > 0))
+            .map(|it| it.id)
+            .collect();
+        for id in &burnt {
+            self.items.remove(id);
+        }
+        for it in self.items.values_mut() {
+            if it.container.map_or(false, |c| burnt.contains(&c)) {
+                it.container = None;
+            }
+        }
+    }
+
+    /// Magma in the tile below `p`, or in `p` itself, heats a workshop.
+    pub fn magma_below(&self, p: Pos) -> bool {
+        [p, p.down()].iter().any(|&q| self.world.get(q).map_or(false, |t| t.magma > 0))
+    }
+
+    /// Whether freshly dug `p` looks out on magma.
+    pub(super) fn near_magma(&self, p: Pos) -> bool {
+        (-2..=1).any(|dz| {
+            (-2..=2).any(|dy| (-2..=2).any(|dx| self.world.get(p.offset(dx, dy, dz)).map_or(false, |t| t.magma > 0 && t.revealed)))
+        })
+    }
+
+    /// Like any workshop, except the middle tile may be open space, and it
+    /// must have magma beneath.
+    pub(super) fn can_place_magma_shop(&self, kind: BuildingKind, top_left: Pos) -> bool {
+        let s = kind.size();
+        let mid = top_left.offset(s / 2, s / 2, 0);
+        for dy in 0..s {
+            for dx in 0..s {
+                let p = top_left.offset(dx, dy, 0);
+                let Some(t) = self.world.get(p) else { return false };
+                let ok_kind = matches!(t.kind, TileKind::Floor | TileKind::Shrub) || (p == mid && t.kind == TileKind::Open);
+                if !t.revealed || t.building != 0 || t.water > 0 || t.magma > 0 || !ok_kind {
+                    return false;
+                }
+            }
+        }
+        self.magma_below(mid)
     }
 
     /// Where to stand to draw from the nearest working well.
@@ -185,6 +331,80 @@ mod tests {
         assert!(g.buildings[&id].built, "the floodgate was never built");
         assert_eq!(g.world.t(p).door, crate::world::FLOODGATE_SHUT);
         assert!(g.dwarves.iter().all(|d| d.pos != p), "the builder was left standing in the gate");
+    }
+
+    #[test]
+    fn the_world_has_a_magma_sea_above_the_bedrock() {
+        let g = Game::new(81);
+        let w = &g.world;
+        let (mut sea, mut shore) = (0, 0);
+        for y in 0..w.h {
+            for x in 0..w.w {
+                sea += (w.t(Pos::new(x, y, 1)).magma == 7) as i32;
+                shore += (w.t(Pos::new(x, y, 2)).kind == TileKind::Floor) as i32;
+            }
+        }
+        assert!(sea > w.w * w.h / 2, "only {} magma tiles", sea);
+        assert!(shore > 0, "no shore to stand on");
+        assert!(g.dwarves.iter().all(|d| d.pos.z > 4));
+    }
+
+    #[test]
+    fn magma_flows_burns_wood_and_sets_into_obsidian_against_water() {
+        let mut g = Game::new(81);
+        let (res, gate, far) = tunnel(&mut g);
+        for i in 0..3 {
+            let p = res.offset(i, 0, 0);
+            g.world.t_mut(p).water = 0;
+            g.world.t_mut(p).magma = 7;
+        }
+        g.world.t_mut(far).water = 7;
+        g.water_cells = None;
+        g.dig_version += 1;
+        let log = g.spawn_item(ItemKind::Log, Mat::Wood, gate);
+        let rock = g.spawn_item(ItemKind::Boulder, Mat::Granite, gate);
+        for _ in 0..6000 {
+            g.step();
+        }
+        assert!(!g.items.contains_key(&log), "the log didn't burn");
+        assert!(g.items.contains_key(&rock), "stone shouldn't burn");
+        let obsidian = (0..10).any(|i| {
+            let t = g.world.t(res.offset(i - 1, 0, 0));
+            t.kind == TileKind::Wall && t.mat == Mat::Obsidian
+        });
+        assert!(obsidian, "magma met water without making obsidian");
+    }
+
+    #[test]
+    fn a_magma_forge_needs_magma_below_but_no_fuel() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        g.items.retain(|_, it| !matches!(it.kind, ItemKind::Charcoal) && it.mat != Mat::Coal);
+        let e = g.embark;
+        let tl = (2..20)
+            .flat_map(|r| [e.offset(r, 0, 0), e.offset(-r, 0, 0), e.offset(0, r, 0)])
+            .find(|&p| g.can_place(BuildingKind::Forge, p) && g.world.solid(p.offset(1, 1, -1)) && g.world.solid(p.offset(1, 1, -2)))
+            .expect("room for a forge");
+        assert!(!g.can_place(BuildingKind::MagmaForge, tl), "a magma forge needs magma");
+        let below = tl.offset(1, 1, -1);
+        g.world.t_mut(below).kind = TileKind::Open;
+        g.world.t_mut(below).magma = 7;
+        g.dig_version += 1;
+        assert!(g.can_place(BuildingKind::MagmaForge, tl));
+        assert!(g.place_building(BuildingKind::MagmaForge, tl));
+        let id = g.world.t(tl).building;
+        g.buildings.get_mut(&id).unwrap().built = true;
+        g.spawn_item(ItemKind::Bar, Mat::Iron, e);
+        g.add_order(id, Recipe::ForgePick);
+        for d in g.dwarves.iter_mut() {
+            d.labors[Labor::Smithing.idx()] = true;
+        }
+        let picks = |g: &Game| g.items.values().filter(|it| it.kind == ItemKind::Pick && it.mat == Mat::Iron).count();
+        let before = picks(&g);
+        for _ in 0..2 * DAY {
+            g.step();
+        }
+        assert_eq!(picks(&g), before + 1, "the magma forge made no pick");
     }
 
     #[test]

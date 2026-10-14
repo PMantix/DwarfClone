@@ -139,6 +139,9 @@ pub struct Tile {
     /// 0 normal, 1 high, 2 low, 3 restricted (dwarves only).
     #[serde(default)]
     pub traffic: u8,
+    /// Depth of magma, 0-7, like `water`.
+    #[serde(default)]
+    pub magma: u8,
 }
 
 impl Default for Tile {
@@ -156,6 +159,7 @@ impl Default for Tile {
             built_from: None,
             burrows: 0,
             traffic: 0,
+            magma: 0,
         }
     }
 }
@@ -280,12 +284,12 @@ impl World {
 
     pub fn walkable(&self, p: Pos) -> bool {
         self.get(p)
-            .map_or(false, |t| t.kind.has_floor() && t.water <= 3)
+            .map_or(false, |t| t.kind.has_floor() && t.water <= 3 && t.magma == 0)
     }
 
     pub fn passable(&self, p: Pos, m: Mover) -> bool {
         match self.get(p) {
-            Some(t) if t.kind.has_floor() && t.water <= 3 => match t.door {
+            Some(t) if t.kind.has_floor() && t.water <= 3 && t.magma == 0 => match t.door {
                 DOOR_LOCKED | BRIDGE_RAISED | FLOODGATE_SHUT => false,
                 DOOR_OPEN => m != Mover::Beast,
                 _ => true,
@@ -643,6 +647,40 @@ pub fn generate(seed: u64, params: &EmbarkParams) -> World {
                     t.mat = Mat::Wood;
                 } else if rng.chance(0.05) {
                     world.t_mut(p).kind = TileKind::Shrub;
+                }
+            }
+        }
+    }
+
+    // The magma sea: a molten layer just above the bedrock under a basalt
+    // roof, with air above it, a few basalt islands and a shore around them.
+    let sea_n = Noise::new(seed ^ 0x8888);
+    if d > 8 {
+        for y in 1..h - 1 {
+            for x in 1..w - 1 {
+                // The cave above is a little wider than the sea, leaving a shore.
+                let v = sea_n.fbm2(x as f64 / 12.0, y as f64 / 12.0, 2);
+                if v < 0.3 {
+                    continue;
+                }
+                if v >= 0.36 {
+                    let t = world.t_mut(Pos::new(x, y, 1));
+                    t.kind = TileKind::Open;
+                    t.mat = Mat::Air;
+                    t.magma = 7;
+                }
+                let t = world.t_mut(Pos::new(x, y, 2));
+                t.kind = TileKind::Open;
+                t.mat = Mat::Air;
+            }
+        }
+        for y in 1..h - 1 {
+            for x in 1..w - 1 {
+                let p = Pos::new(x, y, 2);
+                if world.t(p).kind == TileKind::Open && world.solid(p.down()) {
+                    let t = world.t_mut(p);
+                    t.kind = TileKind::Floor;
+                    t.mat = Mat::Basalt;
                 }
             }
         }

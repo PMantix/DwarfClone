@@ -49,6 +49,11 @@ fn tile_look(w: &World, p: Pos) -> (char, Color, Color) {
     let mc = t.mat.color();
     let water_bg = Color::Rgb(0, 30, 90);
     let water_fg = Color::Rgb(90, 160, 255);
+    let magma_bg = Color::Rgb(120, 20, 0);
+    let magma_fg = Color::Rgb(255, 150, 40);
+    if t.magma > 0 {
+        return (water_glyph(t.magma), magma_fg, magma_bg);
+    }
     let (g, fg, bg) = match t.kind {
         TileKind::Open => {
             if t.water > 0 {
@@ -64,6 +69,9 @@ fn tile_look(w: &World, p: Pos) -> (char, Color, Color) {
                 let f = (0.62 - 0.035 * k as f32).max(0.22);
                 if tq.water > 0 {
                     return ('≈', dim(water_fg, f), BLACK);
+                }
+                if tq.magma > 0 {
+                    return ('≈', dim(magma_fg, f.max(0.45)), BLACK);
                 }
                 let c = dim(tq.mat.color(), f);
                 return match tq.kind {
@@ -486,6 +494,9 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
     if t.water > 0 {
         v.push(plain(format!("Water {}/7", t.water), Color::Rgb(90, 160, 255)));
     }
+    if t.magma > 0 {
+        v.push(plain(format!("Magma {}/7", t.magma), Color::Rgb(255, 150, 40)));
+    }
     if t.desig != Desig::None {
         v.push(plain(format!("Designated: {}", t.desig.name()), KEY));
     }
@@ -737,6 +748,10 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.push(plain("Place over a channel (open space)".into(), MUTED));
                 v.push(plain("with water up to 10 levels below.".into(), MUTED));
             }
+            if kind.uses_magma() {
+                v.push(plain("The middle tile must sit over magma".into(), MUTED));
+                v.push(plain("(open or floored); needs no fuel.".into(), MUTED));
+            }
             v.push(Line::default());
             v.push(plain("Move the cursor; Enter to place.".into(), TEXT));
             v.push(plain("Esc: back".into(), MUTED));
@@ -782,7 +797,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                     if *adding {
                         v.push(header("Add order"));
                         for r in b.kind.recipes() {
-                            v.push(key_line(&r.key().to_string(), &format!("{} ({})", r.name(), r.input_desc()), false));
+                            v.push(key_line(&r.key().to_string(), &format!("{} ({})", r.name(), r.input_desc_at(b.kind)), false));
                         }
                         v.push(plain("Esc: back".into(), MUTED));
                     } else {
@@ -2297,6 +2312,7 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
     if t.revealed {
         keep += 1;
         keep += (t.water > 0) as usize;
+        keep += (t.magma > 0) as usize;
         keep += (t.desig != Desig::None) as usize;
         keep += g.construction_at(p).is_some() as usize;
         keep += (g.burrows.iter().any(|b| t.burrows & b.mask() != 0) || t.traffic != 0) as usize;

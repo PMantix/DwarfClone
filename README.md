@@ -111,6 +111,12 @@ holds back water and walkers alike. Link a lever to it (`k` on the lever) and pu
 shut it: flood a moat, fill a cistern, or seal off a leak. Doors and raised drawbridges also
 stop water.
 
+**Magma.** Below the caverns, just above the bedrock, lies a sea of magma under a basalt roof,
+with a narrow shore around its islands. Magma flows like water, only slower; it kills whatever
+it touches, burns items that aren't stone or metal, and sets into obsidian where it meets
+water. A magma smelter (`b`, `E`) or magma forge (`b`, `F`) built with its middle tile over
+magma (open space or a floor above it) needs no fuel.
+
 **Squads.** The military screen (`m`) forms named squads, gives them uniforms (weapon type,
 armor) and orders: train, hold a station, or kill a chosen creature. Soldiers train in the
 barracks zone and learn faster sparring together. Crossbows and bolts come from the

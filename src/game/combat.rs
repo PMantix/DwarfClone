@@ -580,6 +580,11 @@ impl Game {
     /// Returns false when the creature should be removed (died or left the map).
     fn creature_tick(&mut self, c: &mut Creature) -> bool {
         let info = c.species.info();
+        if self.world.get(c.pos).map_or(false, |t| t.magma > 0) {
+            self.msg(&format!("The {} is consumed by magma.", info.name), (255, 120, 40));
+            self.creature_died(c.clone());
+            return false;
+        }
         if self.tick % 10 == 0 {
             c.body.tick();
             if c.body.dead {

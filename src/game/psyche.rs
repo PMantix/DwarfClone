@@ -600,7 +600,7 @@ impl Game {
                 }
             }
         }
-        let site = self.buildings[&m.shop.unwrap()].center();
+        let site = self.work_spot(self.buildings[&m.shop.unwrap()].center());
         // Gather materials, one claim at a time.
         if m.items.len() < m.needs.len() {
             let need = m.needs[m.items.len()];

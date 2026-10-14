@@ -30,6 +30,8 @@ pub enum Mat {
     Bone,
     Leather,
     Gold,
+    /// Volcanic glass, left where magma meets water.
+    Obsidian,
 }
 
 impl Mat {
@@ -61,6 +63,7 @@ impl Mat {
             Mat::Bone => "bone",
             Mat::Leather => "leather",
             Mat::Gold => "gold",
+            Mat::Obsidian => "obsidian",
         }
     }
 
@@ -100,6 +103,7 @@ impl Mat {
             Mat::Bone => (230, 225, 200),
             Mat::Leather => (160, 110, 70),
             Mat::Gold => (255, 215, 60),
+            Mat::Obsidian => (70, 50, 90),
         };
         Color::Rgb(r, g, b)
     }
@@ -120,8 +124,16 @@ impl Mat {
     pub fn is_building_stone(self) -> bool {
         matches!(
             self,
-            Mat::Sandstone | Mat::Limestone | Mat::Granite | Mat::Marble | Mat::Basalt
+            Mat::Sandstone | Mat::Limestone | Mat::Granite | Mat::Marble | Mat::Basalt | Mat::Obsidian
         )
+    }
+
+    /// Survives being dropped in magma: stone, ore, gems and metal.
+    pub fn fireproof(self) -> bool {
+        self.is_building_stone()
+            || self.is_ore()
+            || self.is_gem()
+            || matches!(self, Mat::Copper | Mat::Bronze | Mat::Iron | Mat::Steel | Mat::Gold | Mat::Bedrock)
     }
 
     /// The metal an ore boulder yields at the smelter.
@@ -185,6 +197,7 @@ impl Mat {
             Mat::Marble => 110,
             Mat::Hematite | Mat::Malachite | Mat::NativeGold => 120,
             Mat::Granite | Mat::Basalt => 140,
+            Mat::Obsidian => 160,
             Mat::Amethyst => 150,
             _ => 100,
         }

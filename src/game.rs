@@ -189,6 +189,11 @@ pub struct Game {
     /// Cells holding water, rebuilt from the map when missing (e.g. after loading).
     #[serde(skip)]
     water_cells: Option<Vec<usize>>,
+    /// Magma cells that may still flow; rebuilt whenever the map changes.
+    #[serde(skip)]
+    magma_cells: Option<Vec<usize>>,
+    #[serde(skip)]
+    magma_seen: u64,
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
@@ -270,6 +275,8 @@ impl Game {
             pause_request: false,
             autosave_request: false,
             water_cells: None,
+            magma_cells: None,
+            magma_seen: 0,
             creatures: BTreeMap::new(),
             station: None,
             alert: true,
@@ -548,6 +555,9 @@ impl Game {
         if kind == BuildingKind::Well {
             return self.can_place_well(top_left);
         }
+        if kind.uses_magma() {
+            return self.can_place_magma_shop(kind, top_left);
+        }
         let s = kind.size();
         for dy in 0..s {
             for dx in 0..s {
@@ -679,6 +689,9 @@ impl Game {
         if self.tick % 3 == 0 {
             self.fluids();
         }
+        if self.tick % 6 == 0 {
+            self.magma();
+        }
         if self.tick % 10 == 0 {
             self.grow_farms();
         }
@@ -749,6 +762,12 @@ impl Game {
             if matches!(t.kind, TileKind::Open | TileKind::StairDown | TileKind::StairUD) {
                 let b = p.down();
                 if self.world.in_bounds(b) && !self.world.blocks_water(b) {
+                    if self.world.t(b).magma > 0 {
+                        self.quench(b);
+                        self.world.tiles[i].water -= 1;
+                        wet.insert(i);
+                        continue;
+                    }
                     let room = 7 - self.world.t(b).water;
                     if room > 0 {
                         let amt = room.min(t.water);
@@ -765,7 +784,10 @@ impl Game {
             // Level out sideways.
             let (dx, dy) = DIRS4[self.rng.range(0, 4) as usize];
             let q = p.offset(dx, dy, 0);
-            if !self.world.blocks_water(q) {
+            if !self.world.blocks_water(q) && self.world.t(q).magma > 0 {
+                self.quench(q);
+                self.world.tiles[i].water -= 1;
+            } else if !self.world.blocks_water(q) {
                 let qw = self.world.t(q).water;
                 let here = self.world.tiles[i].water;
                 if qw + 1 < here || (here == 1 && qw == 0 && self.rng.chance(0.1)) {
@@ -906,6 +928,10 @@ impl Game {
             }
         } else {
             d.drown = 0;
+        }
+        if self.world.t(d.pos).magma > 0 {
+            self.kill(d, "has burned to death in magma");
+            return;
         }
 
         if self.tick % 100 == 0 {
@@ -1548,14 +1574,21 @@ impl Game {
         for bid in shops {
             let recipe = self.buildings[&bid].orders[0].recipe;
             let site = self.buildings[&bid].center();
+            let shop = self.buildings[&bid].kind;
+            if shop.uses_magma() && !self.magma_below(site) {
+                self.buildings.get_mut(&bid).unwrap().retry_tick = self.tick + 300;
+                self.warn(&format!("craft{}", bid), &format!("{}: there's no magma below it.", shop.name()), (230, 200, 90));
+                continue;
+            }
+            let inputs = recipe.inputs_at(shop);
             let mut chosen: Vec<u32> = Vec::new();
-            for input in recipe.inputs() {
+            for input in inputs.iter() {
                 match self.find_item(site, |it| input.accepts(it) && !chosen.contains(&it.id)) {
                     Some((id, _)) => chosen.push(id),
                     None => break,
                 }
             }
-            if chosen.len() == recipe.inputs().len() {
+            if chosen.len() == inputs.len() {
                 for &id in &chosen {
                     self.claim_item(id, d.id);
                 }
@@ -1567,7 +1600,7 @@ impl Game {
             self.buildings.get_mut(&bid).unwrap().retry_tick = self.tick + 300;
             self.warn(
                 &format!("craft{}", bid),
-                &format!("{}: \"{}\" needs {}.", shop_name, recipe.name(), recipe.input_desc()),
+                &format!("{}: \"{}\" needs {}.", shop_name, recipe.name(), recipe.input_desc_at(shop)),
                 (230, 200, 90),
             );
         }
@@ -1950,7 +1983,7 @@ impl Game {
                 }
             }
             Task::Craft { bld, items, delivered } => {
-                let Some(site) = self.buildings.get(&bld).map(|b| b.center()) else {
+                let Some(site) = self.buildings.get(&bld).map(|b| self.work_spot(b.center())) else {
                     self.release_task(d);
                     return;
                 };
@@ -2270,7 +2303,15 @@ impl Game {
                 self.msg(&format!("You have struck {}!", m.name()), (255, 210, 90));
             }
         }
-        if self.world.reveal_around(q) && !self.world.outside(q) {
+        let broke_in = self.world.reveal_around(q) && !self.world.outside(q);
+        if broke_in && self.near_magma(q) {
+            self.warn(
+                "magmasea",
+                "You have breached the magma sea! Magma workshops can be built over it.",
+                (255, 120, 40),
+            );
+            self.pause_request = true;
+        } else if broke_in {
             self.warn(
                 "cavern",
                 "You have discovered an expansive cavern deep underground.",
@@ -2616,6 +2657,9 @@ mod bench {
             g.step();
         }
         eprintln!("1 year: {:?}, alive {}/{}, items {}", t.elapsed(), g.alive_count(), g.dwarves.len(), g.items.len());
+        for l in g.log.iter().filter(|l| l.color == (255, 60, 60)).take(8) {
+            eprintln!("  t{} {}", l.tick, l.text);
+        }
         let tantrums = g.log.iter().filter(|l| l.text.ends_with("is throwing a tantrum!")).count();
         let alive: Vec<&Dwarf> = g.dwarves.iter().filter(|d| d.alive).collect();
         let n = alive.len().max(1) as i32;
