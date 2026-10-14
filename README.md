@@ -183,7 +183,9 @@ open sky: ice holds still, can be walked across (by wildlife too) and can't be f
 dwarves can still break it to drink. Spring thaws it, and anyone out on the ice scrambles
 ashore. Each day brings clear skies, rain or (in a cold winter) snow, more or less often by
 climate; snow lies on open ground until spring, the top bar shows the weather, and dwarves
-caught out in it grumble a little.
+caught out in it grumble a little. Fire catches in trees, shrubs, grass and anything wooden,
+spreads (up and down slopes too), burns whoever stands in it and the items lying there, and
+goes out in water or rain; flowing magma and lightning start it.
 
 **Aquifers.** Many wet sites (the embark screen says which) have water-bearing rock two to four
 levels down, shown with a blue background. A light aquifer only dampens floors dug out of it;

@@ -16,18 +16,13 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: finish W19 (fire next), then onward in tier order.
+Suggested order: W20, then the Beyond DF list.
 
 ### Tier 1: basics you'll miss in the first hour
 
 ### Tier 2: what makes a fortress a fortress
 
 ### Tier 3: depth
-
-#### W19 Temperature and weather (L)
-- **DF:** temperature, freezing, rain and snow, fire, burning.
-- **Us:** a calendar with seasons only.
-- **Steps:** [x] surface water freezes in winter (dddc21f) · [x] rain and snow (this commit) · [ ] fire spreading through wood
 
 #### W20 Attributes and skill decay (S–M)
 - **DF:** body attributes (strength, agility…), skill decay, social skills, books, teaching.
@@ -93,6 +88,7 @@ Ideas not ranked yet. Add a line on why each matters.
 - Theft and other crimes with witnesses and interrogation; the hammerer; chains and cages in the jail; prisoners fed by others.
 - Werebeasts, vampires and the undead; dragons breathing fire; kidnappers; thieves who are caught and jailed (W16).
 - Prospecting and ore visible through smoothed walls; deeper caverns holding stranger creatures; a cavern-floor fungus forest for underground wood.
+- A true temperature model (heat from magma and fire, cold snaps killing crops, dwarves needing warm clothes); bucket brigades against fire; dragons breathing it.
 - Murky or stagnant water drunk from puddles should feel worse than river water; doctors could clean wounds with well water and soap.
 - Corpses that rot (miasma) and refuse that needs a stockpile far from the halls.
 - Mini-map and saved camera spots: get around a 96×64 map faster.
@@ -101,6 +97,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **W19 Temperature and weather** (this commit; steps dddc21f, 998c340): winter ice you can walk on (and still drink through); daily rain or snow by climate, snow lying until spring; fire that catches in trees, shrubs, grass and wood, spreads across slopes, burns creatures and items, and is put out by water and rain, started by magma or lightning.
 - **W18 Geology and engraving** (53f697d; step 59d06e8): smoothing and engraving designations and a Stone detailing labor, engravings showing scenes from the world's legends and adding to room value; two cavern layers (three on deep maps), each with its own spiders and troglodytes. (The magma sea came with W11.)
 - **W17 Monsters** (1aaaa7b; steps bc802c7, d226620): megabeasts from the world's own history come for a rich fortress after its first year, hunt to the death, and their slaying is written into the legends; generated cave horrors crawl up once the caverns are found; skulkers slip in unseen to steal the most valuable thing lying about, and bolt when a dwarf spots them.
 - **W16 Justice** (8f2cffb; steps 31d7368, efd4286): a record of crimes (tantrum assault and vandalism, the dwarf blamed for an unmet mandate) on the nobles screen; a sheriff who finds each culprit and beats them, or with a jail zone (`i`, `j`) sentences them to days inside, where they do no work; victims are glad to see justice done.

@@ -166,6 +166,9 @@ pub struct Tile {
     /// Snow lies on the ground here.
     #[serde(default, skip_serializing_if = "is_false")]
     pub snow: bool,
+    /// Burning: how much longer the fire here lasts (0 none).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub fire: u8,
 }
 
 fn is_zero(v: &u8) -> bool {
@@ -202,6 +205,7 @@ impl Default for Tile {
             engraving: 0,
             frozen: false,
             snow: false,
+            fire: 0,
         }
     }
 }

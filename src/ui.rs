@@ -318,6 +318,12 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                     (ch, fg) = if g.weather == crate::game::Weather::Snow { ('*', Color::Rgb(240, 240, 255)) } else { ('\'', Color::Rgb(110, 150, 255)) };
                 }
             }
+            if t.fire > 0 && t.revealed {
+                let flick = hash2(wx + (g.tick / 4) as i32 % 50, wy) % 3;
+                ch = if flick == 0 { '▲' } else { '^' };
+                fg = [Color::Rgb(255, 220, 80), Color::Rgb(255, 140, 30), Color::Rgb(240, 60, 20)][flick as usize];
+                bg = Color::Rgb(90, 20, 0);
+            }
             if t.building != 0 {
                 if let Some(b) = g.buildings.get(&t.building) {
                     ch = b.glyph_at(wx - b.pos.x, wy - b.pos.y);
@@ -539,6 +545,9 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
     }
     if t.aquifer {
         v.push(plain("Aquifer: water seeps from this rock".into(), Color::Rgb(90, 160, 255)));
+    }
+    if t.fire > 0 {
+        v.push(plain("On fire!".into(), Color::Rgb(255, 120, 40)));
     }
     if t.desig != Desig::None {
         v.push(plain(format!("Designated: {}", t.desig.name()), KEY));
@@ -2544,6 +2553,7 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
         keep += (t.magma > 0) as usize;
         keep += t.aquifer as usize;
         keep += (t.smooth > 0) as usize;
+        keep += (t.fire > 0) as usize;
         keep += (t.desig != Desig::None) as usize;
         keep += g.construction_at(p).is_some() as usize;
         keep += (g.burrows.iter().any(|b| t.burrows & b.mask() != 0) || t.traffic != 0) as usize;

@@ -39,6 +39,7 @@ mod positions;
 mod justice;
 mod detail;
 mod weather;
+mod fire;
 pub use weather::Weather;
 pub use detail::ENGRAVED;
 pub use justice::{Crime, CrimeKind};
@@ -251,6 +252,9 @@ pub struct Game {
     /// Some tile has snow on it (so a thaw knows to look).
     #[serde(default)]
     snow_lying: bool,
+    /// Burning cells, rebuilt from the map when missing.
+    #[serde(skip)]
+    fire_cells: Option<Vec<usize>>,
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
@@ -343,6 +347,7 @@ impl Game {
             crimes: Vec::new(),
             weather: Weather::Clear,
             snow_lying: false,
+            fire_cells: None,
             creatures: BTreeMap::new(),
             station: None,
             alert: true,
@@ -786,6 +791,10 @@ impl Game {
         }
         if self.tick % 300 == 75 {
             self.weather_thoughts();
+            self.lightning();
+        }
+        if self.tick % 10 == 5 && self.fire_cells.as_ref().map_or(true, |c| !c.is_empty()) {
+            self.fires();
         }
         // A manager sees to work orders; a bookkeeper's counts let them do it
         // several times a day rather than once.

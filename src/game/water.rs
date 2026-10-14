@@ -100,6 +100,7 @@ impl Game {
                 if room > 0 {
                     let amt = room.min(t.magma);
                     self.world.t_mut(b).magma += amt;
+                    self.magma_ignites(b);
                     self.world.tiles[i].magma -= amt;
                     active.insert(self.world.idx(b));
                     if self.world.tiles[i].magma > 0 {
@@ -119,6 +120,7 @@ impl Game {
                     let here = self.world.tiles[i].magma;
                     if qm + 1 < here {
                         self.world.t_mut(q).magma += 1;
+                        self.magma_ignites(q);
                         self.world.tiles[i].magma -= 1;
                         active.insert(self.world.idx(q));
                         moved = true;
@@ -191,6 +193,13 @@ impl Game {
                     c.push(i);
                 }
             }
+        }
+    }
+
+    /// Fresh magma sets anything burnable beside or above it alight.
+    fn magma_ignites(&mut self, p: Pos) {
+        for q in DIRS8.iter().map(|&(dx, dy)| p.offset(dx, dy, 0)).chain([p.up()]) {
+            self.ignite(q);
         }
     }
 
