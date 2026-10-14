@@ -65,6 +65,9 @@ nobles expect grand bedrooms and now and then demand a piece of furniture of a g
 material in their bedroom or office; meeting it within half a year pleases them, ignoring it
 does not.
 
+**Justice.** Punches and wrecked furniture in a tantrum, and the dwarf blamed for an unmet
+mandate, go on the fortress's record of crimes, shown on the nobles screen.
+
 **Work orders.** `j` lists standing orders: each keeps a number of something in stock
 (beds, barrels, meals, blocks...) by queuing jobs at the least busy workshop that can do
 them, a few at a time. `n` adds one, Left/Right change the number, `x` deletes. In look

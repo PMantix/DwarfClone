@@ -36,6 +36,8 @@ mod clothing;
 mod farming;
 mod orders;
 mod positions;
+mod justice;
+pub use justice::{Crime, CrimeKind};
 pub use positions::{Demand, Position};
 pub use orders::{all_recipes, WorkOrder};
 pub use medicine::Treatment;
@@ -235,6 +237,9 @@ pub struct Game {
     /// Titled nobles' demands for furnishings in their rooms.
     #[serde(default)]
     pub demands: Vec<Demand>,
+    /// The fortress's record of crimes, newest last.
+    #[serde(default)]
+    pub crimes: Vec<Crime>,
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
@@ -324,6 +329,7 @@ impl Game {
             work_orders: Vec::new(),
             positions: Vec::new(),
             demands: Vec::new(),
+            crimes: Vec::new(),
             creatures: BTreeMap::new(),
             station: None,
             alert: true,

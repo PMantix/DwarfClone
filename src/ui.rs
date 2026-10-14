@@ -1201,6 +1201,18 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             }
             v.push(plain("1-5: appoint the next dwarf · x: vacate all".into(), MUTED));
             v.push(Line::default());
+            v.push(header(&format!("Justice ({} unpunished)", g.unpunished())));
+            if g.crimes.is_empty() {
+                v.push(plain("No crimes on the record.".into(), MUTED));
+            }
+            for c in g.crimes.iter().rev().take(6) {
+                let who = g.dwarves.iter().find(|d| d.id == c.culprit).map_or("someone".to_string(), |d| d.name.clone());
+                v.push(plain(
+                    format!("{}: {} {}{}", c.kind.name(), who, c.what, if c.punished { " (punished)" } else { "" }),
+                    if c.punished { MUTED } else { Color::Rgb(240, 150, 110) },
+                ));
+            }
+            v.push(Line::default());
             v.push(header("Mandate"));
             match &g.mandate {
                 Some(m) => {

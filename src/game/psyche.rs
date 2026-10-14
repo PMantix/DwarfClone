@@ -342,7 +342,7 @@ impl Game {
         }
     }
 
-    fn tantrum_mischief(&mut self, d: &mut Dwarf) {
+    pub(super) fn tantrum_mischief(&mut self, d: &mut Dwarf) {
         let tick = self.tick;
         if self.rng.chance(0.4) {
             if let Some(j) = self.dwarves.iter().position(|o| o.alive && o.id != d.id && adjacent(o.pos, d.pos)) {
@@ -356,6 +356,7 @@ impl Game {
                 let oid = o.id;
                 d.adjust_regard(oid, -10);
                 self.msg(&format!("{} punches {} in a rage!", d.name, oname), (255, 120, 90));
+                self.report_crime(super::CrimeKind::Assault, d.id, Some(oid), format!("punched {}", oname));
                 return;
             }
         }
@@ -368,6 +369,7 @@ impl Game {
             if let Some((bid, name)) = near {
                 self.remove_building(bid);
                 self.msg(&format!("{} topples a {} in a fit of rage!", d.name, name.to_lowercase()), (255, 120, 90));
+                self.report_crime(super::CrimeKind::Vandalism, d.id, None, format!("toppled a {}", name.to_lowercase()));
             }
         }
     }
@@ -497,13 +499,15 @@ impl Game {
                 .filter(|&i| self.dwarves[i].alive && self.dwarves[i].id != m.noble)
                 .collect();
             if !others.is_empty() {
+                // Someone gets the blame; justice is the sheriff's business.
                 let i = *self.rng.pick(&others);
                 let noble = m.noble;
                 let d = &mut self.dwarves[i];
-                d.think("was punished for a failed mandate", 25, tick);
-                d.adjust_regard(noble, -30);
-                let name = d.name.clone();
-                self.msg(&format!("The mandate for {} went unmet. {} has been punished.", m.describe(), name), (255, 120, 90));
+                d.think("was blamed for a failed mandate", 10, tick);
+                d.adjust_regard(noble, -20);
+                let (name, id) = (d.name.clone(), d.id);
+                self.msg(&format!("The mandate for {} went unmet. {} is blamed.", m.describe(), name), (255, 120, 90));
+                self.report_crime(super::CrimeKind::Disobedience, id, Some(noble), format!("failed to make {}", m.describe()));
             }
             self.mandate = None;
         }
