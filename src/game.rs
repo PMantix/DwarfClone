@@ -37,6 +37,8 @@ mod farming;
 mod orders;
 mod positions;
 mod justice;
+mod detail;
+pub use detail::ENGRAVED;
 pub use justice::{Crime, CrimeKind};
 pub use positions::{Demand, Position};
 pub use orders::{all_recipes, WorkOrder};
@@ -524,6 +526,11 @@ impl Game {
                 p.z > 0 && t.mat.diggable() && !matches!(t.kind, TileKind::Open | TileKind::Tree)
             }
             Desig::Chop => t.kind == TileKind::Tree,
+            Desig::Smooth => {
+                let stone = t.mat.is_building_stone() || t.mat.is_ore() || t.mat.is_gem();
+                t.revealed && t.built_from.is_none() && stone && t.smooth == 0 && matches!(t.kind, TileKind::Wall | TileKind::Floor)
+            }
+            Desig::Engrave => t.revealed && t.smooth == 1 && matches!(t.kind, TileKind::Wall | TileKind::Floor),
         }
     }
 
@@ -545,7 +552,7 @@ impl Game {
                 continue;
             }
             // Hidden tiles can be designated blind, like the real thing.
-            let hidden_ok = !t.revealed && d != Desig::Chop;
+            let hidden_ok = !t.revealed && !matches!(d, Desig::Chop | Desig::Smooth | Desig::Engrave);
             if hidden_ok || self.desig_valid(p, d) {
                 self.world.t_mut(p).desig = d;
                 self.designations.insert(p);
@@ -950,6 +957,7 @@ impl Game {
             Labor::Clothesmaking,
             Labor::Soapmaking,
             Labor::Fishing,
+            Labor::Engraving,
         ];
         for _ in 0..n {
             let id = self.new_id();
@@ -1446,6 +1454,9 @@ impl Game {
         if self.find_craft(d) {
             return;
         }
+        if d.has(Labor::Engraving) && self.find_detail(d) {
+            return;
+        }
         if d.has(Labor::Mining) && self.find_dig(d, false) {
             return;
         }
@@ -1729,7 +1740,13 @@ impl Game {
     }
 
     fn find_dig(&mut self, d: &mut Dwarf, chop: bool) -> bool {
-        let wanted = |ds: Desig| if chop { ds == Desig::Chop } else { ds != Desig::Chop && ds != Desig::None };
+        let wanted = |ds: Desig| {
+            if chop {
+                ds == Desig::Chop
+            } else {
+                !matches!(ds, Desig::Chop | Desig::None | Desig::Smooth | Desig::Engrave)
+            }
+        };
         let open: HashSet<Pos> = self
             .designations
             .iter()
@@ -2002,6 +2019,13 @@ impl Game {
                     Travel::Failed => {
                         self.release_task(d);
                         d.idle_cd = 40;
+                    }
+                    Travel::Arrived if matches!(desig, Desig::Smooth | Desig::Engrave) => {
+                        let base = if desig == Desig::Smooth { 60 } else { 140 };
+                        if Self::labor(d, base, d.skill(Labor::Engraving)) {
+                            self.finish_detail(d, target);
+                            d.task = Task::Idle;
+                        }
                     }
                     Travel::Arrived => {
                         let labor = if desig == Desig::Chop { Labor::Woodcutting } else { Labor::Mining };
@@ -2422,10 +2446,14 @@ impl Game {
                     self.spawn_item(ItemKind::Log, Mat::Wood, q);
                 }
             }
-            Desig::None => {}
+            // Detailing goes through finish_detail, never here.
+            Desig::None | Desig::Smooth | Desig::Engrave => {}
         }
         let tt = self.world.t_mut(q);
         tt.desig = Desig::None;
+        // Digging cuts away any smoothing or engraving.
+        tt.smooth = 0;
+        tt.engraving = 0;
         if tt.kind == TileKind::Open {
             tt.farm = 0;
         }

@@ -97,6 +97,10 @@ pub enum Desig {
     StairUD,
     Ramp,
     Chop,
+    /// Smooth rough natural stone (walls or floors).
+    Smooth,
+    /// Engrave smoothed stone.
+    Engrave,
 }
 
 impl Desig {
@@ -110,6 +114,8 @@ impl Desig {
             Desig::StairUD => "up/down stair",
             Desig::Ramp => "ramp",
             Desig::Chop => "chop trees",
+            Desig::Smooth => "smooth stone",
+            Desig::Engrave => "engrave",
         }
     }
 }
@@ -148,9 +154,19 @@ pub struct Tile {
     /// What's planted in a farm plot (None in older saves means stoutcap).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crop: Option<Mat>,
+    /// 0 rough, 1 smoothed, 2+ engraved (2 + quality).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub smooth: u8,
+    /// The legend an engraving shows (1-based event index; 0 none).
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub engraving: u32,
 }
 
 fn is_zero(v: &u8) -> bool {
+    *v == 0
+}
+
+fn is_zero_u32(v: &u32) -> bool {
     *v == 0
 }
 
@@ -176,6 +192,8 @@ impl Default for Tile {
             magma: 0,
             aquifer: false,
             crop: None,
+            smooth: 0,
+            engraving: 0,
         }
     }
 }
@@ -289,6 +307,16 @@ impl World {
     /// Out-of-bounds counts as solid so nothing walks or flows off the map.
     pub fn solid(&self, p: Pos) -> bool {
         self.get(p).map_or(true, |t| t.kind.solid())
+    }
+
+    /// Room value a tile adds for its detailing: smoothed 2, engraved 6 plus
+    /// 3 per quality level.
+    pub fn detail_value(&self, p: Pos) -> u32 {
+        match self.get(p).map_or(0, |t| t.smooth) {
+            0 => 0,
+            1 => 2,
+            s => 6 + 3 * (s - 2) as u32,
+        }
     }
 
     /// Water can't enter: rock, a door, a raised bridge or a shut floodgate.

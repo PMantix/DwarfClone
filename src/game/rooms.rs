@@ -94,7 +94,9 @@ impl Game {
                 }
             }
         }
-        value + walls.iter().map(|q| (w.t(*q).mat.value() - 1) * 3).sum::<u32>()
+        value
+            + walls.iter().map(|q| (w.t(*q).mat.value() - 1) * 3 + w.detail_value(*q)).sum::<u32>()
+            + tiles.iter().map(|q| w.detail_value(*q)).sum::<u32>()
     }
 
     /// Value of the room around a bed or table: its zone if it has one,

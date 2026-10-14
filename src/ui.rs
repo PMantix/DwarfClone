@@ -85,6 +85,10 @@ fn tile_look(w: &World, p: Pos) -> (char, Color, Color) {
             (' ', BLACK, BLACK)
         }
         TileKind::Floor if t.built_from.is_some() => ('+', dim(mc, 0.85), BLACK),
+        TileKind::Wall if t.smooth >= crate::game::ENGRAVED => ('▒', mc, Color::Rgb(25, 22, 30)),
+        TileKind::Wall if t.smooth == 1 => ('█', mc, BLACK),
+        TileKind::Floor if t.smooth >= crate::game::ENGRAVED => ('÷', mc, BLACK),
+        TileKind::Floor if t.smooth == 1 => ('·', mc, BLACK),
         TileKind::Wall if t.built_from.is_some() => {
             if t.built_from == Some(ItemKind::Block) {
                 ('▓', mc, BLACK)
@@ -431,6 +435,8 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
                 Desig::Channel => "Digging channel".into(),
                 Desig::StairUp | Desig::StairDown | Desig::StairUD => "Carving stairway".into(),
                 Desig::Ramp => "Carving ramp".into(),
+                Desig::Smooth => "Smoothing stone".into(),
+                Desig::Engrave => "Engraving".into(),
                 _ => "Mining".into(),
             }
         }
@@ -506,6 +512,13 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
     }
     if t.magma > 0 {
         v.push(plain(format!("Magma {}/7", t.magma), Color::Rgb(255, 150, 40)));
+    }
+    if let Some((q, year, text)) = g.engraving_at(p) {
+        let qual = crate::items::quality_prefix(q).trim_end();
+        let qual = if qual.is_empty() { "plain" } else { qual };
+        v.push(plain(format!("Engraved ({}), year {}: {}", qual, year, text), Color::Rgb(210, 190, 255)));
+    } else if t.smooth == 1 {
+        v.push(plain("Smoothed".into(), MUTED));
     }
     if t.aquifer {
         v.push(plain("Aquifer: water seeps from this rock".into(), Color::Rgb(90, 160, 255)));
@@ -2508,6 +2521,7 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
         keep += (t.water > 0) as usize;
         keep += (t.magma > 0) as usize;
         keep += t.aquifer as usize;
+        keep += (t.smooth > 0) as usize;
         keep += (t.desig != Desig::None) as usize;
         keep += g.construction_at(p).is_some() as usize;
         keep += (g.burrows.iter().any(|b| t.burrows & b.mask() != 0) || t.traffic != 0) as usize;

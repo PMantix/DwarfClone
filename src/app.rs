@@ -41,7 +41,7 @@ fn random_seed() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64) % 1_000_000_000
 }
 
-pub const DESIG_KEYS: [(char, Desig); 8] = [
+pub const DESIG_KEYS: [(char, Desig); 10] = [
     ('d', Desig::Dig),
     ('h', Desig::Channel),
     ('u', Desig::StairUp),
@@ -49,6 +49,8 @@ pub const DESIG_KEYS: [(char, Desig); 8] = [
     ('i', Desig::StairUD),
     ('r', Desig::Ramp),
     ('t', Desig::Chop),
+    ('s', Desig::Smooth),
+    ('e', Desig::Engrave),
     ('x', Desig::None),
 ];
 

@@ -41,6 +41,11 @@ in a box, built from rough stone, blocks or logs. Take them down again to get th
 back. Floors bridge open space, fortifications stop walkers but let water through, and a
 roof over surface walls makes a proper room.
 
+**Stone detailing.** Designate (`d`) `s` to smooth natural stone walls and floors and `e` to
+engrave smoothed ones. Engravers (the Stone detailing labor, no pick needed) carve scenes from
+the world's history, often the fortress's own; look at a tile to read it. Smoothed and
+engraved stone adds to a room's value, engravings more the finer they are.
+
 **Crops.** Five crops, each with its seasons and place: stoutcaps (anywhere, all year; eat,
 brew, spin), hollowgrain (underground, autumn and winter; brew, mill), threadreed
 (underground, spring and summer; spin into thread), sunberries (surface, spring and summer;
@@ -102,7 +107,7 @@ wood furnace also burns wood to ash, the butcher leaves tallow, and the soap mak
 workshop (`b`, `P`, Soapmaking labor) turns the two into soap; doctors who clean wounds
 with soap clear infection outright.
 
-**Dwarves.** Thirst, hunger, sleep, 19 labors and skills, personalities (anxiety,
+**Dwarves.** Thirst, hunger, sleep, 20 labors and skills, personalities (anxiety,
 sociability, temper, diligence, artistry), favorite materials and foods, friendships and
 grudges, thoughts and stress, tantrums that punch dwarves and topple furniture, and
 melancholy when misery drags on.
