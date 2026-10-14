@@ -364,6 +364,10 @@ pub fn random_needs(p: &Personality, rng: &mut Rng) -> Vec<Need> {
 pub enum Noble {
     Leader,
     Mayor,
+    /// Titles granted by the civilization as the fortress grows rich.
+    Baron,
+    Count,
+    Duke,
 }
 
 impl Noble {
@@ -371,6 +375,9 @@ impl Noble {
         match self {
             Noble::Leader => "Expedition leader",
             Noble::Mayor => "Mayor",
+            Noble::Baron => "Baron",
+            Noble::Count => "Count",
+            Noble::Duke => "Duke",
         }
     }
 
@@ -379,6 +386,9 @@ impl Noble {
         match self {
             Noble::Leader => 40,
             Noble::Mayor => 100,
+            Noble::Baron => 200,
+            Noble::Count => 400,
+            Noble::Duke => 800,
         }
     }
 }

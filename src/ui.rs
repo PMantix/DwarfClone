@@ -1172,6 +1172,10 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                     format!("  bedroom value {} (wants {})", room, n.room_demand()),
                     if ok { Color::Rgb(120, 220, 120) } else { Color::Rgb(240, 130, 100) },
                 ));
+                for m in g.demands.iter().filter(|m| m.noble == d.id) {
+                    let days = m.deadline.saturating_sub(g.tick) / crate::game::DAY;
+                    v.push(plain(format!("  demands a {} ({} days left)", m.describe(), days), Color::Rgb(240, 200, 100)));
+                }
                 let office = g.zones.values().find(|z| z.kind == ZoneKind::Office && z.owner == Some(d.id));
                 v.push(plain(
                     match office {

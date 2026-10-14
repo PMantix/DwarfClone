@@ -36,7 +36,7 @@ mod clothing;
 mod farming;
 mod orders;
 mod positions;
-pub use positions::Position;
+pub use positions::{Demand, Position};
 pub use orders::{all_recipes, WorkOrder};
 pub use medicine::Treatment;
 pub use military::{Squad, SquadOrder};
@@ -232,6 +232,9 @@ pub struct Game {
     /// Appointed administrators: (position, dwarf id).
     #[serde(default)]
     pub positions: Vec<(Position, u32)>,
+    /// Titled nobles' demands for furnishings in their rooms.
+    #[serde(default)]
+    pub demands: Vec<Demand>,
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
@@ -320,6 +323,7 @@ impl Game {
             aquifer_tiles: None,
             work_orders: Vec::new(),
             positions: Vec::new(),
+            demands: Vec::new(),
             creatures: BTreeMap::new(),
             station: None,
             alert: true,
@@ -786,6 +790,7 @@ impl Game {
             self.families_daily();
             self.clothes_daily();
             self.nobles_daily();
+            self.titles_daily();
             self.check_mandate();
         }
         if self.tick % SEASON == 0 {
@@ -2888,6 +2893,7 @@ mod fort_check {
             e.1 += b.built as usize;
         }
         eprintln!("buildings (total, built): {:?}", kinds);
+        eprintln!("wealth: {}, alive {}", g.wealth(), g.alive_count());
         let mut zk: BTreeMap<String, usize> = BTreeMap::new();
         for z in g.zones.values() { *zk.entry(z.kind.name()).or_default() += z.tiles.len(); }
         eprintln!("zone tiles: {:?}", zk);

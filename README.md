@@ -59,7 +59,11 @@ leaves it vacant). Work orders only run with a manager, checked once a day, or s
 times a day with a bookkeeper too. Merchants want a tenth over value; a broker haggles that
 down to between a twentieth and nothing, depending on how sociable they are. A chief medical
 dwarf makes treatment a quarter faster and a militia commander makes training a quarter
-faster.
+faster. As the fortress grows rich and populous (☼25,000 and 20 dwarves; ☼60,000 and 30;
+☼120,000 and 40) the civilization makes one dwarf baron, then count, then duke. Titled
+nobles expect grand bedrooms and now and then demand a piece of furniture of a given
+material in their bedroom or office; meeting it within half a year pleases them, ignoring it
+does not.
 
 **Work orders.** `j` lists standing orders: each keeps a number of something in stock
 (beds, barrels, meals, blocks...) by queuing jobs at the least busy workshop that can do
