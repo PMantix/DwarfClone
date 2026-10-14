@@ -442,6 +442,12 @@ pub struct Dwarf {
     /// Tool or weapon in hand.
     pub held: Option<u32>,
     pub armor: Vec<u32>,
+    /// Shirt, trousers and shoes being worn.
+    #[serde(default)]
+    pub clothes: Vec<u32>,
+    /// Something fresh to wear is in stock.
+    #[serde(default)]
+    pub want_clothes: bool,
     pub soldier: bool,
     pub fight_xp: u32,
     pub attack_cd: u32,

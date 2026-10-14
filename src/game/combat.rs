@@ -343,7 +343,20 @@ impl Game {
                     d.task = Task::Idle;
                     return;
                 }
-                if let Some(slot) = kind.armor_slot() {
+                if let Some(slot) = kind.clothing_slot() {
+                    let old: Vec<u32> = d
+                        .clothes
+                        .iter()
+                        .copied()
+                        .filter(|id| self.items.get(id).and_then(|it| it.kind.clothing_slot()) == Some(slot))
+                        .collect();
+                    for o in old {
+                        d.clothes.retain(|&c| c != o);
+                        self.drop_item(o, d.pos);
+                    }
+                    d.clothes.push(item);
+                    d.think("was pleased to put on fresh clothes", -2, self.tick);
+                } else if let Some(slot) = kind.armor_slot() {
                     let old: Vec<u32> = d
                         .armor
                         .iter()

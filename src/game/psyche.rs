@@ -30,6 +30,7 @@ impl Mandate {
             quality: 0,
             to_depot: false,
             dump: false,
+            wear: 0,
         }
         .name();
         let what = if self.mat.is_none() {

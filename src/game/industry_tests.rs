@@ -182,12 +182,13 @@ fn thread_is_woven_into_cloth_and_sewn_into_clothes() {
     g.add_order(loom, Recipe::Weave);
     g.add_order(works, Recipe::LeatherShoes);
     run(&mut g, 2 * DAY);
+    // Everyone already wears shirts, trousers and shoes; count only new ones.
+    let loose = |g: &Game, k: ItemKind, m: Mat| g.items.values().filter(|it| it.kind == k && it.mat == m && it.carried_by.is_none()).count();
     assert_eq!(count(&g, ItemKind::Cloth, Some(Mat::Stoutcap)), 2, "thread wasn't woven");
-    assert_eq!(count(&g, ItemKind::Shoes, Some(Mat::Leather)), 1, "no leather shoes");
+    assert_eq!(loose(&g, ItemKind::Shoes, Mat::Leather), 1, "no leather shoes");
     g.add_order(clothier, Recipe::ClothShirt);
     g.add_order(clothier, Recipe::ClothTrousers);
     run(&mut g, 2 * DAY);
-    assert_eq!(count(&g, ItemKind::Shirt, Some(Mat::Stoutcap)), 1);
-    assert_eq!(count(&g, ItemKind::Trousers, Some(Mat::Stoutcap)), 1);
-    assert!(g.items.values().any(|it| it.kind == ItemKind::Shirt && it.name().contains("stoutcap shirt")));
+    assert_eq!(loose(&g, ItemKind::Shirt, Mat::Stoutcap), 1);
+    assert_eq!(loose(&g, ItemKind::Trousers, Mat::Stoutcap), 1);
 }

@@ -154,6 +154,16 @@ impl ItemKind {
         }
     }
 
+    /// Shirt 0, trousers 1, shoes 2.
+    pub fn clothing_slot(self) -> Option<u8> {
+        match self {
+            ItemKind::Shirt => Some(0),
+            ItemKind::Trousers => Some(1),
+            ItemKind::Shoes => Some(2),
+            _ => None,
+        }
+    }
+
     pub fn is_equipment(self) -> bool {
         self.weapon_damage().is_some() || self.armor_slot().is_some() || self == ItemKind::Bolt
     }
@@ -252,9 +262,18 @@ pub struct Item {
     /// Marked to be thrown on the garbage dump.
     #[serde(default)]
     pub dump: bool,
+    /// Days of wear on clothing.
+    #[serde(default)]
+    pub wear: u16,
 }
 
 pub const ARTIFACT: u8 = 6;
+/// Clothing this worn is due for replacing.
+pub const WORN: u16 = 150;
+/// Rags: an embarrassment to wear.
+pub const TATTERED: u16 = 300;
+/// Thrown away.
+pub const FALLS_APART: u16 = 400;
 
 pub fn quality_prefix(q: u8) -> &'static str {
     match q {
@@ -285,7 +304,12 @@ impl Item {
             let base = Item { quality: 0, label: None, ..self.clone() };
             return format!("{} ({})", self.label.as_deref().unwrap_or("an artifact"), base.base_name());
         }
-        format!("{}{}", quality_prefix(self.quality), self.base_name())
+        let worn = match self.wear {
+            w if w >= TATTERED => "tattered ",
+            w if w >= WORN => "worn ",
+            _ => "",
+        };
+        format!("{}{}{}", worn, quality_prefix(self.quality), self.base_name())
     }
 
     fn base_name(&self) -> String {
@@ -347,7 +371,12 @@ impl Item {
     }
 
     pub fn value(&self) -> u32 {
-        self.kind.base_value() * self.mat.value() * quality_mult(self.quality)
+        let v = self.kind.base_value() * self.mat.value() * quality_mult(self.quality);
+        if self.wear >= WORN {
+            v / 2
+        } else {
+            v
+        }
     }
 
     pub fn glyph(&self) -> (char, Color) {

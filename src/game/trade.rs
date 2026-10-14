@@ -93,6 +93,7 @@ impl Game {
                     quality: self.rng.range(0, 3) as u8,
                     to_depot: false,
                     dump: false,
+                    wear: 0,
                 });
             }
         }

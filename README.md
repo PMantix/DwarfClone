@@ -48,6 +48,8 @@ work orders, item quality from skill. The butcher leaves hides; a tanner's shop 
 turns them into leather, and the leather works (`b`, `L`) makes leather armor, caps and
 crafts (Leatherworking labor) and leather shoes. A loom (`b`, `W`) weaves thread into cloth
 and the clothier's shop (`b`, `K`) sews shirts and trousers (Weaving and tailoring labor).
+Every dwarf wears a shirt, trousers and shoes, which wear out over about a year; rags
+embarrass them, and they change into fresh clothes from stock when theirs are worn.
 
 **Dwarves.** Thirst, hunger, sleep, 17 labors and skills, personalities (anxiety,
 sociability, temper, diligence, artistry), favorite materials and foods, friendships and

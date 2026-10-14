@@ -31,6 +31,7 @@ mod needs;
 mod family;
 pub use family::ADULT_AGE;
 mod water;
+mod clothing;
 pub use medicine::Treatment;
 pub use military::{Squad, SquadOrder};
 #[cfg(test)]
@@ -343,6 +344,7 @@ impl Game {
                 g.items.get_mut(&iid).unwrap().carried_by = Some(id);
                 d.held = Some(iid);
             }
+            g.dress(&mut d, 120);
             g.dwarves.push(d);
         }
         g.populate_caverns();
@@ -427,6 +429,7 @@ impl Game {
                 quality: 0,
                 to_depot: false,
                 dump: false,
+                wear: 0,
             },
         );
         id
@@ -726,6 +729,7 @@ impl Game {
         if self.tick % DAY == 0 {
             self.assign_rooms();
             self.families_daily();
+            self.clothes_daily();
             self.nobles_daily();
             self.check_mandate();
         }
@@ -878,7 +882,8 @@ impl Game {
             let spec = *self.rng.pick(&pool);
             let specs: Vec<Labor> = if self.rng.chance(0.3) { vec![] } else { vec![spec] };
             let pos = self.random_spot_near(entry, 2);
-            let d = dwarf::new_dwarf(id, pos, &mut self.rng, &specs);
+            let mut d = dwarf::new_dwarf(id, pos, &mut self.rng, &specs);
+            self.dress(&mut d, 250);
             self.dwarves.push(d);
         }
         self.msg(&format!("Some migrants have arrived. ({} dwarves)", n), (120, 255, 120));
@@ -1063,7 +1068,7 @@ impl Game {
     }
 
     fn carry_follow(&mut self, d: &Dwarf) {
-        for id in d.carrying.iter().chain(d.held.iter()).chain(d.armor.iter()) {
+        for id in d.carrying.iter().chain(d.held.iter()).chain(d.armor.iter()).chain(d.clothes.iter()) {
             if let Some(it) = self.items.get_mut(id) {
                 it.pos = d.pos;
             }
@@ -1074,7 +1079,7 @@ impl Game {
         self.release_task(d);
         d.alive = false;
         let pos = d.pos;
-        for id in d.held.take().into_iter().chain(d.armor.drain(..)) {
+        for id in d.held.take().into_iter().chain(d.armor.drain(..)).chain(d.clothes.drain(..)) {
             self.drop_item(id, pos);
         }
         let id = self.spawn_item(ItemKind::Corpse, Mat::Flesh, pos);
@@ -1330,6 +1335,9 @@ impl Game {
         }
         if d.mood.is_some() {
             d.task = Task::Mood;
+            return;
+        }
+        if d.want_clothes && self.find_clothes(d) {
             return;
         }
         if d.is_child() {

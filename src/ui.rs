@@ -829,7 +829,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 }
                 if b.kind.is_trap() && b.built {
                     let what = b.load.map_or("nothing".to_string(), |(k, m, _)| {
-                        crate::items::Item { id: 0, kind: k, mat: m, pos: b.pos, carried_by: None, claimed_by: None, label: None, container: None, quality: 0, to_depot: false, dump: false }.name()
+                        crate::items::Item { id: 0, kind: k, mat: m, pos: b.pos, carried_by: None, claimed_by: None, label: None, container: None, quality: 0, to_depot: false, dump: false, wear: 0 }.name()
                     });
                     v.push(plain(format!("Armed with {}", what), TEXT));
                     v.push(plain("Fires on any creature but merchants;".into(), MUTED));
@@ -1317,6 +1317,10 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
     v.push(plain(format!("  Holds {}", held), TEXT));
     for it in d.armor.iter().filter_map(|id| g.items.get(id)) {
         v.push(plain(format!("  Wears {}", it.name()), TEXT));
+    }
+    for it in d.clothes.iter().filter_map(|id| g.items.get(id)) {
+        let rags = it.wear >= crate::items::TATTERED;
+        v.push(plain(format!("  Wears {}", it.name()), if rags { Color::Rgb(230, 200, 60) } else { MUTED }));
     }
     v.push(plain(format!("  Fighter: {}", skill_rank(d.fight_xp)), MUTED));
     v.push(Line::default());

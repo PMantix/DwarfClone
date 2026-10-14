@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: finish W12 (clothes that wear out next), then onward in tier order.
+Suggested order: finish W12 (soap next), then onward in tier order.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -27,7 +27,7 @@ Suggested order: finish W12 (clothes that wear out next), then onward in tier or
 #### W12 More workshops and clothing (M)
 - **DF:** leather, loom, clothier, glass, kiln, jeweler, soap and siege workshops; clothes wear out.
 - **Us:** 9 workshops, 27 recipes.
-- **Steps:** [x] tanner and leatherworker (8338b8b) · [x] farm thread, loom, clothier (this commit; thread still comes from stoutcap fiber until W13's crops) · [ ] clothes that wear out, with a bad thought for rags · [ ] soap (ties to W05)
+- **Steps:** [x] tanner and leatherworker (8338b8b) · [x] farm thread, loom, clothier (c1fc029; thread still comes from stoutcap fiber until W13's crops) · [x] clothes that wear out, with a bad thought for rags (this commit) · [ ] soap (ties to W05)
 
 #### W13 Farming depth (S–M)
 - **DF:** many crops by season and biome, surface farming, mills, plant gathering, fishing, fruit trees.
