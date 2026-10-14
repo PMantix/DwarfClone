@@ -194,6 +194,12 @@ pub struct Game {
     magma_cells: Option<Vec<usize>>,
     #[serde(skip)]
     magma_seen: u64,
+    /// Open cells beside (or dug out of) aquifer rock, and the dig version they were found at.
+    #[serde(skip)]
+    aquifer_leaks: Option<(u64, Vec<usize>)>,
+    /// Every aquifer cell on the map (they never change).
+    #[serde(skip)]
+    aquifer_tiles: Option<Vec<usize>>,
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
@@ -239,6 +245,7 @@ impl Game {
         let mut params = cell.biome.params();
         params.minerals = ow.minerals;
         params.size = size;
+        params.aquifer = ow.aquifer(sx, sy);
         let world = world::generate(seed ^ ((sx as u64) << 20) ^ ((sy as u64) << 40), &params);
         report("Loading the wagon", 0.8);
         let embark = find_embark(&world);
@@ -277,6 +284,8 @@ impl Game {
             water_cells: None,
             magma_cells: None,
             magma_seen: 0,
+            aquifer_leaks: None,
+            aquifer_tiles: None,
             creatures: BTreeMap::new(),
             station: None,
             alert: true,
@@ -691,6 +700,9 @@ impl Game {
         }
         if self.tick % 6 == 0 {
             self.magma();
+        }
+        if self.tick % 25 == 0 {
+            self.aquifers();
         }
         if self.tick % 10 == 0 {
             self.grow_farms();
@@ -2303,6 +2315,10 @@ impl Game {
                 self.msg(&format!("You have struck {}!", m.name()), (255, 210, 90));
             }
         }
+        let wet = std::iter::once(q).chain(DIRS4.iter().map(|&(dx, dy)| q.offset(dx, dy, 0))).any(|p| self.world.get(p).map_or(false, |t| t.aquifer));
+        if wet && self.world.aquifer > 0 {
+            self.warn("aquifer", "You have breached an aquifer! Water is seeping in.", (90, 160, 255));
+        }
         let broke_in = self.world.reveal_around(q) && !self.world.outside(q);
         if broke_in && self.near_magma(q) {
             self.warn(
@@ -2410,6 +2426,8 @@ mod tests {
     #[test]
     fn fortress_works() {
         let mut g = Game::new(42);
+        // This site has a heavy aquifer; this test is about ordinary digging.
+        g.world.aquifer = 0;
         let e = g.embark;
         // Chop every tree within 12 tiles.
         g.designate(e.offset(-12, -12, -2), e.offset(12, 12, 2), Desig::Chop);

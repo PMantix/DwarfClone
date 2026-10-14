@@ -145,6 +145,55 @@ impl Game {
         self.magma_cells = Some(next);
     }
 
+    /// Every so often an aquifer seeps water. A heavy one fills every open
+    /// cell beside it or dug out of it; constructed walls hold it back. A
+    /// light one only dampens floors dug out of it (never a stair shaft).
+    pub(super) fn aquifers(&mut self) {
+        if self.world.aquifer == 0 {
+            return;
+        }
+        let stale = self.aquifer_leaks.as_ref().map_or(true, |(v, _)| *v != self.dig_version);
+        if stale {
+            if self.aquifer_tiles.is_none() {
+                self.aquifer_tiles = Some(self.world.tiles.iter().enumerate().filter(|(_, t)| t.aquifer).map(|(i, _)| i).collect());
+            }
+            let w = &self.world;
+            let heavy = w.aquifer >= 2;
+            let mut leaks: HashSet<usize> = HashSet::new();
+            for &i in self.aquifer_tiles.as_ref().unwrap() {
+                let t = &w.tiles[i];
+                let p = w.pos_of(i);
+                if !t.kind.solid() {
+                    let holds = matches!(t.kind, TileKind::Floor | TileKind::Ramp | TileKind::StairUp | TileKind::Shrub);
+                    if !w.blocks_water(p) && (heavy || holds) {
+                        leaks.insert(i);
+                    }
+                } else if heavy && t.built_from.is_none() {
+                    for &(dx, dy) in DIRS4.iter() {
+                        let q = p.offset(dx, dy, 0);
+                        if w.in_bounds(q) && !w.blocks_water(q) && w.t(q).magma == 0 {
+                            leaks.insert(w.idx(q));
+                        }
+                    }
+                }
+            }
+            let mut v: Vec<usize> = leaks.into_iter().collect();
+            v.sort_unstable();
+            self.aquifer_leaks = Some((self.dig_version, v));
+        }
+        // A light aquifer only dampens the floor; a heavy one floods.
+        let (chance, cap) = if self.world.aquifer >= 2 { (0.5, 7) } else { (0.02, 1) };
+        let leaks = self.aquifer_leaks.as_ref().map(|(_, v)| v.clone()).unwrap_or_default();
+        for i in leaks {
+            if self.world.tiles[i].water < cap && self.rng.chance(chance) {
+                self.world.tiles[i].water += 1;
+                if let Some(c) = self.water_cells.as_mut() {
+                    c.push(i);
+                }
+            }
+        }
+    }
+
     /// Magma and water meet: the tile sets as obsidian.
     pub(super) fn quench(&mut self, p: Pos) {
         let t = self.world.t_mut(p);
@@ -405,6 +454,91 @@ mod tests {
             g.step();
         }
         assert_eq!(picks(&g), before + 1, "the magma forge made no pick");
+    }
+
+    /// A natural aquifer wall with dry rooms dug either side of it at depth 3,
+    /// one walled in with a construction. Returns (open room, walled room).
+    fn aquifer_rooms(g: &mut Game, level: u8) -> (Pos, Pos) {
+        g.world.aquifer = level;
+        let e = g.embark;
+        let p = (3..30)
+            .flat_map(|r| [e.offset(r, 3, 0), e.offset(-r, 3, 0), e.offset(3, r, 0)])
+            .map(|p| Pos::new(p.x, p.y, g.world.surface_z(p.x, p.y) - 3))
+            .find(|p| (-3..=3).all(|dx| (-2..=2).all(|dy| g.world.solid(p.offset(dx, dy, 0)) && g.world.solid(p.offset(dx, dy, -1)))))
+            .expect("solid rock");
+        for dx in -3..=3 {
+            for dy in -2..=2 {
+                g.world.t_mut(p.offset(dx, dy, 0)).aquifer = false;
+            }
+        }
+        g.world.t_mut(p).aquifer = true;
+        let (open, walled) = (p.offset(1, 0, 0), p.offset(-2, 0, 0));
+        for q in [open, walled] {
+            let t = g.world.t_mut(q);
+            t.kind = TileKind::Floor;
+            t.revealed = true;
+        }
+        // Between the aquifer and the walled room: a constructed wall.
+        let between = p.offset(-1, 0, 0);
+        g.world.t_mut(between).built_from = Some(ItemKind::Block);
+        g.world.t_mut(between).aquifer = true;
+        g.aquifer_tiles = None;
+        g.dig_version += 1;
+        (open, walled)
+    }
+
+    #[test]
+    fn a_light_aquifer_only_dampens_floors_dug_out_of_it() {
+        let mut g = Game::new(81);
+        let (open, _) = aquifer_rooms(&mut g, 1);
+        let rock = open.offset(-1, 0, 0);
+        g.world.t_mut(rock).kind = TileKind::Floor;
+        g.dig_version += 1;
+        let mut damp = false;
+        for _ in 0..6000 {
+            g.step();
+            let w = g.world.t(rock).water;
+            assert!(w <= 1, "a light aquifer flooded to {}", w);
+            damp |= w > 0;
+        }
+        assert!(damp, "the dug aquifer floor never got damp");
+        // A stair dug through a light aquifer stays dry.
+        g.world.t_mut(rock).kind = TileKind::StairUD;
+        for q in [rock, open] {
+            g.world.t_mut(q).water = 0;
+        }
+        g.dig_version += 1;
+        for _ in 0..3000 {
+            g.step();
+            assert_eq!(g.world.t(rock).water, 0, "water seeped into a stair shaft");
+        }
+    }
+
+    #[test]
+    fn a_heavy_aquifer_floods_but_a_built_wall_keeps_it_out() {
+        let mut g = Game::new(81);
+        let (open, walled) = aquifer_rooms(&mut g, 2);
+        for _ in 0..3000 {
+            g.step();
+        }
+        assert!(g.world.t(open).water >= 4, "heavy aquifer only left {}", g.world.t(open).water);
+        assert_eq!(g.world.t(walled).water, 0, "water seeped through a constructed wall");
+    }
+
+    #[test]
+    fn wet_sites_have_aquifers_and_the_world_marks_them() {
+        let ow = Overworld::generate(7);
+        let mut kinds = [0; 3];
+        for y in 0..ow.h {
+            for x in 0..ow.w {
+                kinds[ow.aquifer(x, y) as usize] += 1;
+            }
+        }
+        assert!(kinds.iter().all(|&k| k > 0), "aquifer kinds {:?}", kinds);
+        let (x, y) = (0..ow.w * ow.h).map(|i| (i % ow.w, i / ow.w)).find(|&(x, y)| ow.aquifer(x, y) == 1 && ow.cell(x, y).biome != crate::overworld::Biome::Ocean).unwrap();
+        let g = Game::embark(7, ow, x, y);
+        assert_eq!(g.world.aquifer, 1);
+        assert!(g.world.tiles.iter().any(|t| t.aquifer));
     }
 
     #[test]

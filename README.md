@@ -117,6 +117,11 @@ it touches, burns items that aren't stone or metal, and sets into obsidian where
 water. A magma smelter (`b`, `E`) or magma forge (`b`, `F`) built with its middle tile over
 magma (open space or a floor above it) needs no fuel.
 
+**Aquifers.** Many wet sites (the embark screen says which) have water-bearing rock two to four
+levels down, shown with a blue background. A light aquifer only dampens floors dug out of it;
+a heavy one floods anything dug beside it. Constructed walls hold it back, and an aquifer makes
+a fine source for a well.
+
 **Squads.** The military screen (`m`) forms named squads, gives them uniforms (weapon type,
 armor) and orders: train, hold a station, or kill a chosen creature. Soldiers train in the
 barracks zone and learn faster sparring together. Crossbows and bolts come from the

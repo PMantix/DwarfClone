@@ -140,8 +140,19 @@ pub struct Tile {
     #[serde(default)]
     pub traffic: u8,
     /// Depth of magma, 0-7, like `water`.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub magma: u8,
+    /// Water-bearing rock: seeps into anything dug beside it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub aquifer: bool,
+}
+
+fn is_zero(v: &u8) -> bool {
+    *v == 0
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
 }
 
 impl Default for Tile {
@@ -160,6 +171,7 @@ impl Default for Tile {
             burrows: 0,
             traffic: 0,
             magma: 0,
+            aquifer: false,
         }
     }
 }
@@ -179,6 +191,9 @@ pub struct World {
     /// Burrow bits the dwarf currently moving is kept to (0 = anywhere).
     #[serde(skip)]
     pub restrict: u8,
+    /// 0 none, 1 light, 2 heavy.
+    #[serde(default)]
+    pub aquifer: u8,
 }
 
 fn default_caverns() -> Vec<(i32, i32)> {
@@ -230,7 +245,7 @@ mod tiles_rle {
 impl World {
     /// A one-cell stand-in used before a fortress exists.
     pub fn empty() -> World {
-        World { w: 1, h: 1, d: 1, tiles: vec![Tile::default()], surface: vec![0], caverns: Vec::new(), restrict: 0 }
+        World { w: 1, h: 1, d: 1, tiles: vec![Tile::default()], surface: vec![0], caverns: Vec::new(), restrict: 0, aquifer: 0 }
     }
 
     pub fn in_bounds(&self, p: Pos) -> bool {
@@ -495,6 +510,7 @@ pub fn generate(seed: u64, params: &EmbarkParams) -> World {
         surface: surf.clone(),
         caverns: if base >= 12 { vec![(5, 8), (5 + base, 8 + base)] } else { vec![(5 + base, 8 + base)] },
         restrict: 0,
+        aquifer: params.aquifer,
     };
     let bands = world.caverns.clone();
 
@@ -681,6 +697,26 @@ pub fn generate(seed: u64, params: &EmbarkParams) -> World {
                     let t = world.t_mut(p);
                     t.kind = TileKind::Floor;
                     t.mat = Mat::Basalt;
+                }
+            }
+        }
+    }
+
+    // An aquifer: rock two to four levels down that holds water, in broad
+    // patches across the map.
+    if params.aquifer > 0 {
+        let aq_n = Noise::new(seed ^ 0x9999);
+        for y in 0..h {
+            for x in 0..w {
+                if aq_n.fbm2(x as f64 / 18.0, y as f64 / 18.0, 2) < 0.45 {
+                    continue;
+                }
+                let hh = surf[(y * w + x) as usize];
+                for z in (hh - 4).max(1)..=hh - 2 {
+                    let t = world.t_mut(Pos::new(x, y, z));
+                    if t.kind == TileKind::Wall && !t.mat.is_ore() && !t.mat.is_gem() {
+                        t.aquifer = true;
+                    }
                 }
             }
         }

@@ -130,6 +130,9 @@ fn tile_look(w: &World, p: Pos) -> (char, Color, Color) {
     if t.water > 0 {
         return (water_glyph(t.water), water_fg, water_bg);
     }
+    if t.aquifer && t.kind == TileKind::Wall {
+        return (g, fg, Color::Rgb(10, 30, 70));
+    }
     (g, fg, bg)
 }
 
@@ -496,6 +499,9 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
     }
     if t.magma > 0 {
         v.push(plain(format!("Magma {}/7", t.magma), Color::Rgb(255, 150, 40)));
+    }
+    if t.aquifer {
+        v.push(plain("Aquifer: water seeps from this rock".into(), Color::Rgb(90, 160, 255)));
     }
     if t.desig != Desig::None {
         v.push(plain(format!("Designated: {}", t.desig.name()), KEY));
@@ -1775,6 +1781,11 @@ fn world_info(ow: &Overworld, x: i32, y: i32, flash: &Option<String>) -> Vec<Lin
             format!("Wildlife: {}", if p.savagery + if c.evil { 0.3 } else { 0.0 } > 0.35 { "savage" } else { "calm" }),
             MUTED,
         ));
+        let aq = ow.aquifer(x, y);
+        v.push(plain(
+            format!("Aquifer: {}", ["none", "light", "heavy"][aq.min(2) as usize]),
+            if aq > 0 { Color::Rgb(90, 160, 255) } else { MUTED },
+        ));
     }
     v.push(Line::default());
     v.push(header("Neighbors"));
@@ -2313,6 +2324,7 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
         keep += 1;
         keep += (t.water > 0) as usize;
         keep += (t.magma > 0) as usize;
+        keep += t.aquifer as usize;
         keep += (t.desig != Desig::None) as usize;
         keep += g.construction_at(p).is_some() as usize;
         keep += (g.burrows.iter().any(|b| t.burrows & b.mask() != 0) || t.traffic != 0) as usize;

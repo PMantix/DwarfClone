@@ -34,6 +34,8 @@ pub struct EmbarkParams {
     pub minerals: f64,
     /// Fortress map dimensions.
     pub size: crate::world::MapSize,
+    /// 0 none, 1 light, 2 heavy: water-bearing rock a few levels down.
+    pub aquifer: u8,
 }
 
 impl Biome {
@@ -64,7 +66,7 @@ impl Biome {
     }
 
     pub fn params(self) -> EmbarkParams {
-        let p = |relief, forest, lake, savagery| EmbarkParams { relief, forest, lake, savagery, minerals: 1.0, size: crate::world::MapSize::MEDIUM };
+        let p = |relief, forest, lake, savagery| EmbarkParams { relief, forest, lake, savagery, minerals: 1.0, size: crate::world::MapSize::MEDIUM, aquifer: 0 };
         match self {
             Biome::Mountain => p(1.6, 0.3, 0.03, 0.3),
             Biome::Hills => p(1.2, 0.7, 0.06, 0.2),
@@ -770,6 +772,33 @@ fn place_name(rng: &mut Rng, r: Race) -> String {
 impl Overworld {
     pub fn cell(&self, x: i32, y: i32) -> &Cell {
         &self.cells[(y * self.w + x) as usize]
+    }
+
+    /// Whether a site has an aquifer (0 none, 1 light, 2 heavy). Wet lands
+    /// usually do, dry and stony ones rarely; fixed for each site.
+    pub fn aquifer(&self, x: i32, y: i32) -> u8 {
+        let chance = match self.cell(x, y).biome {
+            Biome::Swamp => 85,
+            Biome::Ocean => 70,
+            Biome::Forest => 50,
+            Biome::Grassland => 45,
+            Biome::Hills => 30,
+            Biome::Tundra => 10,
+            Biome::Mountain => 5,
+            Biome::Desert => 0,
+        };
+        let mut h = (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ (self.year as u64);
+        h ^= h >> 29;
+        h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        h ^= h >> 32;
+        let roll = h % 100;
+        if roll >= chance {
+            0
+        } else if roll < chance / 3 {
+            2
+        } else {
+            1
+        }
     }
 
     fn cell_mut(&mut self, x: i32, y: i32) -> &mut Cell {
