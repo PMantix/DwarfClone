@@ -10,6 +10,12 @@ pub enum Weather {
     Clear,
     Rain,
     Snow,
+    /// Rain with thunder: lightning strikes far more often.
+    Storm,
+    /// Driving snow that chills anyone caught outside.
+    Blizzard,
+    /// Over an evil site: rain the colour of blood, and it drives dwarves to despair.
+    BloodRain,
 }
 
 impl Weather {
@@ -18,7 +24,19 @@ impl Weather {
             Weather::Clear => "Clear",
             Weather::Rain => "Rain",
             Weather::Snow => "Snow",
+            Weather::Storm => "Thunderstorm",
+            Weather::Blizzard => "Blizzard",
+            Weather::BloodRain => "Blood rain",
         }
+    }
+
+    /// Water falls from the sky (puts out fires).
+    pub fn wet(self) -> bool {
+        matches!(self, Weather::Rain | Weather::Storm | Weather::BloodRain)
+    }
+
+    pub fn snowy(self) -> bool {
+        matches!(self, Weather::Snow | Weather::Blizzard)
     }
 }
 
@@ -72,23 +90,46 @@ impl Game {
             _ => 0.2,
         };
         let cold = self.freezes() && (season == 3 || (season == 2 && self.biome == Biome::Tundra));
+        // A drought may grip a summer: no rain until autumn.
+        if season == 1 && self.tick % SEASON < DAY && !matches!(self.biome, Biome::Swamp | Biome::Ocean) && self.rng.chance(0.15) {
+            self.drought = true;
+            self.msg("A drought grips the land. No rain will fall this summer.", (230, 190, 110));
+            self.gossip("The old ones say they have never seen the brook so low.".into());
+        }
+        if season != 1 {
+            self.drought = false;
+        }
         let before = self.weather;
-        self.weather = if !self.rng.chance(wet) {
+        self.weather = if self.drought || !self.rng.chance(wet) {
             Weather::Clear
         } else if cold {
-            Weather::Snow
+            if self.rng.chance(0.25) {
+                Weather::Blizzard
+            } else {
+                Weather::Snow
+            }
+        } else if self.evil && self.rng.chance(0.3) {
+            Weather::BloodRain
+        } else if self.rng.chance(0.25) {
+            Weather::Storm
         } else {
             Weather::Rain
         };
         if self.weather != before {
-            let text = match self.weather {
-                Weather::Rain => "It has started to rain.",
-                Weather::Snow => "Snow is falling.",
-                Weather::Clear => "The skies have cleared.",
+            let (text, color) = match self.weather {
+                Weather::Rain => ("It has started to rain.", (170, 190, 220)),
+                Weather::Snow => ("Snow is falling.", (170, 190, 220)),
+                Weather::Clear => ("The skies have cleared.", (170, 190, 220)),
+                Weather::Storm => ("Thunder rolls over the mountain. A storm is breaking!", (200, 200, 255)),
+                Weather::Blizzard => ("A blizzard howls down from the peaks!", (220, 235, 255)),
+                Weather::BloodRain => ("The sky darkens, and rain the colour of blood begins to fall.", (230, 60, 60)),
             };
-            self.msg(text, (170, 190, 220));
+            self.msg(text, color);
         }
-        if self.weather == Weather::Snow {
+        if self.drought {
+            self.dry_up();
+        }
+        if self.weather.snowy() {
             // Fresh snow lies on open ground.
             for y in 0..self.world.h {
                 for x in 0..self.world.w {
@@ -111,10 +152,13 @@ impl Game {
 
     /// Now and then while it rains or snows, dwarves out under the sky mind it.
     pub(super) fn weather_thoughts(&mut self) {
-        let text = match self.weather {
+        let (text, stress) = match self.weather {
             Weather::Clear => return,
-            Weather::Rain => "was caught in the rain",
-            Weather::Snow => "was out in the snow",
+            Weather::Rain => ("was caught in the rain", 2),
+            Weather::Snow => ("was out in the snow", 2),
+            Weather::Storm => ("was caught out in a thunderstorm", 6),
+            Weather::Blizzard => ("was caught in a blizzard", 12),
+            Weather::BloodRain => ("was drenched in blood rain", 30),
         };
         let tick = self.tick;
         for i in 0..self.dwarves.len() {
@@ -122,7 +166,25 @@ impl Game {
             if !d.alive || !self.world.outside(d.pos) || d.thoughts.iter().any(|t| t.text == text && tick < t.tick + DAY) {
                 continue;
             }
-            self.dwarves[i].think(text, 2, tick);
+            self.dwarves[i].think(text, stress, tick);
+        }
+    }
+
+    /// In a drought, shallow water under the open sky dries away.
+    fn dry_up(&mut self) {
+        let mut n = 0;
+        for i in 0..self.world.tiles.len() {
+            let t = self.world.tiles[i];
+            if t.water > 0 && t.water <= 3 && !t.frozen && self.rng.chance(0.5) {
+                let p = self.world.pos_of(i);
+                if self.world.outside(p) {
+                    self.world.tiles[i].water -= 1;
+                    n += 1;
+                }
+            }
+        }
+        if n > 0 {
+            self.water_cells = None;
         }
     }
 
@@ -194,6 +256,51 @@ mod tests {
         g.biome = Biome::Desert;
         g.seasonal_ice(3);
         assert!(!g.world.t(pond).frozen);
+    }
+
+    #[test]
+    fn wild_weather_storms_blizzards_droughts_and_blood_rain() {
+        let mut g = Game::new(81);
+        g.biome = Biome::Forest;
+        g.evil = true;
+        g.tick = SEASON + DAY * 3;
+        let mut seen = HashSet::new();
+        for _ in 0..200 {
+            g.weather_daily();
+            seen.insert(g.weather);
+        }
+        assert!(seen.contains(&Weather::BloodRain) && seen.contains(&Weather::Storm), "{:?}", seen);
+        assert!(!seen.contains(&Weather::Snow) && !seen.contains(&Weather::Blizzard));
+        g.weather = Weather::BloodRain;
+        let id = g.dwarves[0].id;
+        assert!(g.world.outside(g.dwarves[0].pos));
+        g.weather_thoughts();
+        assert!(g.dwarves.iter().find(|d| d.id == id).unwrap().thoughts.iter().any(|t| t.text == "was drenched in blood rain"));
+        // Winter brings blizzards.
+        g.biome = Biome::Tundra;
+        g.tick = 3 * SEASON + DAY * 3;
+        let mut seen = HashSet::new();
+        for _ in 0..200 {
+            g.weather_daily();
+            seen.insert(g.weather);
+        }
+        assert!(seen.contains(&Weather::Blizzard), "{:?}", seen);
+        // A drought summer: no rain, and shallow water dries.
+        g.biome = Biome::Forest;
+        g.evil = false;
+        g.tick = SEASON;
+        g.drought = false;
+        while !g.drought {
+            g.weather_daily();
+        }
+        let puddle = g.world.tiles.iter().position(|t| t.water > 0 && t.water <= 3).map(|i| g.world.pos_of(i));
+        for _ in 0..30 {
+            g.weather_daily();
+            assert_eq!(g.weather, Weather::Clear, "no rain in a drought");
+        }
+        if let Some(p) = puddle.filter(|&p| g.world.outside(p)) {
+            assert!(g.world.t(p).water <= 1, "the puddle should have dried");
+        }
     }
 
     #[test]

@@ -61,7 +61,7 @@ impl Game {
             Some(c) => c,
             None => self.world.tiles.iter().enumerate().filter(|(_, t)| t.fire > 0).map(|(i, _)| i).collect(),
         };
-        let raining = self.weather == Weather::Rain;
+        let raining = self.weather.wet();
         let mut next: Vec<usize> = Vec::new();
         let mut spread: Vec<Pos> = Vec::new();
         for i in cells {
@@ -159,7 +159,12 @@ impl Game {
 
     /// In a storm, lightning now and then strikes a tree.
     pub(super) fn lightning(&mut self) {
-        if self.weather != Weather::Rain || !self.rng.chance(0.02) {
+        let odds = match self.weather {
+            Weather::Storm => 0.15,
+            Weather::Rain => 0.02,
+            _ => 0.0,
+        };
+        if !self.rng.chance(odds) {
             return;
         }
         let (x, y) = (self.rng.range(0, self.world.w), self.rng.range(0, self.world.h));

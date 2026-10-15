@@ -272,6 +272,9 @@ pub struct Game {
     pub crimes: Vec<Crime>,
     #[serde(default)]
     pub weather: Weather,
+    /// A summer without rain.
+    #[serde(default)]
+    pub drought: bool,
     /// Some tile has snow on it (so a thaw knows to look).
     #[serde(default)]
     snow_lying: bool,
@@ -404,6 +407,7 @@ impl Game {
             fit_cache: Vec::new(),
             crimes: Vec::new(),
             weather: Weather::Clear,
+            drought: false,
             snow_lying: false,
             fire_cells: None,
             flames: Vec::new(),

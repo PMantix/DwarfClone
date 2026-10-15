@@ -370,7 +370,18 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
             if g.weather != crate::game::Weather::Clear && t.revealed && g.world.outside(p) && !t.kind.solid() {
                 let h = hash2(wx * 7 + (g.tick / 3) as i32 % 97, wy * 13 + (g.tick / 5) as i32 % 89);
                 if h % 23 == 0 {
-                    (ch, fg) = if g.weather == crate::game::Weather::Snow { ('*', Color::Rgb(240, 240, 255)) } else { ('\'', Color::Rgb(110, 150, 255)) };
+                    use crate::game::Weather as Wx;
+                    (ch, fg) = match g.weather {
+                        Wx::Snow | Wx::Blizzard => ('*', Color::Rgb(240, 240, 255)),
+                        Wx::BloodRain => ('\'', Color::Rgb(220, 30, 30)),
+                        Wx::Storm => ('/', Color::Rgb(140, 170, 255)),
+                        _ => ('\'', Color::Rgb(110, 150, 255)),
+                    };
+                } else if g.weather == crate::game::Weather::Blizzard && h % 5 == 0 {
+                    (ch, fg) = ('·', Color::Rgb(220, 230, 255));
+                } else if g.weather == crate::game::Weather::Storm && (g.tick / 3) % 97 == 0 {
+                    // A flash of lightning lights up the land.
+                    bg = Color::Rgb(70, 70, 110);
                 }
             }
             if g.flames.iter().any(|&(q, at)| q == p && at + 8 > g.tick) {

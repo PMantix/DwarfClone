@@ -250,6 +250,11 @@ fisher's bait and breaks the line; each escape makes it a little easier to land,
 helps. The dwarf who finally lands it becomes a Pike-Taker (or Eel-, Serpent-), the catch is a
 masterwork, and everyone comes to marvel.
 
+**Wild weather.** Rain can break into a thunderstorm, when lightning strikes far more often; a
+cold winter's snow can turn to a blizzard that chills anyone caught outside; some summers bring
+a drought, with no rain and shallow water drying away; and over an evil site, rain sometimes
+falls the colour of blood, a terrible thing to be caught out in.
+
 **Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
 in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
 gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks
