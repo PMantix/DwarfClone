@@ -411,7 +411,7 @@ impl Game {
         None
     }
 
-    fn spot_near(&mut self, c: Pos, r: i32) -> Pos {
+    pub(super) fn spot_near(&mut self, c: Pos, r: i32) -> Pos {
         for _ in 0..50 {
             let q = c.offset(self.rng.range(-r, r + 1), self.rng.range(-r, r + 1), 0);
             if self.world.walkable(q) {

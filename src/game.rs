@@ -39,6 +39,8 @@ mod positions;
 mod justice;
 mod detail;
 mod weather;
+mod festivals;
+pub use festivals::Festival;
 mod fire;
 pub use weather::Weather;
 pub use detail::ENGRAVED;
@@ -261,6 +263,9 @@ pub struct Game {
     /// Burning cells, rebuilt from the map when missing.
     #[serde(skip)]
     fire_cells: Option<Vec<usize>>,
+    /// The festival under way, if any.
+    #[serde(default)]
+    pub festival: Option<Festival>,
     /// Tiles a dragon's breath just swept, with the tick, for drawing.
     #[serde(skip)]
     pub flames: Vec<(Pos, u64)>,
@@ -359,6 +364,7 @@ impl Game {
             snow_lying: false,
             fire_cells: None,
             flames: Vec::new(),
+            festival: None,
             creatures: BTreeMap::new(),
             station: None,
             alert: true,
@@ -829,6 +835,12 @@ impl Game {
         if self.orders_due(self.tick) {
             self.manage_orders();
         }
+        if self.tick % DAY == DAY / 4 {
+            self.festivals_daily();
+        }
+        if self.tick % 50 == 25 {
+            self.festival_tick();
+        }
         if self.tick % 10 == 0 {
             self.grow_farms();
         }
@@ -1176,6 +1188,9 @@ impl Game {
 
     /// Nothing to do: head for the meeting area, or at least out of the way.
     fn idle_activity(&mut self, d: &mut Dwarf) {
+        if self.festival_activity(d) {
+            return;
+        }
         if self.seek_need_zone(d) {
             return;
         }

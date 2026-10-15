@@ -195,6 +195,13 @@ it touches, burns items that aren't stone or metal, and sets into obsidian where
 water. A magma smelter (`b`, `E`) or magma forge (`b`, `F`) built with its middle tile over
 magma (open space or a floor above it) needs no fuel.
 
+**Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
+in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
+gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks
+from the stores and challenges each other at arm-wrestling (the stronger arm usually wins);
+the dwarf who downs the most mugs wins the drinking contest. Everyone who came remembers it
+fondly and has made merry. The top bar shows a festival while it lasts.
+
 **Winter.** Except in deserts, swamps and by the sea, winter freezes the water under the
 open sky: ice holds still, can be walked across (by wildlife too) and can't be fished, but
 dwarves can still break it to drink. Spring thaws it, and anyone out on the ice scrambles

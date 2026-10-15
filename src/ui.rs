@@ -2324,6 +2324,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         } else {
             Span::raw("")
         },
+        match &g.festival {
+            Some(f) => Span::styled(format!("│ ☼ {}! ", cap_first(f.kind.name())), Style::default().fg(Color::Rgb(255, 215, 60)).add_modifier(Modifier::BOLD)),
+            None => Span::raw(""),
+        },
         if g.hostile_count() > 0 {
             Span::styled(format!(" ⚠ {} hostiles ", g.hostile_count()), Style::default().fg(Color::Rgb(255, 255, 255)).bg(Color::Rgb(160, 20, 20)))
         } else {
