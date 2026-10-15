@@ -741,9 +741,11 @@ impl Game {
         let foes: Vec<Neighbor> = self.neighbors.iter().filter(|n| self.at_war_with(n)).cloned().collect();
         let Some(dist) = foes.iter().map(|n| n.dist).min() else { return };
         let near = (1.0 - dist as f64 / 35.0).max(0.2);
-        if self.tick < SEASON * 2 || !self.rng.chance((0.3 + pop * 0.02) * near + self.wealth() as f64 / 200_000.0) {
+        if self.tick < SEASON * 2 || !(self.siege_warned || self.rng.chance((0.3 + pop * 0.02) * near + self.wealth() as f64 / 200_000.0)) {
             return;
         }
+        // A spy's report brings them for certain.
+        self.siege_warned = false;
         // The nearer an enemy, the likelier it's them.
         let weights: Vec<i32> = foes.iter().map(|n| (40 - n.dist).max(5)).collect();
         let mut r = self.rng.range(0, weights.iter().sum::<i32>());

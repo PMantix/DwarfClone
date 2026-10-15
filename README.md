@@ -268,6 +268,14 @@ hero, broken siege, dragon slain, vault opened, great fish landed, triumphant ex
 year without a death, the necromancer destroyed; twenty, fifty and a hundred dwarves; ☼10,000
 up to a quarter of a million in wealth.
 
+**Mysteries.** Small stories that unfold over days, each once per fortress. A miner who strikes
+a gem may bring up the Whispering Stone; it speaks to them at night, they stop sleeping, and
+then either they wake knowing the way to the sealed hall in the rock (its carved walls appear
+on the map) or they're taken by a fey mood. After the first year a hooded stranger may come
+asking for one of your dwarves by name and sit watching them; when the hood comes off it's a
+long-lost sibling or friend come home to stay, or a goblin spy who slips away, and the next
+siege is sure to come.
+
 **Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
 in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
 gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks

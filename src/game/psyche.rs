@@ -533,6 +533,11 @@ impl Game {
             return;
         }
         let i = *self.rng.pick(&cands);
+        self.start_mood(i);
+    }
+
+    /// Dwarf `i` is taken by a fey mood.
+    pub(super) fn start_mood(&mut self, i: usize) {
         let labor = {
             let d = &self.dwarves[i];
             LABORS

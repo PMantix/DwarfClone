@@ -51,6 +51,8 @@ mod pets;
 mod fishlore;
 mod necromancy;
 mod milestones;
+mod mysteries;
+pub use mysteries::{Mystery, MysteryKind};
 pub use necromancy::Necromancer;
 pub fn milestones_banner_ticks() -> u64 {
     milestones::BANNER_TICKS
@@ -296,6 +298,14 @@ pub struct Game {
     /// A vault has been looked for (older saves get one when loaded).
     #[serde(default)]
     vault_placed: bool,
+    /// Mysteries unfolding, and those already told.
+    #[serde(default)]
+    pub mysteries: Vec<Mystery>,
+    #[serde(default)]
+    pub mysteries_done: Vec<MysteryKind>,
+    /// A spy has carried word of us home: the next siege comes for certain.
+    #[serde(default)]
+    siege_warned: bool,
     /// Milestones reached: (key, text, tick).
     #[serde(default)]
     pub milestones: Vec<(String, String, u64)>,
@@ -438,6 +448,9 @@ impl Game {
             big_fish: None,
             necromancer: None,
             milestones: Vec::new(),
+            mysteries: Vec::new(),
+            mysteries_done: Vec::new(),
+            siege_warned: false,
             banner: None,
             necro_rolled: false,
             duels: Vec::new(),
@@ -922,6 +935,7 @@ impl Game {
         if self.tick % 100 == 60 {
             self.expedition_tick();
             self.duels_tick();
+            self.mysteries_tick();
         }
         if self.tick % DAY == DAY / 2 + 7 {
             self.drama_daily();
@@ -976,6 +990,7 @@ impl Game {
             self.maybe_thief();
             self.maybe_visitor(season);
             self.maybe_undead();
+            self.maybe_stranger();
             self.caravan_season(season);
             self.issue_mandate();
             self.maybe_strange_mood();
@@ -2194,7 +2209,11 @@ impl Game {
                         let labor = if desig == Desig::Chop { Labor::Woodcutting } else { Labor::Mining };
                         let base = if desig == Desig::Chop { 80 } else { self.world.t(target).mat.dig_ticks() };
                         if Self::labor(d, base, d.skill(labor)) {
+                            let gem = self.world.t(target).kind == TileKind::Wall && self.world.t(target).mat.is_gem();
                             self.complete_dig(target);
+                            if gem {
+                                self.maybe_whispering_stone(d.id, target);
+                            }
                             d.gain_xp(labor, 25);
                             d.task = Task::Idle;
                         }

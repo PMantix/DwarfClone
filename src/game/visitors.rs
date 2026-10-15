@@ -11,6 +11,8 @@ pub const WARRIOR: u8 = 2;
 const DECIDED: u8 = 3;
 /// A warrior who has joined: the visitor is gone, the dwarf has arrived.
 pub const JOINED: u8 = 4;
+/// A hooded stranger (see `game::mysteries`).
+pub const STRANGER: u8 = 5;
 
 const SONGS: [&str; 6] = ["The Ballad of", "The Lay of", "A Song for", "The Saga of", "A Drinking Song of", "The Lament of"];
 
@@ -68,12 +70,19 @@ impl Game {
     /// A visitor heads for the tavern and stays there: a bard sings, a
     /// warrior makes up their mind.
     pub(super) fn visitor_think(&mut self, c: &mut Creature) {
-        let tavern = self.tavern_tiles();
+        let mut tavern = self.tavern_tiles();
+        if tavern.is_empty() && c.visitor == STRANGER {
+            // A stranger waits wherever folk gather.
+            tavern = self.meeting_tiles();
+            if tavern.is_empty() {
+                return;
+            }
+        }
         if tavern.is_empty() {
             c.leaving = true;
             return;
         }
-        let inside = self.zone_kind_at(c.pos) == Some(ZoneKind::Tavern);
+        let inside = tavern.contains(&c.pos);
         if !inside || self.rng.chance(0.08) {
             if c.path.is_empty() {
                 let q = tavern[self.rng.range(0, tavern.len() as i32) as usize];
