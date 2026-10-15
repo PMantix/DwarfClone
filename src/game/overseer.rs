@@ -6,7 +6,7 @@
 
 use super::*;
 use crate::buildings::Recipe;
-use crate::game::expeditions::Goal;
+use super::ambitions::Ambition;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -103,16 +103,54 @@ pub struct Overseer {
     /// When the drawbridge was last raised (0 when it's down).
     #[serde(default)]
     pub raised_at: u64,
+    /// What it has its heart set on now, since when, and a mark to measure
+    /// progress against (wealth at the start, shafts sunk...).
+    #[serde(default)]
+    pub ambition: Option<Ambition>,
+    #[serde(default)]
+    pub ambition_since: u64,
+    #[serde(default)]
+    pub ambition_mark: u32,
+    /// Every ambition it has had, in order.
+    #[serde(default)]
+    pub ambitions: Vec<(u64, Ambition)>,
+    /// Rooms an ambition has asked for, dug before the rest of the plan.
+    #[serde(default)]
+    pub wants: Vec<RoomUse>,
+    /// How far through the style's room plan it has got.
+    #[serde(default)]
+    pub planned: usize,
+    /// When an army last came.
+    #[serde(default)]
+    pub last_siege: u64,
     /// What it decided, newest last.
     pub notes: Vec<(u64, String)>,
 }
 
 impl Overseer {
     pub fn new(style: Style) -> Overseer {
-        Overseer { style, top: None, base: None, rooms: Vec::new(), slots: 0, done: Vec::new(), peak_pop: 0, peak_wealth: 0, raised_at: 0, notes: Vec::new() }
+        Overseer {
+            style,
+            top: None,
+            base: None,
+            rooms: Vec::new(),
+            slots: 0,
+            done: Vec::new(),
+            peak_pop: 0,
+            peak_wealth: 0,
+            raised_at: 0,
+            ambition: None,
+            ambition_since: 0,
+            ambition_mark: 0,
+            ambitions: Vec::new(),
+            wants: Vec::new(),
+            planned: 0,
+            last_siege: 0,
+            notes: Vec::new(),
+        }
     }
 
-    fn did(&self, what: &str) -> bool {
+    pub(super) fn did(&self, what: &str) -> bool {
         self.done.iter().any(|d| d == what)
     }
 }
@@ -162,6 +200,10 @@ impl Game {
         }
     }
 
+    pub(super) fn note_ov(o: &mut Overseer, tick: u64, text: String) {
+        Self::note(o, tick, text);
+    }
+
     fn note(o: &mut Overseer, tick: u64, text: String) {
         o.notes.push((tick, text));
         if o.notes.len() > 60 {
@@ -200,7 +242,7 @@ impl Game {
     }
 
     /// A spot near `c` where `kind` can be placed.
-    fn ov_spot(&self, kind: BuildingKind, c: Pos, r: i32) -> Option<Pos> {
+    pub(super) fn ov_spot(&self, kind: BuildingKind, c: Pos, r: i32) -> Option<Pos> {
         for d in 0..=r {
             for dy in -d..=d {
                 for dx in -d..=d {
@@ -263,17 +305,69 @@ impl Game {
         Self::note(o, tick, format!("Struck the earth: a stair down {} levels, farms and a stockpile by the wagon.", depth));
     }
 
-    /// Room slots along the main corridor: the box of slot `i` on side
-    /// `north` (true) or south.
-    fn ov_slot(o: &Overseer, i: i32, north: bool) -> (Pos, Pos) {
-        let b = o.base.unwrap();
-        let (w, d) = if o.style == Style::Reckless { (11, 9) } else { (7, 6) };
-        let x0 = b.x + 2 + (w + 1) * i;
-        if north {
-            (Pos::new(x0, b.y - d, b.z), Pos::new(x0 + w - 1, b.y - 1, b.z))
+    fn ov_dims(o: &Overseer) -> (i32, i32) {
+        if o.style == Style::Reckless {
+            (11, 9)
         } else {
-            (Pos::new(x0, b.y + 2, b.z), Pos::new(x0 + w - 1, b.y + 1 + d, b.z))
+            (7, 6)
         }
+    }
+
+    /// Rooms each level's corridor has room for, on each side.
+    pub(super) fn ov_per_level(&self, o: &Overseer) -> i32 {
+        let b = o.base.unwrap();
+        let (w, _) = Self::ov_dims(o);
+        ((self.world.w - 3 - (b.x + 2)) / (w + 1)).clamp(1, 6)
+    }
+
+    /// The box for room `i`, and its level. Each level is a corridor of
+    /// rooms on both sides; deeper levels are reached by a stair inside
+    /// the gate (the hub).
+    pub(super) fn ov_room_box(&self, o: &Overseer, i: usize) -> Option<(Pos, Pos, i32)> {
+        let b = o.base.unwrap();
+        let (w, d) = Self::ov_dims(o);
+        let per = self.ov_per_level(o) as usize;
+        let level = (i / (2 * per)) as i32;
+        let within = i % (2 * per);
+        let (slot, north) = ((within / 2) as i32, within % 2 == 0);
+        let z = b.z - 2 * level;
+        if z < 3 {
+            return None;
+        }
+        let x0 = b.x + 2 + (w + 1) * slot;
+        Some(if north {
+            (Pos::new(x0, b.y - d, z), Pos::new(x0 + w - 1, b.y - 1, z), level)
+        } else {
+            (Pos::new(x0, b.y + 2, z), Pos::new(x0 + w - 1, b.y + 1 + d, z), level)
+        })
+    }
+
+    /// The stair inside the gate that leads to the deeper levels.
+    pub(super) fn ov_hub(o: &Overseer) -> Pos {
+        o.base.unwrap().offset(9, 1, 0)
+    }
+
+    /// Open up a level: its corridor, and the stair down to it.
+    fn ov_open_level(&mut self, o: &mut Overseer, level: i32) {
+        let b = o.base.unwrap();
+        let (w, _) = Self::ov_dims(o);
+        let per = self.ov_per_level(o);
+        let z = b.z - 2 * level;
+        let x_end = b.x + 2 + (w + 1) * per;
+        if level == 0 {
+            self.designate(b.offset(1, 0, 0), Pos::new(x_end, b.y + 1, z), Desig::Dig);
+        } else {
+            let hub = Self::ov_hub(o);
+            self.designate(Pos::new(b.x + 2, b.y, z), Pos::new(x_end, b.y + 1, z), Desig::Dig);
+            self.designate(hub.offset(0, 0, -2 * (level - 1)), Pos::new(hub.x, hub.y, z), Desig::StairUD);
+            // The shelter reaches down too.
+            if let Some(i) = self.burrows.iter().position(|bw| Some(bw.bit) == self.alert_burrow) {
+                self.paint_burrow(i, Pos::new(b.x, b.y - 10, z), Pos::new(x_end + 1, b.y + 10, z + 1), true);
+            }
+            Self::note(o, self.tick, format!("Opened a new level of halls, {} below the first.", 2 * level));
+        }
+        o.slots = o.slots.max(per);
+        o.done.push(format!("level{}", level));
     }
 
     fn dug_share(&self, a: Pos, b: Pos) -> f64 {
@@ -293,28 +387,30 @@ impl Game {
     fn ov_rooms(&mut self, o: &mut Overseer) {
         let tick = self.tick;
         let plan = plan(o.style);
-        let want = (5 + self.alive_count() / 3).min(plan.len());
+        let want = 5 + self.alive_count() / 3;
         let digging = o.rooms.iter().filter(|r| r.stage == 0).count();
         let dig_jobs = self.designations.iter().filter(|p| matches!(self.world.t(**p).desig, Desig::Dig | Desig::StairUD)).count();
-        if o.rooms.len() < want && digging < 2 && dig_jobs < 120 {
-            let i = o.rooms.len() as i32;
-            let (slot, north) = (i / 2, i % 2 == 0);
-            if slot >= o.slots {
-                // Extend the corridor past the new slot.
-                let b = o.base.unwrap();
-                let (a2, b2) = Self::ov_slot(o, slot, true);
-                self.designate(b.offset(1, 0, 0), Pos::new(b2.x + 1, b.y + 1, b.z), Desig::Dig);
-                let _ = a2;
-                o.slots = slot + 1;
+        // An ambition's rooms first, then the style's plan.
+        let next = o.wants.first().copied().map(|k| (k, true)).or_else(|| plan.get(o.planned).map(|&k| (k, false)));
+        if let Some((kind, wanted)) = next.filter(|_| (o.rooms.len() < want || !o.wants.is_empty()) && digging < 2 && dig_jobs < 120) {
+            if let Some((a, b, level)) = self.ov_room_box(o, o.rooms.len()) {
+                if !o.did(&format!("level{}", level)) {
+                    self.ov_open_level(o, level);
+                }
+                self.designate(a, b, Desig::Dig);
+                o.rooms.push(Room { kind, a, b, stage: 0 });
+                if wanted {
+                    o.wants.remove(0);
+                } else {
+                    o.planned += 1;
+                }
+                Self::note(o, tick, format!("Dug out a room for a {:?}.", kind).to_lowercase().replace("dug out", "Dug out"));
+            } else {
+                o.wants.clear();
             }
-            let (a, b) = Self::ov_slot(o, slot, north);
-            self.designate(a, b, Desig::Dig);
-            let kind = plan[o.rooms.len()];
-            o.rooms.push(Room { kind, a, b, stage: 0 });
-            Self::note(o, tick, format!("Dug out a room for a {:?}.", kind).to_lowercase().replace("dug out", "Dug out"));
         }
         for i in 0..o.rooms.len() {
-            if o.rooms[i].stage == 0 && self.dug_share(o.rooms[i].a, o.rooms[i].b) >= 0.95 {
+            if o.rooms[i].stage == 0 && self.dug_share(o.rooms[i].a, o.rooms[i].b) >= 0.9 {
                 let r = o.rooms[i].clone();
                 self.ov_fit(o, &r);
                 o.rooms[i].stage = 1;
@@ -448,6 +544,7 @@ impl Game {
             orders.push((Recipe::ForgeBreastplate, 1));
             orders.push((Recipe::ForgeShield, 1));
         }
+        self.ambition_orders(o, &mut orders);
         // Only what some workshop can make (the rest would just complain).
         for (r, keep) in orders {
             if keep > 0 && self.buildings.values().any(|b| b.built && b.kind.recipes().contains(&r)) {
@@ -484,6 +581,9 @@ impl Game {
         let (share, from) = o.style.army();
         let adults = self.dwarves.iter().filter(|d| d.alive && !d.is_child()).count();
         let mut want = if adults >= from { ((adults as f64 * share).ceil() as usize).max(3) } else { 0 };
+        if o.ambition == Some(Ambition::Muster) {
+            want = want.max(self.muster_target(o));
+        }
         // Even the reckless take up arms once they've been attacked.
         if o.style == Style::Reckless && self.siege_size > 0 {
             want = 2;
@@ -500,7 +600,10 @@ impl Game {
         let bows = self.stock_of(ItemKind::Crossbow) + self.dwarves.iter().filter(|d| d.alive && d.soldier && self.holds_crossbow(d)).count();
         let weapon = if bows >= 2 && o.style != Style::Warlord { super::military::UniformWeapon::Crossbow } else { super::military::UniformWeapon::Best };
         self.squads[0].weapon = weapon;
-        let have = self.squads[0].members.len();
+        for s in 1..self.squads.len() {
+            self.squads[s].weapon = super::military::UniformWeapon::Best;
+        }
+        let have: usize = self.squads.iter().map(|s| s.members.len()).sum();
         if have >= want {
             return;
         }
@@ -512,7 +615,9 @@ impl Game {
             .collect();
         cands.sort_by(|a, b| b.cmp(a));
         for (_, id) in cands.into_iter().take(want - have) {
-            self.set_squad_member(0, id, true);
+            // Into whichever squad is smallest.
+            let s = (0..self.squads.len()).min_by_key(|&i| self.squads[i].members.len()).unwrap_or(0);
+            self.set_squad_member(s, id, true);
         }
     }
 
@@ -532,6 +637,9 @@ impl Game {
         if danger != self.alert {
             self.alert = danger;
         }
+        if danger && self.creatures.values().any(|c| c.alive && c.siege && !c.legendary() && c.hostile()) {
+            o.last_siege = self.tick;
+        }
         if o.style != Style::Reckless && self.alert_burrow.is_some() && danger != self.civ_alert {
             let _ = self.toggle_civ_alert();
         }
@@ -547,7 +655,12 @@ impl Game {
         let gate: Vec<u32> = self
             .buildings
             .values()
-            .filter(|b| b.kind == BuildingKind::Door && b.built && (b.pos.x - base.x).abs() <= 1 && (b.pos.y - base.y).abs() <= 1 && b.pos.z == base.z && b.locked != close)
+            .filter(|b| {
+                b.kind == BuildingKind::Door
+                    && b.built
+                    && b.locked != close
+                    && (((b.pos.x - base.x).abs() <= 1 && (b.pos.y - base.y).abs() <= 1 && b.pos.z == base.z) || b.pos == top.offset(-3, 0, 0))
+            })
             .map(|b| b.id)
             .collect();
         for id in gate {
@@ -584,11 +697,15 @@ impl Game {
             let strength = self.squad_strength(&self.squads[0].members.clone());
             let charge = o.style == Style::Warlord && strength >= 15;
             let holding = self.squads[0].order == super::SquadOrder::Station;
-            if danger && !charge && !holding {
-                self.order_station(0, base.offset(4, 0, 0));
-            } else if !danger && holding {
-                self.order_train(0);
+            for s in 0..self.squads.len() {
+                let holding = self.squads[s].order == super::SquadOrder::Station;
+                if danger && !charge && !holding {
+                    self.order_station(s, base.offset(4 + s as i32, 0, 0));
+                } else if !danger && holding {
+                    self.order_train(s);
+                }
             }
+            let _ = holding;
         }
     }
 
@@ -751,56 +868,12 @@ impl Game {
             }
         }
         // Mine what's been found: ore and gems in sight of the halls.
-        let mut ore = 0;
-        'scan: for dz in -6..=0 {
-            for dy in -20..=20 {
-                for dx in -10..=(16 + o.slots * 8) {
-                    let p = base.offset(dx, dy, dz);
-                    let Some(t) = self.world.get(p) else { continue };
-                    if t.revealed && t.kind == TileKind::Wall && t.desig == Desig::None && (t.mat.is_ore() || t.mat.is_gem()) && t.built_from.is_none() {
-                        self.designate(p, p, Desig::Dig);
-                        ore += 1;
-                        if ore >= 12 {
-                            break 'scan;
-                        }
-                    }
-                }
-            }
-        }
-        // Delvers sink a shaft towards the depths, and explore along the way.
-        if o.style == Style::Delver || (o.style == Style::Steady && self.alive_count() >= 15) {
-            let shaft = base.offset(-1, 0, 0);
-            let deep = (1..base.z).rev().find(|&z| self.world.kind(Pos::new(shaft.x, shaft.y, z)) == Some(TileKind::StairUD)).unwrap_or(base.z);
-            if deep > 3 && self.designations.len() < 60 {
-                let to = Pos::new(shaft.x, shaft.y, (deep - 4).max(2));
-                self.designate(Pos::new(shaft.x, shaft.y, deep.min(base.z)), to, Desig::StairUD);
-                // A tunnel at each new level, to find what's there.
-                self.designate(to.offset(-12, 0, 0), to.offset(12, 0, 0), Desig::Dig);
-                self.designate(to.offset(0, -12, 0), to.offset(0, 12, 0), Desig::Dig);
-                if !o.did(&format!("shaft{}", to.z)) {
-                    o.done.push(format!("shaft{}", to.z));
-                    Self::note(o, tick, format!("Sank the shaft to level {}.", to.z));
-                }
-            }
-        }
-        // Builders smooth and engrave their halls.
-        if o.style == Style::Builder {
-            for r in o.rooms.iter().filter(|r| r.stage == 1 && matches!(r.kind, RoomUse::Dining | RoomUse::Tavern | RoomUse::Temple)).cloned().collect::<Vec<_>>() {
-                let key = format!("engrave{}", r.a.x * 1000 + r.a.y);
-                let detailing = self.designations.iter().filter(|p| matches!(self.world.t(**p).desig, Desig::Smooth | Desig::Engrave)).count();
-                if !o.did(&key) && detailing < 40 {
-                    self.designate(r.a.offset(-1, -1, 0), r.b.offset(1, 1, 0), Desig::Smooth);
-                    o.done.push(key);
-                }
-            }
-            for r in o.rooms.iter().filter(|r| r.stage == 1 && matches!(r.kind, RoomUse::Dining | RoomUse::Tavern | RoomUse::Temple)).cloned().collect::<Vec<_>>() {
-                let key = format!("carve{}", r.a.x * 1000 + r.a.y);
-                let detailing = self.designations.iter().filter(|p| matches!(self.world.t(**p).desig, Desig::Smooth | Desig::Engrave)).count();
-                if !o.did(&key) && detailing < 40 && self.tick > YEAR / 2 {
-                    self.designate(r.a.offset(-1, -1, 0), r.b.offset(1, 1, 0), Desig::Engrave);
-                    o.done.push(key);
-                }
-            }
+        self.ov_mine(o, 12, 20);
+        // Each style's habits, whatever its ambition.
+        match o.style {
+            Style::Delver => self.ov_shaft(o),
+            Style::Builder => self.ov_detail(o, self.tick > YEAR / 2),
+            _ => {}
         }
         // Builders (and the steady, when rich) raise a monument.
         let rich = self.wealth() >= if o.style == Style::Builder { 15_000 } else { 40_000 };
@@ -811,30 +884,15 @@ impl Game {
                 Self::note(o, tick, "Began a great monument.".into());
             }
         }
-        // Warlords (and others with a strong squad) send expeditions.
-        if self.expedition.is_none() && !self.alert && !self.squads.is_empty() && o.style != Style::Reckless {
-            let members = self.squads[0].members.clone();
-            let strength = self.squad_strength(&members);
-            let bold = if o.style == Style::Warlord { 0.55 } else { 0.7 };
-            if members.len() >= 3 && strength >= 8 && self.tick > YEAR / 2 {
-                let pick = self.destinations().into_iter().filter(|d| strength as f64 / (strength as f64 + d.danger as f64 * 3.0) >= bold).max_by_key(|d| {
-                    let worth = match d.goal {
-                        Goal::Beast(_) => 3,
-                        Goal::Raid => 2,
-                        Goal::Ruin => 1,
-                    };
-                    (worth, -d.dist)
-                });
-                if let Some(d) = pick {
-                    if o.style == Style::Warlord || self.rng.chance(0.2) {
-                        let name = d.name.clone();
-                        if self.send_expedition(0, d).is_ok() {
-                            Self::note(o, tick, format!("Sent the squad to {}.", name));
-                        }
-                    }
-                }
-            }
+        // Warlords (and now and then others with a strong squad) send expeditions.
+        if o.style == Style::Warlord {
+            self.ov_venture(o, 0.55, true);
+        } else {
+            self.ov_venture(o, 0.7, false);
         }
+        // And whatever it has its heart set on.
+        self.ov_ambition(o);
+        let _ = tick;
     }
 
     /// Haul goods to the depot when merchants come, and swap them for what
@@ -894,6 +952,8 @@ pub struct Trial {
     pub peak_wealth: u32,
     pub milestones: Vec<String>,
     pub heroes: Vec<String>,
+    /// The ambitions it went through, in order.
+    pub ambitions: Vec<String>,
     /// The chronicle's titles, year by year.
     #[allow(dead_code)]
     pub chronicles: Vec<String>,
@@ -1002,6 +1062,7 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
         peak_wealth: o.peak_wealth.max(g.wealth()),
         milestones: g.milestones.iter().map(|m| m.1.clone()).collect(),
         heroes,
+        ambitions: o.ambitions.iter().map(|a| a.1.name().to_string()).collect(),
         chronicles: g.chronicles.iter().map(|c| c.title.clone()).collect(),
         verdict,
         epitaph,
@@ -1047,6 +1108,42 @@ mod tests {
                 "{:<9} seed {:>3} {:<14} {:>4.1}y alive {:>2} peak {:>2} ☼{:>7} {:<8} {} | {:?} | {:?}",
                 t.style.name(), t.seed, t.fort, t.years, t.alive, t.peak_pop, t.peak_wealth, t.verdict, t.epitaph, t.chronicles, t.heroes
             );
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn overseer_speed() {
+        let mut g = Game::new(5);
+        let style = std::env::var("STYLE").ok().and_then(|s| Style::parse(&s)).unwrap_or(Style::Steady);
+        g.set_overseer(Some(style));
+        let mut last = std::time::Instant::now();
+        for month in 0..9 {
+            for _ in 0..MONTH {
+                g.step();
+            }
+            eprintln!(
+                "month {} {:?}: pop {} desig {} (smooth/engrave {}) constructions {} items {} creatures {}",
+                month,
+                last.elapsed(),
+                g.alive_count(),
+                g.designations.len(),
+                g.designations.iter().filter(|p| matches!(g.world.t(**p).desig, Desig::Smooth | Desig::Engrave)).count(),
+                g.constructions.len(),
+                g.items.len(),
+                g.creatures.len()
+            );
+            let mut kinds: std::collections::BTreeMap<String, usize> = Default::default();
+            for p in &g.designations {
+                *kinds.entry(format!("{:?}", g.world.t(*p).desig)).or_default() += 1;
+            }
+            let base = g.overseer.as_ref().and_then(|o| o.base);
+            let zs: std::collections::BTreeMap<i32, usize> = g.designations.iter().fold(Default::default(), |mut m, p| {
+                *m.entry(p.z - base.map_or(0, |b| b.z)).or_default() += 1;
+                m
+            });
+            eprintln!("    kinds {:?} by z-from-base {:?}", kinds, zs);
+            last = std::time::Instant::now();
         }
     }
 

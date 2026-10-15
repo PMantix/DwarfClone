@@ -54,6 +54,8 @@ mod milestones;
 mod mysteries;
 mod megaprojects;
 mod overseer;
+mod ambitions;
+
 pub use overseer::{run_trial, Overseer, Style};
 pub use mysteries::{Mystery, MysteryKind};
 pub use necromancy::Necromancer;
@@ -251,7 +253,7 @@ pub struct Game {
     dig_version: u64,
     /// Last failed dig search per kind (mine, chop): (version, tick).
     #[serde(skip)]
-    dig_fail: [Option<(u64, u64)>; 2],
+    dig_fail: [Option<(u64, u64)>; 3],
     /// Cells holding water, rebuilt from the map when missing (e.g. after loading).
     #[serde(skip)]
     water_cells: Option<Vec<usize>>,
@@ -491,7 +493,7 @@ impl Game {
             alert_burrow: None,
             civ_alert: false,
             dig_version: 0,
-            dig_fail: [None, None],
+            dig_fail: [None, None, None],
             haul_retry: 0,
             treating: HashSet::new(),
             slaughtering: HashSet::new(),
@@ -694,6 +696,26 @@ impl Game {
             }
         }
         n
+    }
+
+    /// Drop designations that can no longer be carried out (a tile dug
+    /// blind that turned out to be open already, a tree that burned...), so
+    /// nobody keeps looking for them.
+    pub(super) fn prune_designations(&mut self) {
+        let stale: Vec<Pos> = self
+            .designations
+            .iter()
+            .copied()
+            .filter(|&p| {
+                let t = self.world.t(p);
+                t.revealed && !self.desig_valid(p, t.desig)
+            })
+            .collect();
+        for p in stale {
+            self.world.t_mut(p).desig = Desig::None;
+            self.designations.remove(&p);
+            self.claimed.remove(&p);
+        }
     }
 
     pub fn add_zone(&mut self, a: Pos, b: Pos, kind: ZoneKind) -> usize {
@@ -948,6 +970,9 @@ impl Game {
         }
         if self.tick % 10 == 3 && self.overseer.is_some() {
             self.oversee_alert();
+        }
+        if self.tick % 300 == 290 {
+            self.prune_designations();
         }
         if self.tick % 100 == 60 {
             self.expedition_tick();

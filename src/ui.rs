@@ -2346,7 +2346,13 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Span::styled(format!("│ {} ", g.date_string()), Style::default().fg(TEXT)),
         Span::styled(format!("│ {} dwarves ", g.alive_count()), Style::default().fg(TEXT)),
         match &g.overseer {
-            Some(o) => Span::styled(format!("│ AUTO: {} ", o.style.name()), Style::default().fg(BLACK).bg(Color::Rgb(120, 190, 255))),
+            Some(o) => Span::styled(
+                match o.ambition {
+                    Some(a) => format!("│ AUTO: {} · {} ", o.style.name(), a.name()),
+                    None => format!("│ AUTO: {} ", o.style.name()),
+                },
+                Style::default().fg(BLACK).bg(Color::Rgb(120, 190, 255)),
+            ),
             None => Span::raw(""),
         },
         if g.weather != crate::game::Weather::Clear {
@@ -3348,6 +3354,13 @@ fn draw_autoplay(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
         ]));
     }
     if let Some(o) = &g.overseer {
+        if let Some(a) = o.ambition {
+            let days = g.tick.saturating_sub(o.ambition_since) / crate::game::DAY;
+            v.push(Line::default());
+            v.push(plain(format!(" Its heart is set on: {} (for {} days). {}", a.name(), days, a.announce().split(": ").nth(1).unwrap_or("")), Color::Rgb(150, 210, 255)));
+            let path: Vec<&str> = o.ambitions.iter().rev().take(8).map(|x| x.1.name()).collect::<Vec<_>>().into_iter().rev().collect();
+            v.push(plain(format!(" So far: {}", path.join(" → ")), MUTED));
+        }
         v.push(Line::default());
         v.push(header("What it's been doing"));
         for (_, n) in o.notes.iter().rev().take(8) {

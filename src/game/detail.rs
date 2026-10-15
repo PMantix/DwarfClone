@@ -18,6 +18,13 @@ impl Game {
         if open.is_empty() {
             return false;
         }
+        // Nothing reachable last time and nothing designated since: don't
+        // search the whole fortress again just yet.
+        if let Some((v, t)) = self.dig_fail[2] {
+            if v == self.dig_version && self.tick < t + 600 {
+                return false;
+            }
+        }
         let mut target = None;
         let found = path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| {
             for q in std::iter::once(p).chain(DIRS8.iter().map(|&(dx, dy)| p.offset(dx, dy, 0))) {
@@ -28,7 +35,10 @@ impl Game {
             }
             false
         });
-        let (Some((stand, path)), Some(target)) = (found, target) else { return false };
+        let (Some((stand, path)), Some(target)) = (found, target) else {
+            self.dig_fail[2] = Some((self.dig_version, self.tick));
+            return false;
+        };
         self.claimed.insert(target);
         d.task = Task::Dig { target, stand };
         Self::set_path(d, path);

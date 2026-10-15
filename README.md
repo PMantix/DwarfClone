@@ -18,7 +18,13 @@ it digs in, builds workshops and halls, keeps stocks with work orders, fills pos
 labors, raises and arms a squad, hangs a gate with a drawbridge on a lever and a corridor of
 cage traps, shelters everyone when an army comes, mines, trades, and (by style) engraves,
 raises a monument, sinks shafts or sends expeditions. Styles: Steady, Builder, Delver,
-Warlord and Reckless. Press `A` in a fortress to hand it over (or take it back), or pick
+Warlord and Reckless. It works through *ambitions*, a season or so at a time, chosen by its
+style's leanings and the fortress's troubles (hungry forts provision, besieged ones fortify and
+muster): Provision (fields, fishing, hunting), Fortify (stone-fall traps, a walled yard round
+the stair), Muster (more soldiers, a second squad, weapons and armour), Prosper (crafts, gems,
+ore, a monument), Delve (down the shaft), Expand (new halls, then whole new levels below),
+Revel (taverns, temples, engravings) and Venture (expeditions). Each is announced, shown in the
+top bar, and listed in batch reports. Press `A` in a fortress to hand it over (or take it back), or pick
 *Watch a fort* on the title screen. From the command line, `--autoplay` plays many forts side
 by side and reports how each ended (`--runs`, `--years`, `--style`, `--seed`). Most end in
 ruin; that's the fun of it.

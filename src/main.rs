@@ -115,6 +115,9 @@ fn autoplay_batch(args: &[String]) {
             t.heroes.len(),
             t.epitaph
         );
+        if !t.ambitions.is_empty() {
+            println!("           its ambitions: {}", t.ambitions.join(" → "));
+        }
         all.push(t);
     }
     for h in handles {
