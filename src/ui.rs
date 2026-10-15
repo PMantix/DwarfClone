@@ -3083,22 +3083,49 @@ fn centered(area: Rect, w: u16, h: u16) -> Rect {
 
 fn draw_title(f: &mut Frame, app: &App, sel: usize) {
     let area = f.size();
-    backdrop(f, area);
-    let saves = app.saves();
-    let mut v: Vec<Line> = Vec::new();
-    for l in BANNER {
-        v.push(Line::from(Span::styled(l.to_string(), Style::default().fg(Color::Rgb(255, 200, 80)).add_modifier(Modifier::BOLD))));
+    let t = crate::title::now();
+    let bw = BANNER[0].chars().count() as i32;
+    let keep = Rect::new((((area.width as i32 - bw).max(0) / 2) as u16).saturating_sub(1), 0, bw as u16 + 2, 8).intersection(Rect::new(0, 0, area.width, area.height));
+    let sky = crate::title::draw(f.buffer_mut(), area, t, keep);
+    // The name across the sky, with a glint passing over it.
+    let bx = area.x as i32 + (area.width as i32 - bw).max(0) / 2;
+    let sweep = (t % (bw as u64 + 90)) as i32 - 10;
+    let buf = f.buffer_mut();
+    for (row, l) in BANNER.iter().take(4).enumerate() {
+        let y = area.y + 1 + row as u16;
+        if y >= area.y + area.height {
+            break;
+        }
+        for (i, ch) in l.chars().enumerate() {
+            let x = bx + i as i32;
+            if ch == ' ' || x < area.x as i32 || x >= (area.x + area.width) as i32 {
+                continue;
+            }
+            let d = (i as i32 - row as i32 - sweep).abs();
+            let base = [(255, 215, 90), (250, 195, 70), (235, 170, 50), (210, 140, 40)][row];
+            let c = if d < 3 { (255, 250, 220) } else if d < 6 { (255, 232, 160) } else { base };
+            buf.get_mut(x as u16, y).set_char(ch).set_fg(rgb(c)).set_style(Style::default().add_modifier(Modifier::BOLD));
+        }
     }
-    v.push(plain("a fortress in the deep places of the world".into(), MUTED));
-    v.push(Line::default());
+    let tag = "a fortress in the deep places of the world";
+    let ty = area.y + 6;
+    if ty < area.y + sky.saturating_sub(1).max(6) {
+        let tx = area.x + area.width.saturating_sub(tag.len() as u16) / 2;
+        buf.set_string(tx, ty, tag, Style::default().fg(Color::Rgb(170, 160, 200)));
+    }
+
+    let saves = app.saves();
+    let mut v: Vec<Line> = vec![Line::default()];
     for (i, item) in TITLE_MENU.iter().enumerate() {
         let detail = match i {
+            0 => Some("forge a world and its history".to_string()),
             1 => saves.first().map(|m| format!("{} ({})", m.fortress, m.date)),
             2 if !saves.is_empty() => Some(format!("{} saved", saves.len())),
+            3 => Some("until next time".to_string()),
             _ => None,
         };
         // Same width on every line so the centered menu lines up.
-        let detail: String = detail.unwrap_or_default().chars().take(38).collect();
+        let detail: String = detail.unwrap_or_default().chars().take(44).collect();
         let usable = !matches!(i, 1 | 2) || !saves.is_empty();
         let st = if i == sel {
             Style::default().fg(BLACK).bg(KEY).add_modifier(Modifier::BOLD)
@@ -3107,22 +3134,34 @@ fn draw_title(f: &mut Frame, app: &App, sel: usize) {
         } else {
             Style::default().fg(Color::Rgb(80, 80, 90))
         };
+        let mark = if i == sel { ["☼ ", " ☼"][((t / 15) % 2) as usize] } else { "  " };
         v.push(Line::from(vec![
+            Span::styled(mark.to_string(), Style::default().fg(Color::Rgb(255, 215, 60))),
             Span::styled(format!(" {:<11}", item), st),
-            Span::styled(format!(" {:<38}", detail), Style::default().fg(MUTED)),
+            Span::styled(format!(" {:<44}", detail), Style::default().fg(if i == sel { TEXT } else { MUTED })),
         ]));
     }
+    v.push(Line::default());
+    // A line of lore, typed out and turned over every few seconds.
+    let n = crate::title::LINES.len() as u64;
+    let line = crate::title::LINES[((t / 240) % n) as usize];
+    let typed: String = line.chars().take(((t % 240) as usize) * 2 / 3).collect();
+    let cursor = if typed.len() < line.len() && (t / 8) % 2 == 0 { "▌" } else { " " };
+    v.push(plain(format!("{:<60}", format!("{}{}", typed, cursor)), Color::Rgb(200, 180, 120)));
     v.push(Line::default());
     if let Some(fl) = &app.flash {
         v.push(plain(fl.clone(), Color::Rgb(240, 150, 110)));
     } else {
         v.push(plain("↑↓ choose · Enter · Esc quits".into(), MUTED));
     }
-    let r = centered(area, 60, v.len() as u16 + 3);
+    let h = v.len() as u16 + 2;
+    let w = 66.min(area.width);
+    let top = (area.y + sky + 1).min(area.y + area.height.saturating_sub(h));
+    let r = Rect::new(area.x + (area.width - w) / 2, top, w, h.min(area.height));
     f.render_widget(Clear, r);
     f.render_widget(
-        Paragraph::new(v).wrap(Wrap { trim: true }).alignment(ratatui::layout::Alignment::Center).style(Style::default().bg(Color::Rgb(12, 12, 20))).block(
-            Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Rgb(120, 100, 60))),
+        Paragraph::new(v).wrap(Wrap { trim: false }).alignment(ratatui::layout::Alignment::Center).style(Style::default().bg(Color::Rgb(12, 12, 20))).block(
+            Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Rgb(160, 130, 70))),
         ),
         r,
     );
@@ -3497,6 +3536,17 @@ mod tests {
 
     /// Title → new world → embark → play → save → title → continue, drawing
     /// every frame on the way: none may be blank.
+    #[test]
+    fn render_title() {
+        let mut app = App::new(4242);
+        app.mode = Mode::Title { sel: 0 };
+        for (w, h) in [(40, 12), (80, 24), (130, 45)] {
+            let s = dump(&mut app, w, h);
+            println!("{}", s);
+            assert!(s.contains("New world") && s.contains("Load game"), "{}", s);
+        }
+    }
+
     #[test]
     fn title_to_fortress_and_back() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

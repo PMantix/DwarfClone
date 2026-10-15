@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: W20, then the Beyond DF list.
+Suggested order: the Fun first list (top down, mixing in W20 when combat needs it), then the Beyond DF list.
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -28,6 +28,32 @@ Suggested order: W20, then the Beyond DF list.
 - **DF:** body attributes (strength, agility…), skill decay, social skills, books, teaching.
 - **Us:** 13 skills with experience, plus fighting experience (`dwarf.rs`).
 - **Steps:** [ ] attributes that affect combat and work speed · [ ] skills fade without use · [ ] teaching and demonstrations
+
+## Fun first: ideas picked for drama and delight
+
+Our own list of features that make stories, chosen because they're exciting to watch or play
+rather than intricate to manage. Each should create moments you'd tell someone about. Ranked
+by fun for the effort; promote one into "Up next" with steps when it's next.
+
+| ID | Idea | The moment it makes | Builds on | Size |
+|---|---|---|---|---|
+| F01 | War from hostile neighbours | The civilization you've been at war with for 80 years of history finally marches on you: elves, humans or rival dwarves, not only goblins, with their own gear, tactics and a named general from the legends | sieges, world history | S–M |
+| F02 | Dragons | A dragon from the world's legends descends, breathes fire that sets the forest and wooden doors ablaze, and sleeps on a hoard if it wins; slay it and its bones become a legendary trophy | W17, W19 fire | M |
+| F03 | Festivals | Harvest feast, midwinter fire, the founding day: dwarves gather, dance, sing, hold drinking and arm-wrestling contests, and remember it for a season; a festival skipped is a grudge | W09 needs, taverns | S–M |
+| F04 | Heroes and epithets | "Kelda the Unbowed" after killing a cave horror alone; heroes get a line in the legends, their own thoughts, followers, statues; a hero's death shakes the fort | combat, legends | S |
+| F05 | Cave-ins and disasters | Dig out the last support and the ceiling comes down; earthquakes crack walls; the spring melt floods the lower halls; the magma sea surges | W11, W01 | M |
+| F06 | The year's chronicle | Each new year opens a page that tells the year as a story ("The Year of Burning Leaves"): deaths, births, sieges, masterpieces, with a title picked from the biggest event | legends, announcements | S |
+| F07 | Bards and wandering heroes | Visitors who sing songs made from your fort's own history, monster hunters who come for the beast in your caverns, a hero who stays and joins | B08 taverns, legends | M |
+| F08 | Ancient ruins | Mining breaks into a sealed hall of an older people: traps, treasure, engravings of a forgotten war, and something that should have stayed sealed | W18 caverns, worldgen | M |
+| F09 | Expeditions | Send a few dwarves off the map to explore a ruin or slay a beast; they come back days later with loot, wounds and a story, or don't come back | world map | M |
+| F10 | Grudges, romance and duels | Rivals trade insults, then blows; a duel at dawn; love triangles; pranks; a gossip log to follow the drama | W09, W10, W16 | S–M |
+| F11 | Pets with personality | A cat chooses its dwarf; pets follow their owners, steal food, catch vermin, and are mourned; a war dog that saved a life is remembered | W08 animals | S |
+| F12 | Legendary catches | A giant pike in the lake that breaks lines for years until one fisher lands it; a sea serpent in the ocean embark | W13 fishing | S |
+| F13 | Wild weather | Blizzards that trap the caravan, thunderstorms, a drought that dries the brook, blood rain over an evil site that drives dwarves mad | W19 weather | S–M |
+| F14 | The necromancer | A tower on the world map whose master raises your own unburied dead against you; tombs matter | W10 burial, sieges | M |
+| F15 | Megaprojects | A giant statue, a tower, a great bridge: built over years, marked on the world map, and celebrated with a festival when finished | W01, F03 | M |
+| F16 | Mysteries | A whispering crystal deep down, a cursed artifact that changes hands, a stranger who knows a dwarf's name; small chains of events with a twist | strange moods, legends | M |
+| F17 | Milestones | Banners and fanfare for the first masterpiece, the hundredth dwarf, the first year without a death, the first dragon slain | announcements | S |
 
 ## Beyond DF: ideas from Tarn's dev page
 
@@ -96,6 +122,10 @@ Ideas not ranked yet. Add a line on why each matters.
 - Hunting labor and hunters with crossbows (after W04's crossbows).
 
 ## Done
+
+- **Title screen** (this commit): an animated backdrop, a mountain under a night sky with drifting clouds and twinkling stars, trees and falling petals, leaves or snow through a quick little year, the fortress dug into it with dwarves walking its halls, a miner at the face, a forge with its chimney smoking, a magma sea bubbling below, and eyes in the dark; the title glints, and lore lines type themselves out under the menu.
+- **Seasonal trees** (6e63087): blossom and buds in spring, autumn colours and fallen leaves, bare branches in winter, evergreens (most of them in cold places).
+- **Posts that depend on fit** (1e10414, 3bff6d2): appoint from a list of dwarves ranked by fit (good, fair, poor, with the qualities behind it); a good manager, bookkeeper, broker, chief medical dwarf, commander or sheriff does the job better, a poor one worse.
 
 - **W19 Temperature and weather** (this commit; steps dddc21f, 998c340): winter ice you can walk on (and still drink through); daily rain or snow by climate, snow lying until spring; fire that catches in trees, shrubs, grass and wood, spreads across slopes, burns creatures and items, and is put out by water and rain, started by magma or lightning.
 - **W18 Geology and engraving** (53f697d; step 59d06e8): smoothing and engraving designations and a Stone detailing labor, engravings showing scenes from the world's legends and adding to room value; two cavern layers (three on deep maps), each with its own spiders and troglodytes. (The magma sea came with W11.)
