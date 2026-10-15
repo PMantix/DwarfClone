@@ -62,7 +62,7 @@ impl Game {
 
     pub(super) fn dwarf_fighter(&self, d: &Dwarf) -> Fighter {
         let mut f = Fighter {
-            name: d.name.clone(),
+            name: d.called(),
             skill: d.fight_level(),
             dmg: 3.0,
             verb: "punches",
@@ -179,6 +179,7 @@ impl Game {
         }
         if dead {
             if let Some(c) = self.creatures.remove(&cid) {
+                self.credit_kill(d, &c);
                 self.creature_died(c);
             }
         }

@@ -37,7 +37,6 @@ by fun for the effort; promote one into "Up next" with steps when it's next.
 
 | ID | Idea | The moment it makes | Builds on | Size |
 |---|---|---|---|---|
-| F04 | Heroes and epithets | "Kelda the Unbowed" after killing a cave horror alone; heroes get a line in the legends, their own thoughts, followers, statues; a hero's death shakes the fort | combat, legends | S |
 | F05 | Cave-ins and disasters | Dig out the last support and the ceiling comes down; earthquakes crack walls; the spring melt floods the lower halls; the magma sea surges | W11, W01 | M |
 | F06 | The year's chronicle | Each new year opens a page that tells the year as a story ("The Year of Burning Leaves"): deaths, births, sieges, masterpieces, with a title picked from the biggest event | legends, announcements | S |
 | F07 | Bards and wandering heroes | Visitors who sing songs made from your fort's own history, monster hunters who come for the beast in your caverns, a hero who stays and joins | B08 taverns, legends | M |
@@ -120,7 +119,8 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
-- **F03 Festivals** (this commit): the harvest feast, midwinter fire and founding day; dwarves down tools for half a day, gather at the meeting hall, tavern, dining hall or wagon, dance, drink from the stores, arm-wrestle and hold a drinking contest, and remember it fondly.
+- **F04 Heroes and epithets** (this commit): deeds earn epithets (Dragonslayer, Titanbane, Horrorbane, Warbreaker, Grim, Red-Handed, Inspired, Ironarm, Deepcup), only ever grander; heroes fight under their epithet, go into the legends, are admired, and are mourned by everyone when they fall.
+- **F03 Festivals** (8bbc56a): the harvest feast, midwinter fire and founding day; dwarves down tools for half a day, gather at the meeting hall, tavern, dining hall or wagon, dance, drink from the stores, arm-wrestle and hold a drinking contest, and remember it fondly.
 - **F02 Dragons** (65388cc): dragons from the legends breathe fire down a clear line every few seconds, scorching dwarves and creatures and setting what will burn alight, never burn themselves, show as a red `D`, and when slain leave a masterwork dragon skull and the hoard they carried (gold, gems).
 - **F01 War from hostile neighbours** (66d33f6): civilizations at war with yours in the world's history lay siege as well as goblins, nearer enemies more often: human soldiers, elf warriors with wooden arms, dwarf raiders in heavy armour, each army led by a living figure of their civilization (or a new one) as general; the general's fall breaks the army and goes into the legends.
 - **Title screen** (258c242): an animated backdrop, a mountain under a night sky with drifting clouds and twinkling stars, trees and falling petals, leaves or snow through a quick little year, the fortress dug into it with dwarves walking its halls, a miner at the face, a forge with its chimney smoking, a magma sea bubbling below, and eyes in the dark; the title glints, and lore lines type themselves out under the menu.

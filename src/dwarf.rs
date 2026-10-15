@@ -541,9 +541,33 @@ pub struct Dwarf {
     /// Walks the halls as a ghost (position is the ghost's).
     #[serde(default)]
     pub ghost: bool,
+    /// What a hero is known as ("Dragonslayer"), how grand the deed behind
+    /// it was, and the deed itself.
+    #[serde(default)]
+    pub epithet: Option<String>,
+    #[serde(default)]
+    pub epithet_rank: u8,
+    #[serde(default)]
+    pub deed: Option<String>,
+    /// Foes slain by this dwarf's hand.
+    #[serde(default)]
+    pub kills: u32,
+    /// Arm-wrestling bouts and drinking contests won at festivals.
+    #[serde(default)]
+    pub bouts_won: u32,
+    #[serde(default)]
+    pub contests_won: u32,
 }
 
 impl Dwarf {
+    /// Their name, or for a hero, the name they're known by ("Kelda the Dragonslayer").
+    pub fn called(&self) -> String {
+        match &self.epithet {
+            Some(e) => format!("{} the {}", self.name.split(' ').next().unwrap_or(&self.name), e),
+            None => self.name.clone(),
+        }
+    }
+
     pub fn has(&self, l: Labor) -> bool {
         self.labors[l.idx()]
     }

@@ -40,6 +40,7 @@ mod justice;
 mod detail;
 mod weather;
 mod festivals;
+mod heroes;
 pub use festivals::Festival;
 mod fire;
 pub use weather::Weather;
@@ -1239,6 +1240,7 @@ impl Game {
         }
         let name = d.name.clone();
         self.msg(&format!("{} {}.", name, cause), (255, 60, 60));
+        self.hero_fell(d, cause);
         let tick = self.tick;
         d.died = Some(tick);
         d.due = None;

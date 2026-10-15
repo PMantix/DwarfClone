@@ -195,6 +195,14 @@ it touches, burns items that aren't stone or metal, and sets into obsidian where
 water. A magma smelter (`b`, `E`) or magma forge (`b`, `F`) built with its middle tile over
 magma (open space or a floor above it) needs no fuel.
 
+**Heroes.** Great deeds earn a dwarf a name to be remembered by: slay a dragon and become
+Kelda the Dragonslayer; a megabeast, its bane (Titanbane, Hydrabane...); a cave horror,
+Horrorbane; cut down an attacking general, Warbreaker; ten kills make them Grim and
+twenty-five Red-Handed; making an artifact, Inspired; three arm-wrestling wins, Ironarm; two
+drinking contests, Deepcup. A grander deed replaces a lesser name, never the reverse. Heroes
+go by their epithet in combat, their deed goes into the legends, everyone admires them, and
+when one dies the whole fortress mourns.
+
 **Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
 in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
 gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks

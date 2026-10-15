@@ -280,7 +280,7 @@ impl Game {
         d.fight_xp += 6;
         d.satisfy(crate::dwarf::NeedKind::Fight, 40);
         let att = super::combat::Fighter {
-            name: d.name.clone(),
+            name: d.called(),
             skill: d.fight_level(),
             dmg: 9.0,
             verb: "shoots",
@@ -301,6 +301,7 @@ impl Game {
         }
         if dead {
             if let Some(c) = self.creatures.remove(&target) {
+                self.credit_kill(d, &c);
                 self.creature_died(c);
             }
         }

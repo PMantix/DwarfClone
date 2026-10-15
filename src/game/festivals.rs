@@ -183,11 +183,15 @@ impl Game {
             d.fight_xp += 20;
             d.think(&format!("won an arm-wrestling bout at the {}", kind.name()), -8, tick);
             self.dwarves[j].think(&format!("lost an arm-wrestling bout to {}", d.name), 1, tick);
+            self.festival_feat(d, true);
             (d.name.clone(), other)
         } else {
-            self.dwarves[j].fight_xp += 20;
-            self.dwarves[j].think(&format!("won an arm-wrestling bout at the {}", kind.name()), -8, tick);
+            let mut o = std::mem::take(&mut self.dwarves[j]);
+            o.fight_xp += 20;
+            o.think(&format!("won an arm-wrestling bout at the {}", kind.name()), -8, tick);
             d.think(&format!("lost an arm-wrestling bout to {}", other), 1, tick);
+            self.festival_feat(&mut o, true);
+            self.dwarves[j] = o;
             (other, d.name.clone())
         };
         let f = self.festival.as_mut().unwrap();
@@ -214,10 +218,13 @@ impl Game {
         self.msg(&format!("The {} is over. {} dwarves made merry.", name, f.attended.len()), (255, 215, 60));
         if let Some(&(id, n)) = f.mugs.iter().max_by_key(|(id, n)| (*n, u32::MAX - id)) {
             if n >= 2 {
-                if let Some(d) = self.dwarves.iter_mut().find(|d| d.id == id) {
+                if let Some(i) = self.dwarves.iter().position(|d| d.id == id) {
+                    let mut d = std::mem::take(&mut self.dwarves[i]);
                     d.think(&format!("won the drinking contest at the {}", name), -12, tick);
                     let who = d.name.clone();
                     self.msg(&format!("{} won the drinking contest, downing {} mugs!", who, n), (230, 200, 120));
+                    self.festival_feat(&mut d, false);
+                    self.dwarves[i] = d;
                 }
             }
         }

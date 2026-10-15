@@ -1470,7 +1470,7 @@ fn focus_line(d: &Dwarf) -> Line<'static> {
 fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
     let (mood, mc) = d.mood();
     let mut v = vec![
-        Line::from(Span::styled(d.name.clone(), Style::default().fg(rgb(d.color)).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(d.called(), Style::default().fg(rgb(d.color)).add_modifier(Modifier::BOLD))),
         plain(
             match (d.noble, g.position_of(d.id)) {
                 (Some(n), _) => format!("{} ({})", n.title(), d.profession()),
@@ -1490,6 +1490,9 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
         bar("Hunger", d.hunger, HUNGRY),
         bar("Fatigue", d.fatigue, TIRED),
     ];
+    if let (Some(deed), true) = (&d.deed, d.epithet.is_some()) {
+        v.insert(2, plain(format!("Hero: {}", deed), Color::Rgb(255, 215, 60)));
+    }
     let hurt: Vec<Line> = PARTS
         .iter()
         .filter(|p| d.body.part_status(**p) != "fine")
