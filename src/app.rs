@@ -260,6 +260,8 @@ pub enum Mode {
     Chronicle { idx: usize },
     /// Hand the fortress to the overseer, pick its style, or take it back.
     Autoplay { sel: usize },
+    /// The overseer's mind: senses, ambitions, and your nudges.
+    Brain { sel: usize },
     /// Choose where a squad goes on an expedition.
     Expedition { squad: usize, sel: usize },
     /// Choose an embark site on the world map.
@@ -1083,6 +1085,24 @@ impl App {
                     _ => {}
                 }
             }
+            Mode::Brain { sel } => {
+                use crate::game::Ambition;
+                let n = Ambition::ALL.len();
+                let a = Ambition::ALL[sel.min(n - 1)];
+                match k.code {
+                    KeyCode::Up => self.mode = Mode::Brain { sel: (sel + n - 1) % n },
+                    KeyCode::Down => self.mode = Mode::Brain { sel: (sel + 1) % n },
+                    KeyCode::Right | KeyCode::Char('+') => self.game.nudge_ambition(a, 1),
+                    KeyCode::Left | KeyCode::Char('-') => self.game.nudge_ambition(a, -1),
+                    KeyCode::Char('f') => {
+                        self.game.force_ambition(a);
+                        self.flash = Some(format!("You've talked the overseer into: {}.", a.name()));
+                    }
+                    KeyCode::Char('r') => self.game.clear_nudges(),
+                    KeyCode::Char(' ') => self.paused = !self.paused,
+                    _ => self.mode = Mode::Normal,
+                }
+            }
             Mode::Autoplay { sel } => {
                 let n = crate::game::Style::ALL.len() + 1;
                 match k.code {
@@ -1093,6 +1113,7 @@ impl App {
                         self.game.set_overseer(style);
                         self.mode = Mode::Normal;
                     }
+                    KeyCode::Char('b') if self.game.overseer.is_some() => self.mode = Mode::Brain { sel: 0 },
                     _ => self.mode = Mode::Normal,
                 }
             }
@@ -1203,6 +1224,13 @@ impl App {
             KeyCode::Char('o') => self.mode = Mode::Traffic { level: 2, corner: None },
             KeyCode::Char('m') => self.mode = Mode::Military,
             KeyCode::Char('n') => self.mode = Mode::Nobles,
+            KeyCode::Char('B') => {
+                if self.game.overseer.is_some() {
+                    self.mode = Mode::Brain { sel: 0 };
+                } else {
+                    self.flash = Some("No overseer: press A to hand over the fortress first.".into());
+                }
+            }
             KeyCode::Char('A') => {
                 let sel = self.game.overseer.as_ref().map_or(0, |o| 1 + crate::game::Style::ALL.iter().position(|&s| s == o.style).unwrap_or(0));
                 self.mode = Mode::Autoplay { sel };

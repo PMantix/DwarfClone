@@ -778,7 +778,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
     let mut v: Vec<Line> = Vec::new();
     let title;
     match &app.mode {
-        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } => {
+        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } => {
             title = "Main".to_string();
             v.extend(stocks(g));
             v.push(Line::default());
@@ -799,6 +799,9 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(key_line("n", "Nobles, mandates & rooms", false));
             v.push(key_line("c", "Chronicle of the years", false));
             v.push(key_line("A", "Autoplay: let the overseer play", g.overseer.is_some()));
+            if g.overseer.is_some() {
+                v.push(key_line("B", "The overseer's brain", false));
+            }
             v.push(key_line("L", "Legends of the world", false));
             v.push(key_line("v", "View dwarf at cursor", false));
             v.push(key_line("Tab", "Jump to next dwarf", false));
@@ -1676,6 +1679,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("n", "nobles, mandates, bedrooms, wealth"),
         k("c", "the chronicle: each year told as a story"),
         k("A", "autoplay: the overseer plays (pick a style)"),
+        k("B", "the overseer's brain: senses, ambitions, nudges"),
         k("L", "legends: history, civs, sites, figures"),
         k("Tab", "jump to next dwarf"),
         k("H", "jump back to the wagon"),
@@ -2424,6 +2428,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::Chronicle { idx } => draw_chronicle(f, area, &app.game, idx),
         Mode::Expedition { squad, sel } => draw_expedition(f, area, &app.game, squad, sel),
         Mode::Autoplay { sel } => draw_autoplay(f, area, &app.game, sel),
+        Mode::Brain { sel } => draw_brain(f, area, &app.game, sel),
         Mode::BuildMenu => draw_build_menu(f, area),
         Mode::Help => popup(f, area, 60, 47, " Help ", help_text()),
         Mode::ConfirmQuit => popup(
@@ -3336,6 +3341,116 @@ fn draw_loading(f: &mut Frame, app: &App) {
     );
 }
 
+/// The overseer's mind as a little network: senses on the left fire into
+/// the ambitions on the right, green pulling towards, red pushing away.
+fn draw_brain(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
+    use crate::game::{Ambition, Sense};
+    use ratatui::symbols::Marker;
+    use ratatui::widgets::canvas::{Canvas, Circle, Line as CLine};
+    let Some(brain) = g.overseer_brain() else { return };
+    let Some(o) = &g.overseer else { return };
+    let chosen = Ambition::ALL[sel.min(Ambition::ALL.len() - 1)];
+    let r = Rect::new(area.x + 1, area.y + 1, area.width.saturating_sub(2), area.height.saturating_sub(2));
+    f.render_widget(Clear, r);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Rgb(120, 190, 255)))
+        .title(Span::styled(format!(" The overseer's mind ({}) ", o.style.name()), Style::default().fg(Color::Rgb(120, 190, 255))));
+    let inner = block.inner(r);
+    f.render_widget(block, r);
+    let cols = Layout::default().direction(Direction::Horizontal).constraints([Constraint::Min(40), Constraint::Length(44)]).split(inner);
+    // Where each node sits on a 0..100 canvas.
+    let sense_y = |i: usize| 95.0 - i as f64 * 90.0 / (Sense::ALL.len() - 1) as f64;
+    let amb_y = |i: usize| 92.0 - i as f64 * 84.0 / (Ambition::ALL.len() - 1) as f64;
+    let (sx, ax) = (24.0, 74.0);
+    let tick = g.tick;
+    let side = brain.clone();
+    let canvas = Canvas::default()
+        .marker(Marker::Braille)
+        .x_bounds([0.0, 100.0])
+        .y_bounds([0.0, 100.0])
+        .background_color(Color::Rgb(8, 10, 18))
+        .paint(move |ctx| {
+            // The links: brighter for stronger, the chosen ambition's in full.
+            for (ai, &a) in Ambition::ALL.iter().enumerate() {
+                for &(s, v) in brain.links_of(a) {
+                    let si = Sense::ALL.iter().position(|&x| x == s).unwrap();
+                    let strength = (v.abs() / 2.0).clamp(0.15, 1.0);
+                    let focus = if a == chosen { 1.0 } else { 0.35 };
+                    let k = strength * focus;
+                    let color = if v >= 0.0 {
+                        Color::Rgb((40.0 * k) as u8, (90.0 + 165.0 * k) as u8, (60.0 + 60.0 * k) as u8)
+                    } else {
+                        Color::Rgb((90.0 + 165.0 * k) as u8, (40.0 * k) as u8, (40.0 * k) as u8)
+                    };
+                    ctx.draw(&CLine { x1: sx + 2.0, y1: sense_y(si), x2: ax - 2.0, y2: amb_y(ai), color });
+                }
+            }
+            ctx.layer();
+            // Senses: lit by how strongly they fire.
+            for (i, &(s, level)) in brain.senses.iter().enumerate() {
+                let c = (60.0 + 195.0 * level) as u8;
+                ctx.draw(&Circle { x: sx, y: sense_y(i), radius: 1.6, color: Color::Rgb(c, c, (c as f64 * 0.6) as u8) });
+                ctx.print(1.0, sense_y(i), Span::styled(format!("{:<11}", s.name()), Style::default().fg(Color::Rgb(c.max(120), c.max(120), 150))));
+            }
+            // Ambitions: sized by their odds, the current one pulsing gold.
+            for (i, &a) in Ambition::ALL.iter().enumerate() {
+                let p = brain.odds_of(a);
+                let now = o.ambition == Some(a);
+                let pulse = if now { 1.0 + ((tick / 8) % 6) as f64 * 0.25 } else { 1.0 };
+                let color = if now {
+                    Color::Rgb(255, 215, 60)
+                } else if a == chosen {
+                    Color::Rgb(150, 210, 255)
+                } else {
+                    Color::Rgb(90, 120, 170)
+                };
+                ctx.draw(&Circle { x: ax, y: amb_y(i), radius: (1.2 + p * 6.0) * pulse, color });
+                let nudge = o.nudge(a);
+                let tag = match nudge {
+                    0 => String::new(),
+                    n if n > 0 => format!(" {}", "▲".repeat(n as usize)),
+                    n => format!(" {}", "▼".repeat((-n) as usize)),
+                };
+                ctx.print(
+                    ax + 5.0,
+                    amb_y(i),
+                    Span::styled(format!("{:<10}{:>3.0}%{}", a.name(), p * 100.0, tag), Style::default().fg(color).add_modifier(if now { Modifier::BOLD } else { Modifier::empty() })),
+                );
+            }
+        });
+    f.render_widget(canvas, cols[0]);
+    // The side panel: the chosen ambition, what moves it, and your hand on it.
+    let mut v: Vec<Line<'static>> = Vec::new();
+    let now = o.ambition.map_or("nothing yet".to_string(), |a| {
+        format!("{} ({} days)", a.name(), g.tick.saturating_sub(o.ambition_since) / crate::game::DAY)
+    });
+    v.push(plain(format!(" Now: {}", now), Color::Rgb(255, 215, 60)));
+    v.push(Line::default());
+    v.push(Line::from(Span::styled(format!(" {}", chosen.name()), Style::default().fg(Color::Rgb(150, 210, 255)).add_modifier(Modifier::BOLD))));
+    v.push(plain(format!(" {}", chosen.announce().split(": ").nth(1).unwrap_or(chosen.announce())), MUTED));
+    v.push(plain(format!(" Chance it's next: {:.0}%", side.odds_of(chosen) * 100.0), TEXT));
+    v.push(Line::default());
+    let mut links: Vec<(Sense, f64)> = side.links_of(chosen).to_vec();
+    links.sort_by(|a, b| b.1.abs().total_cmp(&a.1.abs()));
+    for (s, val) in links {
+        let (sign, col) = if val >= 0.0 { ("+", Color::Rgb(110, 220, 120)) } else { ("−", Color::Rgb(235, 110, 100)) };
+        let shown = if val <= -8.0 { "blocked".to_string() } else { format!("{}{:.1}", sign, val.abs()) };
+        v.push(Line::from(vec![Span::styled(format!(" {:<11}", s.name()), Style::default().fg(TEXT)), Span::styled(shown, Style::default().fg(col))]));
+    }
+    v.push(Line::default());
+    let n = o.nudge(chosen);
+    let bar: String = (-3..=3).map(|i| if i == 0 { '│' } else if (n > 0 && i > 0 && i <= n) || (n < 0 && i < 0 && i >= n) { '●' } else { '·' }).collect();
+    v.push(plain(format!(" Your nudge  ◀ {} ▶", bar), Color::Rgb(255, 215, 60)));
+    v.push(Line::default());
+    v.push(plain(" ↑↓ pick an ambition".into(), MUTED));
+    v.push(plain(" ←→ nudge it (−3..+3)".into(), MUTED));
+    v.push(plain(" f  make it do this now".into(), MUTED));
+    v.push(plain(" r  clear all nudges".into(), MUTED));
+    v.push(plain(" Space pause · Esc back".into(), MUTED));
+    f.render_widget(Paragraph::new(v).wrap(Wrap { trim: false }).style(Style::default().bg(Color::Rgb(12, 12, 20))), cols[1]);
+}
+
 /// The overseer: who's playing, in what style, and what it's been doing.
 fn draw_autoplay(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
     use crate::game::Style as Pace;
@@ -3368,7 +3483,7 @@ fn draw_autoplay(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
         }
     }
     v.push(Line::default());
-    v.push(plain(" ↑↓ choose · Enter · Esc back      (A opens this again)".into(), MUTED));
+    v.push(plain(" ↑↓ choose · Enter · b its brain · Esc back".into(), MUTED));
     let h = v.len() as u16 + 2;
     popup(f, area, 72, h, " Autoplay ", v);
 }
@@ -3923,6 +4038,36 @@ mod tests {
         app.on_key(key(KeyCode::Up));
         app.on_key(key(KeyCode::Enter));
         assert!(app.game.overseer.is_none());
+    }
+
+    #[test]
+    fn the_brain_screen_shows_senses_and_takes_nudges() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::generated(42);
+        app.game.set_overseer(Some(crate::game::Style::Warlord));
+        for _ in 0..200 {
+            app.game.step();
+        }
+        app.mode = Mode::Normal;
+        let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
+        app.on_key(key(KeyCode::Char('B')));
+        assert_eq!(app.mode, Mode::Brain { sel: 0 });
+        let s = dump(&mut app, 140, 45);
+        println!("{}", s);
+        assert!(s.contains("Hunger") && s.contains("Provision") && s.contains("Your nudge"), "{}", s);
+        // Nudge Muster up three times, and force Venture.
+        let muster = crate::game::Ambition::ALL.iter().position(|&a| a == crate::game::Ambition::Muster).unwrap();
+        for _ in 0..muster {
+            app.on_key(key(KeyCode::Down));
+        }
+        let before = app.game.overseer_brain().unwrap().odds_of(crate::game::Ambition::Muster);
+        for _ in 0..3 {
+            app.on_key(key(KeyCode::Right));
+        }
+        let after = app.game.overseer_brain().unwrap().odds_of(crate::game::Ambition::Muster);
+        assert!(after > before, "nudging should raise the odds ({} -> {})", before, after);
+        app.on_key(key(KeyCode::Char('f')));
+        assert_eq!(app.game.overseer.as_ref().unwrap().ambition, Some(crate::game::Ambition::Muster));
     }
 
     #[test]

@@ -55,6 +55,7 @@ mod mysteries;
 mod megaprojects;
 mod overseer;
 mod ambitions;
+pub use ambitions::{Ambition, Sense};
 
 pub use overseer::{run_trial, Overseer, Style};
 pub use mysteries::{Mystery, MysteryKind};

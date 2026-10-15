@@ -26,10 +26,12 @@ pub enum Ambition {
     Revel,
     /// Expeditions out into the world.
     Venture,
+    /// A grand work: a pillared hall, a rotunda, a gallery.
+    Architect,
 }
 
 impl Ambition {
-    pub const ALL: [Ambition; 8] = [
+    pub const ALL: [Ambition; 9] = [
         Ambition::Provision,
         Ambition::Fortify,
         Ambition::Muster,
@@ -38,6 +40,7 @@ impl Ambition {
         Ambition::Expand,
         Ambition::Revel,
         Ambition::Venture,
+        Ambition::Architect,
     ];
 
     pub fn name(self) -> &'static str {
@@ -50,6 +53,7 @@ impl Ambition {
             Ambition::Expand => "Expand",
             Ambition::Revel => "Revel",
             Ambition::Venture => "Venture",
+            Ambition::Architect => "Architect",
         }
     }
 
@@ -63,6 +67,7 @@ impl Ambition {
             Ambition::Expand => "The overseer wants room to grow: new halls are dug.",
             Ambition::Revel => "The overseer decides the dwarves deserve some cheer: taverns, temples and ale.",
             Ambition::Venture => "The overseer grows restless: the squad will march out to seek glory.",
+            Ambition::Architect => "The overseer is seized by a vision: a grand work will be carved from the rock.",
         }
     }
 
@@ -70,6 +75,10 @@ impl Ambition {
     fn weight(self, style: Style) -> f64 {
         use Ambition::*;
         match (style, self) {
+            (Style::Builder, Architect) => 4.0,
+            (Style::Reckless, Architect) => 2.0,
+            (Style::Warlord, Architect) => 0.5,
+            (Style::Steady, Architect) => 1.5,
             (Style::Steady, Delve | Revel | Venture) => 1.0,
             (Style::Steady, _) => 2.0,
             (Style::Builder, Prosper | Expand | Revel) => 3.0,
@@ -91,7 +100,230 @@ impl Ambition {
     }
 }
 
+/// What the overseer notices: each sense pushes the ambitions towards or
+/// away from themselves.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Sense {
+    /// The style's own leanings.
+    Leaning,
+    Hunger,
+    Thirst,
+    /// An army came this season.
+    Besieged,
+    /// Fewer beds than dwarves.
+    Crowded,
+    /// The dwarves are unhappy.
+    Unrest,
+    /// The fortress is rich for its size.
+    Riches,
+    /// A monster prowls near the halls.
+    Danger,
+    /// A strong squad with nothing to do.
+    Wanderlust,
+    /// Too early, or no squad, to go anywhere.
+    Unready,
+    /// Tired of what it has just been doing.
+    Weary,
+    /// Your nudges.
+    Nudge,
+}
+
+impl Sense {
+    pub const ALL: [Sense; 12] = [
+        Sense::Leaning,
+        Sense::Hunger,
+        Sense::Thirst,
+        Sense::Besieged,
+        Sense::Crowded,
+        Sense::Unrest,
+        Sense::Riches,
+        Sense::Danger,
+        Sense::Wanderlust,
+        Sense::Unready,
+        Sense::Weary,
+        Sense::Nudge,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Sense::Leaning => "Its nature",
+            Sense::Hunger => "Hunger",
+            Sense::Thirst => "Thirst",
+            Sense::Besieged => "Besieged",
+            Sense::Crowded => "Crowded",
+            Sense::Unrest => "Unrest",
+            Sense::Riches => "Riches",
+            Sense::Danger => "Danger",
+            Sense::Wanderlust => "Wanderlust",
+            Sense::Unready => "Unready",
+            Sense::Weary => "Weary",
+            Sense::Nudge => "Your nudge",
+        }
+    }
+}
+
+/// The overseer's mind at a glance: how strongly each sense fires (0..1),
+/// what each sense adds to or takes from each ambition, and the resulting
+/// odds of choosing it next.
+#[derive(Clone, Debug)]
+pub struct Brain {
+    pub senses: Vec<(Sense, f64)>,
+    pub links: Vec<(Ambition, Vec<(Sense, f64)>)>,
+    pub odds: Vec<(Ambition, f64)>,
+}
+
+impl Brain {
+    pub fn odds_of(&self, a: Ambition) -> f64 {
+        self.odds.iter().find(|x| x.0 == a).map_or(0.0, |x| x.1)
+    }
+
+    pub fn links_of(&self, a: Ambition) -> &[(Sense, f64)] {
+        self.links.iter().find(|x| x.0 == a).map_or(&[], |x| &x.1)
+    }
+}
+
+/// A sense that rules an ambition out entirely.
+const BLOCK: f64 = -9.0;
+
 impl Game {
+    /// Read the overseer's mind (for the brain screen).
+    pub fn overseer_brain(&self) -> Option<Brain> {
+        self.overseer.as_ref().map(|o| self.brain(o))
+    }
+
+    pub(super) fn brain(&self, o: &Overseer) -> Brain {
+        let tick = self.tick;
+        let pop = self.alive_count().max(1) as f64;
+        let food = self.food_per_head();
+        let drink = self.per_head(&[ItemKind::Drink]);
+        let hunger = ((4.0 - food) / 4.0).clamp(0.0, 1.0);
+        let thirst = ((3.0 - drink) / 3.0).clamp(0.0, 1.0);
+        let besieged = if o.last_siege > 0 && tick < o.last_siege + SEASON { 1.0 - (tick - o.last_siege) as f64 / SEASON as f64 } else { 0.0 };
+        let beds = self.buildings.values().filter(|b| b.kind == BuildingKind::Bed && b.built).count() as f64;
+        let crowded = ((pop - beds) / pop).clamp(0.0, 1.0);
+        let stress = self.dwarves.iter().filter(|d| d.alive).map(|d| d.stress as f64).sum::<f64>() / pop;
+        let unrest = ((stress - 60.0) / 200.0).clamp(0.0, 1.0);
+        let riches = ((self.wealth() as f64 / pop - 2000.0) / 6000.0).clamp(0.0, 1.0);
+        let danger = if let (Some(base), true) = (o.base, true) {
+            if self.creatures.values().any(|c| c.alive && c.legendary() && c.hostile() && (c.pos.x - base.x).abs() <= 30 && (c.pos.y - base.y).abs() <= 30 && (c.pos.z - base.z).abs() <= 6) {
+                1.0
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
+        let strength = self.squads.first().map_or(0, |s| self.squad_strength(&s.members)) as f64;
+        let wanderlust = if self.expedition.is_none() && !self.alert { ((strength - 8.0) / 12.0).clamp(0.0, 1.0) } else { 0.0 };
+        let unready = if self.squads.is_empty() || tick < YEAR / 2 || o.style == Style::Reckless && strength < 1.0 { 1.0 } else { 0.0 };
+        let senses = vec![
+            (Sense::Leaning, 1.0),
+            (Sense::Hunger, hunger),
+            (Sense::Thirst, thirst),
+            (Sense::Besieged, besieged),
+            (Sense::Crowded, crowded),
+            (Sense::Unrest, unrest),
+            (Sense::Riches, riches),
+            (Sense::Danger, danger),
+            (Sense::Wanderlust, wanderlust),
+            (Sense::Unready, unready),
+            (Sense::Weary, if o.ambition.is_some() { 1.0 } else { 0.0 }),
+            (Sense::Nudge, if o.nudges.iter().any(|&n| n != 0) { 1.0 } else { 0.0 }),
+        ];
+        let mut links = Vec::new();
+        for &a in Ambition::ALL.iter() {
+            use Ambition::*;
+            let mut l: Vec<(Sense, f64)> = Vec::new();
+            let w = a.weight(o.style);
+            l.push((Sense::Leaning, if w > 0.0 { w.ln() } else { BLOCK }));
+            let mut add = |s: Sense, v: f64| {
+                if v.abs() > 0.01 {
+                    l.push((s, v));
+                }
+            };
+            match a {
+                Provision => {
+                    add(Sense::Hunger, 2.2 * hunger);
+                    add(Sense::Thirst, 2.2 * thirst);
+                    add(Sense::Riches, -0.3 * riches);
+                }
+                Fortify => {
+                    add(Sense::Besieged, 1.3 * besieged);
+                    add(Sense::Danger, 0.6 * danger);
+                }
+                Muster => {
+                    add(Sense::Besieged, 1.3 * besieged);
+                    add(Sense::Danger, 0.9 * danger);
+                    add(Sense::Wanderlust, -0.5 * wanderlust);
+                }
+                Prosper => {
+                    add(Sense::Riches, -0.8 * riches);
+                    add(Sense::Hunger, -0.6 * hunger);
+                }
+                Delve => {
+                    add(Sense::Danger, -0.6 * danger);
+                    add(Sense::Hunger, -0.6 * hunger);
+                }
+                Expand => {
+                    add(Sense::Crowded, 1.6 * crowded);
+                    add(Sense::Riches, 0.3 * riches);
+                }
+                Revel => {
+                    add(Sense::Unrest, 1.4 * unrest);
+                    add(Sense::Riches, 0.5 * riches);
+                    add(Sense::Thirst, -0.5 * thirst);
+                }
+                Venture => {
+                    add(Sense::Wanderlust, 1.0 * wanderlust);
+                    add(Sense::Besieged, -0.8 * besieged);
+                    add(Sense::Unready, BLOCK * unready);
+                }
+                Architect => {
+                    add(Sense::Riches, 0.9 * riches);
+                    add(Sense::Unrest, 0.3 * unrest);
+                    add(Sense::Hunger, -0.8 * hunger);
+                    add(Sense::Besieged, -0.6 * besieged);
+                }
+            }
+            if o.ambition == Some(a) {
+                add(Sense::Weary, -1.6);
+            }
+            add(Sense::Nudge, 0.8 * o.nudge(a) as f64);
+            links.push((a, l));
+        }
+        let scores: Vec<(Ambition, f64)> = links.iter().map(|(a, l)| (*a, l.iter().map(|x| x.1).sum::<f64>())).collect();
+        let total: f64 = scores.iter().filter(|x| x.1 > BLOCK / 2.0).map(|x| x.1.exp()).sum();
+        let odds = scores.iter().map(|(a, s)| (*a, if *s > BLOCK / 2.0 && total > 0.0 { s.exp() / total } else { 0.0 })).collect();
+        Brain { senses, links, odds }
+    }
+
+    /// Push the overseer towards (or away from) an ambition, -3..=3.
+    pub fn nudge_ambition(&mut self, a: Ambition, by: i8) {
+        if let Some(o) = self.overseer.as_mut() {
+            let i = Ambition::ALL.iter().position(|&x| x == a).unwrap();
+            if o.nudges.len() < Ambition::ALL.len() {
+                o.nudges.resize(Ambition::ALL.len(), 0);
+            }
+            o.nudges[i] = (o.nudges[i] + by).clamp(-3, 3);
+        }
+    }
+
+    pub fn clear_nudges(&mut self) {
+        if let Some(o) = self.overseer.as_mut() {
+            o.nudges.clear();
+        }
+    }
+
+    /// Make the overseer take up an ambition right now.
+    pub fn force_ambition(&mut self, a: Ambition) {
+        let Some(mut o) = self.overseer.take() else { return };
+        if o.base.is_some() {
+            self.begin_ambition(&mut o, a);
+            Self::note_ov(&mut o, self.tick, format!("You talked it into: {}.", a.name()));
+        }
+        self.overseer = Some(o);
+    }
+
     fn per_head(&self, kinds: &[ItemKind]) -> f64 {
         let n: usize = kinds.iter().map(|&k| self.stock_of(k)).sum();
         n as f64 / self.alive_count().max(1) as f64
@@ -127,43 +359,27 @@ impl Game {
             Ambition::Delve => o.done.iter().filter(|d| d.starts_with("shaft")).count() as u32 >= o.ambition_mark + 2,
             Ambition::Expand | Ambition::Revel => o.wants.is_empty() && o.rooms.iter().all(|r| r.stage == 1),
             Ambition::Venture => o.did(&format!("ventured{}", o.ambition_since)) && self.expedition.is_none(),
+            Ambition::Architect => o.did(&format!("grand{}", o.ambition_since)) && o.rooms.iter().all(|r| r.stage == 1),
         }
     }
 
     fn choose_ambition(&mut self, o: &mut Overseer) {
-        let tick = self.tick;
-        let besieged = tick < o.last_siege + SEASON && o.last_siege > 0;
-        let beds = self.buildings.values().filter(|b| b.kind == BuildingKind::Bed).count();
-        let weights: Vec<(Ambition, f64)> = Ambition::ALL
-            .iter()
-            .map(|&a| {
-                let mut w = a.weight(o.style);
-                match a {
-                    Ambition::Provision if self.food_per_head() < 4.0 || self.per_head(&[ItemKind::Drink]) < 3.0 => w *= 5.0,
-                    Ambition::Fortify | Ambition::Muster if besieged => w *= 3.0,
-                    Ambition::Expand if beds < self.alive_count() => w *= 4.0,
-                    Ambition::Venture if self.squads.is_empty() || tick < YEAR / 2 => w = 0.0,
-                    _ => {}
-                }
-                if o.ambition == Some(a) {
-                    w *= 0.2;
-                }
-                (a, w)
-            })
-            .collect();
-        let total: f64 = weights.iter().map(|w| w.1).sum();
-        if total <= 0.0 {
-            return;
-        }
-        let mut r = self.rng.range(0, 10_000) as f64 / 10_000.0 * total;
-        let mut pick = weights[0].0;
-        for (a, w) in &weights {
-            if r < *w {
-                pick = *a;
+        let brain = self.brain(o);
+        let mut r = self.rng.range(0, 10_000) as f64 / 10_000.0;
+        let mut pick = None;
+        for &(a, p) in &brain.odds {
+            if p > 0.0 && r < p {
+                pick = Some(a);
                 break;
             }
-            r -= w;
+            r -= p;
         }
+        let Some(pick) = pick.or_else(|| brain.odds.iter().filter(|x| x.1 > 0.0).max_by(|a, b| a.1.total_cmp(&b.1)).map(|x| x.0)) else { return };
+        self.begin_ambition(o, pick);
+    }
+
+    fn begin_ambition(&mut self, o: &mut Overseer, pick: Ambition) {
+        let tick = self.tick;
         o.ambition = Some(pick);
         o.ambition_since = tick;
         o.ambition_mark = match pick {
@@ -286,6 +502,14 @@ impl Game {
                 if self.ov_venture(o, 0.5, true) {
                     o.done.push(format!("ventured{}", o.ambition_since));
                 }
+            }
+            Ambition::Architect => {
+                let key = format!("grand{}", o.ambition_since);
+                if !o.did(&key) {
+                    o.done.push(key);
+                    o.wants.insert(0, RoomUse::Grand);
+                }
+                self.ov_detail(o, true);
             }
         }
     }

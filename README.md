@@ -24,7 +24,12 @@ muster): Provision (fields, fishing, hunting), Fortify (stone-fall traps, a wall
 the stair), Muster (more soldiers, a second squad, weapons and armour), Prosper (crafts, gems,
 ore, a monument), Delve (down the shaft), Expand (new halls, then whole new levels below),
 Revel (taverns, temples, engravings) and Venture (expeditions). Each is announced, shown in the
-top bar, and listed in batch reports. Press `A` in a fortress to hand it over (or take it back), or pick
+top bar, and listed in batch reports. `B` opens its brain: twelve senses (its nature, hunger,
+thirst, a recent siege, crowding, unrest, riches, a monster near the halls, a strong idle
+squad, being unready to march, weariness of the last ambition, and your nudges) wired into the
+nine ambitions, green links pulling and red pushing, each ambition sized by its odds of being
+next. Pick one and nudge it with ←→ (−3..+3) to provoke the overseer into battle or coax it
+into building, or press `f` to make it take that ambition up now. Press `A` in a fortress to hand it over (or take it back), or pick
 *Watch a fort* on the title screen. From the command line, `--autoplay` plays many forts side
 by side and reports how each ended (`--runs`, `--years`, `--style`, `--seed`). Most end in
 ruin; that's the fun of it.

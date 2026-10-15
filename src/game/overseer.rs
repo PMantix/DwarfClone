@@ -76,6 +76,8 @@ pub enum RoomUse {
     Barracks,
     Office,
     Jail,
+    /// The Architect's grand work (see `game::layout`).
+    Grand,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -123,6 +125,9 @@ pub struct Overseer {
     /// When an army last came.
     #[serde(default)]
     pub last_siege: u64,
+    /// Your nudges to each ambition (in `Ambition::ALL` order), -3..=3.
+    #[serde(default)]
+    pub nudges: Vec<i8>,
     /// What it decided, newest last.
     pub notes: Vec<(u64, String)>,
 }
@@ -146,8 +151,13 @@ impl Overseer {
             wants: Vec::new(),
             planned: 0,
             last_siege: 0,
+            nudges: Vec::new(),
             notes: Vec::new(),
         }
+    }
+
+    pub fn nudge(&self, a: Ambition) -> i8 {
+        Ambition::ALL.iter().position(|&x| x == a).and_then(|i| self.nudges.get(i).copied()).unwrap_or(0)
     }
 
     pub(super) fn did(&self, what: &str) -> bool {
@@ -495,6 +505,7 @@ impl Game {
             }
             RoomUse::Office => zone(ZoneKind::Office),
             RoomUse::Jail => zone(ZoneKind::Jail),
+            RoomUse::Grand => zone(ZoneKind::Meeting),
         };
         if let Some(k) = z {
             self.add_zone(r.a, r.b, k);
