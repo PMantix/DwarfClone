@@ -250,6 +250,9 @@ pub enum Mode {
     Unit { id: u32, sel: usize },
     Military,
     Nobles,
+    /// Choose who holds a post (`pos` indexes `Position::ALL`); row 0 of
+    /// `sel` leaves it vacant, the rest are `Game::candidates`.
+    Appoint { pos: usize, sel: usize },
     /// Choose an embark site on the world map.
     WorldMap { x: i32, y: i32 },
     /// Browse history. `from_world` returns to the world map on Esc.
@@ -1002,8 +1005,15 @@ impl App {
             Mode::Help => self.mode = Mode::Normal,
             Mode::Nobles => match k.code {
                 KeyCode::Char(c @ '1'..='6') => {
-                    let p = crate::game::Position::ALL[(c as u8 - b'1') as usize];
-                    self.flash = Some(self.game.cycle_position(p));
+                    let pos = (c as u8 - b'1') as usize;
+                    let p = crate::game::Position::ALL[pos];
+                    let cands = self.game.candidates(p);
+                    // Start on whoever holds it now, else the best suited.
+                    let sel = match self.game.holder(p) {
+                        Some(h) => cands.iter().position(|&id| id == h.id).map_or(0, |i| i + 1),
+                        None => (!cands.is_empty()) as usize,
+                    };
+                    self.mode = Mode::Appoint { pos, sel };
                 }
                 KeyCode::Char('x') => {
                     for p in crate::game::Position::ALL {
@@ -1013,6 +1023,24 @@ impl App {
                 }
                 _ => self.mode = Mode::Normal,
             },
+            Mode::Appoint { pos, sel } => {
+                let p = crate::game::Position::ALL[pos];
+                let cands = self.game.candidates(p);
+                let n = cands.len() + 1;
+                match k.code {
+                    KeyCode::Esc => self.mode = Mode::Nobles,
+                    KeyCode::Up => self.mode = Mode::Appoint { pos, sel: (sel + n - 1) % n },
+                    KeyCode::Down => self.mode = Mode::Appoint { pos, sel: (sel + 1) % n },
+                    KeyCode::PageUp | KeyCode::Home => self.mode = Mode::Appoint { pos, sel: 0 },
+                    KeyCode::PageDown | KeyCode::End => self.mode = Mode::Appoint { pos, sel: n - 1 },
+                    KeyCode::Enter => {
+                        let who = if sel == 0 { None } else { cands.get(sel - 1).copied() };
+                        self.flash = Some(self.game.appoint_msg(p, who));
+                        self.mode = Mode::Nobles;
+                    }
+                    _ => {}
+                }
+            }
             Mode::WorldMap { x, y } => self.key_world(k, x, y),
             Mode::Legends { tab, scroll, from_world } => {
                 let back = if from_world {

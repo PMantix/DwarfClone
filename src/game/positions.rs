@@ -40,6 +40,66 @@ impl Position {
             Position::Sheriff => "crimes on the record are punished",
         }
     }
+
+    /// How well a dwarf suits this post: a score (higher is better) and the
+    /// qualities behind it, for the appointment list.
+    pub fn suitability(self, d: &Dwarf) -> (i32, Vec<String>) {
+        let t = &d.personality;
+        let fight = dwarf::skill_level(d.fight_xp) as i32;
+        let medic = d.skill(Labor::Medicine) as i32;
+        let mut notes: Vec<String> = Vec::new();
+        fn word(notes: &mut Vec<String>, x: i32, hi: &str, lo: &str) {
+            if x >= 20 {
+                notes.push(hi.to_string());
+            } else if x <= -20 {
+                notes.push(lo.to_string());
+            }
+        }
+        let score = match self {
+            Position::Manager => {
+                word(&mut notes, t.diligence, "diligent", "lazy");
+                word(&mut notes, t.sociability, "sociable", "aloof");
+                t.diligence + t.sociability / 2
+            }
+            Position::Bookkeeper => {
+                word(&mut notes, t.diligence, "diligent", "lazy");
+                word(&mut notes, -t.anxiety, "calm", "anxious");
+                t.diligence - t.anxiety / 2
+            }
+            Position::Broker => {
+                word(&mut notes, t.sociability, "sociable", "aloof");
+                word(&mut notes, t.temper, "hot-tempered", "even-tempered");
+                t.sociability - t.temper / 3
+            }
+            Position::ChiefMedic => {
+                notes.push(format!("{} doctor", dwarf::skill_rank(d.skills[Labor::Medicine.idx()])));
+                word(&mut notes, t.diligence, "diligent", "lazy");
+                medic * 15 + t.diligence / 3 - 10
+            }
+            Position::Commander => {
+                notes.push(format!("{} fighter", dwarf::skill_rank(d.fight_xp)));
+                word(&mut notes, t.sociability, "sociable", "aloof");
+                fight * 15 + t.sociability / 3 - 10
+            }
+            Position::Sheriff => {
+                notes.push(format!("{} fighter", dwarf::skill_rank(d.fight_xp)));
+                word(&mut notes, t.temper, "hot-tempered", "even-tempered");
+                fight * 15 + t.diligence / 3 - t.temper / 3 - 10
+            }
+        };
+        (score, notes)
+    }
+}
+
+/// A word for a suitability score.
+pub fn fit_word(score: i32) -> &'static str {
+    if score >= 25 {
+        "good fit"
+    } else if score >= 0 {
+        "fair fit"
+    } else {
+        "poor fit"
+    }
 }
 
 /// A titled noble wants a piece of furniture of a certain material in
@@ -88,6 +148,31 @@ impl Game {
         self.positions.retain(|(q, id)| *q != p && Some(*id) != dwarf);
         if let Some(id) = dwarf {
             self.positions.push((p, id));
+        }
+    }
+
+    /// The dwarves who could take a post, best suited first.
+    pub fn candidates(&self, p: Position) -> Vec<u32> {
+        let mut v: Vec<(i32, u32)> = self
+            .dwarves
+            .iter()
+            .filter(|d| d.alive && !d.insane && !d.is_child())
+            .map(|d| (p.suitability(d).0, d.id))
+            .collect();
+        v.sort_by_key(|&(s, id)| (-s, id));
+        v.into_iter().map(|(_, id)| id).collect()
+    }
+
+    /// Appoint `dwarf` (or nobody) and say what changed.
+    pub fn appoint_msg(&mut self, p: Position, dwarf: Option<u32>) -> String {
+        let before = dwarf.and_then(|id| self.position_of(id)).filter(|&q| q != p);
+        self.appoint(p, dwarf);
+        match dwarf.and_then(|id| self.dwarves.iter().find(|d| d.id == id)) {
+            Some(d) => match before {
+                Some(q) => format!("{} is now {} (and no longer {}).", d.name, p.title().to_lowercase(), q.title().to_lowercase()),
+                None => format!("{} is now {}.", d.name, p.title().to_lowercase()),
+            },
+            None => format!("The post of {} is vacant.", p.title().to_lowercase()),
         }
     }
 
@@ -272,6 +357,31 @@ mod tests {
         assert!(g.demands.iter().all(|d| d.noble != id || d != &m), "a met demand should be cleared");
         let d = g.dwarves.iter().find(|d| d.id == id).unwrap();
         assert!(d.thoughts.iter().any(|t| t.text == "is delighted that a demand was satisfied"));
+    }
+
+    #[test]
+    fn candidates_are_ranked_by_suitability() {
+        let mut g = Game::new(7);
+        let ids: Vec<u32> = g.dwarves.iter().filter(|d| !d.is_child()).map(|d| d.id).collect();
+        let (a, b) = (ids[0], ids[1]);
+        for d in g.dwarves.iter_mut() {
+            d.fight_xp = 0;
+            d.personality.temper = 0;
+            d.personality.diligence = 0;
+        }
+        g.dwarves.iter_mut().find(|d| d.id == b).unwrap().fight_xp = 2000;
+        let c = g.candidates(Position::Sheriff);
+        assert_eq!(c[0], b, "the best fighter should top the sheriff list");
+        assert_eq!(c.len(), ids.len());
+        let (s, notes) = Position::Sheriff.suitability(g.dwarves.iter().find(|d| d.id == b).unwrap());
+        assert_eq!(fit_word(s), "good fit");
+        assert!(notes.iter().any(|n| n.contains("fighter")), "{:?}", notes);
+        // Taking a second post moves a dwarf off the first, and says so.
+        g.appoint(Position::Broker, Some(a));
+        let m = g.appoint_msg(Position::Manager, Some(a));
+        assert!(m.contains("no longer broker"), "{}", m);
+        assert!(g.holder(Position::Broker).is_none());
+        assert_eq!(g.appoint_msg(Position::Manager, None), "The post of manager is vacant.");
     }
 
     #[test]

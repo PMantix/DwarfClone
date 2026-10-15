@@ -1186,7 +1186,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
         | Mode::WorldGen => {
             title = String::new();
         }
-        Mode::Nobles => {
+        Mode::Nobles | Mode::Appoint { .. } => {
             title = "Nobles".to_string();
             v.push(plain(format!("Fortress wealth: ☼{}", g.wealth()), Color::Rgb(255, 215, 60)));
             let civ = g.civ.map_or("none".to_string(), |c| g.overworld.civ(c).name.clone());
@@ -1242,7 +1242,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 ]));
                 v.push(plain(format!("   {}", p.duty()), MUTED));
             }
-            v.push(plain("1-6: appoint the next dwarf · x: vacate all".into(), MUTED));
+            v.push(plain("1-6: choose who holds a post · x: vacate all".into(), MUTED));
             v.push(Line::default());
             v.push(header(&format!("Justice ({} unpunished)", g.unpunished())));
             if g.crimes.is_empty() {
@@ -2307,6 +2307,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::Trade { side, sel } => draw_trade(f, area, app, side, sel),
         Mode::Status { tab, scroll } => draw_status(f, area, &app.game, tab, scroll),
         Mode::Labors { row, col, detail } => draw_labors(f, area, app, row, col, detail),
+        Mode::Appoint { pos, sel } => draw_appoint(f, area, &app.game, pos, sel),
         Mode::Help => popup(f, area, 60, 47, " Help ", help_text()),
         Mode::ConfirmQuit => popup(
             f,
@@ -3150,6 +3151,58 @@ fn draw_loading(f: &mut Frame, app: &App) {
     );
 }
 
+/// The list of dwarves who could take a post, best suited first.
+fn draw_appoint(f: &mut Frame, area: Rect, g: &Game, pos: usize, sel: usize) {
+    use crate::game::positions_fit_word as fit_word;
+    let p = crate::game::Position::ALL[pos];
+    let cands = g.candidates(p);
+    let holder = g.holder(p).map(|d| d.id);
+    let mut v: Vec<Line<'static>> = Vec::new();
+    v.push(plain(format!(" {}", p.duty()), MUTED));
+    v.push(Line::default());
+    // Keep the selection in view on a short screen.
+    let room = (area.height as usize).saturating_sub(9).max(3);
+    let rows = cands.len() + 1;
+    let first = sel.saturating_sub(room / 2).min(rows.saturating_sub(room));
+    for row in first..rows.min(first + room) {
+        let hi = if row == sel { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
+        if row == 0 {
+            let cur = holder.is_none();
+            v.push(Line::from(vec![
+                Span::styled(if cur { " ► " } else { "   " }, hi.fg(KEY)),
+                Span::styled(format!("{:<56}", "(leave vacant)"), hi.fg(MUTED)),
+            ]));
+            continue;
+        }
+        let id = cands[row - 1];
+        let Some(d) = g.dwarves.iter().find(|d| d.id == id) else { continue };
+        let (score, notes) = p.suitability(d);
+        let fit_col = match fit_word(score) {
+            "good fit" => Color::Rgb(110, 220, 110),
+            "fair fit" => Color::Rgb(230, 200, 90),
+            _ => Color::Rgb(230, 110, 90),
+        };
+        let other = g.position_of(id).filter(|&q| q != p).map(|q| format!(" [now {}]", q.title().to_lowercase()));
+        let mut spans = vec![
+            Span::styled(if holder == Some(id) { " ► " } else { "   " }, hi.fg(KEY)),
+            Span::styled(format!("{:<20}", d.name), hi.fg(TEXT)),
+            Span::styled(format!("{:<9} ", fit_word(score)), hi.fg(fit_col)),
+            Span::styled(notes.join(", "), hi.fg(MUTED)),
+        ];
+        if let Some(o) = other {
+            spans.push(Span::styled(o, hi.fg(Color::Rgb(240, 160, 100))));
+        }
+        v.push(Line::from(spans));
+    }
+    if rows > room {
+        v.push(plain(format!(" ({} of {} shown)", room.min(rows), rows), MUTED));
+    }
+    v.push(Line::default());
+    v.push(plain(" ↑↓ choose · Enter appoint · Esc cancel   ► holds it now".into(), MUTED));
+    let h = v.len() as u16 + 2;
+    popup(f, area, 72, h, &format!(" Appoint {} ", p.title().to_lowercase()), v);
+}
+
 fn popup(f: &mut Frame, area: Rect, w: u16, h: u16, title: &str, lines: Vec<Line<'static>>) {
     let w = w.min(area.width);
     let h = h.min(area.height);
@@ -3321,12 +3374,26 @@ mod tests {
         app.mode = Mode::Nobles;
         let key = |c| crossterm::event::KeyEvent::new(c, crossterm::event::KeyModifiers::NONE);
         app.on_key(key(crossterm::event::KeyCode::Char('1')));
-        assert!(matches!(app.mode, Mode::Nobles));
+        assert!(matches!(app.mode, Mode::Appoint { pos: 0, sel: 1 }));
         let s = dump(&mut app, 130, 60);
         println!("{}", s);
-        let first = app.game.dwarves.iter().find(|d| d.alive && !d.is_child()).unwrap().name.clone();
-        assert!(s.contains(&format!("Manager: {}", first)), "{}", s);
+        assert!(s.contains("Appoint manager") && s.contains("(leave vacant)") && s.contains("fit"), "{}", s);
+        let best = app.game.candidates(crate::game::Position::Manager)[0];
+        let best = app.game.dwarves.iter().find(|d| d.id == best).unwrap().name.clone();
+        app.on_key(key(crossterm::event::KeyCode::Enter));
+        assert!(matches!(app.mode, Mode::Nobles));
+        let s = dump(&mut app, 130, 60);
+        assert!(s.contains(&format!("Manager: {}", best)), "{}", s);
         assert!(s.contains("Broker: vacant"));
+        // Esc leaves a post as it was; the vacant row empties it.
+        app.on_key(key(crossterm::event::KeyCode::Char('1')));
+        assert!(matches!(app.mode, Mode::Appoint { pos: 0, sel: 1 }), "opens on the holder");
+        app.on_key(key(crossterm::event::KeyCode::Esc));
+        assert!(app.game.holder(crate::game::Position::Manager).is_some());
+        app.on_key(key(crossterm::event::KeyCode::Char('1')));
+        app.on_key(key(crossterm::event::KeyCode::Up));
+        app.on_key(key(crossterm::event::KeyCode::Enter));
+        assert!(app.game.holder(crate::game::Position::Manager).is_none());
     }
 
     #[test]

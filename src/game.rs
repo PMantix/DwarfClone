@@ -43,7 +43,7 @@ mod fire;
 pub use weather::Weather;
 pub use detail::ENGRAVED;
 pub use justice::{Crime, CrimeKind};
-pub use positions::{Demand, Position};
+pub use positions::{fit_word as positions_fit_word, Demand, Position};
 pub use orders::{all_recipes, WorkOrder};
 pub use medicine::Treatment;
 pub use military::{Squad, SquadOrder};

@@ -59,8 +59,9 @@ pools) until there are twenty fish in store; fish can be eaten or cooked. A mill
 meals rather than two.
 
 **Positions.** The nobles screen (`n`) appoints a manager, bookkeeper, broker, chief medical
-dwarf, militia commander and sheriff with `1`-`6` (each press hands the post to the next dwarf, then
-leaves it vacant). Work orders only run with a manager, checked once a day, or several
+dwarf, militia commander and sheriff: `1`-`6` opens a list of the adults, best suited first,
+each marked a good, fair or poor fit with the qualities behind it (and any post they already
+hold, which they'd give up); Enter appoints, the top row leaves the post vacant, Esc cancels. Work orders only run with a manager, checked once a day, or several
 times a day with a bookkeeper too. Merchants want a tenth over value; a broker haggles that
 down to between a twentieth and nothing, depending on how sociable they are. A chief medical
 dwarf makes treatment a quarter faster and a militia commander makes training a quarter
