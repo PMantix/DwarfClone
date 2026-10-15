@@ -557,6 +557,11 @@ pub struct Dwarf {
     pub bouts_won: u32,
     #[serde(default)]
     pub contests_won: u32,
+    #[serde(default)]
+    pub duels_won: u32,
+    /// When they last fought a duel (no new challenge for a season).
+    #[serde(default)]
+    pub last_duel: u64,
 }
 
 impl Dwarf {

@@ -232,6 +232,13 @@ skill, weapons, armour). They come home days later in triumph, with loot (an art
 and then, from ruins) and a new name for whoever led them (Delver, the Bold, Dragonslayer,
 a beast slain in the legends), or beaten, and not always all of them.
 
+**Drama.** Cheerful dwarves play pranks (laughed off, or resented by the hot-tempered); two
+dwarves pining for the same unwed one grow jealous of each other; bitter rivals trade insults,
+and when one of them has a temper, a challenge to a duel at dawn. Duels are fought to a
+yield: the winner is proud, the loser bloodied, and half the time they shake hands and the
+grudge is over. Three duels won make a dwarf Unbeaten. The status screen's Gossip tab (`z`,
+`5`) keeps it all.
+
 **Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
 in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
 gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks

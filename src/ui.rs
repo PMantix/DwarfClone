@@ -2679,6 +2679,20 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
     let alive: Vec<&Dwarf> = g.dwarves.iter().filter(|d| d.alive).collect();
     let n = alive.len().max(1);
     match tab {
+        4 => {
+            v.push(header("What the fortress is talking about"));
+            if g.gossip.is_empty() {
+                v.push(plain("Nothing worth repeating yet.".into(), MUTED));
+            }
+            for (t, s) in g.gossip.iter().rev() {
+                let day = match g.tick.saturating_sub(*t) / crate::game::DAY {
+                    0 => "today".to_string(),
+                    1 => "yesterday".to_string(),
+                    n => format!("{} days ago", n),
+                };
+                v.push(Line::from(vec![Span::styled(format!("{:<12}", day), Style::default().fg(MUTED)), Span::styled(s.clone(), Style::default().fg(TEXT))]));
+            }
+        }
         0 => {
             let civ = g.civ.map_or("no civilization".to_string(), |c| format!("the {}", g.overworld.civ(c).name));
             v.push(header(&format!("{}, an outpost of {}", g.fortress_name, civ)));
@@ -3046,7 +3060,7 @@ fn draw_status(f: &mut Frame, area: Rect, g: &Game, tab: usize, scroll: usize) {
     let lines = status_lines(g, tab);
     let visible = h.saturating_sub(4) as usize;
     let scroll = scroll.min(lines.len().saturating_sub(visible));
-    let names = ["1 Overview", "2 Stocks", "3 Health", "4 Dwarves"];
+    let names = ["1 Overview", "2 Stocks", "3 Health", "4 Dwarves", "5 Gossip"];
     let mut tabs: Vec<Span> = Vec::new();
     for (i, n) in names.iter().enumerate() {
         let st = if i == tab { Style::default().fg(BLACK).bg(KEY) } else { Style::default().fg(TEXT) };

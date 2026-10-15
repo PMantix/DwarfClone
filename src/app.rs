@@ -796,9 +796,9 @@ impl App {
             Mode::Look { sel } => self.key_look(k, sel),
             Mode::Status { tab, scroll } => match k.code {
                 KeyCode::Esc | KeyCode::Char('z') => self.mode = Mode::Normal,
-                KeyCode::Tab | KeyCode::Right => self.mode = Mode::Status { tab: (tab + 1) % 4, scroll: 0 },
-                KeyCode::Left => self.mode = Mode::Status { tab: (tab + 3) % 4, scroll: 0 },
-                KeyCode::Char(c @ '1'..='4') => self.mode = Mode::Status { tab: c as usize - '1' as usize, scroll: 0 },
+                KeyCode::Tab | KeyCode::Right => self.mode = Mode::Status { tab: (tab + 1) % 5, scroll: 0 },
+                KeyCode::Left => self.mode = Mode::Status { tab: (tab + 4) % 5, scroll: 0 },
+                KeyCode::Char(c @ '1'..='5') => self.mode = Mode::Status { tab: c as usize - '1' as usize, scroll: 0 },
                 KeyCode::Up => self.mode = Mode::Status { tab, scroll: scroll.saturating_sub(1) },
                 KeyCode::Down => self.mode = Mode::Status { tab, scroll: scroll + 1 },
                 KeyCode::PageUp => self.mode = Mode::Status { tab, scroll: scroll.saturating_sub(20) },

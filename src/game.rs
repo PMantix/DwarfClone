@@ -46,6 +46,8 @@ mod chronicle;
 mod visitors;
 mod ruins;
 mod expeditions;
+mod drama;
+pub use drama::Duel;
 pub use expeditions::Expedition;
 pub use expeditions::Goal as expeditions_goal;
 pub use ruins::Vault;
@@ -282,6 +284,12 @@ pub struct Game {
     /// A vault has been looked for (older saves get one when loaded).
     #[serde(default)]
     vault_placed: bool,
+    /// Who said what about whom, newest last.
+    #[serde(default)]
+    pub gossip: Vec<(u64, String)>,
+    /// Duels waiting for dawn.
+    #[serde(default)]
+    pub duels: Vec<Duel>,
     /// A squad away from the map, if any.
     #[serde(default)]
     pub expedition: Option<Expedition>,
@@ -398,6 +406,8 @@ impl Game {
             vault: None,
             vault_placed: false,
             expedition: None,
+            gossip: Vec::new(),
+            duels: Vec::new(),
             chronicles: Vec::new(),
             chronicle_ready: false,
             creatures: BTreeMap::new(),
@@ -878,6 +888,10 @@ impl Game {
         }
         if self.tick % 100 == 60 {
             self.expedition_tick();
+            self.duels_tick();
+        }
+        if self.tick % DAY == DAY / 2 + 7 {
+            self.drama_daily();
         }
         if self.tick % 10 == 0 {
             self.grow_farms();
