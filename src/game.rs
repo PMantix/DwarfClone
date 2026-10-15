@@ -47,6 +47,7 @@ mod visitors;
 mod ruins;
 mod expeditions;
 mod drama;
+mod pets;
 pub use drama::Duel;
 pub use expeditions::Expedition;
 pub use expeditions::Goal as expeditions_goal;
@@ -892,6 +893,7 @@ impl Game {
         }
         if self.tick % DAY == DAY / 2 + 7 {
             self.drama_daily();
+            self.pets_daily();
         }
         if self.tick % 10 == 0 {
             self.grow_farms();

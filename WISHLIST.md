@@ -39,7 +39,6 @@ by fun for the effort; promote one into "Up next" with steps when it's next.
 |---|---|---|---|---|
 | F05 | Disasters (cave-ins done) | ~~Cave-ins~~ (8e392cc); still to come: earthquakes crack walls; the spring melt floods the lower halls; the magma sea surges | W11, W01 | S–M |
 | F07 | Bards and wandering heroes (bards, warriors done) | ~~Bards, wandering warriors who join~~ (1ec4734); still to come: monster hunters who come for the beast in your caverns, performers who dance or tell stories | B08 taverns, legends | S |
-| F11 | Pets with personality | A cat chooses its dwarf; pets follow their owners, steal food, catch vermin, and are mourned; a war dog that saved a life is remembered | W08 animals | S |
 | F12 | Legendary catches | A giant pike in the lake that breaks lines for years until one fisher lands it; a sea serpent in the ocean embark | W13 fishing | S |
 | F13 | Wild weather | Blizzards that trap the caravan, thunderstorms, a drought that dries the brook, blood rain over an evil site that drives dwarves mad | W19 weather | S–M |
 | F14 | The necromancer | A tower on the world map whose master raises your own unburied dead against you; tombs matter | W10 burial, sieges | M |
@@ -115,7 +114,8 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
-- **F10 Grudges, romance and duels** (this commit): pranks, jealousy between rivals in love, insults between enemies, challenges to duels at dawn fought to a yield (half end the grudge; three wins make a dwarf Unbeaten), and a Gossip tab on the status screen.
+- **F11 Pets with personality** (this commit): cats adopt dwarves and dogs are taken in, with names; they follow their dwarf, cheer them, get up to mischief in the gossip, are mourned when they die, and wait for a dwarf who died.
+- **F10 Grudges, romance and duels** (d34c633): pranks, jealousy between rivals in love, insults between enemies, challenges to duels at dawn fought to a yield (half end the grudge; three wins make a dwarf Unbeaten), and a Gossip tab on the status screen.
 - **F09 Expeditions** (dbfd92e): `e` on the military screen sends a squad off the map to explore a ruin, raid an enemy site or hunt a megabeast in its lair; odds from squad strength against danger; they return days later with loot, epithets and legends (a hunted beast dies in the world history), or beaten and fewer.
 - **F08 Ancient ruins** (8965925): every site hides a sealed marble hall of a dead civilization deep in the rock, its walls engraved with the world's oldest legends; breaking in reveals gold, gems and an artifact, and usually wakes its warden, a unique horror; older saves get one on load.
 - **F06 The year's chronicle** (3acce89): each new year pauses on a parchment page telling the year that ended (population, wealth, migrants, births, festivals, wars, kills, fires, crimes, the legends' great deeds, the dead), titled after its biggest event; `c` pages through every year.

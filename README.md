@@ -239,6 +239,11 @@ yield: the winner is proud, the loser bloodied, and half the time they shake han
 grudge is over. Three duels won make a dwarf Unbeaten. The status screen's Gossip tab (`z`,
 `5`) keeps it all.
 
+**Pets.** A cat may choose a dwarf for its own, and a dwarf may take in a dog; pets get a name
+("Pebble the cat"), follow their dwarf about, cheer them up, and get up to mischief that ends
+up in the gossip (a rat left on a pillow, a sausage stolen from the kitchen). A dwarf grieves
+a pet that dies, and a pet whose dwarf has died waits by the door.
+
 **Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
 in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
 gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks

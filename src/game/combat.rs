@@ -29,7 +29,7 @@ pub(super) fn adjacent(a: Pos, b: Pos) -> bool {
     a.z == b.z && (a.x - b.x).abs() <= 1 && (a.y - b.y).abs() <= 1
 }
 
-fn near(a: Pos, b: Pos, r: i32) -> bool {
+pub(super) fn near(a: Pos, b: Pos, r: i32) -> bool {
     (a.z - b.z).abs() <= 1 && (a.x - b.x).abs() <= r && (a.y - b.y).abs() <= r
 }
 
@@ -911,6 +911,7 @@ impl Game {
         if c.breathes_fire {
             self.dragon_hoard(&c);
         }
+        self.pet_died(&c);
         if let Some(f) = c.figure {
             let label = c.title();
             let kind = self.overworld.figures.get(f as usize).map_or("beast".to_string(), |x| x.kind.clone());

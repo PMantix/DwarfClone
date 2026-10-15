@@ -423,6 +423,9 @@ pub struct Creature {
     /// The historical figure leading a siege, if this is its general.
     #[serde(default)]
     pub general: Option<u32>,
+    /// The dwarf this cat or dog has made its own.
+    #[serde(default)]
+    pub pet_of: Option<u32>,
     /// A tavern guest's calling (see `game::visitors`), 0 for everyone else.
     #[serde(default)]
     pub visitor: u8,
@@ -472,6 +475,7 @@ impl Creature {
             sneaking: false,
             loot: None,
             general: None,
+            pet_of: None,
             visitor: 0,
             breathes_fire: false,
             breath_cd: 0,

@@ -173,6 +173,10 @@ impl Game {
             }
         }
 
+        // Pets keep near their dwarves.
+        if c.pet_of.is_some() && self.pet_follow(c) {
+            return true;
+        }
         // Pastured animals stay in their pasture.
         if let Some(zid) = c.pasture {
             let Some(tiles) = self.zones.get(&zid).filter(|z| z.kind == ZoneKind::Pasture).map(|z| z.tiles.clone()) else {
