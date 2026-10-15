@@ -21,6 +21,8 @@ pub struct YearLog {
     pub cave_in: bool,
     pub artifact: Option<String>,
     pub hero: Option<String>,
+    #[serde(default)]
+    pub ruin: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -51,6 +53,9 @@ impl YearLog {
         }
         if let Some(b) = &self.beast {
             return format!("The Year of the {}", cap(b));
+        }
+        if let Some(r) = &self.ruin {
+            return format!("The Year of {}", cap(r));
         }
         if let Some(h) = &self.hero {
             return format!("The Year of {}", h);

@@ -44,6 +44,8 @@ mod heroes;
 mod disasters;
 mod chronicle;
 mod visitors;
+mod ruins;
+pub use ruins::Vault;
 pub use chronicle::{Chronicle, YearLog};
 pub use festivals::Festival;
 mod fire;
@@ -271,6 +273,12 @@ pub struct Game {
     /// The festival under way, if any.
     #[serde(default)]
     pub festival: Option<Festival>,
+    /// The sealed hall of an older people, somewhere in the rock.
+    #[serde(default)]
+    pub vault: Option<Vault>,
+    /// A vault has been looked for (older saves get one when loaded).
+    #[serde(default)]
+    vault_placed: bool,
     /// What's happened so far this year, for the chronicle.
     #[serde(default)]
     pub year_log: YearLog,
@@ -335,6 +343,7 @@ impl Game {
         let mut g = Game::from_world(world, seed, ow, (sx, sy), embark);
         g.settle_expedition(embark);
         g.bring_animals(embark);
+        g.place_vault();
         report("Strike the earth!", 1.0);
         g
     }
@@ -380,6 +389,8 @@ impl Game {
             flames: Vec::new(),
             festival: None,
             year_log: YearLog::default(),
+            vault: None,
+            vault_placed: false,
             chronicles: Vec::new(),
             chronicle_ready: false,
             creatures: BTreeMap::new(),
@@ -2572,6 +2583,9 @@ impl Game {
             self.warn("aquifer", "You have breached an aquifer! Water is seeping in.", (90, 160, 255));
         }
         let broke_in = self.world.reveal_around(q) && !self.world.outside(q);
+        if broke_in {
+            self.check_vault();
+        }
         if broke_in && self.near_magma(q) {
             self.warn(
                 "magmasea",
@@ -3061,6 +3075,8 @@ mod fort_check {
     fn inspect_fort() {
         let path = std::env::var("FORT").unwrap();
         let mut g: Game = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        g.after_load();
+        eprintln!("vault: {:?}", g.vault.as_ref().map(|v| (&v.name, v.min)));
         let mut kinds: BTreeMap<String, (usize, usize)> = BTreeMap::new();
         for b in g.buildings.values() {
             let e = kinds.entry(b.kind.name().to_string()).or_default();

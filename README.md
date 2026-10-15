@@ -220,6 +220,11 @@ the legends, your fortress's own most of all ("A Song for Kelda the Dragonslayer
 enjoy them, and a hero who hears their own deeds sung is proud. Wandering dwarf warriors rest a
 couple of days and may ask to stay, joining as seasoned fighters known as the Wanderer.
 
+**Ancient ruins.** Somewhere deep in the rock of every site lies a sealed hall of a vanished
+people, its walls carved with scenes from the world's oldest legends. Mine into it and it gives
+up its treasure (gold, gems and one artifact of legend), and usually wakes the warden sealed in
+with them, a one-of-a-kind horror. Older saves get a hall of their own when loaded.
+
 **Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
 in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
 gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks

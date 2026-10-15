@@ -216,7 +216,15 @@ mod tests {
             c.pos = g.tavern_tiles()[0];
             c.born = 0;
             g.tick = DAY * 3;
-            g.visitor_think(&mut c);
+            // Now and then they stroll about the tavern before deciding.
+            for _ in 0..50 {
+                c.path.clear();
+                c.pos = g.tavern_tiles()[0];
+                g.visitor_think(&mut c);
+                if c.visitor != WARRIOR {
+                    break;
+                }
+            }
             if c.visitor == JOINED {
                 joined = true;
                 break;

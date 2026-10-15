@@ -687,6 +687,20 @@ impl Game {
     }
 
     pub(super) fn spawn_cave_horror(&mut self, p: Pos) -> u32 {
+        let id = self.make_cave_horror(p);
+        let (label, desc) = {
+            let c = &self.creatures[&id];
+            (c.label.clone().unwrap_or_default(), c.desc.clone().unwrap_or_default())
+        };
+        self.msg(&format!("{} has come up from the caverns! {}", label, desc), (230, 120, 255));
+        let fort = self.fortress_name.clone();
+        self.legend(format!("{} emerged from the depths beneath {}.", label, fort));
+        self.pause_request = true;
+        id
+    }
+
+    /// A one-of-a-kind horror with its own name and look, quietly.
+    pub(super) fn make_cave_horror(&mut self, p: Pos) -> u32 {
         const SYL: [&str; 14] = ["oz", "ul", "thra", "gim", "vex", "oth", "rhu", "zal", "mor", "quo", "sk", "yth", "ash", "nug"];
         const SIZE: [&str; 5] = ["towering", "hulking", "bloated", "spindly", "enormous"];
         const SHAPE: [&str; 7] = ["blob", "serpent", "spider", "beetle", "lizard", "worm", "bat"];
@@ -706,12 +720,8 @@ impl Game {
         let label = format!("{} the cave horror", name);
         let c = self.creatures.get_mut(&id).unwrap();
         c.siege = true;
-        c.label = Some(label.clone());
-        c.desc = Some(desc.clone());
-        self.msg(&format!("{} has come up from the caverns! {}", label, desc), (230, 120, 255));
-        let fort = self.fortress_name.clone();
-        self.legend(format!("{} emerged from the depths beneath {}.", label, fort));
-        self.pause_request = true;
+        c.label = Some(label);
+        c.desc = Some(desc);
         id
     }
 

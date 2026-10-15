@@ -66,7 +66,8 @@ pub fn read(dir: &Path, file: &str, report: Report) -> Result<Game, String> {
     report("Reading the save file", 0.1);
     let data = std::fs::read_to_string(dir.join(file)).map_err(|e| format!("Load failed: {}", e))?;
     report("Unpacking the fortress", 0.5);
-    let g: Game = serde_json::from_str(&data).map_err(|e| format!("Load failed (an older save?): {}", e))?;
+    let mut g: Game = serde_json::from_str(&data).map_err(|e| format!("Load failed (an older save?): {}", e))?;
+    g.after_load();
     report("Loaded", 1.0);
     Ok(g)
 }

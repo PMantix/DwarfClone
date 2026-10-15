@@ -64,7 +64,7 @@ impl Game {
 
     /// An event from the world's history (1-based index into the legends,
     /// 0 if there are none), favouring the fortress's own recent past.
-    fn pick_scene(&mut self) -> u32 {
+    pub(super) fn pick_scene(&mut self) -> u32 {
         let n = self.overworld.events.len();
         if n == 0 {
             return 0;
