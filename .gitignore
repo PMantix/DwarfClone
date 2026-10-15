@@ -2,3 +2,4 @@
 *.json.save
 /saves
 /dwarfclone_save.json
+/dist
