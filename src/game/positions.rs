@@ -259,7 +259,8 @@ impl Game {
     }
 
     /// Hand a position to the next adult in line, or leave it vacant after
-    /// the last. Returns a message.
+    /// the last. Returns a message. (The nobles screen picks from a list now.)
+    #[cfg(test)]
     pub fn cycle_position(&mut self, p: Position) -> String {
         let cands: Vec<u32> = self.dwarves.iter().filter(|d| d.alive && !d.insane && !d.is_child()).map(|d| d.id).collect();
         let cur = self.positions.iter().find(|(q, _)| *q == p).map(|(_, id)| *id);

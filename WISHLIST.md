@@ -16,7 +16,7 @@ Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against o
 
 ## Up next
 
-Suggested order: the Fun first list (top down, mixing in W20 when combat needs it), then the Beyond DF list.
+Suggested order: the rest of F05 and F07, W20, then the Beyond DF list (B01-B02 next: diplomacy and armies on the map build on F01).
 
 ### Tier 1: basics you'll miss in the first hour
 
@@ -108,7 +108,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
-- **F15 Megaprojects** (this commit): a great monument (`b`, `G`, thirty stone blocks) that rises as scaffolding and, finished, is dedicated to the fortress's greatest hero with a feast, a legend, a milestone and a year named for it; dwarves who pass admire it. The build menu became a two-column popup so every building fits.
+- **F15 Megaprojects** (95c75ce): a great monument (`b`, `G`, thirty stone blocks) that rises as scaffolding and, finished, is dedicated to the fortress's greatest hero with a feast, a legend, a milestone and a year named for it; dwarves who pass admire it. The build menu became a two-column popup so every building fits.
 - **F16 Mysteries** (5c6e81e): the Whispering Stone (a gem that whispers to its miner and leads them to the sealed hall, or into a fey mood) and the hooded stranger (a long-lost sibling or friend who joins, or a goblin spy who brings the next siege for certain); each unfolds over days and happens once.
 - **F17 Milestones** (5bd6098): banners across the map for the fortress's firsts (masterwork, artifact, child, festival, hero, broken siege, dragon, vault, great fish, expedition, a deathless year, the necromancer's end) and its population and wealth marks, listed on the status screen.
 - **F14 The necromancer** (d66ee5c): some sites have a necromancer nearby who, after the first year, raises the dead: a horde from the map edge and our own unburied dead where they lie (more unburied, more raids); risen dwarves fall back as corpses to bury; destroying the necromancer stills every corpse for good (Deathbane).

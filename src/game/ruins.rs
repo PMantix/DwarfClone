@@ -20,6 +20,7 @@ impl Vault {
         Pos::new((self.min.x + self.max.x) / 2, (self.min.y + self.max.y) / 2, self.min.z)
     }
 
+    #[cfg(test)]
     pub fn contains(&self, p: Pos) -> bool {
         p.z == self.min.z && p.x >= self.min.x && p.x <= self.max.x && p.y >= self.min.y && p.y <= self.max.y
     }
