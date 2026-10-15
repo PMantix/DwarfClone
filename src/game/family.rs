@@ -14,7 +14,7 @@ impl Game {
     }
 
     /// Whose corpse this is, if it's one of ours still waiting for burial.
-    fn burial_corpse(&self, it: &Item) -> bool {
+    pub(super) fn burial_corpse(&self, it: &Item) -> bool {
         it.kind == ItemKind::Corpse && it.label.as_deref().map_or(false, |n| self.dead_unrested(n).is_some())
     }
 

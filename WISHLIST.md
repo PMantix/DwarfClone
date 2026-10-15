@@ -39,7 +39,6 @@ by fun for the effort; promote one into "Up next" with steps when it's next.
 |---|---|---|---|---|
 | F05 | Disasters (cave-ins done) | ~~Cave-ins~~ (8e392cc); still to come: earthquakes crack walls; the spring melt floods the lower halls; the magma sea surges | W11, W01 | S–M |
 | F07 | Bards and wandering heroes (bards, warriors done) | ~~Bards, wandering warriors who join~~ (1ec4734); still to come: monster hunters who come for the beast in your caverns, performers who dance or tell stories | B08 taverns, legends | S |
-| F14 | The necromancer | A tower on the world map whose master raises your own unburied dead against you; tombs matter | W10 burial, sieges | M |
 | F15 | Megaprojects | A giant statue, a tower, a great bridge: built over years, marked on the world map, and celebrated with a festival when finished | W01, F03 | M |
 | F16 | Mysteries | A whispering crystal deep down, a cursed artifact that changes hands, a stranger who knows a dwarf's name; small chains of events with a twist | strange moods, legends | M |
 | F17 | Milestones | Banners and fanfare for the first masterpiece, the hundredth dwarf, the first year without a death, the first dragon slain | announcements | S |
@@ -112,7 +111,8 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
-- **F13 Wild weather** (this commit): thunderstorms (lightning far more often, flashes on screen), blizzards that chill dwarves caught outside, summer droughts with no rain and shallow water drying up, and blood rain over evil sites that badly upsets anyone caught in it.
+- **F14 The necromancer** (this commit): some sites have a necromancer nearby who, after the first year, raises the dead: a horde from the map edge and our own unburied dead where they lie (more unburied, more raids); risen dwarves fall back as corpses to bury; destroying the necromancer stills every corpse for good (Deathbane).
+- **F13 Wild weather** (0263e92): thunderstorms (lightning far more often, flashes on screen), blizzards that chill dwarves caught outside, summer droughts with no rain and shallow water drying up, and blood rain over evil sites that badly upsets anyone caught in it.
 - **F12 Legendary catches** (97b27e3): one named great fish per site (pike, bog eel or sea serpent) bites now and then and breaks the line, easier to land with skill and each escape; landing it is a masterwork catch, a legend and an epithet.
 - **F11 Pets with personality** (1bf21d3): cats adopt dwarves and dogs are taken in, with names; they follow their dwarf, cheer them, get up to mischief in the gossip, are mourned when they die, and wait for a dwarf who died.
 - **F10 Grudges, romance and duels** (d34c633): pranks, jealousy between rivals in love, insults between enemies, challenges to duels at dawn fought to a yield (half end the grudge; three wins make a dwarf Unbeaten), and a Gossip tab on the status screen.

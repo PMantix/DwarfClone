@@ -49,6 +49,8 @@ mod expeditions;
 mod drama;
 mod pets;
 mod fishlore;
+mod necromancy;
+pub use necromancy::Necromancer;
 pub use fishlore::BigFish;
 pub use drama::Duel;
 pub use expeditions::Expedition;
@@ -290,6 +292,11 @@ pub struct Game {
     /// A vault has been looked for (older saves get one when loaded).
     #[serde(default)]
     vault_placed: bool,
+    /// A necromancer in a tower nearby, at some sites.
+    #[serde(default)]
+    pub necromancer: Option<Necromancer>,
+    #[serde(default)]
+    necro_rolled: bool,
     /// The legendary fish in the site's waters, once it has shown itself.
     #[serde(default)]
     pub big_fish: Option<BigFish>,
@@ -367,6 +374,7 @@ impl Game {
         g.settle_expedition(embark);
         g.bring_animals(embark);
         g.place_vault();
+        g.place_necromancer();
         report("Strike the earth!", 1.0);
         g
     }
@@ -418,6 +426,8 @@ impl Game {
             expedition: None,
             gossip: Vec::new(),
             big_fish: None,
+            necromancer: None,
+            necro_rolled: false,
             duels: Vec::new(),
             chronicles: Vec::new(),
             chronicle_ready: false,
@@ -952,6 +962,7 @@ impl Game {
             self.maybe_cave_horror();
             self.maybe_thief();
             self.maybe_visitor(season);
+            self.maybe_undead();
             self.caravan_season(season);
             self.issue_mandate();
             self.maybe_strange_mood();

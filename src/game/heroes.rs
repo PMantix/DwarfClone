@@ -15,7 +15,9 @@ impl Game {
     pub(super) fn credit_kill(&mut self, d: &mut Dwarf, c: &Creature) {
         d.kills += 1;
         let what = c.title();
-        if c.breathes_fire {
+        if c.species == crate::creature::Species::Undead && c.general.is_some() {
+            self.earn_epithet(d, "Deathbane", RANK_BEAST + 1, &format!("destroyed {}", what));
+        } else if c.breathes_fire {
             self.earn_epithet(d, "Dragonslayer", RANK_BEAST + 2, &format!("slew {}", what));
         } else if let Some(f) = c.figure {
             let kind = self.overworld.figures.get(f as usize).map_or("beast".to_string(), |x| x.kind.clone());

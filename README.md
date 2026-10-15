@@ -255,6 +255,13 @@ cold winter's snow can turn to a blizzard that chills anyone caught outside; som
 a drought, with no rain and shallow water drying away; and over an evil site, rain sometimes
 falls the colour of blood, a terrible thing to be caught out in.
 
+**The necromancer.** Some sites have a necromancer for a neighbour, in a tower nearby. After
+the first year, now and then, they raise the dead against you: a horde of walking corpses from
+the edge of the map, and every one of your own dead left unburied rises where it lies (the more
+unburied dead, the more often they come). Strike a risen dwarf down and the corpse is back,
+to be buried properly. Sometimes the necromancer (`N`) comes along to watch; destroy them and
+all the dead fall still, for good, and whoever did it is known as Deathbane.
+
 **Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
 in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
 gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks

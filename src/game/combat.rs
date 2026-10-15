@@ -908,6 +908,10 @@ impl Game {
         if let Some(it) = self.items.get_mut(&id) {
             it.label = Some(info.name.to_string());
         }
+        if c.species == Species::Undead {
+            // Dust, or one of our own to bury.
+            self.items.remove(&id);
+        }
         if c.breathes_fire {
             self.dragon_hoard(&c);
         }
@@ -936,6 +940,8 @@ impl Game {
             for d in self.dwarves.iter_mut().filter(|d| d.alive) {
                 d.think(&format!("rejoiced at the death of {}", label), -10, tick);
             }
+        } else if c.species == Species::Undead {
+            self.undead_destroyed(&c);
         } else if let Some(f) = c.general {
             // The general falls: it goes down in history, and the army breaks.
             let label = c.title();

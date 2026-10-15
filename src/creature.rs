@@ -28,6 +28,8 @@ pub enum Species {
     Raider,
     /// A guest at the tavern: a bard or a wandering warrior.
     Visitor,
+    /// The walking dead, raised by a necromancer.
+    Undead,
 }
 
 pub struct SpeciesInfo {
@@ -48,7 +50,7 @@ pub struct SpeciesInfo {
 }
 
 impl Species {
-    pub const ALL: [Species; 17] = [
+    pub const ALL: [Species; 18] = [
         Species::Deer,
         Species::Wolf,
         Species::Bear,
@@ -66,6 +68,7 @@ impl Species {
         Species::Elf,
         Species::Raider,
         Species::Visitor,
+        Species::Undead,
     ];
 
     /// People rather than beasts: they leave corpses, not carcasses.
@@ -75,7 +78,7 @@ impl Species {
 
     /// Animals that can be kept (people and cave folk can't).
     pub fn tameable(self) -> bool {
-        !self.person() && !matches!(self, Species::Troglodyte | Species::Megabeast | Species::CaveHorror | Species::Skulker)
+        !self.person() && !matches!(self, Species::Troglodyte | Species::Megabeast | Species::CaveHorror | Species::Skulker | Species::Undead)
     }
 
     /// Most young in one birth.
@@ -280,6 +283,21 @@ impl Species {
                 mover: Mover::Dwarf,
                 edged: false,
             },
+            Species::Undead => SpeciesInfo {
+                name: "walking corpse",
+                plural: "walking dead",
+                glyph: 'z',
+                color: (150, 175, 130),
+                scale: 1.0,
+                damage: 4.0,
+                verb: "claws",
+                move_delay: 5,
+                attack_delay: 11,
+                aggro: 999,
+                skill: 2,
+                mover: Mover::Goblin,
+                edged: false,
+            },
             Species::Visitor => SpeciesInfo {
                 name: "visitor",
                 plural: "visitors",
@@ -482,10 +500,10 @@ impl Creature {
         }
     }
 
-    /// Megabeasts and cave horrors: they hunt to the death and their end
-    /// is history.
+    /// Megabeasts, cave horrors and the walking dead: they hunt to the
+    /// death and never break and run.
     pub fn legendary(&self) -> bool {
-        self.figure.is_some() || self.species == Species::CaveHorror
+        self.figure.is_some() || matches!(self.species, Species::CaveHorror | Species::Undead)
     }
 
     /// Dangerous and known about: sneaks don't count until they're spotted.

@@ -32,6 +32,9 @@ impl Game {
         if !self.vault_placed {
             self.place_vault();
         }
+        if !self.necro_rolled {
+            self.place_necromancer();
+        }
     }
 
     pub(super) fn place_vault(&mut self) {

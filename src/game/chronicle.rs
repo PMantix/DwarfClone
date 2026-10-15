@@ -23,6 +23,8 @@ pub struct YearLog {
     pub hero: Option<String>,
     #[serde(default)]
     pub ruin: Option<String>,
+    #[serde(default)]
+    pub undead: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -50,6 +52,9 @@ impl YearLog {
     pub fn title(&self) -> String {
         if self.dragon {
             return "The Year of the Dragon".into();
+        }
+        if self.undead {
+            return "The Year the Dead Walked".into();
         }
         if let Some(b) = &self.beast {
             return format!("The Year of the {}", cap(b));

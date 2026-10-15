@@ -277,7 +277,13 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
     let mut beasts: HashMap<(i32, i32), (char, Color, bool)> = HashMap::new();
     for c in g.creatures.values().filter(|c| c.alive && !c.sneaking && c.pos.z == z && g.world.t(c.pos).revealed) {
         let info = c.species.info();
-        let (glyph, color) = if c.breathes_fire { ('D', (255, 90, 40)) } else { (info.glyph, info.color) };
+        let (glyph, color) = if c.breathes_fire {
+            ('D', (255, 90, 40))
+        } else if c.species == crate::creature::Species::Undead && c.general.is_some() {
+            ('N', (190, 110, 240))
+        } else {
+            (info.glyph, info.color)
+        };
         beasts.insert((c.pos.x, c.pos.y), (glyph, rgb(color), c.hostile()));
     }
     let mut items: HashMap<(i32, i32), (char, Color)> = HashMap::new();
@@ -2709,6 +2715,9 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
             v.push(header(&format!("{}, an outpost of {}", g.fortress_name, civ)));
             v.push(plain(g.date_string(), TEXT));
             v.push(plain(format!("Fortress wealth ☼{}", g.wealth()), Color::Rgb(255, 215, 60)));
+            if let Some(n) = g.necromancer.as_ref().filter(|n| n.known && n.alive) {
+                v.push(plain(format!("The necromancer {} dwells in {}. Bury your dead.", n.name, n.tower), Color::Rgb(190, 120, 230)));
+            }
             v.push(Line::default());
 
             let food = g.items.values().filter(|it| it.is_food() && it.kind != ItemKind::Drink && it.kind != ItemKind::Seed).count();
