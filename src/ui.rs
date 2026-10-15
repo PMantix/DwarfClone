@@ -1241,6 +1241,9 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                     Span::styled(who, Style::default().fg(if g.holder(*p).is_some() { Color::Rgb(255, 230, 120) } else { MUTED })),
                 ]));
                 v.push(plain(format!("   {}", p.duty()), MUTED));
+                if let Some(f) = g.post_fit(*p) {
+                    v.push(plain(format!("   {}: {}", f.name(), p.effect(f)), rgb(f.color())));
+                }
             }
             v.push(plain("1-6: choose who holds a post · x: vacate all".into(), MUTED));
             v.push(Line::default());
@@ -3153,15 +3156,21 @@ fn draw_loading(f: &mut Frame, app: &App) {
 
 /// The list of dwarves who could take a post, best suited first.
 fn draw_appoint(f: &mut Frame, area: Rect, g: &Game, pos: usize, sel: usize) {
-    use crate::game::positions_fit_word as fit_word;
+    use crate::game::Fit;
     let p = crate::game::Position::ALL[pos];
     let cands = g.candidates(p);
     let holder = g.holder(p).map(|d| d.id);
     let mut v: Vec<Line<'static>> = Vec::new();
     v.push(plain(format!(" {}", p.duty()), MUTED));
+    for f in Fit::ALL {
+        v.push(Line::from(vec![
+            Span::styled(format!("   {:<9} ", f.name()), Style::default().fg(rgb(f.color()))),
+            Span::styled(p.effect(f).to_string(), Style::default().fg(MUTED)),
+        ]));
+    }
     v.push(Line::default());
     // Keep the selection in view on a short screen.
-    let room = (area.height as usize).saturating_sub(9).max(3);
+    let room = (area.height as usize).saturating_sub(12).max(3);
     let rows = cands.len() + 1;
     let first = sel.saturating_sub(room / 2).min(rows.saturating_sub(room));
     for row in first..rows.min(first + room) {
@@ -3177,16 +3186,12 @@ fn draw_appoint(f: &mut Frame, area: Rect, g: &Game, pos: usize, sel: usize) {
         let id = cands[row - 1];
         let Some(d) = g.dwarves.iter().find(|d| d.id == id) else { continue };
         let (score, notes) = p.suitability(d);
-        let fit_col = match fit_word(score) {
-            "good fit" => Color::Rgb(110, 220, 110),
-            "fair fit" => Color::Rgb(230, 200, 90),
-            _ => Color::Rgb(230, 110, 90),
-        };
+        let fit = Fit::of(score);
         let other = g.position_of(id).filter(|&q| q != p).map(|q| format!(" [now {}]", q.title().to_lowercase()));
         let mut spans = vec![
             Span::styled(if holder == Some(id) { " ► " } else { "   " }, hi.fg(KEY)),
             Span::styled(format!("{:<20}", d.name), hi.fg(TEXT)),
-            Span::styled(format!("{:<9} ", fit_word(score)), hi.fg(fit_col)),
+            Span::styled(format!("{:<9} ", fit.name()), hi.fg(rgb(fit.color()))),
             Span::styled(notes.join(", "), hi.fg(MUTED)),
         ];
         if let Some(o) = other {

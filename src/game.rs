@@ -43,7 +43,7 @@ mod fire;
 pub use weather::Weather;
 pub use detail::ENGRAVED;
 pub use justice::{Crime, CrimeKind};
-pub use positions::{fit_word as positions_fit_word, Demand, Position};
+pub use positions::{Demand, Fit, Position};
 pub use orders::{all_recipes, WorkOrder};
 pub use medicine::Treatment;
 pub use military::{Squad, SquadOrder};
@@ -244,6 +244,9 @@ pub struct Game {
     /// Titled nobles' demands for furnishings in their rooms.
     #[serde(default)]
     pub demands: Vec<Demand>,
+    /// Each post holder's fit, for while they're out for their own turn.
+    #[serde(skip)]
+    fit_cache: Vec<(Position, Fit)>,
     /// The fortress's record of crimes, newest last.
     #[serde(default)]
     pub crimes: Vec<Crime>,
@@ -344,6 +347,7 @@ impl Game {
             work_orders: Vec::new(),
             positions: Vec::new(),
             demands: Vec::new(),
+            fit_cache: Vec::new(),
             crimes: Vec::new(),
             weather: Weather::Clear,
             snow_lying: false,
@@ -778,6 +782,21 @@ impl Game {
     // Simulation
     // ------------------------------------------------------------------
 
+    /// A manager sees to work orders once a day, twice if they're good at it;
+    /// a bookkeeper's counts let them do it more often, by how good they are.
+    pub(super) fn orders_due(&self, tick: u64) -> bool {
+        let counts = match self.post_fit(Position::Bookkeeper) {
+            Some(Fit::Good) => Some(150),
+            Some(Fit::Fair) => Some(300),
+            Some(Fit::Poor) => Some(600),
+            None => None,
+        };
+        let good_manager = self.post_fit(Position::Manager) == Some(Fit::Good);
+        tick % DAY == DAY / 4
+            || counts.map_or(false, |every| tick % every == 150 % every)
+            || (good_manager && tick % DAY == DAY * 3 / 4)
+    }
+
     pub fn step(&mut self) {
         self.tick += 1;
         if self.tick % 3 == 0 {
@@ -796,10 +815,10 @@ impl Game {
         if self.tick % 10 == 5 && self.fire_cells.as_ref().map_or(true, |c| !c.is_empty()) {
             self.fires();
         }
-        // A manager sees to work orders; a bookkeeper's counts let them do it
-        // several times a day rather than once.
-        let bookkeeper = self.has_post(Position::Bookkeeper);
-        if (bookkeeper && self.tick % 300 == 150) || self.tick % DAY == DAY / 4 {
+        if self.tick % 50 == 0 {
+            self.count_fits();
+        }
+        if self.orders_due(self.tick) {
             self.manage_orders();
         }
         if self.tick % 10 == 0 {

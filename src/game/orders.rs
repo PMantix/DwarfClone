@@ -70,12 +70,15 @@ impl Game {
             self.warn("nomanager", "Work orders wait for a manager (n to appoint one).", (230, 200, 90));
             return;
         }
+        // A poor manager only queues one job per order at a time.
+        let careless = self.post_fit(super::Position::Manager) == Some(super::Fit::Poor);
         for i in 0..self.work_orders.len() {
             let WorkOrder { recipe, keep } = self.work_orders[i];
             let (kind, per_job) = recipe.product();
             let have = self.stock_of(kind);
             let mut queued = self.queued(recipe);
-            while queued < MAX_QUEUED && have + queued * per_job.max(1) < keep as usize {
+            let cap = if careless { (queued + 1).min(MAX_QUEUED) } else { MAX_QUEUED };
+            while queued < cap && have + queued * per_job.max(1) < keep as usize {
                 let shop = self
                     .buildings
                     .values()
@@ -133,6 +136,7 @@ mod tests {
         g.manage_orders();
         assert_eq!(g.queued(Recipe::Barrel), 0, "no manager, no work orders");
         let m = g.dwarves[0].id;
+        g.dwarves[0].personality.diligence = 40;
         g.appoint(super::super::Position::Manager, Some(m));
         g.manage_orders();
         assert_eq!(g.queued(Recipe::Barrel), 2, "should queue just enough barrels");

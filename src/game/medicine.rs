@@ -80,12 +80,14 @@ pub fn needed(d: &Dwarf) -> Vec<Treatment> {
 }
 
 impl Game {
-    /// Base time for a treatment: a chief medical dwarf runs a tighter hospital.
+    /// Base time for a treatment: a chief medical dwarf runs a tighter
+    /// hospital, the more so the better they suit the post.
     pub(super) fn treat_time(&self, base: u32) -> u32 {
-        if self.has_post(super::Position::ChiefMedic) {
-            base * 3 / 4
-        } else {
-            base
+        match self.post_fit(super::Position::ChiefMedic) {
+            Some(super::Fit::Good) => base * 3 / 5,
+            Some(super::Fit::Fair) => base * 3 / 4,
+            Some(super::Fit::Poor) => base * 9 / 10,
+            None => base,
         }
     }
 

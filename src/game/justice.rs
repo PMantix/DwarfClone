@@ -79,12 +79,32 @@ impl Game {
             return;
         }
         d.task = Task::Idle;
-        self.punish(culprit, &d.name);
+        // A sheriff who can't fight or keep their head lets culprits slip away.
+        let slip = match self.post_fit(super::Position::Sheriff) {
+            Some(super::Fit::Good) => 0.0,
+            Some(super::Fit::Fair) => 0.15,
+            _ => 0.4,
+        };
+        if self.rng.chance(slip) {
+            let who = self.dwarves.iter().find(|o| o.id == culprit).map_or("the culprit".to_string(), |o| o.name.clone());
+            self.msg(&format!("{} slipped away from {}.", who, d.name), (200, 170, 255));
+            d.idle_cd = 150;
+            return;
+        }
+        // A hot-tempered sheriff beats harder, an even-tempered one more lightly.
+        let force = if d.personality.temper >= 20 {
+            4
+        } else if d.personality.temper <= -20 {
+            2
+        } else {
+            3
+        };
+        self.punish(culprit, &d.name, force);
     }
 
     /// Justice is done: jail if the fortress has one (three days a charge,
     /// at most ten), otherwise a beating; every open charge is closed.
-    pub(super) fn punish(&mut self, culprit: u32, sheriff: &str) {
+    pub(super) fn punish(&mut self, culprit: u32, sheriff: &str, force: i32) {
         let tick = self.tick;
         let mut victims = Vec::new();
         let mut what = Vec::new();
@@ -109,7 +129,7 @@ impl Game {
             o.think(&format!("was jailed for {}", what.join(" and ")), 12, tick);
             self.msg(&format!("{} has sentenced {} to {} days in jail for {}.", sheriff, name, days, what.join(" and ")), (200, 170, 255));
         } else {
-            o.body.wound(part, 3, false);
+            o.body.wound(part, force, false);
             o.think(&format!("was beaten by the sheriff for {}", what.join(" and ")), 15, tick);
             self.msg(&format!("{} has punished {} for {}.", sheriff, name, what.join(" and ")), (200, 170, 255));
         }
@@ -165,6 +185,7 @@ mod tests {
         let mut g = Game::new(81);
         g.creatures.retain(|_, c| c.tame);
         let (culprit, victim, sheriff) = (g.dwarves[0].id, g.dwarves[1].id, g.dwarves[2].id);
+        g.dwarves[2].fight_xp = 2000;
         g.report_crime(CrimeKind::Assault, culprit, Some(victim), "punched someone".into());
         g.report_crime(CrimeKind::Vandalism, culprit, None, "toppled a chair".into());
         for _ in 0..DAY {
@@ -193,6 +214,7 @@ mod tests {
         let jail_tiles = g.add_zone(e.offset(-8, -8, -1), e.offset(-5, -5, 1), ZoneKind::Jail);
         assert!(jail_tiles > 0);
         let (culprit, sheriff) = (g.dwarves[0].id, g.dwarves[2].id);
+        g.dwarves[2].fight_xp = 2000;
         g.report_crime(CrimeKind::Vandalism, culprit, None, "toppled a chair".into());
         g.appoint(super::super::Position::Sheriff, Some(sheriff));
         for _ in 0..DAY {

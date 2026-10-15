@@ -226,8 +226,15 @@ impl Game {
                 xp += 1;
             }
         }
-        // A militia commander drills them harder: a quarter more, on average.
-        if self.has_post(super::Position::Commander) && (self.tick + d.id as u64) % 4 == 0 {
+        // A militia commander drills them harder: a quarter more on average,
+        // half for a veteran, an eighth for a poor one.
+        let every = match self.post_fit(super::Position::Commander) {
+            Some(super::Fit::Good) => 2,
+            Some(super::Fit::Fair) => 4,
+            Some(super::Fit::Poor) => 8,
+            None => 0,
+        };
+        if every > 0 && (self.tick + d.id as u64) % every == 0 {
             xp += 1;
         }
         xp

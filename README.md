@@ -61,11 +61,19 @@ meals rather than two.
 **Positions.** The nobles screen (`n`) appoints a manager, bookkeeper, broker, chief medical
 dwarf, militia commander and sheriff: `1`-`6` opens a list of the adults, best suited first,
 each marked a good, fair or poor fit with the qualities behind it (and any post they already
-hold, which they'd give up); Enter appoints, the top row leaves the post vacant, Esc cancels. Work orders only run with a manager, checked once a day, or several
-times a day with a bookkeeper too. Merchants want a tenth over value; a broker haggles that
-down to between a twentieth and nothing, depending on how sociable they are. A chief medical
-dwarf makes treatment a quarter faster and a militia commander makes training a quarter
-faster. As the fortress grows rich and populous (☼25,000 and 20 dwarves; ☼60,000 and 30;
+hold, which they'd give up); Enter appoints, the top row leaves the post vacant, Esc cancels.
+How well the holder fits sets how well the post is done:
+
+| Post | Suits | Good / fair / poor fit |
+|---|---|---|
+| Manager | diligent, sociable | work orders seen to twice a day / once a day / once, one job per order at a time |
+| Bookkeeper | diligent, calm | stock counted (orders seen to) 8 / 4 / 2 times a day |
+| Broker | sociable, even-tempered | the merchants' tenth markup haggled to almost nothing / about half / barely cut |
+| Chief medical dwarf | Medicine skill, diligent | treatment 40% / 25% / 10% faster |
+| Militia commander | fighting skill, sociable | training 50% / 25% / 12% faster |
+| Sheriff | fighting skill, even-tempered | culprits never / sometimes / often slip away; hot-tempered sheriffs beat harder |
+
+Work orders only run with a manager. As the fortress grows rich and populous (☼25,000 and 20 dwarves; ☼60,000 and 30;
 ☼120,000 and 40) the civilization makes one dwarf baron, then count, then duke. Titled
 nobles expect grand bedrooms and now and then demand a piece of furniture of a given
 material in their bedroom or office; meeting it within half a year pleases them, ignoring it

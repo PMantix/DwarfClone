@@ -91,14 +91,68 @@ impl Position {
     }
 }
 
-/// A word for a suitability score.
-pub fn fit_word(score: i32) -> &'static str {
-    if score >= 25 {
-        "good fit"
-    } else if score >= 0 {
-        "fair fit"
-    } else {
-        "poor fit"
+/// How well a post's holder suits it, which sets how well they do it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fit {
+    Poor,
+    Fair,
+    Good,
+}
+
+impl Fit {
+    pub const ALL: [Fit; 3] = [Fit::Good, Fit::Fair, Fit::Poor];
+
+    pub fn of(score: i32) -> Fit {
+        if score >= 25 {
+            Fit::Good
+        } else if score >= 0 {
+            Fit::Fair
+        } else {
+            Fit::Poor
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Fit::Good => "good fit",
+            Fit::Fair => "fair fit",
+            Fit::Poor => "poor fit",
+        }
+    }
+
+    pub fn color(self) -> (u8, u8, u8) {
+        match self {
+            Fit::Good => (110, 220, 110),
+            Fit::Fair => (230, 200, 90),
+            Fit::Poor => (230, 110, 90),
+        }
+    }
+}
+
+impl Position {
+    /// What a holder of each fit brings to the post.
+    pub fn effect(self, f: Fit) -> &'static str {
+        use Fit::*;
+        match (self, f) {
+            (Position::Manager, Good) => "orders seen to twice a day",
+            (Position::Manager, Fair) => "orders seen to once a day",
+            (Position::Manager, Poor) => "one job per order at a time",
+            (Position::Bookkeeper, Good) => "stock counted 8 times a day",
+            (Position::Bookkeeper, Fair) => "stock counted 4 times a day",
+            (Position::Bookkeeper, Poor) => "stock counted twice a day",
+            (Position::Broker, Good) => "markup haggled to almost nothing",
+            (Position::Broker, Fair) => "markup roughly halved",
+            (Position::Broker, Poor) => "markup barely cut",
+            (Position::ChiefMedic, Good) => "treatment 40% faster",
+            (Position::ChiefMedic, Fair) => "treatment 25% faster",
+            (Position::ChiefMedic, Poor) => "treatment 10% faster",
+            (Position::Commander, Good) => "training 50% faster",
+            (Position::Commander, Fair) => "training 25% faster",
+            (Position::Commander, Poor) => "training 12% faster",
+            (Position::Sheriff, Good) => "culprits never get away",
+            (Position::Sheriff, Fair) => "culprits now and then get away",
+            (Position::Sheriff, Poor) => "culprits often get away",
+        }
     }
 }
 
@@ -138,6 +192,22 @@ impl Game {
         }
     }
 
+    /// How well the post's holder suits it, if it's filled. A holder out of
+    /// the dwarf list for their own turn is judged from the last count.
+    pub fn post_fit(&self, p: Position) -> Option<Fit> {
+        let id = self.positions.iter().find(|(q, _)| *q == p).map(|(_, id)| *id)?;
+        match self.dwarves.iter().find(|d| d.id == id) {
+            Some(d) if d.alive && !d.insane => Some(Fit::of(p.suitability(d).0)),
+            Some(_) => None,
+            None => Some(self.fit_cache.iter().find(|(q, _)| *q == p).map_or(Fit::Fair, |f| f.1)),
+        }
+    }
+
+    /// Remember each holder's fit, for when they're mid-turn.
+    pub(super) fn count_fits(&mut self) {
+        self.fit_cache = Position::ALL.iter().filter_map(|&p| self.post_fit(p).map(|f| (p, f))).collect();
+    }
+
     pub fn position_of(&self, dwarf: u32) -> Option<Position> {
         self.positions.iter().find(|(_, id)| *id == dwarf).map(|(p, _)| *p)
     }
@@ -149,6 +219,7 @@ impl Game {
         if let Some(id) = dwarf {
             self.positions.push((p, id));
         }
+        self.count_fits();
     }
 
     /// The dwarves who could take a post, best suited first.
@@ -374,7 +445,7 @@ mod tests {
         assert_eq!(c[0], b, "the best fighter should top the sheriff list");
         assert_eq!(c.len(), ids.len());
         let (s, notes) = Position::Sheriff.suitability(g.dwarves.iter().find(|d| d.id == b).unwrap());
-        assert_eq!(fit_word(s), "good fit");
+        assert_eq!(Fit::of(s), Fit::Good);
         assert!(notes.iter().any(|n| n.contains("fighter")), "{:?}", notes);
         // Taking a second post moves a dwarf off the first, and says so.
         g.appoint(Position::Broker, Some(a));
@@ -403,21 +474,55 @@ mod tests {
     }
 
     #[test]
-    fn a_chief_medical_dwarf_and_a_commander_speed_things_up() {
+    fn a_chief_medical_dwarf_and_a_commander_speed_things_up_by_how_well_they_fit() {
         let mut g = Game::new(81);
         let d = g.dwarves[1].clone();
-        let four = |g: &mut Game| {
-            (0..4u64).map(|t| {
+        let eight = |g: &mut Game| {
+            (0..8u64).map(|t| {
                 g.tick = 1000 + t;
                 g.drill_xp(&d)
             }).sum::<u32>()
         };
-        let plain = four(&mut g);
+        let plain = eight(&mut g);
         let cmd = g.dwarves[0].id;
         g.appoint(Position::Commander, Some(cmd));
-        assert_eq!(four(&mut g), plain + 1, "commander should add a quarter more drill");
+        // Fighting skill makes the commander: none, some, a veteran.
+        for (xp, social, extra, fit) in [(0, -50, 1, Fit::Poor), (400, 0, 2, Fit::Fair), (2000, 0, 4, Fit::Good)] {
+            g.dwarves[0].fight_xp = xp;
+            g.dwarves[0].personality.sociability = social;
+            assert_eq!(g.post_fit(Position::Commander), Some(fit));
+            assert_eq!(eight(&mut g), plain + extra, "{:?} commander", fit);
+        }
         assert_eq!(g.treat_time(100), 100);
         g.appoint(Position::ChiefMedic, Some(g.dwarves[2].id));
-        assert_eq!(g.treat_time(100), 75);
+        g.dwarves[2].personality.diligence = 0;
+        for (xp, t) in [(0, 90), (800, 75), (2000, 60)] {
+            g.dwarves[2].skills[Labor::Medicine.idx()] = xp;
+            assert_eq!(g.treat_time(100), t);
+        }
+        // A holder taking their own turn is judged from the last count.
+        g.count_fits();
+        let medic = std::mem::take(&mut g.dwarves[2]);
+        assert_eq!(g.treat_time(100), 60, "judged from the last count");
+        g.dwarves[2] = medic;
+    }
+
+    #[test]
+    fn a_good_manager_and_bookkeeper_see_to_orders_more_often() {
+        let mut g = Game::new(81);
+        let (m, b) = (g.dwarves[0].id, g.dwarves[1].id);
+        g.appoint(Position::Manager, Some(m));
+        let passes = |g: &mut Game| (0..DAY).filter(|&t| g.orders_due(t)).count();
+        g.dwarves[0].personality.diligence = 0;
+        g.dwarves[0].personality.sociability = 0;
+        assert_eq!(passes(&mut g), 1);
+        g.dwarves[0].personality.diligence = 40;
+        assert_eq!(passes(&mut g), 2);
+        g.appoint(Position::Bookkeeper, Some(b));
+        g.dwarves[1].personality.anxiety = 0;
+        for (dil, n) in [(-30, 2), (10, 4), (40, 8)] {
+            g.dwarves[1].personality.diligence = dil;
+            assert!(passes(&mut g) >= n, "a bookkeeper with diligence {} should count {} times", dil, n);
+        }
     }
 }

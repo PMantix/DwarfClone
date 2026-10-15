@@ -282,10 +282,13 @@ impl Game {
     /// Offer `ours` (item ids at the depot) for `theirs` (caravan goods ids).
     /// Merchants want a tenth on top. Returns a message either way.
     /// The percentage over value merchants insist on: a tenth, or less with
-    /// a broker to haggle (a sociable one gets them down to nothing).
+    /// a broker to haggle (a sociable, even-tempered one gets them down to nothing).
     pub fn trade_margin(&self) -> u32 {
         match self.holder(super::Position::Broker) {
-            Some(b) => 10u32.saturating_sub(5 + ((b.personality.sociability + 50).clamp(0, 100) / 20) as u32),
+            Some(b) => {
+                let score = super::Position::Broker.suitability(b).0;
+                10 - ((score + 40) / 9).clamp(0, 10) as u32
+            }
             None => 10,
         }
     }
@@ -365,11 +368,16 @@ mod tests {
         assert!(!g.offer_ok(105, 100));
         let id = g.dwarves[0].id;
         g.dwarves[0].personality.sociability = 50;
+        g.dwarves[0].personality.temper = 0;
         g.appoint(crate::game::Position::Broker, Some(id));
         assert_eq!(g.trade_margin(), 0, "a sociable broker gets full value");
         assert!(g.offer_ok(100, 100));
+        g.dwarves[0].personality.sociability = 0;
+        assert_eq!(g.trade_margin(), 6, "a middling broker gets some off");
+        g.dwarves[0].personality.temper = 50;
+        assert!(g.trade_margin() > 6, "a hot temper costs them");
         g.dwarves[0].personality.sociability = -50;
-        assert_eq!(g.trade_margin(), 5, "even a gruff broker halves the markup");
+        assert_eq!(g.trade_margin(), 10, "a gruff, hot-tempered broker gets nowhere");
     }
 
     #[test]
