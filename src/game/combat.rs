@@ -510,6 +510,8 @@ impl Game {
         c.figure = Some(f);
         c.label = Some(label.clone());
         c.breathes_fire = kind == "dragon";
+        self.year_log.dragon |= kind == "dragon";
+        self.year_log.beast = Some(kind.clone());
         let fort = self.fortress_name.clone();
         if kind == "dragon" {
             self.msg(&format!("{} descends upon {}! The sky burns with dragonfire!", label, fort), (255, 60, 60));
@@ -819,6 +821,7 @@ impl Game {
         self.siege_size = n as u32;
         self.siege_routed = false;
         self.siege_race = Some(foe.race);
+        self.year_log.siege = Some(civ_name.clone());
         let plural = species.info().plural;
         let text = if foe.race == Race::Goblin {
             format!("A vile force of darkness has arrived! {} {}, led by {}.", n, plural, general_name)
@@ -884,6 +887,9 @@ impl Game {
             self.drop_item(id, c.pos);
         }
         let info = c.species.info();
+        if c.hostile() || c.siege {
+            self.year_log.kills += 1;
+        }
         if c.species == Species::Merchant {
             self.merchant_died(&c);
         }

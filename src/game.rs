@@ -42,6 +42,8 @@ mod weather;
 mod festivals;
 mod heroes;
 mod disasters;
+mod chronicle;
+pub use chronicle::{Chronicle, YearLog};
 pub use festivals::Festival;
 mod fire;
 pub use weather::Weather;
@@ -268,6 +270,15 @@ pub struct Game {
     /// The festival under way, if any.
     #[serde(default)]
     pub festival: Option<Festival>,
+    /// What's happened so far this year, for the chronicle.
+    #[serde(default)]
+    pub year_log: YearLog,
+    /// One page per year gone by.
+    #[serde(default)]
+    pub chronicles: Vec<Chronicle>,
+    /// A new page has been written and should be shown.
+    #[serde(skip)]
+    pub chronicle_ready: bool,
     /// Tiles a dragon's breath just swept, with the tick, for drawing.
     #[serde(skip)]
     pub flames: Vec<(Pos, u64)>,
@@ -367,6 +378,9 @@ impl Game {
             fire_cells: None,
             flames: Vec::new(),
             festival: None,
+            year_log: YearLog::default(),
+            chronicles: Vec::new(),
+            chronicle_ready: false,
             creatures: BTreeMap::new(),
             station: None,
             alert: true,
@@ -877,6 +891,7 @@ impl Game {
             self.msg(&format!("{} has arrived.", s), (200, 200, 255));
             self.autosave_request = true;
             if season == 0 {
+                self.write_chronicle();
                 self.new_year();
             }
             self.seasonal_ice(season);
@@ -1037,6 +1052,7 @@ impl Game {
             self.dwarves.push(d);
         }
         self.msg(&format!("Some migrants have arrived. ({} dwarves)", n), (120, 255, 120));
+        self.year_log.arrivals += n as u32;
         self.pause_request = true;
     }
 
@@ -1242,6 +1258,7 @@ impl Game {
         let name = d.name.clone();
         self.msg(&format!("{} {}.", name, cause), (255, 60, 60));
         self.hero_fell(d, cause);
+        self.year_log.deaths.push(d.called());
         let tick = self.tick;
         d.died = Some(tick);
         d.due = None;

@@ -43,6 +43,11 @@ impl Game {
     }
 
     fn set_alight(&mut self, p: Pos) {
+        if self.fire_cells.as_ref().map_or(false, |c| c.is_empty()) {
+            // A new outbreak, not a fire spreading.
+            self.year_log.fires += 1;
+            self.year_log.autumn_fire |= (self.tick / SEASON) % 4 == 2;
+        }
         self.world.t_mut(p).fire = FUEL;
         if let Some(c) = self.fire_cells.as_mut() {
             c.push(self.world.idx(p));

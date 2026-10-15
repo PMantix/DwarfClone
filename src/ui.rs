@@ -761,7 +761,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
     let mut v: Vec<Line> = Vec::new();
     let title;
     match &app.mode {
-        Mode::Normal | Mode::Help | Mode::ConfirmQuit => {
+        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } => {
             title = "Main".to_string();
             v.extend(stocks(g));
             v.push(Line::default());
@@ -780,6 +780,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(key_line("o", "Traffic", false));
             v.push(key_line("m", "Military", false));
             v.push(key_line("n", "Nobles, mandates & rooms", false));
+            v.push(key_line("c", "Chronicle of the years", false));
             v.push(key_line("L", "Legends of the world", false));
             v.push(key_line("v", "View dwarf at cursor", false));
             v.push(key_line("Tab", "Jump to next dwarf", false));
@@ -1653,6 +1654,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("w / o", "burrows / traffic designations"),
         k("m", "military: squads, orders, uniforms, alerts"),
         k("n", "nobles, mandates, bedrooms, wealth"),
+        k("c", "the chronicle: each year told as a story"),
         k("L", "legends: history, civs, sites, figures"),
         k("Tab", "jump to next dwarf"),
         k("H", "jump back to the wagon"),
@@ -2388,6 +2390,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::Labors { row, col, detail } => draw_labors(f, area, app, row, col, detail),
         Mode::Appoint { pos, sel } => draw_appoint(f, area, &app.game, pos, sel),
         Mode::PickOwner { zone, sel } => draw_pick_owner(f, area, &app.game, zone, sel),
+        Mode::Chronicle { idx } => draw_chronicle(f, area, &app.game, idx),
         Mode::Help => popup(f, area, 60, 47, " Help ", help_text()),
         Mode::ConfirmQuit => popup(
             f,
@@ -3270,6 +3273,47 @@ fn draw_loading(f: &mut Frame, app: &App) {
     );
 }
 
+/// A page of the chronicle, like a leaf of parchment.
+fn draw_chronicle(f: &mut Frame, area: Rect, g: &Game, idx: usize) {
+    let Some(c) = g.chronicles.get(idx) else { return };
+    let ink = Color::Rgb(70, 45, 25);
+    let paper = Color::Rgb(232, 214, 170);
+    let mut v: Vec<Line<'static>> = vec![
+        Line::default(),
+        Line::from(Span::styled(c.title.clone(), Style::default().fg(Color::Rgb(130, 30, 20)).add_modifier(Modifier::BOLD))).alignment(ratatui::layout::Alignment::Center),
+        Line::from(Span::styled(format!("~ the chronicle of {}, year {} ~", g.fortress_name, c.year), Style::default().fg(Color::Rgb(120, 90, 60)))).alignment(ratatui::layout::Alignment::Center),
+        Line::default(),
+    ];
+    for l in &c.lines {
+        v.push(Line::from(Span::styled(l.clone(), Style::default().fg(ink))));
+        v.push(Line::default());
+    }
+    let nav = format!(
+        "{}  page {} of {}  {}   any other key closes",
+        if idx > 0 { "◀" } else { " " },
+        idx + 1,
+        g.chronicles.len(),
+        if idx + 1 < g.chronicles.len() { "▶" } else { " " }
+    );
+    v.push(Line::from(Span::styled(nav, Style::default().fg(Color::Rgb(120, 90, 60)))).alignment(ratatui::layout::Alignment::Center));
+    let w = 76.min(area.width);
+    let inner = w.saturating_sub(4).max(1) as usize;
+    let rows: usize = v.iter().map(|l| (l.width().max(1) + inner - 1) / inner).sum();
+    let h = (rows as u16 + 2).min(area.height);
+    let r = centered(area, w, h);
+    f.render_widget(Clear, r);
+    f.render_widget(
+        Paragraph::new(v).wrap(Wrap { trim: true }).style(Style::default().bg(paper)).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(ratatui::widgets::BorderType::Double)
+                .border_style(Style::default().fg(Color::Rgb(140, 100, 50)).bg(paper))
+                .padding(ratatui::widgets::Padding::horizontal(1)),
+        ),
+        r,
+    );
+}
+
 /// The list of dwarves who could own a bedroom or office.
 fn draw_pick_owner(f: &mut Frame, area: Rect, g: &Game, zone: u32, sel: usize) {
     let Some(z) = g.zones.get(&zone) else { return };
@@ -3599,6 +3643,27 @@ mod tests {
         app.on_key(key(KeyCode::Up));
         app.on_key(key(KeyCode::Esc));
         assert_eq!(app.game.zones[&zid].owner, Some(first));
+    }
+
+    #[test]
+    fn the_chronicle_opens_at_the_new_year() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::generated(42);
+        app.mode = Mode::Normal;
+        app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::Normal, "nothing to read yet");
+        app.game.tick = crate::game::YEAR;
+        app.game.year_log.festivals.push("harvest feast".into());
+        app.game.write_chronicle_for_test();
+        app.paused = false;
+        app.frame();
+        assert_eq!(app.mode, Mode::Chronicle { idx: 0 });
+        assert!(app.paused);
+        let s = dump(&mut app, 120, 40);
+        println!("{}", s);
+        assert!(s.contains("The Year of Feasting") && s.contains("harvest feast"), "{}", s);
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::Normal);
     }
 
     #[test]

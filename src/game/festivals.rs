@@ -114,6 +114,7 @@ impl Game {
         };
         self.msg(&text, (255, 215, 60));
         self.festival = Some(Festival { kind, until, venue, attended: Vec::new(), mugs: Vec::new(), told: 0 });
+        self.year_log.festivals.push(kind.name().to_string());
     }
 
     /// A dwarf at a festival: get there, then dance, drink and compete.

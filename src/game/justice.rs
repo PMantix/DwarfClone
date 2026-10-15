@@ -38,6 +38,7 @@ pub struct Crime {
 impl Game {
     /// Put a crime on the record.
     pub(super) fn report_crime(&mut self, kind: CrimeKind, culprit: u32, victim: Option<u32>, what: String) {
+        self.year_log.crimes += 1;
         self.crimes.push(Crime { kind, culprit, victim, what, tick: self.tick, punished: false });
         // The record keeps the last few dozen.
         if self.crimes.len() > 40 {

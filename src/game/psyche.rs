@@ -720,6 +720,7 @@ impl Game {
         d.task = Task::Idle;
         let who = d.name.clone();
         self.msg(&format!("{} has created {}!", who, desc), (255, 215, 60));
+        self.year_log.artifact = self.items[&id].label.clone();
         self.earn_epithet(d, "Inspired", super::heroes::RANK_FEAT, &format!("made {}", desc));
         let fort = self.fortress_name.clone();
         self.legend(format!("{} created {} in {}.", who, desc, fort));

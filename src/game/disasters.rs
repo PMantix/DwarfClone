@@ -78,6 +78,7 @@ impl Game {
         }
         self.dig_version += 1;
         self.water_cells = None;
+        self.year_log.cave_in = true;
         let tick_msg = "Cave-in! The ceiling of a wide hall has come down. Halls need a pillar every ten tiles.";
         self.msg(tick_msg, (255, 120, 60));
         let fort = self.fortress_name.clone();

@@ -256,6 +256,8 @@ pub enum Mode {
     /// Choose who owns a bedroom or office: row 0 is nobody, the rest are
     /// `Game::owner_candidates`.
     PickOwner { zone: u32, sel: usize },
+    /// A page of the fortress's chronicle (index into `Game::chronicles`).
+    Chronicle { idx: usize },
     /// Choose an embark site on the world map.
     WorldMap { x: i32, y: i32 },
     /// Browse history. `from_world` returns to the world map on Esc.
@@ -368,6 +370,13 @@ impl App {
                     self.paused = true;
                     break;
                 }
+            }
+        }
+        if self.game.chronicle_ready {
+            self.game.chronicle_ready = false;
+            if matches!(self.mode, Mode::Normal) {
+                self.paused = true;
+                self.mode = Mode::Chronicle { idx: self.game.chronicles.len() - 1 };
             }
         }
         if self.game.autosave_request {
@@ -1044,6 +1053,14 @@ impl App {
                     _ => {}
                 }
             }
+            Mode::Chronicle { idx } => {
+                let n = self.game.chronicles.len().max(1);
+                match k.code {
+                    KeyCode::Left => self.mode = Mode::Chronicle { idx: idx.saturating_sub(1) },
+                    KeyCode::Right => self.mode = Mode::Chronicle { idx: (idx + 1).min(n - 1) },
+                    _ => self.mode = Mode::Normal,
+                }
+            }
             Mode::PickOwner { zone, sel } => {
                 let cands = self.game.owner_candidates();
                 let n = cands.len() + 1;
@@ -1125,6 +1142,10 @@ impl App {
             KeyCode::Char('o') => self.mode = Mode::Traffic { level: 2, corner: None },
             KeyCode::Char('m') => self.mode = Mode::Military,
             KeyCode::Char('n') => self.mode = Mode::Nobles,
+            KeyCode::Char('c') => match self.game.chronicles.len() {
+                0 => self.flash = Some("No chronicle yet: the chronicler writes at the turn of each year.".into()),
+                n => self.mode = Mode::Chronicle { idx: n - 1 },
+            },
             KeyCode::Char('j') => self.mode = Mode::Orders { sel: 0, pick: None },
             KeyCode::Char('L') => self.mode = Mode::Legends { tab: 0, scroll: usize::MAX, from_world: false },
             KeyCode::Char('v') => {

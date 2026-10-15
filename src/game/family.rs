@@ -252,6 +252,7 @@ impl Game {
             self.msg(&format!("{} has given birth to a {}, {}.", mname, if girl { "girl" } else { "boy" }, cname), (150, 255, 150));
             let fort = self.fortress_name.clone();
             self.legend(format!("{} was born in {} to {}.", cname, fort, mname));
+            self.year_log.births += 1;
         }
         // Weddings, between close friends of age.
         let adults: Vec<usize> = (0..self.dwarves.len())

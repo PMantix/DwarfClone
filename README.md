@@ -208,6 +208,12 @@ pillar or undug rock (a hall eleven wide) and the ceiling comes down in rubble o
 beneath. At nine wide the ceiling creaks in warning. Leave a pillar of rock, or build a wall,
 in big halls. Natural caverns stand however wide they are.
 
+**The chronicle.** At each new year the game pauses on a page telling the year that ended:
+how many souls, migrants and births, the festivals kept, the wars, the foes slain, fires and
+crimes, the great deeds from the legends, and the dead mourned, under a title taken from the
+biggest event (The Year of the Dragon, The Year of War with the..., The Year of Sorrow, The
+Year of Burning Leaves, The Year of Quiet Stone...). `c` reads it again; ←/→ turns the pages.
+
 **Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
 in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
 gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks
