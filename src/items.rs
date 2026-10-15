@@ -387,7 +387,7 @@ pub struct Item {
     /// Marked to be thrown on the garbage dump.
     #[serde(default)]
     pub dump: bool,
-    /// Days of wear on clothing.
+    /// Days of wear on clothing; days of rot on a body.
     #[serde(default)]
     pub wear: u16,
     /// Left alone: nobody hauls, uses or eats it.

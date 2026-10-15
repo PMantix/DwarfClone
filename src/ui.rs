@@ -395,6 +395,14 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                 fg = Color::Rgb(255, 230, 120);
                 bg = Color::Rgb(200, 60, 0);
             }
+            if t.miasma > 0 && t.revealed && t.fire == 0 {
+                let k = t.miasma as u32;
+                bg = Color::Rgb((25 + 14 * k) as u8, (8 + 3 * k) as u8, (30 + 16 * k) as u8);
+                if ch == '.' || ch == '·' || ch == ' ' {
+                    ch = '░';
+                    fg = Color::Rgb(150, 90, 170);
+                }
+            }
             if t.fire > 0 && t.revealed {
                 let flick = hash2(wx + (g.tick / 4) as i32 % 50, wy) % 3;
                 ch = if flick == 0 { '▲' } else { '^' };
@@ -625,6 +633,9 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
     }
     if t.fire > 0 {
         v.push(plain("On fire!".into(), Color::Rgb(255, 120, 40)));
+    }
+    if t.miasma > 0 {
+        v.push(plain(format!("Miasma ({}/7): the stench of rot", t.miasma), Color::Rgb(190, 120, 220)));
     }
     if t.desig != Desig::None {
         v.push(plain(format!("Designated: {}", t.desig.name()), KEY));
@@ -2681,6 +2692,7 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
         keep += t.aquifer as usize;
         keep += (t.smooth > 0) as usize;
         keep += (t.fire > 0) as usize;
+        keep += (t.miasma > 0) as usize;
         keep += (t.desig != Desig::None) as usize;
         keep += g.construction_at(p).is_some() as usize;
         keep += (g.burrows.iter().any(|b| t.burrows & b.mask() != 0) || t.traffic != 0) as usize;

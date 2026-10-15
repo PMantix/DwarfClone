@@ -305,6 +305,12 @@ whoever it is, everyone is proud, a dedication feast begins, the year is named f
 it's worth a fortune. Dwarves who pass it stop to admire it. (The build menu is now a
 two-column list, so every building fits on screen.)
 
+**Rot and miasma.** Corpses and carcasses left lying about rot. After five days they stink:
+under the open sky the smell blows away, but underground it gathers as miasma (a purple haze)
+that drifts through open halls (not past locked doors), thins slowly, and sickens every dwarf
+who breathes it. After forty days only bones are left, except a citizen's body, which keeps
+on stinking until it's buried. Put a refuse stockpile outside, and bury your dead.
+
 **Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
 in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
 gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks

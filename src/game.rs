@@ -55,6 +55,7 @@ mod mysteries;
 mod megaprojects;
 mod overseer;
 mod ambitions;
+mod miasma;
 pub use ambitions::{Ambition, Sense};
 
 pub use overseer::{run_trial, Overseer, Style};
@@ -292,6 +293,9 @@ pub struct Game {
     /// Some tile has snow on it (so a thaw knows to look).
     #[serde(default)]
     snow_lying: bool,
+    /// Tiles with miasma in them, rebuilt from the map when missing.
+    #[serde(skip)]
+    miasma_cells: Option<Vec<usize>>,
     /// Burning cells, rebuilt from the map when missing.
     #[serde(skip)]
     fire_cells: Option<Vec<usize>>,
@@ -450,6 +454,7 @@ impl Game {
             drought: false,
             snow_lying: false,
             fire_cells: None,
+            miasma_cells: None,
             flames: Vec::new(),
             festival: None,
             year_log: YearLog::default(),
@@ -975,6 +980,9 @@ impl Game {
         if self.tick % 300 == 290 {
             self.prune_designations();
         }
+        if self.tick % 25 == 13 {
+            self.miasma_tick();
+        }
         if self.tick % 100 == 60 {
             self.expedition_tick();
             self.duels_tick();
@@ -1010,6 +1018,7 @@ impl Game {
             self.families_daily();
             self.clothes_daily();
             self.weather_daily();
+            self.rot_daily();
             self.nobles_daily();
             self.titles_daily();
             self.check_mandate();

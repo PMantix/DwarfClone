@@ -280,6 +280,8 @@ impl Game {
         // Wood and stone by the wagon; food and drink go below, behind the gate.
         self.add_zone(e.offset(-8, 3, -1), e.offset(-5, 9, 1), ZoneKind::Stockpile(StockFilter::Wood));
         self.add_zone(e.offset(-4, 3, -1), e.offset(-1, 9, 1), ZoneKind::Stockpile(StockFilter::Stone));
+        // The dead and the offal go outside, where they won't fill the halls with miasma.
+        self.add_zone(e.offset(9, 6, -1), e.offset(12, 10, 1), ZoneKind::Stockpile(StockFilter::Refuse));
         self.add_zone(e.offset(-8, -8, -1), e.offset(-2, -3, 1), ZoneKind::Farm);
         self.add_zone(e.offset(2, -9, -1), e.offset(8, -4, 1), ZoneKind::Farm);
         // Wood, stone, drink and food first, right by the wagon.
