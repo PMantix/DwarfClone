@@ -169,6 +169,9 @@ pub struct Tile {
     /// Burning: how much longer the fire here lasts (0 none).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub fire: u8,
+    /// Dug out by dwarves (natural caverns aren't), so its ceiling needs support.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub dug: bool,
 }
 
 fn is_zero(v: &u8) -> bool {
@@ -206,6 +209,7 @@ impl Default for Tile {
             frozen: false,
             snow: false,
             fire: 0,
+            dug: false,
         }
     }
 }

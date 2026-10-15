@@ -41,6 +41,7 @@ mod detail;
 mod weather;
 mod festivals;
 mod heroes;
+mod disasters;
 pub use festivals::Festival;
 mod fire;
 pub use weather::Weather;
@@ -2531,6 +2532,10 @@ impl Game {
         }
         self.designations.remove(&q);
         self.claimed.remove(&q);
+        if was_wall && t.desig != Desig::Chop {
+            self.world.t_mut(q).dug = true;
+            self.check_ceiling(q);
+        }
         if was_wall && t.desig != Desig::Chop {
             let m = t.mat;
             let drop = m.is_ore() || m.is_gem() || (m.is_building_stone() && self.rng.chance(0.3));

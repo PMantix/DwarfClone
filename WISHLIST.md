@@ -37,7 +37,7 @@ by fun for the effort; promote one into "Up next" with steps when it's next.
 
 | ID | Idea | The moment it makes | Builds on | Size |
 |---|---|---|---|---|
-| F05 | Cave-ins and disasters | Dig out the last support and the ceiling comes down; earthquakes crack walls; the spring melt floods the lower halls; the magma sea surges | W11, W01 | M |
+| F05 | Disasters (cave-ins done) | ~~Cave-ins~~ (this commit); still to come: earthquakes crack walls; the spring melt floods the lower halls; the magma sea surges | W11, W01 | S–M |
 | F06 | The year's chronicle | Each new year opens a page that tells the year as a story ("The Year of Burning Leaves"): deaths, births, sieges, masterpieces, with a title picked from the biggest event | legends, announcements | S |
 | F07 | Bards and wandering heroes | Visitors who sing songs made from your fort's own history, monster hunters who come for the beast in your caverns, a hero who stays and joins | B08 taverns, legends | M |
 | F08 | Ancient ruins | Mining breaks into a sealed hall of an older people: traps, treasure, engravings of a forgotten war, and something that should have stayed sealed | W18 caverns, worldgen | M |
@@ -119,7 +119,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
-- **F04 Heroes and epithets** (this commit): deeds earn epithets (Dragonslayer, Titanbane, Horrorbane, Warbreaker, Grim, Red-Handed, Inspired, Ironarm, Deepcup), only ever grander; heroes fight under their epithet, go into the legends, are admired, and are mourned by everyone when they fall.
+- **F04 Heroes and epithets** (a7113b9): deeds earn epithets (Dragonslayer, Titanbane, Horrorbane, Warbreaker, Grim, Red-Handed, Inspired, Ironarm, Deepcup), only ever grander; heroes fight under their epithet, go into the legends, are admired, and are mourned by everyone when they fall.
 - **F03 Festivals** (8bbc56a): the harvest feast, midwinter fire and founding day; dwarves down tools for half a day, gather at the meeting hall, tavern, dining hall or wagon, dance, drink from the stores, arm-wrestle and hold a drinking contest, and remember it fondly.
 - **F02 Dragons** (65388cc): dragons from the legends breathe fire down a clear line every few seconds, scorching dwarves and creatures and setting what will burn alight, never burn themselves, show as a red `D`, and when slain leave a masterwork dragon skull and the hoard they carried (gold, gems).
 - **F01 War from hostile neighbours** (66d33f6): civilizations at war with yours in the world's history lay siege as well as goblins, nearer enemies more often: human soldiers, elf warriors with wooden arms, dwarf raiders in heavy armour, each army led by a living figure of their civilization (or a new one) as general; the general's fall breaks the army and goes into the legends.

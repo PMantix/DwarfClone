@@ -203,6 +203,11 @@ drinking contests, Deepcup. A grander deed replaces a lesser name, never the rev
 go by their epithet in combat, their deed goes into the legends, everyone admires them, and
 when one dies the whole fortress mourns.
 
+**Cave-ins.** Rock holds itself up only so far: dig out a spot five tiles from every wall,
+pillar or undug rock (a hall eleven wide) and the ceiling comes down in rubble on whoever is
+beneath. At nine wide the ceiling creaks in warning. Leave a pillar of rock, or build a wall,
+in big halls. Natural caverns stand however wide they are.
+
 **Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
 in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
 gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks
