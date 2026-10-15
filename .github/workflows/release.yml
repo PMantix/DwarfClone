@@ -1,0 +1,56 @@
+# Build the Windows game and publish it as a GitHub release.
+# Runs when a version tag (v0.2.0, v1.0.0, ...) is pushed, or by hand from
+# the Actions tab for a tag that already exists.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      # Bake the C++ runtime into the exe so it runs on any Windows PC.
+      RUSTFLAGS: -C target-feature=+crt-static
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Test
+        run: cargo test --release
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $name = "DwarfClone-$env:TAG-windows"
+          New-Item -ItemType Directory -Force $name | Out-Null
+          Copy-Item target/release/dwarfclone.exe $name/
+          Copy-Item "release/HOW TO PLAY.txt" $name/
+          Compress-Archive -Path $name -DestinationPath "$name.zip" -Force
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: DwarfClone ${{ env.TAG }}
+          files: DwarfClone-${{ env.TAG }}-windows.zip
+          body: |
+            Download the zip below, unzip it somewhere you can write to (Documents or the Desktop), and run `dwarfclone.exe` in Windows Terminal with the window maximised. `HOW TO PLAY.txt` inside has the first keys.
+
+            Don't want to play? Pick **Watch a fort** on the title screen and let the overseer build (and probably lose) a fortress for you.

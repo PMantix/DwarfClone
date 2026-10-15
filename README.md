@@ -343,6 +343,17 @@ game. World generation, embarking, saving and loading show a loading screen with
 Each fortress has its own save in `saves/` (F5 saves, F9 reloads it), plus an autosave
 every season. `Q` offers save and quit, or save and return to the title.
 
+## Releases
+
+Pushing a version tag builds the Windows game on GitHub and publishes it as a release
+(`.github/workflows/release.yml`): the exe has the C++ runtime built in and ships zipped with
+`release/HOW TO PLAY.txt`.
+
+```
+git tag -a v0.2.0 -m "DwarfClone v0.2.0"
+git push origin v0.2.0
+```
+
 ## Tests
 
 ```

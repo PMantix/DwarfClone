@@ -1,0 +1,39 @@
+DwarfClone
+==========
+
+A fortress-building game in the terminal: dig into a mountain, keep a
+band of dwarves fed, housed and happy, and survive whatever the world
+throws at them. Losing is fun.
+
+STARTING THE GAME
+-----------------
+1. Put this folder somewhere you can write to (Documents or the Desktop,
+   not Program Files). Saves go in a "saves" folder next to the game.
+2. Open Windows Terminal (built into Windows 11; free from the Microsoft
+   Store on Windows 10). The old black console window works, but colours
+   and symbols look much better in Windows Terminal.
+3. Make the window big: at least 130 x 40 characters (maximise it).
+4. Run dwarfclone.exe: drag it into the terminal and press Enter, or cd
+   to this folder and type  .\dwarfclone.exe
+
+FIRST STEPS
+-----------
+- New world: pick settings (or just press Enter), watch history play out,
+  accept, then choose a site on the world map and embark.
+- Press ? at any time for the key list.
+- Space pauses and unpauses. + and - change speed.
+- d digs, b builds, i makes zones (farms, meeting hall, bedrooms...),
+  p makes stockpiles, k looks at what's under the cursor, z is the status
+  screen, n is nobles and posts, m is the military, c is the chronicle.
+
+DON'T WANT TO PLAY? WATCH
+-------------------------
+- "Watch a fort" on the title screen: an AI overseer builds and runs a
+  fortress for you, in one of five styles (Steady, Builder, Delver,
+  Warlord, Reckless). Most end in ruin.
+- Press A in any fortress to hand it to the overseer (or take it back).
+- From a terminal, to have it play ten fortresses and report how each
+  ended:
+      .\dwarfclone.exe --autoplay --runs 10 --years 5
+
+Source and updates: https://github.com/PMantix/DwarfClone
