@@ -48,6 +48,8 @@ mod ruins;
 mod expeditions;
 mod drama;
 mod pets;
+mod fishlore;
+pub use fishlore::BigFish;
 pub use drama::Duel;
 pub use expeditions::Expedition;
 pub use expeditions::Goal as expeditions_goal;
@@ -285,6 +287,9 @@ pub struct Game {
     /// A vault has been looked for (older saves get one when loaded).
     #[serde(default)]
     vault_placed: bool,
+    /// The legendary fish in the site's waters, once it has shown itself.
+    #[serde(default)]
+    pub big_fish: Option<BigFish>,
     /// Who said what about whom, newest last.
     #[serde(default)]
     pub gossip: Vec<(u64, String)>,
@@ -408,6 +413,7 @@ impl Game {
             vault_placed: false,
             expedition: None,
             gossip: Vec::new(),
+            big_fish: None,
             duels: Vec::new(),
             chronicles: Vec::new(),
             chronicle_ready: false,

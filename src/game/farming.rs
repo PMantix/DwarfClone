@@ -103,6 +103,9 @@ impl Game {
                 if Self::labor(d, 200, skill) {
                     d.task = Task::Idle;
                     d.gain_xp(Labor::Fishing, 15);
+                    if self.legendary_bite(d, stand) {
+                        return;
+                    }
                     if self.rng.chance(0.4 + 0.04 * skill as f64) {
                         let kinds: &[&str] = if self.world.outside(stand) {
                             &["mudperch", "silverfin", "river pike"]

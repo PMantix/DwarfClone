@@ -244,6 +244,12 @@ grudge is over. Three duels won make a dwarf Unbeaten. The status screen's Gossi
 up in the gossip (a rat left on a pillow, a sausage stolen from the kitchen). A dwarf grieves
 a pet that dies, and a pet whose dwarf has died waits by the door.
 
+**Legendary catches.** The site's waters hold one great fish (a great pike, a bog eel in a
+swamp, a sea serpent by the ocean) with a name like Old Grimjaw. Now and then it takes a
+fisher's bait and breaks the line; each escape makes it a little easier to land, and skill
+helps. The dwarf who finally lands it becomes a Pike-Taker (or Eel-, Serpent-), the catch is a
+masterwork, and everyone comes to marvel.
+
 **Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
 in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
 gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks
