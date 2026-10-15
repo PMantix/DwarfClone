@@ -37,7 +37,6 @@ by fun for the effort; promote one into "Up next" with steps when it's next.
 
 | ID | Idea | The moment it makes | Builds on | Size |
 |---|---|---|---|---|
-| F01 | War from hostile neighbours | The civilization you've been at war with for 80 years of history finally marches on you: elves, humans or rival dwarves, not only goblins, with their own gear, tactics and a named general from the legends | sieges, world history | S–M |
 | F02 | Dragons | A dragon from the world's legends descends, breathes fire that sets the forest and wooden doors ablaze, and sleeps on a hoard if it wins; slay it and its bones become a legendary trophy | W17, W19 fire | M |
 | F03 | Festivals | Harvest feast, midwinter fire, the founding day: dwarves gather, dance, sing, hold drinking and arm-wrestling contests, and remember it for a season; a festival skipped is a grudge | W09 needs, taverns | S–M |
 | F04 | Heroes and epithets | "Kelda the Unbowed" after killing a cave horror alone; heroes get a line in the legends, their own thoughts, followers, statues; a hero's death shakes the fort | combat, legends | S |
@@ -123,6 +122,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **F01 War from hostile neighbours** (this commit): civilizations at war with yours in the world's history lay siege as well as goblins, nearer enemies more often: human soldiers, elf warriors with wooden arms, dwarf raiders in heavy armour, each army led by a living figure of their civilization (or a new one) as general; the general's fall breaks the army and goes into the legends.
 - **Title screen** (258c242): an animated backdrop, a mountain under a night sky with drifting clouds and twinkling stars, trees and falling petals, leaves or snow through a quick little year, the fortress dug into it with dwarves walking its halls, a miner at the face, a forge with its chimney smoking, a magma sea bubbling below, and eyes in the dark; the title glints, and lore lines type themselves out under the menu.
 - **Seasonal trees** (6e63087): blossom and buds in spring, autumn colours and fallen leaves, bare branches in winter, evergreens (most of them in cold places).
 - **Posts that depend on fit** (1e10414, 3bff6d2): appoint from a list of dwarves ranked by fit (good, fair, poor, with the qualities behind it); a good manager, bookkeeper, broker, chief medical dwarf, commander or sheriff does the job better, a poor one worse.

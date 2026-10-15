@@ -28,7 +28,8 @@ founded, wars declared, sites sacked or conquered, rulers succeed one another, m
 ravage towns and heroes slay them. Seas, mountain ranges, forests and plains carry names. Big worlds scroll, with a minimap.
 Browse it all in the legends viewer (`L`). You choose
 your embark site; the biome shapes the map (relief, forest, lakes, savage wildlife) and
-nearby goblins decide how often sieges come.
+nearby goblins, and any civilization at war with yours in the world's history, decide how
+often sieges come.
 
 **Fortress.** A small (64×48), medium (96×64) or large (144×96, 48 levels deep) region, picked
 with `s` on the world map: soil over sedimentary and igneous rock, ore veins, gems,
@@ -129,7 +130,10 @@ mandates.
 **Strange moods.** A dwarf may be seized by a fey mood, claim a workshop, demand
 materials and produce a named artifact, or go mad if thwarted.
 
-**Danger.** Wildlife, cavern dwellers and goblin sieges. Body-part wounds, bleeding,
+**Danger.** Wildlife, cavern dwellers and sieges. Goblins attack anyone; humans, elves and
+rival dwarves come when their civilization is at war with yours, each with their own gear
+(elves with wooden weapons, dwarf raiders in heavy armour), led by a general out of their
+history: kill the general and the whole army breaks, and the legends remember it. Body-part wounds, bleeding,
 severed limbs, limping, unconsciousness and bed rest. Draft soldiers who equip the best
 gear, train, station and engage; civilians flee. Doors keep animals out; locked doors stop
 everyone until goblins batter them down.

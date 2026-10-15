@@ -636,32 +636,94 @@ impl Game {
         id
     }
 
+    /// Whether a neighbour would march on the fortress: goblins always, and
+    /// any civilization at war with ours in the world's history.
+    pub fn at_war_with(&self, n: &Neighbor) -> bool {
+        if !self.overworld.civs.get(n.civ as usize).map_or(false, |c| c.alive) {
+            return false;
+        }
+        n.race == Race::Goblin
+            || self.civ.map_or(false, |c| self.overworld.civ(c).enemies.contains(&n.civ) || self.overworld.civ(n.civ).enemies.contains(&c))
+    }
+
     pub(super) fn maybe_siege(&mut self) {
         let pop = self.alive_count() as f64;
-        let goblins = self.neighbors.iter().filter(|n| n.race == Race::Goblin).map(|n| n.dist).min();
-        let Some(dist) = goblins else { return };
+        let foes: Vec<Neighbor> = self.neighbors.iter().filter(|n| self.at_war_with(n)).cloned().collect();
+        let Some(dist) = foes.iter().map(|n| n.dist).min() else { return };
         let near = (1.0 - dist as f64 / 35.0).max(0.2);
         if self.tick < SEASON * 2 || !self.rng.chance((0.3 + pop * 0.02) * near + self.wealth() as f64 / 200_000.0) {
             return;
         }
+        // The nearer an enemy, the likelier it's them.
+        let weights: Vec<i32> = foes.iter().map(|n| (40 - n.dist).max(5)).collect();
+        let mut r = self.rng.range(0, weights.iter().sum::<i32>());
+        let foe = foes
+            .iter()
+            .zip(&weights)
+            .find(|(_, &w)| {
+                r -= w;
+                r < 0
+            })
+            .map_or(foes[0].clone(), |(n, _)| n.clone());
+        self.lay_siege(&foe);
+    }
+
+    /// An army of `foe`'s people arrives at the edge of the map, led by a
+    /// general out of their history.
+    pub(super) fn lay_siege(&mut self, foe: &Neighbor) {
         let Some(entry) = self.edge_entry() else { return };
+        let (species, mats, weapons, armor): (Species, &[Mat], &[ItemKind], [f64; 3]) = match foe.race {
+            Race::Goblin => (
+                Species::Goblin,
+                &[Mat::Copper, Mat::Copper, Mat::Bronze, Mat::Iron],
+                &[ItemKind::Spear, ItemKind::Sword, ItemKind::Axe, ItemKind::Hammer],
+                [0.5, 0.3, 0.25],
+            ),
+            Race::Human => (Species::Human, &[Mat::Bronze, Mat::Iron, Mat::Iron], &[ItemKind::Sword, ItemKind::Spear, ItemKind::Hammer], [0.8, 0.6, 0.5]),
+            Race::Elf => (Species::Elf, &[Mat::Wood], &[ItemKind::Spear, ItemKind::Sword], [0.3, 0.0, 0.4]),
+            Race::Dwarf => (Species::Raider, &[Mat::Bronze, Mat::Iron, Mat::Iron], &[ItemKind::Axe, ItemKind::Hammer], [0.9, 0.7, 0.4]),
+        };
         let first = self.siege_size == 0;
         let n = (3 + self.alive_count() / 4).min(if first { 5 } else { 20 });
         let stay = DAY * 5;
-        for _ in 0..n {
+        // A living figure of theirs leads, or a new one rises to it.
+        let kind = format!("{:?}", foe.race).to_lowercase();
+        let year = self.start_year + (self.tick / YEAR) as i32;
+        let known: Vec<u32> = self
+            .overworld
+            .figures
+            .iter()
+            .filter(|f| f.civ == Some(foe.civ) && f.died.is_none() && f.kind == kind && year - f.born >= 20)
+            .map(|f| f.id)
+            .collect();
+        let general = if known.is_empty() { None } else { Some(*self.rng.pick(&known)) };
+        let general_name = match general {
+            Some(f) => self.overworld.figures[f as usize].name.clone(),
+            None => crate::overworld::person_name(&mut self.rng, foe.race),
+        };
+        let civ_name = self.overworld.civ(foe.civ).name.clone();
+        for i in 0..n {
             let p = self.spot_near(entry, 3);
-            let id = self.spawn_creature(Species::Goblin, p, stay);
-            let mat = *self.rng.pick(&[Mat::Copper, Mat::Copper, Mat::Bronze, Mat::Iron]);
-            let wk = *self.rng.pick(&[ItemKind::Spear, ItemKind::Sword, ItemKind::Axe, ItemKind::Hammer]);
+            let id = self.spawn_creature(species, p, stay);
+            let leads = i == 0;
+            let mat = *self.rng.pick(mats);
+            let wk = *self.rng.pick(weapons);
             let mut gear = vec![wk];
-            if self.rng.chance(0.5) {
+            if leads || self.rng.chance(armor[0]) {
                 gear.push(ItemKind::Helm);
             }
-            if self.rng.chance(0.3) {
+            if (leads && armor[1] > 0.0) || self.rng.chance(armor[1]) {
                 gear.push(ItemKind::Breastplate);
             }
-            if self.rng.chance(0.25) {
+            if leads || self.rng.chance(armor[2]) {
                 gear.push(ItemKind::Shield);
+            }
+            if leads {
+                let c = self.creatures.get_mut(&id).unwrap();
+                c.label = Some(general_name.clone());
+                c.desc = Some(format!("general of the {}", civ_name));
+                c.general = Some(general.unwrap_or(u32::MAX));
+                c.body = crate::body::Body::new(species.info().scale * 1.3);
             }
             for k in gear {
                 let iid = self.spawn_item(k, mat, p);
@@ -679,13 +741,34 @@ impl Game {
         }
         self.siege_size = n as u32;
         self.siege_routed = false;
-        self.msg(
-            &format!("A vile force of darkness has arrived! ({} goblins)", n),
-            (255, 70, 70),
-        );
+        self.siege_race = Some(foe.race);
+        let plural = species.info().plural;
+        let text = if foe.race == Race::Goblin {
+            format!("A vile force of darkness has arrived! {} {}, led by {}.", n, plural, general_name)
+        } else {
+            format!("The {} march to war! {} {}, led by {}, have come to settle an old score.", civ_name, n, plural, general_name)
+        };
+        self.msg(&text, (255, 70, 70));
         let name = self.fortress_name.clone();
-        self.legend(format!("Goblins laid siege to {}.", name));
+        self.legend(format!("{} led the {} in a siege of {}.", general_name, civ_name, name));
         self.pause_request = true;
+    }
+
+    /// The attackers lose heart and run for the edge of the map.
+    fn rout(&mut self) {
+        self.siege_routed = true;
+        for o in self.creatures.values_mut().filter(|o| o.siege && !o.legendary()) {
+            o.leaving = true;
+            o.target = None;
+            o.path.clear();
+        }
+        let who = match self.siege_race {
+            Some(Race::Human) => "human soldiers",
+            Some(Race::Elf) => "elves",
+            Some(Race::Dwarf) => "raiders",
+            _ => "goblins",
+        };
+        self.msg(&format!("The {} are fleeing!", who), (120, 255, 120));
     }
 
     pub(super) fn update_creatures(&mut self) {
@@ -727,7 +810,7 @@ impl Game {
         if c.species == Species::Merchant {
             self.merchant_died(&c);
         }
-        let kind = if matches!(c.species, Species::Goblin | Species::Merchant) { ItemKind::Corpse } else { ItemKind::Carcass };
+        let kind = if c.species.person() { ItemKind::Corpse } else { ItemKind::Carcass };
         let id = self.spawn_item(kind, Mat::Flesh, c.pos);
         if let Some(it) = self.items.get_mut(&id) {
             it.label = Some(info.name.to_string());
@@ -756,19 +839,30 @@ impl Game {
             for d in self.dwarves.iter_mut().filter(|d| d.alive) {
                 d.think(&format!("rejoiced at the death of {}", label), -10, tick);
             }
+        } else if let Some(f) = c.general {
+            // The general falls: it goes down in history, and the army breaks.
+            let label = c.title();
+            let fort = self.fortress_name.clone();
+            if f != u32::MAX {
+                let year = self.start_year + (self.tick / YEAR) as i32;
+                self.overworld.kill_figure(f, year, format!("slain besieging {}", fort));
+            }
+            self.legend(format!("{}, {}, fell at {}.", label, c.desc.clone().unwrap_or_default(), fort));
+            self.msg(&format!("{}, who led the attack, has fallen!", label), (255, 215, 60));
+            let tick = self.tick;
+            for d in self.dwarves.iter_mut().filter(|d| d.alive) {
+                d.think(&format!("cheered the fall of {}", label), -8, tick);
+            }
+            if c.siege && !self.siege_routed {
+                self.rout();
+            }
         } else if c.hostile() {
             self.msg(&format!("The {} has been slain.", info.name), (160, 230, 160));
         }
         if c.siege && !c.legendary() && !self.siege_routed {
             let left = self.creatures.values().filter(|o| o.siege && !o.legendary() && o.alive).count() as u32;
             if left * 2 < self.siege_size {
-                self.siege_routed = true;
-                for o in self.creatures.values_mut().filter(|o| o.siege && !o.legendary()) {
-                    o.leaving = true;
-                    o.target = None;
-                    o.path.clear();
-                }
-                self.msg("The goblins are fleeing!", (120, 255, 120));
+                self.rout();
             }
         }
     }
@@ -1077,7 +1171,7 @@ mod tests {
             g.step();
             hits = hits.max(g.log.iter().filter(|l| l.text.contains(" in the ")).count());
         }
-        let goblins = g.creatures.values().filter(|c| c.species == Species::Goblin).count();
+        let goblins = g.creatures.values().filter(|c| c.siege).count();
         assert_eq!(goblins, 0, "siege never ended");
         assert!(hits > 0, "no blows were ever struck");
         eprintln!(
@@ -1087,6 +1181,39 @@ mod tests {
             g.dwarves.len(),
             g.items.values().filter(|it| it.kind == ItemKind::Corpse && it.label.as_deref() == Some("goblin")).count()
         );
+    }
+
+    #[test]
+    fn enemies_from_history_march_on_the_fort_and_break_when_their_general_falls() {
+        let mut g = Game::new(5);
+        g.creatures.retain(|_, c| c.tame);
+        let ours = g.civ.expect("the fort has a civilization");
+        let foe = (0..g.overworld.civs.len() as u32).find(|&c| c != ours && g.overworld.civ(c).alive).expect("another civ");
+        g.overworld.civs[foe as usize].race = Race::Human;
+        g.overworld.civs[ours as usize].enemies.retain(|&c| c != foe);
+        g.overworld.civs[foe as usize].enemies.retain(|&c| c != ours);
+        let n = Neighbor { civ: foe, race: Race::Human, dist: 3 };
+        assert!(!g.at_war_with(&n), "at peace");
+        g.overworld.civs[ours as usize].enemies.push(foe);
+        assert!(g.at_war_with(&n));
+        g.neighbors = vec![n.clone()];
+        g.tick = SEASON * 2 + 1;
+        let mut tries = 0;
+        while g.siege_size == 0 && tries < 100 {
+            g.maybe_siege();
+            tries += 1;
+        }
+        assert!(g.siege_size >= 3, "no siege came");
+        assert!(g.creatures.values().all(|c| !c.siege || c.species == Species::Human));
+        let general = g.creatures.values().find(|c| c.general.is_some()).expect("a general leads them").id;
+        assert!(g.creatures[&general].label.is_some());
+        assert!(g.log.iter().any(|l| l.text.contains("march to war")), "no announcement");
+        // Cut the general down: the army flees and history remembers.
+        let c = g.creatures.remove(&general).unwrap();
+        g.creature_died(c);
+        assert!(g.siege_routed, "the army should break");
+        assert!(g.creatures.values().filter(|c| c.siege).all(|c| c.leaving));
+        assert!(g.overworld.events.iter().any(|e| e.text.contains("fell at")), "not in the legends");
     }
 
     #[test]

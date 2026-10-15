@@ -21,6 +21,11 @@ pub enum Species {
     CaveHorror,
     /// A sneak-thief that slips in unseen to steal something valuable.
     Skulker,
+    /// Soldiers of a civilization at war with the fortress's.
+    Human,
+    Elf,
+    /// Dwarves of a rival civilization.
+    Raider,
 }
 
 pub struct SpeciesInfo {
@@ -41,7 +46,7 @@ pub struct SpeciesInfo {
 }
 
 impl Species {
-    pub const ALL: [Species; 13] = [
+    pub const ALL: [Species; 16] = [
         Species::Deer,
         Species::Wolf,
         Species::Bear,
@@ -55,11 +60,19 @@ impl Species {
         Species::Megabeast,
         Species::CaveHorror,
         Species::Skulker,
+        Species::Human,
+        Species::Elf,
+        Species::Raider,
     ];
+
+    /// People rather than beasts: they leave corpses, not carcasses.
+    pub fn person(self) -> bool {
+        matches!(self, Species::Goblin | Species::Merchant | Species::Human | Species::Elf | Species::Raider)
+    }
 
     /// Animals that can be kept (people and cave folk can't).
     pub fn tameable(self) -> bool {
-        !matches!(self, Species::Goblin | Species::Troglodyte | Species::Merchant | Species::Megabeast | Species::CaveHorror | Species::Skulker)
+        !self.person() && !matches!(self, Species::Troglodyte | Species::Megabeast | Species::CaveHorror | Species::Skulker)
     }
 
     /// Most young in one birth.
@@ -264,6 +277,51 @@ impl Species {
                 mover: Mover::Dwarf,
                 edged: false,
             },
+            Species::Human => SpeciesInfo {
+                name: "human soldier",
+                plural: "human soldiers",
+                glyph: 'h',
+                color: (225, 205, 170),
+                scale: 1.0,
+                damage: 3.0,
+                verb: "punches",
+                move_delay: 3,
+                attack_delay: 9,
+                aggro: 999,
+                skill: 3,
+                mover: Mover::Goblin,
+                edged: false,
+            },
+            Species::Elf => SpeciesInfo {
+                name: "elf warrior",
+                plural: "elf warriors",
+                glyph: 'e',
+                color: (120, 235, 150),
+                scale: 0.85,
+                damage: 2.5,
+                verb: "strikes",
+                move_delay: 2,
+                attack_delay: 8,
+                aggro: 999,
+                skill: 3,
+                mover: Mover::Goblin,
+                edged: false,
+            },
+            Species::Raider => SpeciesInfo {
+                name: "dwarf raider",
+                plural: "dwarf raiders",
+                glyph: 'd',
+                color: (230, 170, 90),
+                scale: 1.0,
+                damage: 3.5,
+                verb: "punches",
+                move_delay: 4,
+                attack_delay: 9,
+                aggro: 999,
+                skill: 3,
+                mover: Mover::Goblin,
+                edged: false,
+            },
             Species::Goblin => SpeciesInfo {
                 name: "goblin",
                 plural: "goblins",
@@ -344,6 +402,9 @@ pub struct Creature {
     /// What a thief has stolen.
     #[serde(default)]
     pub loot: Option<u32>,
+    /// The historical figure leading a siege, if this is its general.
+    #[serde(default)]
+    pub general: Option<u32>,
 }
 
 fn yes() -> bool {
@@ -383,6 +444,7 @@ impl Creature {
             desc: None,
             sneaking: false,
             loot: None,
+            general: None,
         }
     }
 

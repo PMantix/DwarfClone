@@ -182,6 +182,9 @@ pub struct Game {
     pub hunt: bool,
     siege_size: u32,
     siege_routed: bool,
+    /// Who the last siege came from: their race, for messages.
+    #[serde(default)]
+    siege_race: Option<Race>,
     #[serde(default)]
     pub mandate: Option<Mandate>,
     pub overworld: Overworld,
@@ -357,6 +360,7 @@ impl Game {
             alert: true,
             hunt: false,
             siege_size: 0,
+            siege_race: None,
             siege_routed: false,
             mandate: None,
             savagery: (params.savagery + if cell.evil { 0.3 } else { 0.0 }) * ow.savagery,
