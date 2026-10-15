@@ -194,7 +194,7 @@ ashore. Each day brings clear skies, rain or (in a cold winter) snow, more or le
 climate; snow lies on open ground until spring, the top bar shows the weather, and dwarves
 caught out in it grumble a little. Fire catches in trees, shrubs, grass and anything wooden,
 spreads (up and down slopes too), burns whoever stands in it and the items lying there, and
-goes out in water or rain; flowing magma and lightning start it.
+goes out in water or rain; flowing magma and lightning start it. Trees follow the year: blossom and pale buds in spring, yellow, orange and red in autumn with leaves lying under them, bare branches in winter; most trees in cold places are evergreen.
 
 **Aquifers.** Many wet sites (the embark screen says which) have water-bearing rock two to four
 levels down, shown with a blue background. A light aquifer only dampens floors dug out of it;

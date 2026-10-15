@@ -40,6 +40,53 @@ fn hash2(x: i32, y: i32) -> u32 {
     h ^ (h >> 12)
 }
 
+/// The season's look for trees and grass under the open sky: blossom in
+/// spring, autumn colours, bare branches in winter, fallen leaves.
+/// `year_frac` runs 0..1 through the year from the first day of spring.
+fn foliage(w: &World, p: Pos, year_frac: f32, cold: bool) -> Option<(char, Color)> {
+    let t = w.t(p);
+    if !t.revealed || !w.outside(p) {
+        return None;
+    }
+    let h = hash2(p.x * 3 + 11, p.y * 5 + 7);
+    // Each tree turns a little ahead of or behind its neighbours.
+    let jitter = (h % 100) as f32 / 100.0 * 0.06 - 0.03;
+    let f = (year_frac + jitter).rem_euclid(1.0);
+    let evergreen = if cold { h % 4 != 3 } else { h % 4 == 0 };
+    match t.kind {
+        TileKind::Tree if evergreen => Some(('♠', Color::Rgb(30, 120, 60))),
+        TileKind::Tree => Some(match f {
+            // Early spring: some trees blossom, the rest bud pale green.
+            f if f < 0.14 => {
+                if h % 3 == 0 {
+                    ('♣', [Color::Rgb(255, 175, 205), Color::Rgb(245, 235, 240)][(h / 3 % 2) as usize])
+                } else {
+                    ('♣', Color::Rgb(150, 215, 110))
+                }
+            }
+            f if f < 0.53 => ('♣', Color::Rgb(40, 170, 50)),
+            // Autumn: yellow, orange, red and gold, then bare.
+            f if f < 0.70 => (
+                '♣',
+                [Color::Rgb(235, 205, 60), Color::Rgb(235, 135, 40), Color::Rgb(205, 60, 40), Color::Rgb(205, 165, 50)][(h % 4) as usize],
+            ),
+            f if f < 0.97 => ('♣', Color::Rgb(125, 95, 70)),
+            _ => ('♣', Color::Rgb(150, 215, 110)),
+        }),
+        // Leaves lie under the trees from late autumn until the snow.
+        TileKind::Floor if t.mat == Mat::Grass && !t.snow && (0.62..0.85).contains(&f) && h % 3 != 0 => {
+            let near = crate::geom::DIRS8.iter().any(|&(dx, dy)| w.kind(p.offset(dx, dy, 0)) == Some(TileKind::Tree));
+            near.then(|| {
+                (
+                    [',', '\'', '`'][(h % 3) as usize],
+                    [Color::Rgb(200, 120, 40), Color::Rgb(180, 70, 40), Color::Rgb(210, 175, 60)][(h / 7 % 3) as usize],
+                )
+            })
+        }
+        _ => None,
+    }
+}
+
 /// Appearance of a bare tile (no units, items or buildings).
 fn tile_look(w: &World, p: Pos) -> (char, Color, Color) {
     let t = w.t(p);
@@ -252,6 +299,8 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
         _ => None,
     };
 
+    let year_frac = (g.tick % crate::game::YEAR) as f32 / crate::game::YEAR as f32;
+    let cold = matches!(g.biome, crate::overworld::Biome::Tundra | crate::overworld::Biome::Mountain);
     let buf = f.buffer_mut();
     for sy in 0..vh {
         for sx in 0..vw {
@@ -264,6 +313,11 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
             }
             let t = g.world.t(p);
             let (mut ch, mut fg, mut bg) = tile_look(&g.world, p);
+            if (t.kind == TileKind::Tree || t.mat == Mat::Grass) && t.water == 0 {
+                if let Some((c, col)) = foliage(&g.world, p, year_frac, cold) {
+                    (ch, fg) = (c, col);
+                }
+            }
 
             if t.revealed && t.zone != 0 {
                 match g.zones.get(&t.zone).map(|z| z.kind) {
@@ -3371,6 +3425,31 @@ mod tests {
         let s = dump(&mut app, 130, 45);
         println!("{}", s);
         assert!(s.contains("[ ] boulders") && s.contains("[x] blocks"), "{}", s);
+    }
+
+    #[test]
+    fn trees_turn_with_the_seasons() {
+        let g = Game::new(42);
+        let trees: Vec<Pos> = (0..g.world.h)
+            .flat_map(|y| (0..g.world.w).map(move |x| (x, y)))
+            .map(|(x, y)| Pos::new(x, y, g.world.surface_z(x, y)))
+            .filter(|&p| g.world.t(p).kind == TileKind::Tree)
+            .filter(|&p| { let mut w = g.world.clone(); w.t_mut(p).revealed = true; foliage(&w, p, 0.0, false).is_some() })
+            .take(200)
+            .collect();
+        assert!(trees.len() > 20, "too few trees: {}", trees.len());
+        let mut w = g.world.clone();
+        for &p in &trees {
+            w.t_mut(p).revealed = true;
+        }
+        let looks = |f: f32| -> HashSet<String> { trees.iter().map(|&p| format!("{:?}", foliage(&w, p, f, false).unwrap())).collect() };
+        let summer = looks(0.35);
+        let autumn = looks(0.62);
+        let winter = looks(0.85);
+        assert!(autumn.len() >= 4, "autumn should be colourful: {:?}", autumn);
+        assert!(summer.len() <= 2, "summer is green: {:?}", summer);
+        assert!(winter.iter().any(|s| s.contains("125, 95, 70")), "bare in winter: {:?}", winter);
+        assert!(looks(0.05).iter().any(|s| s.contains("255, 175, 205") || s.contains("245, 235, 240")), "blossom in spring");
     }
 
     #[test]
