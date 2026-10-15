@@ -137,6 +137,7 @@ impl Game {
         lines.extend(told.into_iter().skip(skip));
         if log.deaths.is_empty() {
             lines.push("No dwarf of the fortress died. May the next year be as kind.".into());
+            self.milestone("nodeath", "A whole year without a death");
         } else {
             lines.push(format!("We mourn {}.", list(&log.deaths)));
         }

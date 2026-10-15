@@ -115,6 +115,7 @@ impl Game {
         self.msg(&text, (255, 215, 60));
         self.festival = Some(Festival { kind, until, venue, attended: Vec::new(), mugs: Vec::new(), told: 0 });
         self.year_log.festivals.push(kind.name().to_string());
+        self.milestone("festival", "The fortress's first festival");
     }
 
     /// A dwarf at a festival: get there, then dance, drink and compete.

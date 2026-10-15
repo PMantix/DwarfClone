@@ -58,6 +58,7 @@ impl Game {
         }
         // Landed at last.
         self.big_fish.as_mut().unwrap().caught = true;
+        self.milestone("fish", &format!("Landed {}", f.title()));
         let id = self.spawn_item(ItemKind::Fish, Mat::Flesh, stand);
         if let Some(it) = self.items.get_mut(&id) {
             it.label = Some(f.title());

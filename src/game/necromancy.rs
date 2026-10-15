@@ -112,6 +112,7 @@ impl Game {
         if let Some(n) = self.necromancer.as_mut() {
             n.alive = false;
         }
+        self.milestone("necromancer", "The necromancer destroyed");
         let fort = self.fortress_name.clone();
         let label = c.title();
         self.msg(&format!("{} is destroyed! The dead fall still.", label), (255, 215, 60));

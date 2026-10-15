@@ -572,6 +572,7 @@ impl Game {
 
     /// A slain dragon leaves its skull and the hoard it carried.
     fn dragon_hoard(&mut self, c: &Creature) {
+        self.milestone("dragon", &format!("A dragon slain: {}", c.title()));
         let skull = self.spawn_item(ItemKind::Craft, Mat::Bone, c.pos);
         if let Some(it) = self.items.get_mut(&skull) {
             it.quality = 5;
@@ -847,6 +848,7 @@ impl Game {
     /// The attackers lose heart and run for the edge of the map.
     fn rout(&mut self) {
         self.siege_routed = true;
+        self.milestone("siege", "The first siege broken");
         for o in self.creatures.values_mut().filter(|o| o.siege && !o.legendary()) {
             o.leaving = true;
             o.target = None;

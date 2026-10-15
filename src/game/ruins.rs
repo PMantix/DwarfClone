@@ -114,6 +114,7 @@ impl Game {
         );
         self.legend(format!("The miners of {} broke into {}, sealed since a forgotten age.", fort, v.name));
         self.year_log.ruin = Some(v.name.clone());
+        self.milestone("vault", &format!("Broke into {}", v.name));
         self.pause_request = true;
         // Treasure, and one thing of legend.
         let tiles: Vec<Pos> = (v.min.x..=v.max.x).flat_map(|x| (v.min.y..=v.max.y).map(move |y| Pos::new(x, y, v.min.z))).collect();

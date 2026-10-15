@@ -45,6 +45,7 @@ impl Game {
         d.deed = Some(deed.to_string());
         let now = d.called();
         self.year_log.hero = Some(now.clone());
+        self.milestone("hero", &format!("The fortress's first hero: {}", now));
         let tick = self.tick;
         d.think(&format!("was hailed as {}", now), -40, tick);
         self.msg(&format!("{} {} and will be known as {}!", before, deed, now), (255, 215, 60));

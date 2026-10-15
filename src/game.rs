@@ -50,7 +50,11 @@ mod drama;
 mod pets;
 mod fishlore;
 mod necromancy;
+mod milestones;
 pub use necromancy::Necromancer;
+pub fn milestones_banner_ticks() -> u64 {
+    milestones::BANNER_TICKS
+}
 pub use fishlore::BigFish;
 pub use drama::Duel;
 pub use expeditions::Expedition;
@@ -292,6 +296,12 @@ pub struct Game {
     /// A vault has been looked for (older saves get one when loaded).
     #[serde(default)]
     vault_placed: bool,
+    /// Milestones reached: (key, text, tick).
+    #[serde(default)]
+    pub milestones: Vec<(String, String, u64)>,
+    /// The milestone banner on screen, with when it went up.
+    #[serde(skip)]
+    pub banner: Option<(String, u64)>,
     /// A necromancer in a tower nearby, at some sites.
     #[serde(default)]
     pub necromancer: Option<Necromancer>,
@@ -427,6 +437,8 @@ impl Game {
             gossip: Vec::new(),
             big_fish: None,
             necromancer: None,
+            milestones: Vec::new(),
+            banner: None,
             necro_rolled: false,
             duels: Vec::new(),
             chronicles: Vec::new(),
@@ -914,6 +926,7 @@ impl Game {
         if self.tick % DAY == DAY / 2 + 7 {
             self.drama_daily();
             self.pets_daily();
+            self.milestones_daily();
         }
         if self.tick % 10 == 0 {
             self.grow_farms();
@@ -2355,6 +2368,10 @@ impl Game {
                         if !order.repeat {
                             b.orders.remove(0);
                         }
+                    }
+                    if quality == 5 {
+                        let text = format!("The first masterwork: {}", made.first().cloned().unwrap_or_default());
+                        self.milestone("masterwork", &text);
                     }
                     let n = match made.len() {
                         0 => "nothing".to_string(),

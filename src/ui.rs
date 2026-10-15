@@ -2432,6 +2432,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         ),
         _ => {}
     }
+    if app.in_fortress() && matches!(app.mode, Mode::Normal) {
+        let over = if app.map_rect.width > 0 { app.map_rect } else { area };
+        draw_banner(f, over, &app.game);
+    }
 }
 
 fn item_line(it: &Item, extra: &str, selected: bool) -> Line<'static> {
@@ -2715,6 +2719,13 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
             v.push(header(&format!("{}, an outpost of {}", g.fortress_name, civ)));
             v.push(plain(g.date_string(), TEXT));
             v.push(plain(format!("Fortress wealth ☼{}", g.wealth()), Color::Rgb(255, 215, 60)));
+            if !g.milestones.is_empty() {
+                v.push(Line::default());
+                v.push(header("Milestones"));
+                for (_, text, _) in &g.milestones {
+                    v.push(plain(format!("☼ {}", text), Color::Rgb(230, 200, 110)));
+                }
+            }
             if let Some(n) = g.necromancer.as_ref().filter(|n| n.known && n.alive) {
                 v.push(plain(format!("The necromancer {} dwells in {}. Bury your dead.", n.name, n.tower), Color::Rgb(190, 120, 230)));
             }
@@ -3353,6 +3364,33 @@ fn draw_expedition(f: &mut Frame, area: Rect, g: &Game, squad: usize, sel: usize
     popup(f, area, 84, h, " Send on an expedition ", v);
 }
 
+/// A milestone's banner across the top of the screen while it's fresh.
+fn draw_banner(f: &mut Frame, area: Rect, g: &Game) {
+    let Some((text, at)) = &g.banner else { return };
+    if g.tick >= at + crate::game::milestones_banner_ticks() {
+        return;
+    }
+    let line = format!("☼  {}  ☼", text);
+    let w = (line.chars().count() as u16 + 6).min(area.width);
+    let r = Rect::new(area.x + (area.width - w) / 2, area.y + 2, w, 3);
+    let glint = ((g.tick - at) / 4) as usize % (w as usize + 10);
+    let spans: Vec<Span> = line
+        .chars()
+        .enumerate()
+        .map(|(i, ch)| {
+            let near = (i as i64 - glint as i64).abs() < 3;
+            Span::styled(ch.to_string(), Style::default().fg(if near { Color::Rgb(255, 255, 220) } else { Color::Rgb(255, 215, 60) }).add_modifier(Modifier::BOLD))
+        })
+        .collect();
+    f.render_widget(Clear, r);
+    f.render_widget(
+        Paragraph::new(Line::from(spans)).alignment(ratatui::layout::Alignment::Center).style(Style::default().bg(Color::Rgb(40, 25, 5))).block(
+            Block::default().borders(Borders::ALL).border_type(ratatui::widgets::BorderType::Double).border_style(Style::default().fg(Color::Rgb(255, 200, 80))),
+        ),
+        r,
+    );
+}
+
 /// A page of the chronicle, like a leaf of parchment.
 fn draw_chronicle(f: &mut Frame, area: Rect, g: &Game, idx: usize) {
     let Some(c) = g.chronicles.get(idx) else { return };
@@ -3764,6 +3802,19 @@ mod tests {
         assert!(app.game.expedition.is_some());
         let s = dump(&mut app, 130, 45);
         assert!(s.contains("back in about"), "{}", s);
+    }
+
+    #[test]
+    fn a_milestone_banner_shows_while_fresh() {
+        let mut app = App::generated(42);
+        app.mode = Mode::Normal;
+        app.game.banner = Some(("The first masterwork: a granite door".into(), app.game.tick));
+        let s = dump(&mut app, 120, 40);
+        println!("{}", s);
+        assert!(s.contains("The first masterwork"), "{}", s);
+        app.game.tick += crate::game::milestones_banner_ticks();
+        let s = dump(&mut app, 120, 40);
+        assert!(!s.contains("The first masterwork"));
     }
 
     #[test]

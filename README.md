@@ -262,6 +262,12 @@ unburied dead, the more often they come). Strike a risen dwarf down and the corp
 to be buried properly. Sometimes the necromancer (`N`) comes along to watch; destroy them and
 all the dead fall still, for good, and whoever did it is known as Deathbane.
 
+**Milestones.** The fortress's firsts and great numbers get a glinting banner across the map
+and a place in the status screen's list: the first masterwork, artifact, child, festival,
+hero, broken siege, dragon slain, vault opened, great fish landed, triumphant expedition, a
+year without a death, the necromancer destroyed; twenty, fifty and a hundred dwarves; ☼10,000
+up to a quarter of a million in wealth.
+
 **Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
 in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
 gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks
