@@ -508,11 +508,87 @@ impl Game {
         c.siege = true;
         c.figure = Some(f);
         c.label = Some(label.clone());
+        c.breathes_fire = kind == "dragon";
         let fort = self.fortress_name.clone();
-        self.msg(&format!("{} has come to {}! A {} of legend is upon you!", label, fort, kind), (255, 60, 60));
+        if kind == "dragon" {
+            self.msg(&format!("{} descends upon {}! The sky burns with dragonfire!", label, fort), (255, 60, 60));
+        } else {
+            self.msg(&format!("{} has come to {}! A {} of legend is upon you!", label, fort, kind), (255, 60, 60));
+        }
         self.legend(format!("{} attacked {}.", label, fort));
         self.pause_request = true;
         Some(id)
+    }
+
+    /// A gout of flame from `c` towards `to` and a little past: it scorches
+    /// everyone on the way and sets whatever will burn alight.
+    pub(super) fn breathe_fire(&mut self, c: &Creature, to: Pos) {
+        let (dx, dy) = (to.x - c.pos.x, to.y - c.pos.y);
+        let steps = dx.abs().max(dy.abs()).max(1);
+        let reach = steps + 2;
+        let tick = self.tick;
+        self.flames.retain(|&(_, t)| t + 12 > tick);
+        let mut swept = Vec::new();
+        for i in 1..=reach {
+            let p = Pos::new(c.pos.x + (dx * i + dx.signum() * steps / 2) / steps, c.pos.y + (dy * i + dy.signum() * steps / 2) / steps, c.pos.z);
+            if self.world.solid(p) {
+                break;
+            }
+            swept.push(p);
+            // The flame fans out as it goes.
+            if i > 2 {
+                for &(ox, oy) in DIRS4.iter() {
+                    if self.rng.chance(0.35) {
+                        let q = p.offset(ox, oy, 0);
+                        if !self.world.solid(q) {
+                            swept.push(q);
+                        }
+                    }
+                }
+            }
+        }
+        for &p in &swept {
+            self.flames.push((p, tick));
+            self.ignite(p);
+            for i in 0..self.dwarves.len() {
+                if self.dwarves[i].alive && self.dwarves[i].pos == p {
+                    let part = self.dwarves[i].body.pick_part(&mut self.rng);
+                    let d = &mut self.dwarves[i];
+                    d.body.wound(part, 4, false);
+                    d.think("was scorched by dragonfire", 20, tick);
+                }
+            }
+            let hit: Vec<u32> = self.creatures.values().filter(|o| o.alive && o.pos == p && !o.breathes_fire).map(|o| o.id).collect();
+            for id in hit {
+                let part = self.creatures[&id].body.pick_part(&mut self.rng);
+                self.creatures.get_mut(&id).unwrap().body.wound(part, 4, false);
+            }
+        }
+        self.msg(&format!("{} breathes fire!", c.title()), (255, 110, 30));
+    }
+
+    /// A slain dragon leaves its skull and the hoard it carried.
+    fn dragon_hoard(&mut self, c: &Creature) {
+        let skull = self.spawn_item(ItemKind::Craft, Mat::Bone, c.pos);
+        if let Some(it) = self.items.get_mut(&skull) {
+            it.quality = 5;
+            it.label = Some(format!("skull of {}", c.title()));
+        }
+        let n = self.rng.range(4, 9);
+        for _ in 0..n {
+            let (kind, mat) = *self.rng.pick(&[
+                (ItemKind::Craft, Mat::Gold),
+                (ItemKind::Bar, Mat::Gold),
+                (ItemKind::Gem, Mat::Amethyst),
+                (ItemKind::Craft, Mat::Bronze),
+            ]);
+            let p = self.spot_near(c.pos, 1);
+            let id = self.spawn_item(kind, mat, p);
+            if let Some(it) = self.items.get_mut(&id) {
+                it.quality = self.rng.range(2, 5) as u8;
+            }
+        }
+        self.msg(&format!("Its hoard spills out where it fell: {} treasures, and the skull of a dragon!", n), (255, 215, 60));
     }
 
     /// A thief now and then, once there's something worth stealing.
@@ -815,6 +891,9 @@ impl Game {
         if let Some(it) = self.items.get_mut(&id) {
             it.label = Some(info.name.to_string());
         }
+        if c.breathes_fire {
+            self.dragon_hoard(&c);
+        }
         if let Some(f) = c.figure {
             let label = c.title();
             let kind = self.overworld.figures.get(f as usize).map_or("beast".to_string(), |x| x.kind.clone());
@@ -907,6 +986,7 @@ impl Game {
             self.msg(&format!("The wounded {} flees!", info.name), (160, 230, 160));
         }
         c.attack_cd = c.attack_cd.saturating_sub(1);
+        c.breath_cd = c.breath_cd.saturating_sub(1);
         c.move_cd = c.move_cd.saturating_sub(1);
 
         if !c.leaving && self.tick >= c.leave_tick {
@@ -956,6 +1036,13 @@ impl Game {
             if !c.siege && !near(dpos, c.pos, info.aggro * 2 + 2) {
                 c.target = None;
                 c.path.clear();
+                return true;
+            }
+            // A dragon breathes fire down a clear line at whoever it hunts.
+            if c.breathes_fire && c.breath_cd == 0 && c.attack_cd == 0 && !adjacent(c.pos, dpos) && near(dpos, c.pos, 7) && self.clear_shot(c.pos, dpos) {
+                c.breath_cd = 90;
+                c.attack_cd = info.attack_delay;
+                self.breathe_fire(c, dpos);
                 return true;
             }
             if adjacent(c.pos, dpos) {
@@ -1346,6 +1433,57 @@ mod profile {
         assert!(g.dwarves.iter().filter(|d| d.alive).all(|d| d.thoughts.iter().any(|t| t.text.starts_with("rejoiced"))));
         // A dead beast doesn't come again.
         assert!(!g.overworld.beasts_near(g.site.0, g.site.1, 1000).contains(&f));
+    }
+
+    #[test]
+    fn a_dragon_breathes_fire_and_leaves_a_hoard() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        g.weather = super::super::Weather::Clear;
+        let f = g.overworld.figures.iter().find(|f| f.lair.is_some() && f.alive()).expect("no megabeasts").id;
+        g.overworld.figures[f as usize].kind = "dragon".into();
+        let id = g.spawn_megabeast(f).expect("no way in");
+        assert!(g.creatures[&id].breathes_fire);
+        assert!(g.log.iter().any(|l| l.text.contains("dragonfire")));
+        // Let it hunt: sooner or later it breathes on someone.
+        for _ in 0..3000 {
+            g.step();
+            if g.log.iter().any(|l| l.text.ends_with("breathes fire!")) || !g.creatures.contains_key(&id) {
+                break;
+            }
+        }
+        assert!(g.log.iter().any(|l| l.text.ends_with("breathes fire!")), "the dragon never breathed fire");
+        // A dwarf five tiles off across open grass, with shrubs between.
+        let e = g.embark;
+        let z = g.world.surface_z(e.x, e.y + 8);
+        let row: Vec<Pos> = (0..8).map(|i| Pos::new(e.x + i, e.y + 8, z)).collect();
+        for &p in &row {
+            for (q, kind) in [(p, TileKind::Shrub), (p.down(), TileKind::Wall), (p.up(), TileKind::Open)] {
+                let t = g.world.t_mut(q);
+                t.kind = kind;
+                t.water = 0;
+                t.building = 0;
+            }
+        }
+        for p in [row[0], row[6]] {
+            g.world.t_mut(p).kind = TileKind::Floor;
+        }
+        let did = g.dwarves[0].id;
+        g.dwarves[0].pos = row[6];
+        g.dwarves[0].path.clear();
+        let mut c = g.creatures.remove(&id).unwrap();
+        c.pos = row[0];
+        g.breathe_fire(&c, row[6]);
+        assert!(!g.flames.is_empty());
+        assert!(row[1..6].iter().any(|&p| g.world.t(p).fire > 0), "the shrubs should catch");
+        let d = g.dwarves.iter().find(|d| d.id == did).unwrap();
+        assert!(d.thoughts.iter().any(|t| t.text == "was scorched by dragonfire"));
+        // Slay it: the skull and the hoard.
+        c.body.dead = true;
+        g.creature_died(c);
+        let skull = g.items.values().find(|it| it.label.as_deref().map_or(false, |l| l.starts_with("skull of"))).expect("no skull");
+        assert!(skull.value() >= 100, "a dragon skull is a treasure ({})", skull.value());
+        assert!(g.items.values().filter(|it| it.mat == Mat::Gold).count() + g.items.values().filter(|it| it.kind == ItemKind::Gem).count() >= 1);
     }
 
     #[test]

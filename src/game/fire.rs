@@ -116,7 +116,7 @@ impl Game {
                 d.think("was burned in a fire", 10, tick);
             }
         }
-        let ids: Vec<u32> = self.creatures.values().filter(|c| c.alive && c.pos == p).map(|c| c.id).collect();
+        let ids: Vec<u32> = self.creatures.values().filter(|c| c.alive && c.pos == p && !c.breathes_fire).map(|c| c.id).collect();
         for id in ids {
             let part = self.creatures[&id].body.pick_part(&mut self.rng);
             self.creatures.get_mut(&id).unwrap().body.wound(part, 2, false);

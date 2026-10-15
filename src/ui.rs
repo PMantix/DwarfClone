@@ -277,7 +277,8 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
     let mut beasts: HashMap<(i32, i32), (char, Color, bool)> = HashMap::new();
     for c in g.creatures.values().filter(|c| c.alive && !c.sneaking && c.pos.z == z && g.world.t(c.pos).revealed) {
         let info = c.species.info();
-        beasts.insert((c.pos.x, c.pos.y), (info.glyph, rgb(info.color), c.hostile()));
+        let (glyph, color) = if c.breathes_fire { ('D', (255, 90, 40)) } else { (info.glyph, info.color) };
+        beasts.insert((c.pos.x, c.pos.y), (glyph, rgb(color), c.hostile()));
     }
     let mut items: HashMap<(i32, i32), (char, Color)> = HashMap::new();
     for it in g.items.values().filter(|it| it.pos.z == z && it.carried_by.is_none() && it.container.is_none()) {
@@ -371,6 +372,11 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                 if h % 23 == 0 {
                     (ch, fg) = if g.weather == crate::game::Weather::Snow { ('*', Color::Rgb(240, 240, 255)) } else { ('\'', Color::Rgb(110, 150, 255)) };
                 }
+            }
+            if g.flames.iter().any(|&(q, at)| q == p && at + 8 > g.tick) {
+                ch = ['*', '☼', '≈'][(hash2(wx, wy + g.tick as i32) % 3) as usize];
+                fg = Color::Rgb(255, 230, 120);
+                bg = Color::Rgb(200, 60, 0);
             }
             if t.fire > 0 && t.revealed {
                 let flick = hash2(wx + (g.tick / 4) as i32 % 50, wy) % 3;

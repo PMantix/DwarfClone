@@ -261,6 +261,9 @@ pub struct Game {
     /// Burning cells, rebuilt from the map when missing.
     #[serde(skip)]
     fire_cells: Option<Vec<usize>>,
+    /// Tiles a dragon's breath just swept, with the tick, for drawing.
+    #[serde(skip)]
+    pub flames: Vec<(Pos, u64)>,
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
@@ -355,6 +358,7 @@ impl Game {
             weather: Weather::Clear,
             snow_lying: false,
             fire_cells: None,
+            flames: Vec::new(),
             creatures: BTreeMap::new(),
             station: None,
             alert: true,

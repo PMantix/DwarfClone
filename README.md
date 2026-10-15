@@ -83,7 +83,9 @@ does not.
 **Megabeasts.** The dragons, titans, hydras, rocs and colossi of your world's history live in
 lairs on the world map. Once the fortress has stood a year, one whose lair is near may come
 for it in any season (more likely the richer you are). It hunts every dwarf, batters doors,
-never flees, and leaves after ten days if it lives; slaying it is written into the legends.
+never flees, and leaves after ten days if it lives; slaying it is written into the legends. A dragon (`D`) breathes fire down a clear line at whoever it hunts, scorching everyone in
+the way and setting trees, grass and wooden things alight; slay it and it leaves its skull, a
+treasure, and the hoard it carried.
 Once you've broken into the caverns, a cave horror may crawl up out of them: a one-of-a-kind
 creature with its own name and look ("a bloated spider of crystal with many eyes") that hunts
 until it's killed. Skulkers are thieves: unseen, they make for the most valuable thing lying

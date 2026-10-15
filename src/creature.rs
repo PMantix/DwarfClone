@@ -405,6 +405,12 @@ pub struct Creature {
     /// The historical figure leading a siege, if this is its general.
     #[serde(default)]
     pub general: Option<u32>,
+    /// A dragon: breathes fire and doesn't burn.
+    #[serde(default)]
+    pub breathes_fire: bool,
+    /// Ticks until it can breathe fire again.
+    #[serde(default)]
+    pub breath_cd: u32,
 }
 
 fn yes() -> bool {
@@ -445,6 +451,8 @@ impl Creature {
             sneaking: false,
             loot: None,
             general: None,
+            breathes_fire: false,
+            breath_cd: 0,
         }
     }
 
