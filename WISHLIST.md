@@ -123,7 +123,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
-- **Title screen** (this commit): an animated backdrop, a mountain under a night sky with drifting clouds and twinkling stars, trees and falling petals, leaves or snow through a quick little year, the fortress dug into it with dwarves walking its halls, a miner at the face, a forge with its chimney smoking, a magma sea bubbling below, and eyes in the dark; the title glints, and lore lines type themselves out under the menu.
+- **Title screen** (258c242): an animated backdrop, a mountain under a night sky with drifting clouds and twinkling stars, trees and falling petals, leaves or snow through a quick little year, the fortress dug into it with dwarves walking its halls, a miner at the face, a forge with its chimney smoking, a magma sea bubbling below, and eyes in the dark; the title glints, and lore lines type themselves out under the menu.
 - **Seasonal trees** (6e63087): blossom and buds in spring, autumn colours and fallen leaves, bare branches in winter, evergreens (most of them in cold places).
 - **Posts that depend on fit** (1e10414, 3bff6d2): appoint from a list of dwarves ranked by fit (good, fair, poor, with the qualities behind it); a good manager, bookkeeper, broker, chief medical dwarf, commander or sheriff does the job better, a poor one worse.
 
