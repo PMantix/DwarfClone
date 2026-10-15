@@ -1228,6 +1228,10 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             title = "Look".to_string();
             v.extend(look_lines(g, app.cursor, *sel));
         }
+        Mode::PickOwner { .. } => {
+            title = "Look".to_string();
+            v.extend(look_lines(g, app.cursor, 0));
+        }
         Mode::WorldMap { .. }
         | Mode::Legends { .. }
         | Mode::Trade { .. }
@@ -1297,6 +1301,11 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.push(plain(format!("   {}", p.duty()), MUTED));
                 if let Some(f) = g.post_fit(*p) {
                     v.push(plain(format!("   {}: {}", f.name(), p.effect(f)), rgb(f.color())));
+                    if let Some(h) = g.holder(*p) {
+                        if g.office_of(h.id).is_none() {
+                            v.push(plain("   no office: zone one (i, o); it goes to them".into(), MUTED));
+                        }
+                    }
                 }
             }
             v.push(plain("1-6: choose who holds a post · x: vacate all".into(), MUTED));
@@ -2365,6 +2374,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::Status { tab, scroll } => draw_status(f, area, &app.game, tab, scroll),
         Mode::Labors { row, col, detail } => draw_labors(f, area, app, row, col, detail),
         Mode::Appoint { pos, sel } => draw_appoint(f, area, &app.game, pos, sel),
+        Mode::PickOwner { zone, sel } => draw_pick_owner(f, area, &app.game, zone, sel),
         Mode::Help => popup(f, area, 60, 47, " Help ", help_text()),
         Mode::ConfirmQuit => popup(
             f,
@@ -2397,7 +2407,7 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
     let mut v = cursor_info_terrain(g, p);
     let entries = look_entries(g, p);
     if g.zone_at(p).map_or(false, |z| z.kind.ownable()) {
-        v.push(plain("o: assign to the next dwarf".into(), KEY));
+        v.push(plain("o: choose who owns it".into(), KEY));
     }
     if entries.is_empty() {
         v.push(Line::default());
@@ -3247,6 +3257,61 @@ fn draw_loading(f: &mut Frame, app: &App) {
     );
 }
 
+/// The list of dwarves who could own a bedroom or office.
+fn draw_pick_owner(f: &mut Frame, area: Rect, g: &Game, zone: u32, sel: usize) {
+    let Some(z) = g.zones.get(&zone) else { return };
+    let kind = z.kind;
+    let cands = g.owner_candidates();
+    let value = g.area_value(&z.tiles.iter().copied().collect());
+    let mut v: Vec<Line<'static>> = Vec::new();
+    v.push(plain(
+        format!(
+            " {} worth {}. {}",
+            kind.name(),
+            value,
+            if kind == ZoneKind::Office { "Nobles want one; post holders work better from one." } else { "Its beds go to its owner." }
+        ),
+        MUTED,
+    ));
+    v.push(Line::default());
+    let room = (area.height as usize).saturating_sub(9).max(3);
+    let rows = cands.len() + 1;
+    let first = sel.saturating_sub(room / 2).min(rows.saturating_sub(room));
+    for row in first..rows.min(first + room) {
+        let hi = if row == sel { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
+        if row == 0 {
+            v.push(Line::from(vec![
+                Span::styled(if z.owner.is_none() { " ► " } else { "   " }, hi.fg(KEY)),
+                Span::styled(format!("{:<60}", "(nobody)"), hi.fg(MUTED)),
+            ]));
+            continue;
+        }
+        let id = cands[row - 1];
+        let Some(d) = g.dwarves.iter().find(|d| d.id == id) else { continue };
+        let role = match (d.noble, g.position_of(id)) {
+            (Some(n), _) => n.title().to_string(),
+            (None, Some(p)) => p.title().to_string(),
+            _ => String::new(),
+        };
+        let has = g.zones.values().find(|o| o.kind == kind && o.owner == Some(id) && o.id != zone).map(|o| {
+            format!("has a{} {} worth {}", if kind == ZoneKind::Office { "n" } else { "" }, kind.name().to_lowercase(), g.area_value(&o.tiles.iter().copied().collect()))
+        });
+        v.push(Line::from(vec![
+            Span::styled(if z.owner == Some(id) { " ► " } else { "   " }, hi.fg(KEY)),
+            Span::styled(format!("{:<20}", d.name), hi.fg(TEXT)),
+            Span::styled(format!("{:<20}", role), hi.fg(Color::Rgb(255, 230, 120))),
+            Span::styled(has.unwrap_or_default(), hi.fg(Color::Rgb(240, 160, 100))),
+        ]));
+    }
+    if rows > room {
+        v.push(plain(format!(" ({} of {} shown)", room.min(rows), rows), MUTED));
+    }
+    v.push(Line::default());
+    v.push(plain(" ↑↓ choose · Enter assign · Esc cancel   ► owns it now".into(), MUTED));
+    let h = v.len() as u16 + 2;
+    popup(f, area, 76, h, &format!(" Who owns this {}? ", kind.name().to_lowercase()), v);
+}
+
 /// The list of dwarves who could take a post, best suited first.
 fn draw_appoint(f: &mut Frame, area: Rect, g: &Game, pos: usize, sel: usize) {
     use crate::game::Fit;
@@ -3278,7 +3343,7 @@ fn draw_appoint(f: &mut Frame, area: Rect, g: &Game, pos: usize, sel: usize) {
         }
         let id = cands[row - 1];
         let Some(d) = g.dwarves.iter().find(|d| d.id == id) else { continue };
-        let (score, notes) = p.suitability(d);
+        let (score, notes) = g.post_suitability(p, d);
         let fit = Fit::of(score);
         let other = g.position_of(id).filter(|&q| q != p).map(|q| format!(" [now {}]", q.title().to_lowercase()));
         let mut spans = vec![
@@ -3426,7 +3491,9 @@ mod tests {
         let zid = *app.game.zones.keys().max().unwrap();
         app.cursor = app.game.zones[&zid].tiles[0];
         app.mode = Mode::Look { sel: 0 };
-        app.on_key(crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Char('o'), crossterm::event::KeyModifiers::NONE));
+        for c in [crossterm::event::KeyCode::Char('o'), crossterm::event::KeyCode::Down, crossterm::event::KeyCode::Enter] {
+            app.on_key(crossterm::event::KeyEvent::new(c, crossterm::event::KeyModifiers::NONE));
+        }
         let s = dump(&mut app, 130, 45);
         println!("{}", s);
         assert!(s.contains("Bedroom (") && !s.contains("unassigned"), "bedroom not assigned");
@@ -3489,6 +3556,36 @@ mod tests {
         assert!(summer.len() <= 2, "summer is green: {:?}", summer);
         assert!(winter.iter().any(|s| s.contains("125, 95, 70")), "bare in winter: {:?}", winter);
         assert!(looks(0.05).iter().any(|s| s.contains("255, 175, 205") || s.contains("245, 235, 240")), "blossom in spring");
+    }
+
+    #[test]
+    fn pick_an_office_owner_from_a_list() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::generated(42);
+        let e = app.game.embark;
+        app.game.add_zone(e.offset(-3, -3, 0), e.offset(-2, -2, 0), ZoneKind::Office);
+        let zone = app.game.zones.values().find(|z| z.kind == ZoneKind::Office).unwrap();
+        let (zid, at) = (zone.id, zone.tiles[0]);
+        app.game.zones.get_mut(&zid).unwrap().owner = None;
+        app.cursor = at;
+        app.mode = Mode::Look { sel: 0 };
+        let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
+        app.on_key(key(KeyCode::Char('o')));
+        assert_eq!(app.mode, Mode::PickOwner { zone: zid, sel: 0 });
+        let s = dump(&mut app, 130, 50);
+        println!("{}", s);
+        assert!(s.contains("Who owns this office?") && s.contains("(nobody)"), "{}", s);
+        app.on_key(key(KeyCode::Down));
+        app.on_key(key(KeyCode::Enter));
+        let first = app.game.owner_candidates()[0];
+        assert_eq!(app.game.zones[&zid].owner, Some(first));
+        assert_eq!(app.mode, Mode::Look { sel: 0 });
+        // Esc changes nothing.
+        app.on_key(key(KeyCode::Char('o')));
+        assert_eq!(app.mode, Mode::PickOwner { zone: zid, sel: 1 }, "opens on the owner");
+        app.on_key(key(KeyCode::Up));
+        app.on_key(key(KeyCode::Esc));
+        assert_eq!(app.game.zones[&zid].owner, Some(first));
     }
 
     #[test]

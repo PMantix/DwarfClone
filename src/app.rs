@@ -151,7 +151,7 @@ impl ZoneTool {
             ZoneTool::Bedroom => &["Lay over a bed. Give it to a dwarf", "with k then o; otherwise beds are", "handed out automatically."],
             ZoneTool::Dormitory => &["Beds here are shared and never", "owned. Better than the floor, but", "nobody likes a crowded dormitory."],
             ZoneTool::Dining => &["Lay over tables and chairs. Dwarves", "eat here first; a richer hall", "makes for happier meals."],
-            ZoneTool::Office => &["A room for a noble. Assign it with", "k then o. Nobles will want one."],
+            ZoneTool::Office => &["Nobles and post holders move in", "by themselves (or k then o).", "An office helps them work."],
             ZoneTool::Dump => &["Items marked for dumping (k, then", "d or D) are thrown here and left."],
             ZoneTool::Barracks => &["Soldiers with nothing to do train", "here, and spar with each other,", "which teaches them faster."],
             ZoneTool::Hospital => &["Lay over beds. The wounded rest", "here first; doctors (Medicine) suture,", "clean, splint and fit crutches."],
@@ -253,6 +253,9 @@ pub enum Mode {
     /// Choose who holds a post (`pos` indexes `Position::ALL`); row 0 of
     /// `sel` leaves it vacant, the rest are `Game::candidates`.
     Appoint { pos: usize, sel: usize },
+    /// Choose who owns a bedroom or office: row 0 is nobody, the rest are
+    /// `Game::owner_candidates`.
+    PickOwner { zone: u32, sel: usize },
     /// Choose an embark site on the world map.
     WorldMap { x: i32, y: i32 },
     /// Browse history. `from_world` returns to the world map on Esc.
@@ -1041,6 +1044,26 @@ impl App {
                     _ => {}
                 }
             }
+            Mode::PickOwner { zone, sel } => {
+                let cands = self.game.owner_candidates();
+                let n = cands.len() + 1;
+                match k.code {
+                    KeyCode::Esc => self.mode = Mode::Look { sel: 0 },
+                    KeyCode::Up => self.mode = Mode::PickOwner { zone, sel: (sel + n - 1) % n },
+                    KeyCode::Down => self.mode = Mode::PickOwner { zone, sel: (sel + 1) % n },
+                    KeyCode::PageUp | KeyCode::Home => self.mode = Mode::PickOwner { zone, sel: 0 },
+                    KeyCode::PageDown | KeyCode::End => self.mode = Mode::PickOwner { zone, sel: n - 1 },
+                    KeyCode::Enter => {
+                        let who = if sel == 0 { None } else { cands.get(sel - 1).copied() };
+                        let kind = self.game.zones.get(&zone).map_or("Room".to_string(), |z| z.kind.name());
+                        self.game.set_zone_owner(zone, who);
+                        let name = who.and_then(|id| self.game.dwarves.iter().find(|d| d.id == id)).map_or("nobody".to_string(), |d| d.name.clone());
+                        self.flash = Some(format!("{} assigned to {}.", kind, name));
+                        self.mode = Mode::Look { sel: 0 };
+                    }
+                    _ => {}
+                }
+            }
             Mode::WorldMap { x, y } => self.key_world(k, x, y),
             Mode::Legends { tab, scroll, from_world } => {
                 let back = if from_world {
@@ -1385,14 +1408,16 @@ impl App {
                 });
             }
             KeyCode::Char('o') => {
-                let zone = self.game.zone_at(self.cursor).filter(|z| z.kind.ownable()).map(|z| (z.id, z.kind));
-                self.flash = Some(match zone {
-                    Some((zid, kind)) => {
-                        let who = self.game.cycle_zone_owner(zid).unwrap_or_default();
-                        format!("{} assigned to {}.", kind.name(), who)
+                let zone = self.game.zone_at(self.cursor).filter(|z| z.kind.ownable()).map(|z| (z.id, z.owner));
+                match zone {
+                    Some((zone, owner)) => {
+                        let cands = self.game.owner_candidates();
+                        let sel = owner.and_then(|o| cands.iter().position(|&id| id == o)).map_or(0, |i| i + 1);
+                        self.mode = Mode::PickOwner { zone, sel };
+                        return;
                     }
-                    None => "No bedroom or office here.".into(),
-                });
+                    None => self.flash = Some("No bedroom or office here.".into()),
+                }
             }
             KeyCode::Char('d') => {
                 if let Some(LookEntry::Item(id)) = entries.get(sel.min(n - 1)) {

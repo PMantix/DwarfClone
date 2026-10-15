@@ -286,7 +286,7 @@ impl Game {
     pub fn trade_margin(&self) -> u32 {
         match self.holder(super::Position::Broker) {
             Some(b) => {
-                let score = super::Position::Broker.suitability(b).0;
+                let score = self.post_suitability(super::Position::Broker, b).0;
                 10 - ((score + 40) / 9).clamp(0, 10) as u32
             }
             None => 10,

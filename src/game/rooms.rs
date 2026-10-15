@@ -137,16 +137,55 @@ impl Game {
         true
     }
 
-    /// Next living dwarf after the current owner, wrapping to nobody.
-    pub fn cycle_zone_owner(&mut self, zone: u32) -> Option<String> {
-        let cur = self.zones.get(&zone)?.owner;
-        let ids: Vec<u32> = self.dwarves.iter().filter(|d| d.alive && !d.insane).map(|d| d.id).collect();
-        let next = match cur.and_then(|c| ids.iter().position(|&i| i == c)) {
-            None => ids.first().copied(),
-            Some(i) => ids.get(i + 1).copied(),
-        };
-        self.set_zone_owner(zone, next);
-        Some(next.and_then(|id| self.dwarves.iter().find(|d| d.id == id)).map_or("nobody".into(), |d| d.name.clone()))
+    /// The office a dwarf owns, if any.
+    pub fn office_of(&self, dwarf: u32) -> Option<&super::Zone> {
+        self.zones.values().find(|z| z.kind == ZoneKind::Office && z.owner == Some(dwarf))
+    }
+
+    /// Who could own a bedroom or office: titled nobles first, then the
+    /// holders of posts, then everyone else.
+    pub fn owner_candidates(&self) -> Vec<u32> {
+        let mut v: Vec<(u8, usize, u32)> = self
+            .dwarves
+            .iter()
+            .enumerate()
+            .filter(|(_, d)| d.alive && !d.insane && !d.is_child())
+            .map(|(i, d)| {
+                let rank = if d.noble.is_some() {
+                    0
+                } else if self.position_of(d.id).is_some() {
+                    1
+                } else {
+                    2
+                };
+                (rank, i, d.id)
+            })
+            .collect();
+        v.sort();
+        v.into_iter().map(|(_, _, id)| id).collect()
+    }
+
+    /// Daily: offices nobody owns go to the nobles and post holders who
+    /// have none, the highest first.
+    pub(super) fn assign_offices(&mut self) {
+        let mut free: Vec<u32> = self.zones.values().filter(|z| z.kind == ZoneKind::Office && z.owner.is_none()).map(|z| z.id).collect();
+        if free.is_empty() {
+            return;
+        }
+        free.sort();
+        let wanting: Vec<u32> = self
+            .owner_candidates()
+            .into_iter()
+            .filter(|&id| {
+                let d = self.dwarves.iter().find(|d| d.id == id).unwrap();
+                (d.noble.is_some() || self.position_of(id).is_some()) && self.office_of(id).is_none()
+            })
+            .collect();
+        for (zone, id) in free.into_iter().zip(wanting) {
+            self.set_zone_owner(zone, Some(id));
+            let name = self.dwarves.iter().find(|d| d.id == id).map_or(String::new(), |d| d.name.clone());
+            self.msg(&format!("{} has moved into an office.", name), (200, 220, 255));
+        }
     }
 
     /// Beds that belong to zones: a bedroom's beds go to its owner, a dormitory's to nobody.

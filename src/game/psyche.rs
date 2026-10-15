@@ -403,6 +403,7 @@ impl Game {
     }
 
     pub(super) fn nobles_daily(&mut self) {
+        self.assign_offices();
         let alive = self.alive_count();
         let has = |g: &Game, n: Noble| g.dwarves.iter().any(|d| d.alive && !d.insane && d.noble == Some(n));
         if alive >= 20 && !has(self, Noble::Mayor) {

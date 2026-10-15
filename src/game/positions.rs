@@ -192,12 +192,23 @@ impl Game {
         }
     }
 
+    /// How well a dwarf would suit a post here: their own qualities, and an
+    /// office to work from.
+    pub fn post_suitability(&self, p: Position, d: &Dwarf) -> (i32, Vec<String>) {
+        let (mut score, mut notes) = p.suitability(d);
+        if self.office_of(d.id).is_some() {
+            score += 15;
+            notes.push("has an office".into());
+        }
+        (score, notes)
+    }
+
     /// How well the post's holder suits it, if it's filled. A holder out of
     /// the dwarf list for their own turn is judged from the last count.
     pub fn post_fit(&self, p: Position) -> Option<Fit> {
         let id = self.positions.iter().find(|(q, _)| *q == p).map(|(_, id)| *id)?;
         match self.dwarves.iter().find(|d| d.id == id) {
-            Some(d) if d.alive && !d.insane => Some(Fit::of(p.suitability(d).0)),
+            Some(d) if d.alive && !d.insane => Some(Fit::of(self.post_suitability(p, d).0)),
             Some(_) => None,
             None => Some(self.fit_cache.iter().find(|(q, _)| *q == p).map_or(Fit::Fair, |f| f.1)),
         }
@@ -228,7 +239,7 @@ impl Game {
             .dwarves
             .iter()
             .filter(|d| d.alive && !d.insane && !d.is_child())
-            .map(|d| (p.suitability(d).0, d.id))
+            .map(|d| (self.post_suitability(p, d).0, d.id))
             .collect();
         v.sort_by_key(|&(s, id)| (-s, id));
         v.into_iter().map(|(_, id)| id).collect()
@@ -428,6 +439,32 @@ mod tests {
         assert!(g.demands.iter().all(|d| d.noble != id || d != &m), "a met demand should be cleared");
         let d = g.dwarves.iter().find(|d| d.id == id).unwrap();
         assert!(d.thoughts.iter().any(|t| t.text == "is delighted that a demand was satisfied"));
+    }
+
+    #[test]
+    fn offices_go_to_post_holders_and_help_them_work() {
+        let mut g = Game::new(81);
+        let e = g.embark;
+        let tiles = g.add_zone(e.offset(-3, -3, 0), e.offset(-2, -2, 0), ZoneKind::Office);
+        assert!(tiles > 0);
+        let office = g.zones.values().find(|z| z.kind == ZoneKind::Office).unwrap().id;
+        // The expedition leader may take it; clear titles to test the posts.
+        for d in g.dwarves.iter_mut() {
+            d.noble = None;
+        }
+        g.assign_offices();
+        assert_eq!(g.zones[&office].owner, None, "nobody needs an office yet");
+        let id = g.dwarves[3].id;
+        g.dwarves[3].personality.diligence = 20;
+        g.dwarves[3].personality.anxiety = 0;
+        g.appoint(Position::Bookkeeper, Some(id));
+        assert_eq!(g.post_fit(Position::Bookkeeper), Some(Fit::Fair));
+        assert_eq!(g.owner_candidates()[0], id, "post holders come first in the owner list");
+        g.assign_offices();
+        assert_eq!(g.zones[&office].owner, Some(id));
+        assert_eq!(g.post_fit(Position::Bookkeeper), Some(Fit::Good), "an office makes the bookkeeper better");
+        let (_, notes) = g.post_suitability(Position::Bookkeeper, &g.dwarves[3]);
+        assert!(notes.iter().any(|n| n == "has an office"));
     }
 
     #[test]

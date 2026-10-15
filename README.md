@@ -141,7 +141,9 @@ civilization in autumn, if they are at peace with you. Haul goods to the depot a
 **Zones & idling.** Zones (`i`) cover meeting areas, bedrooms, dormitories, dining halls,
 offices, farm plots, a garbage dump, temples, taverns (a tavern doubles as a meeting area)
 and tombs. Bedrooms and offices are given to a dwarf from look
-mode (`k`, then `o`); dormitory beds are shared; dining hall seats are taken first; items
+mode (`k` on the zone, then `o` picks from a list with nobles and post holders first); offices
+nobody owns go by themselves to nobles and post holders without one, and a post holder with
+an office works a little better (it counts toward their fit); dormitory beds are shared; dining hall seats are taken first; items
 marked with `d` go to the dump. Dwarves with nothing
 to do gather at the meeting area and chat there more often; without one they at least keep
 out of corridors. A stroll always gives way to real work.
