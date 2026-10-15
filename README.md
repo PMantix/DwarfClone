@@ -214,6 +214,12 @@ crimes, the great deeds from the legends, and the dead mourned, under a title ta
 biggest event (The Year of the Dragon, The Year of War with the..., The Year of Sorrow, The
 Year of Burning Leaves, The Year of Quiet Stone...). `c` reads it again; ←/→ turns the pages.
 
+**Visitors.** With a tavern zone, a guest may come each season but winter. Bards (dwarves,
+or humans and elves at peace with you) sing in the tavern several times a day, songs made from
+the legends, your fortress's own most of all ("A Song for Kelda the Dragonslayer"): listeners
+enjoy them, and a hero who hears their own deeds sung is proud. Wandering dwarf warriors rest a
+couple of days and may ask to stay, joining as seasoned fighters known as the Wanderer.
+
 **Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
 in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
 gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks

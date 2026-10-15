@@ -955,6 +955,9 @@ impl Game {
 
     /// Returns false when the creature should be removed (died or left the map).
     fn creature_tick(&mut self, c: &mut Creature) -> bool {
+        if c.visitor == super::visitors::JOINED {
+            return false;
+        }
         let info = c.species.info();
         if self.world.get(c.pos).map_or(false, |t| t.magma > 0) {
             self.msg(&format!("The {} is consumed by magma.", info.name), (255, 120, 40));
@@ -1084,7 +1087,7 @@ impl Game {
                 self.creature_step(c, info.move_delay);
             }
         } else {
-            if c.path.is_empty() && c.species != Species::Merchant && self.rng.chance(0.03) {
+            if c.path.is_empty() && !matches!(c.species, Species::Merchant | Species::Visitor) && self.rng.chance(0.03) {
                 let q = c.pos.offset(self.rng.range(-6, 7), self.rng.range(-6, 7), 0);
                 if self.world.passable(q, info.mover) {
                     if let Some(p) = path::astar(&self.world, c.pos, q, 600, info.mover) {
@@ -1122,6 +1125,12 @@ impl Game {
         }
         if c.species == Species::Skulker {
             self.skulker_think(c);
+            return;
+        }
+        if c.species == Species::Visitor {
+            if !c.leaving {
+                self.visitor_think(c);
+            }
             return;
         }
         if info.aggro == 0 {

@@ -26,6 +26,8 @@ pub enum Species {
     Elf,
     /// Dwarves of a rival civilization.
     Raider,
+    /// A guest at the tavern: a bard or a wandering warrior.
+    Visitor,
 }
 
 pub struct SpeciesInfo {
@@ -46,7 +48,7 @@ pub struct SpeciesInfo {
 }
 
 impl Species {
-    pub const ALL: [Species; 16] = [
+    pub const ALL: [Species; 17] = [
         Species::Deer,
         Species::Wolf,
         Species::Bear,
@@ -63,11 +65,12 @@ impl Species {
         Species::Human,
         Species::Elf,
         Species::Raider,
+        Species::Visitor,
     ];
 
     /// People rather than beasts: they leave corpses, not carcasses.
     pub fn person(self) -> bool {
-        matches!(self, Species::Goblin | Species::Merchant | Species::Human | Species::Elf | Species::Raider)
+        matches!(self, Species::Goblin | Species::Merchant | Species::Human | Species::Elf | Species::Raider | Species::Visitor)
     }
 
     /// Animals that can be kept (people and cave folk can't).
@@ -277,6 +280,21 @@ impl Species {
                 mover: Mover::Dwarf,
                 edged: false,
             },
+            Species::Visitor => SpeciesInfo {
+                name: "visitor",
+                plural: "visitors",
+                glyph: '☻',
+                color: (150, 210, 255),
+                scale: 1.0,
+                damage: 3.0,
+                verb: "punches",
+                move_delay: 3,
+                attack_delay: 10,
+                aggro: 0,
+                skill: 2,
+                mover: Mover::Dwarf,
+                edged: false,
+            },
             Species::Human => SpeciesInfo {
                 name: "human soldier",
                 plural: "human soldiers",
@@ -405,6 +423,9 @@ pub struct Creature {
     /// The historical figure leading a siege, if this is its general.
     #[serde(default)]
     pub general: Option<u32>,
+    /// A tavern guest's calling (see `game::visitors`), 0 for everyone else.
+    #[serde(default)]
+    pub visitor: u8,
     /// A dragon: breathes fire and doesn't burn.
     #[serde(default)]
     pub breathes_fire: bool,
@@ -451,6 +472,7 @@ impl Creature {
             sneaking: false,
             loot: None,
             general: None,
+            visitor: 0,
             breathes_fire: false,
             breath_cd: 0,
         }

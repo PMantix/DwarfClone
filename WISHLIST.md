@@ -38,7 +38,7 @@ by fun for the effort; promote one into "Up next" with steps when it's next.
 | ID | Idea | The moment it makes | Builds on | Size |
 |---|---|---|---|---|
 | F05 | Disasters (cave-ins done) | ~~Cave-ins~~ (8e392cc); still to come: earthquakes crack walls; the spring melt floods the lower halls; the magma sea surges | W11, W01 | S–M |
-| F07 | Bards and wandering heroes | Visitors who sing songs made from your fort's own history, monster hunters who come for the beast in your caverns, a hero who stays and joins | B08 taverns, legends | M |
+| F07 | Bards and wandering heroes (bards, warriors done) | ~~Bards, wandering warriors who join~~ (this commit); still to come: monster hunters who come for the beast in your caverns, performers who dance or tell stories | B08 taverns, legends | S |
 | F08 | Ancient ruins | Mining breaks into a sealed hall of an older people: traps, treasure, engravings of a forgotten war, and something that should have stayed sealed | W18 caverns, worldgen | M |
 | F09 | Expeditions | Send a few dwarves off the map to explore a ruin or slay a beast; they come back days later with loot, wounds and a story, or don't come back | world map | M |
 | F10 | Grudges, romance and duels | Rivals trade insults, then blows; a duel at dawn; love triangles; pranks; a gossip log to follow the drama | W09, W10, W16 | S–M |
@@ -118,7 +118,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
-- **F06 The year's chronicle** (this commit): each new year pauses on a parchment page telling the year that ended (population, wealth, migrants, births, festivals, wars, kills, fires, crimes, the legends' great deeds, the dead), titled after its biggest event; `c` pages through every year.
+- **F06 The year's chronicle** (3acce89): each new year pauses on a parchment page telling the year that ended (population, wealth, migrants, births, festivals, wars, kills, fires, crimes, the legends' great deeds, the dead), titled after its biggest event; `c` pages through every year.
 - **F04 Heroes and epithets** (a7113b9): deeds earn epithets (Dragonslayer, Titanbane, Horrorbane, Warbreaker, Grim, Red-Handed, Inspired, Ironarm, Deepcup), only ever grander; heroes fight under their epithet, go into the legends, are admired, and are mourned by everyone when they fall.
 - **F03 Festivals** (8bbc56a): the harvest feast, midwinter fire and founding day; dwarves down tools for half a day, gather at the meeting hall, tavern, dining hall or wagon, dance, drink from the stores, arm-wrestle and hold a drinking contest, and remember it fondly.
 - **F02 Dragons** (65388cc): dragons from the legends breathe fire down a clear line every few seconds, scorching dwarves and creatures and setting what will burn alight, never burn themselves, show as a red `D`, and when slain leave a masterwork dragon skull and the hoard they carried (gold, gems).

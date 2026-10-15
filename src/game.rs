@@ -43,6 +43,7 @@ mod festivals;
 mod heroes;
 mod disasters;
 mod chronicle;
+mod visitors;
 pub use chronicle::{Chronicle, YearLog};
 pub use festivals::Festival;
 mod fire;
@@ -903,6 +904,7 @@ impl Game {
             self.maybe_megabeast();
             self.maybe_cave_horror();
             self.maybe_thief();
+            self.maybe_visitor(season);
             self.caravan_season(season);
             self.issue_mandate();
             self.maybe_strange_mood();
