@@ -225,6 +225,13 @@ people, its walls carved with scenes from the world's oldest legends. Mine into 
 up its treasure (gold, gems and one artifact of legend), and usually wakes the warden sealed in
 with them, a one-of-a-kind horror. Older saves get a hall of their own when loaded.
 
+**Expeditions.** On the military screen, `e` sends the selected squad off the map: to explore
+a ruined site, raid an enemy's town or fortress, or hunt a megabeast in its lair. The list
+shows how many days each takes and how deadly it is against the squad's strength (fighting
+skill, weapons, armour). They come home days later in triumph, with loot (an artifact, now
+and then, from ruins) and a new name for whoever led them (Delver, the Bold, Dragonslayer,
+a beast slain in the legends), or beaten, and not always all of them.
+
 **Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
 in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
 gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks

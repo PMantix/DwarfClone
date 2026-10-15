@@ -39,7 +39,6 @@ by fun for the effort; promote one into "Up next" with steps when it's next.
 |---|---|---|---|---|
 | F05 | Disasters (cave-ins done) | ~~Cave-ins~~ (8e392cc); still to come: earthquakes crack walls; the spring melt floods the lower halls; the magma sea surges | W11, W01 | S–M |
 | F07 | Bards and wandering heroes (bards, warriors done) | ~~Bards, wandering warriors who join~~ (1ec4734); still to come: monster hunters who come for the beast in your caverns, performers who dance or tell stories | B08 taverns, legends | S |
-| F09 | Expeditions | Send a few dwarves off the map to explore a ruin or slay a beast; they come back days later with loot, wounds and a story, or don't come back | world map | M |
 | F10 | Grudges, romance and duels | Rivals trade insults, then blows; a duel at dawn; love triangles; pranks; a gossip log to follow the drama | W09, W10, W16 | S–M |
 | F11 | Pets with personality | A cat chooses its dwarf; pets follow their owners, steal food, catch vermin, and are mourned; a war dog that saved a life is remembered | W08 animals | S |
 | F12 | Legendary catches | A giant pike in the lake that breaks lines for years until one fisher lands it; a sea serpent in the ocean embark | W13 fishing | S |
@@ -117,7 +116,8 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
-- **F08 Ancient ruins** (this commit): every site hides a sealed marble hall of a dead civilization deep in the rock, its walls engraved with the world's oldest legends; breaking in reveals gold, gems and an artifact, and usually wakes its warden, a unique horror; older saves get one on load.
+- **F09 Expeditions** (this commit): `e` on the military screen sends a squad off the map to explore a ruin, raid an enemy site or hunt a megabeast in its lair; odds from squad strength against danger; they return days later with loot, epithets and legends (a hunted beast dies in the world history), or beaten and fewer.
+- **F08 Ancient ruins** (8965925): every site hides a sealed marble hall of a dead civilization deep in the rock, its walls engraved with the world's oldest legends; breaking in reveals gold, gems and an artifact, and usually wakes its warden, a unique horror; older saves get one on load.
 - **F06 The year's chronicle** (3acce89): each new year pauses on a parchment page telling the year that ended (population, wealth, migrants, births, festivals, wars, kills, fires, crimes, the legends' great deeds, the dead), titled after its biggest event; `c` pages through every year.
 - **F04 Heroes and epithets** (a7113b9): deeds earn epithets (Dragonslayer, Titanbane, Horrorbane, Warbreaker, Grim, Red-Handed, Inspired, Ironarm, Deepcup), only ever grander; heroes fight under their epithet, go into the legends, are admired, and are mourned by everyone when they fall.
 - **F03 Festivals** (8bbc56a): the harvest feast, midwinter fire and founding day; dwarves down tools for half a day, gather at the meeting hall, tavern, dining hall or wagon, dance, drink from the stores, arm-wrestle and hold a drinking contest, and remember it fondly.

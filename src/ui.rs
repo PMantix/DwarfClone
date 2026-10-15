@@ -1355,7 +1355,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(plain("A room is floor enclosed by rock".into(), MUTED));
             v.push(plain("and doors, underground.".into(), MUTED));
         }
-        Mode::Military => {
+        Mode::Military | Mode::Expedition { .. } => {
             title = "Military".to_string();
             let alert = if g.alert { "ENGAGE hostiles" } else { "Stand down" };
             v.push(key_line("a", &format!("Orders: {}", alert), g.alert));
@@ -1401,10 +1401,17 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.push(key_line("u", "Members", false));
                 v.push(key_line("s", "Station at the cursor", false));
                 v.push(key_line("k", "Kill a creature", false));
+                v.push(key_line("e", "Send on an expedition", false));
                 v.push(key_line("t", "Back to training", false));
                 v.push(key_line("w", "Uniform: next weapon", false));
                 v.push(key_line("r", "Uniform: armor on/off", false));
                 v.push(key_line("X", "Disband", false));
+            }
+            if let Some(ex) = &g.expedition {
+                v.push(Line::default());
+                let days = ex.back.saturating_sub(g.tick) / crate::game::DAY + 1;
+                v.push(plain(format!("⚑ {} ({}) away at {}", ex.squad, ex.members.len(), ex.dest.name), Color::Rgb(200, 220, 255)));
+                v.push(plain(format!("   back in about {} day{}", days, if days == 1 { "" } else { "s" }), MUTED));
             }
             let loose: Vec<&Dwarf> = g.dwarves.iter().filter(|d| d.alive && d.soldier && g.squad_of(d.id).is_none()).collect();
             if !loose.is_empty() {
@@ -2391,6 +2398,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::Appoint { pos, sel } => draw_appoint(f, area, &app.game, pos, sel),
         Mode::PickOwner { zone, sel } => draw_pick_owner(f, area, &app.game, zone, sel),
         Mode::Chronicle { idx } => draw_chronicle(f, area, &app.game, idx),
+        Mode::Expedition { squad, sel } => draw_expedition(f, area, &app.game, squad, sel),
         Mode::Help => popup(f, area, 60, 47, " Help ", help_text()),
         Mode::ConfirmQuit => popup(
             f,
@@ -3273,6 +3281,44 @@ fn draw_loading(f: &mut Frame, app: &App) {
     );
 }
 
+/// Where a squad could go, with the danger against their strength.
+fn draw_expedition(f: &mut Frame, area: Rect, g: &Game, squad: usize, sel: usize) {
+    let Some(s) = g.squads.get(squad) else { return };
+    let strength = g.squad_strength(&s.members);
+    let mut v: Vec<Line<'static>> = vec![
+        plain(format!(" {} · {} dwarves · strength {}", s.name, s.members.len(), strength), TEXT),
+        plain(" They leave the map; loot, wounds and stories come back with them.".into(), MUTED),
+        Line::default(),
+    ];
+    for (i, d) in g.destinations().iter().enumerate() {
+        let hi = if i == sel { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
+        let kind = match d.goal {
+            crate::game::expeditions_goal::Ruin => "explore",
+            crate::game::expeditions_goal::Raid => "raid",
+            crate::game::expeditions_goal::Beast(_) => "hunt",
+        };
+        let odds = strength as f64 / (strength as f64 + d.danger as f64 * 3.0);
+        let (word, col) = if odds >= 0.65 {
+            ("likely", Color::Rgb(110, 220, 110))
+        } else if odds >= 0.4 {
+            ("risky", Color::Rgb(230, 200, 90))
+        } else {
+            ("deadly", Color::Rgb(230, 110, 90))
+        };
+        v.push(Line::from(vec![
+            Span::styled(format!(" {:<8}", kind), hi.fg(KEY)),
+            Span::styled(format!("{:<44}", d.name.chars().take(43).collect::<String>()), hi.fg(TEXT)),
+            Span::styled(format!("{:>3} days  ", d.days()), hi.fg(MUTED)),
+            Span::styled(format!("{:<8}", "☠".repeat(d.danger.clamp(1, 8) as usize)), hi.fg(Color::Rgb(230, 110, 90))),
+            Span::styled(word.to_string(), hi.fg(col)),
+        ]));
+    }
+    v.push(Line::default());
+    v.push(plain(" ↑↓ choose · Enter send them · Esc cancel".into(), MUTED));
+    let h = v.len() as u16 + 2;
+    popup(f, area, 84, h, " Send on an expedition ", v);
+}
+
 /// A page of the chronicle, like a leaf of parchment.
 fn draw_chronicle(f: &mut Frame, area: Rect, g: &Game, idx: usize) {
     let Some(c) = g.chronicles.get(idx) else { return };
@@ -3664,6 +3710,26 @@ mod tests {
         assert!(s.contains("The Year of Feasting") && s.contains("harvest feast"), "{}", s);
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert_eq!(app.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn send_a_squad_on_an_expedition() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::generated(81);
+        let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
+        let sq = app.game.new_squad();
+        let id = app.game.dwarves[0].id;
+        app.game.set_squad_member(sq, id, true);
+        app.mode = Mode::Military;
+        app.on_key(key(KeyCode::Char('e')));
+        assert_eq!(app.mode, Mode::Expedition { squad: 0, sel: 0 });
+        let s = dump(&mut app, 130, 45);
+        println!("{}", s);
+        assert!(s.contains("Send on an expedition") && s.contains("days"), "{}", s);
+        app.on_key(key(KeyCode::Enter));
+        assert!(app.game.expedition.is_some());
+        let s = dump(&mut app, 130, 45);
+        assert!(s.contains("back in about"), "{}", s);
     }
 
     #[test]

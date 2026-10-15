@@ -258,6 +258,8 @@ pub enum Mode {
     PickOwner { zone: u32, sel: usize },
     /// A page of the fortress's chronicle (index into `Game::chronicles`).
     Chronicle { idx: usize },
+    /// Choose where a squad goes on an expedition.
+    Expedition { squad: usize, sel: usize },
     /// Choose an embark site on the world map.
     WorldMap { x: i32, y: i32 },
     /// Browse history. `from_world` returns to the world map on Esc.
@@ -1053,6 +1055,24 @@ impl App {
                     _ => {}
                 }
             }
+            Mode::Expedition { squad, sel } => {
+                let dests = self.game.destinations();
+                let n = dests.len().max(1);
+                match k.code {
+                    KeyCode::Esc => self.mode = Mode::Military,
+                    KeyCode::Up => self.mode = Mode::Expedition { squad, sel: (sel + n - 1) % n },
+                    KeyCode::Down => self.mode = Mode::Expedition { squad, sel: (sel + 1) % n },
+                    KeyCode::Enter => {
+                        if let Some(d) = dests.get(sel) {
+                            self.flash = Some(match self.game.send_expedition(squad, d.clone()) {
+                                Ok(m) | Err(m) => m,
+                            });
+                        }
+                        self.mode = Mode::Military;
+                    }
+                    _ => {}
+                }
+            }
             Mode::Chronicle { idx } => {
                 let n = self.game.chronicles.len().max(1);
                 match k.code {
@@ -1284,6 +1304,15 @@ impl App {
                 self.flash = Some(format!("{} goes back to training.", self.game.squads[sel].name));
             }
             KeyCode::Char('k') if n > 0 => self.mode = Mode::KillTarget { squad: sel },
+            KeyCode::Char('e') if n > 0 => {
+                if self.game.expedition.is_some() {
+                    self.flash = Some("An expedition is already away.".into());
+                } else if self.game.destinations().is_empty() {
+                    self.flash = Some("There's nowhere within reach to send them.".into());
+                } else {
+                    self.mode = Mode::Expedition { squad: sel, sel: 0 };
+                }
+            }
             KeyCode::Char('w') if n > 0 => {
                 let w = self.game.squads[sel].weapon.next();
                 self.game.squads[sel].weapon = w;

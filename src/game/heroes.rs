@@ -8,7 +8,7 @@ use crate::creature::Creature;
 /// How grand each kind of deed is: a dwarf's epithet only ever gets grander.
 pub(super) const RANK_FEAT: u8 = 1;
 const RANK_KILLS: u8 = 2;
-const RANK_BEAST: u8 = 3;
+pub(super) const RANK_BEAST: u8 = 3;
 
 impl Game {
     /// `d` struck the blow that killed `c`.
@@ -85,7 +85,7 @@ impl Game {
     }
 }
 
-fn cap_word(s: &str) -> String {
+pub(super) fn cap_word(s: &str) -> String {
     let mut c = s.chars();
     c.next().map_or(String::new(), |f| f.to_uppercase().collect::<String>() + c.as_str())
 }

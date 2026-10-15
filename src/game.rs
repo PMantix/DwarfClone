@@ -45,6 +45,9 @@ mod disasters;
 mod chronicle;
 mod visitors;
 mod ruins;
+mod expeditions;
+pub use expeditions::Expedition;
+pub use expeditions::Goal as expeditions_goal;
 pub use ruins::Vault;
 pub use chronicle::{Chronicle, YearLog};
 pub use festivals::Festival;
@@ -279,6 +282,9 @@ pub struct Game {
     /// A vault has been looked for (older saves get one when loaded).
     #[serde(default)]
     vault_placed: bool,
+    /// A squad away from the map, if any.
+    #[serde(default)]
+    pub expedition: Option<Expedition>,
     /// What's happened so far this year, for the chronicle.
     #[serde(default)]
     pub year_log: YearLog,
@@ -391,6 +397,7 @@ impl Game {
             year_log: YearLog::default(),
             vault: None,
             vault_placed: false,
+            expedition: None,
             chronicles: Vec::new(),
             chronicle_ready: false,
             creatures: BTreeMap::new(),
@@ -868,6 +875,9 @@ impl Game {
         }
         if self.tick % 50 == 25 {
             self.festival_tick();
+        }
+        if self.tick % 100 == 60 {
+            self.expedition_tick();
         }
         if self.tick % 10 == 0 {
             self.grow_farms();
