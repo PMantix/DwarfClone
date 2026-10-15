@@ -276,6 +276,13 @@ asking for one of your dwarves by name and sit watching them; when the hood come
 long-lost sibling or friend come home to stay, or a goblin spy who slips away, and the next
 siege is sure to come.
 
+**Megaprojects.** `b`, `G` places a great monument (3×3) that takes thirty stone blocks, each
+carried and set in place by a builder: a long job that rises as scaffolding. When the last
+block is set it's dedicated to the fortress's greatest hero (or its leader) as the Statue of
+whoever it is, everyone is proud, a dedication feast begins, the year is named for it, and
+it's worth a fortune. Dwarves who pass it stop to admire it. (The build menu is now a
+two-column list, so every building fits on screen.)
+
 **Festivals.** Three days a year the fortress downs tools for half a day: the harvest feast
 in mid-autumn, the midwinter fire, and founding day each spring from the second year. Everyone
 gathers in the meeting hall or tavern (else a dining hall, else by the wagon), dances, drinks

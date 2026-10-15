@@ -52,6 +52,7 @@ mod fishlore;
 mod necromancy;
 mod milestones;
 mod mysteries;
+mod megaprojects;
 pub use mysteries::{Mystery, MysteryKind};
 pub use necromancy::Necromancer;
 pub fn milestones_banner_ticks() -> u64 {
@@ -298,6 +299,9 @@ pub struct Game {
     /// A vault has been looked for (older saves get one when loaded).
     #[serde(default)]
     vault_placed: bool,
+    /// The name of the fortress's great monument, once dedicated.
+    #[serde(default)]
+    pub monument: Option<String>,
     /// Mysteries unfolding, and those already told.
     #[serde(default)]
     pub mysteries: Vec<Mystery>,
@@ -449,6 +453,7 @@ impl Game {
             necromancer: None,
             milestones: Vec::new(),
             mysteries: Vec::new(),
+            monument: None,
             mysteries_done: Vec::new(),
             siege_warned: false,
             banner: None,
@@ -941,6 +946,7 @@ impl Game {
             self.drama_daily();
             self.pets_daily();
             self.milestones_daily();
+            self.monument_daily();
         }
         if self.tick % 10 == 0 {
             self.grow_farms();
@@ -2317,6 +2323,9 @@ impl Game {
                                 if done {
                                     let name = self.buildings[&bld].name();
                                     self.msg(&format!("{} has been completed.", name), (160, 220, 255));
+                                    if self.buildings[&bld].kind == BuildingKind::Monument {
+                                        self.dedicate_monument(bld);
+                                    }
                                 }
                             }
                         }

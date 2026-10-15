@@ -855,12 +855,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
         }
         Mode::BuildMenu => {
             title = "Build".to_string();
-            v.push(key_line("C", "Constructions: walls, floors, stairs...", false));
-            v.push(Line::default());
-            for b in BuildingKind::ALL {
-                v.push(key_line(&b.key().to_string(), &format!("{} ({})", b.name(), b.needs_desc()), false));
-            }
-            v.push(Line::default());
+            v.push(plain("Pick from the list.".into(), TEXT));
             v.push(plain("Esc: back".into(), MUTED));
         }
         Mode::Construct { kind, mat, corner } => {
@@ -2416,6 +2411,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::PickOwner { zone, sel } => draw_pick_owner(f, area, &app.game, zone, sel),
         Mode::Chronicle { idx } => draw_chronicle(f, area, &app.game, idx),
         Mode::Expedition { squad, sel } => draw_expedition(f, area, &app.game, squad, sel),
+        Mode::BuildMenu => draw_build_menu(f, area),
         Mode::Help => popup(f, area, 60, 47, " Help ", help_text()),
         Mode::ConfirmQuit => popup(
             f,
@@ -3326,6 +3322,35 @@ fn draw_loading(f: &mut Frame, app: &App) {
     );
 }
 
+/// Everything that can be built, in two columns.
+fn draw_build_menu(f: &mut Frame, area: Rect) {
+    // Two columns, as wide as the screen allows.
+    let w = area.width.min(104);
+    let col = ((w.saturating_sub(4) / 2) as usize).saturating_sub(3).max(16);
+    let all: Vec<Line<'static>> = BuildingKind::ALL
+        .iter()
+        .map(|b| {
+            Line::from(vec![
+                Span::styled(format!(" {} ", b.key()), Style::default().fg(KEY)),
+                Span::styled(format!("{:<col$}", format!("{} ({})", b.name(), b.needs_desc()).chars().take(col - 1).collect::<String>(), col = col), Style::default().fg(TEXT)),
+            ])
+        })
+        .collect();
+    let half = (all.len() + 1) / 2;
+    let mut v: Vec<Line<'static>> = vec![key_line("C", "Constructions: walls, floors, stairs, ramps...", false), Line::default()];
+    for i in 0..half {
+        let mut spans = all[i].spans.clone();
+        if let Some(r) = all.get(i + half) {
+            spans.extend(r.spans.clone());
+        }
+        v.push(Line::from(spans));
+    }
+    v.push(Line::default());
+    v.push(plain(" Press a key to place it · Esc back".into(), MUTED));
+    let h = v.len() as u16 + 2;
+    popup(f, area, w, h, " Build ", v);
+}
+
 /// Where a squad could go, with the danger against their strength.
 fn draw_expedition(f: &mut Frame, area: Rect, g: &Game, squad: usize, sel: usize) {
     let Some(s) = g.squads.get(squad) else { return };
@@ -3815,6 +3840,17 @@ mod tests {
         app.game.tick += crate::game::milestones_banner_ticks();
         let s = dump(&mut app, 120, 40);
         assert!(!s.contains("The first masterwork"));
+    }
+
+    #[test]
+    fn the_build_menu_offers_a_monument() {
+        let mut app = App::generated(42);
+        app.mode = Mode::BuildMenu;
+        let s = dump(&mut app, 130, 50);
+        assert!(s.contains("Great monument") && s.contains("Millstone"), "{}", s);
+        let s = dump(&mut app, 80, 30);
+        println!("{}", s);
+        assert!(s.contains(" G ") && s.contains(" M "), "{}", s);
     }
 
     #[test]

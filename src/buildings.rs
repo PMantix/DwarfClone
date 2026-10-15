@@ -40,10 +40,15 @@ pub enum BuildingKind {
     Clothier,
     Soapmaker,
     Millstone,
+    /// A megaproject: a great monument raised block by block.
+    Monument,
 }
 
+/// Stone blocks a monument takes.
+pub const MONUMENT_BLOCKS: u8 = 30;
+
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 33] = [
+    pub const ALL: [BuildingKind; 34] = [
         BuildingKind::Carpenter,
         BuildingKind::Mason,
         BuildingKind::Still,
@@ -77,6 +82,7 @@ impl BuildingKind {
         BuildingKind::Clothier,
         BuildingKind::Soapmaker,
         BuildingKind::Millstone,
+        BuildingKind::Monument,
     ];
 
     pub fn name(self) -> &'static str {
@@ -114,6 +120,7 @@ impl BuildingKind {
             BuildingKind::Clothier => "Clothier's shop",
             BuildingKind::Soapmaker => "Soap maker's workshop",
             BuildingKind::Millstone => "Millstone",
+            BuildingKind::Monument => "Great monument",
         }
     }
 
@@ -152,6 +159,7 @@ impl BuildingKind {
             BuildingKind::Clothier => 'K',
             BuildingKind::Soapmaker => 'P',
             BuildingKind::Millstone => 'M',
+            BuildingKind::Monument => 'G',
         }
     }
 
@@ -177,6 +185,7 @@ impl BuildingKind {
                 | BuildingKind::Slab
                 | BuildingKind::Well
                 | BuildingKind::Floodgate
+                | BuildingKind::Monument
         )
     }
 
@@ -188,6 +197,7 @@ impl BuildingKind {
     pub fn parts(self) -> u8 {
         match self {
             BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap | BuildingKind::Bridge | BuildingKind::Well | BuildingKind::Floodgate => 2,
+            BuildingKind::Monument => MONUMENT_BLOCKS,
             _ => 1,
         }
     }
@@ -205,6 +215,7 @@ impl BuildingKind {
             (Well, 0) => item.kind == ItemKind::Block || (item.kind == ItemKind::Boulder && item.mat.is_building_stone()),
             (Well, _) => item.kind == ItemKind::Bucket,
             (Floodgate, _) => item.kind == ItemKind::Block || (item.kind == ItemKind::Boulder && item.mat.is_building_stone()),
+            (Monument, _) => item.kind == ItemKind::Block,
             _ => self.needs(item),
         }
     }
@@ -220,12 +231,13 @@ impl BuildingKind {
             (Well, 0) => "stone blocks or a boulder",
             (Well, _) => "a bucket",
             (Floodgate, _) => "stone blocks or a boulder",
+            (Monument, _) => "stone blocks",
             _ => self.needs_desc(),
         }
     }
 
     pub fn size(self) -> i32 {
-        if self.is_workshop() {
+        if self.is_workshop() || self == BuildingKind::Monument {
             3
         } else {
             1
@@ -262,6 +274,7 @@ impl BuildingKind {
             BuildingKind::Bridge => "a log or blocks + a mechanism",
             BuildingKind::Well => "blocks or a boulder + a bucket",
             BuildingKind::Floodgate => "blocks or a boulder + a mechanism",
+            BuildingKind::Monument => "30 stone blocks",
             _ => "a stone boulder",
         }
     }
@@ -323,6 +336,7 @@ impl BuildingKind {
             BuildingKind::Clothier => Color::Rgb(220, 160, 200),
             BuildingKind::Soapmaker => Color::Rgb(240, 240, 200),
             BuildingKind::Millstone => Color::Rgb(210, 200, 170),
+            BuildingKind::Monument => Color::Rgb(255, 215, 90),
             _ => Color::Rgb(200, 200, 200),
         }
     }
@@ -360,6 +374,7 @@ impl BuildingKind {
             BuildingKind::Clothier => 'K',
             BuildingKind::Soapmaker => 'P',
             BuildingKind::Millstone => 'M',
+            BuildingKind::Monument => '▲',
         }
     }
 }
@@ -841,6 +856,18 @@ impl Building {
 
     /// Glyph for the tile at offset (dx, dy) inside the footprint.
     pub fn glyph_at(&self, dx: i32, dy: i32) -> char {
+        if self.kind == BuildingKind::Monument {
+            // Scaffolding while it rises, then an obelisk on its plinth.
+            return if !self.built {
+                if (dx + dy) % 2 == 0 { '#' } else { '░' }
+            } else {
+                match (dx, dy) {
+                    (1, 1) => '▲',
+                    (1, 0) | (1, 2) | (0, 1) | (2, 1) => '▓',
+                    _ => '▄',
+                }
+            };
+        }
         if self.kind == BuildingKind::Bridge && self.raised {
             return '▀';
         }

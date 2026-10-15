@@ -39,7 +39,6 @@ by fun for the effort; promote one into "Up next" with steps when it's next.
 |---|---|---|---|---|
 | F05 | Disasters (cave-ins done) | ~~Cave-ins~~ (8e392cc); still to come: earthquakes crack walls; the spring melt floods the lower halls; the magma sea surges | W11, W01 | S–M |
 | F07 | Bards and wandering heroes (bards, warriors done) | ~~Bards, wandering warriors who join~~ (1ec4734); still to come: monster hunters who come for the beast in your caverns, performers who dance or tell stories | B08 taverns, legends | S |
-| F15 | Megaprojects | A giant statue, a tower, a great bridge: built over years, marked on the world map, and celebrated with a festival when finished | W01, F03 | M |
 
 ## Beyond DF: ideas from Tarn's dev page
 
@@ -109,7 +108,8 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
-- **F16 Mysteries** (this commit): the Whispering Stone (a gem that whispers to its miner and leads them to the sealed hall, or into a fey mood) and the hooded stranger (a long-lost sibling or friend who joins, or a goblin spy who brings the next siege for certain); each unfolds over days and happens once.
+- **F15 Megaprojects** (this commit): a great monument (`b`, `G`, thirty stone blocks) that rises as scaffolding and, finished, is dedicated to the fortress's greatest hero with a feast, a legend, a milestone and a year named for it; dwarves who pass admire it. The build menu became a two-column popup so every building fits.
+- **F16 Mysteries** (5c6e81e): the Whispering Stone (a gem that whispers to its miner and leads them to the sealed hall, or into a fey mood) and the hooded stranger (a long-lost sibling or friend who joins, or a goblin spy who brings the next siege for certain); each unfolds over days and happens once.
 - **F17 Milestones** (5bd6098): banners across the map for the fortress's firsts (masterwork, artifact, child, festival, hero, broken siege, dragon, vault, great fish, expedition, a deathless year, the necromancer's end) and its population and wealth marks, listed on the status screen.
 - **F14 The necromancer** (d66ee5c): some sites have a necromancer nearby who, after the first year, raises the dead: a horde from the map edge and our own unburied dead where they lie (more unburied, more raids); risen dwarves fall back as corpses to bury; destroying the necromancer stills every corpse for good (Deathbane).
 - **F13 Wild weather** (0263e92): thunderstorms (lightning far more often, flashes on screen), blizzards that chill dwarves caught outside, summer droughts with no rain and shallow water drying up, and blood rain over evil sites that badly upsets anyone caught in it.

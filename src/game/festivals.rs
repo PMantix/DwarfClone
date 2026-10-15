@@ -13,6 +13,8 @@ pub enum FestivalKind {
     Harvest,
     /// Midwinter: a fire against the dark.
     Midwinter,
+    /// A great monument is finished.
+    Dedication,
 }
 
 impl FestivalKind {
@@ -21,6 +23,7 @@ impl FestivalKind {
             FestivalKind::Founding => "founding day",
             FestivalKind::Harvest => "harvest feast",
             FestivalKind::Midwinter => "midwinter fire",
+            FestivalKind::Dedication => "dedication feast",
         }
     }
 
@@ -111,6 +114,7 @@ impl Game {
             FestivalKind::Founding => format!("It is founding day! {} remembers the day it was struck from the rock.", self.fortress_name),
             FestivalKind::Harvest => "The harvest is in! The fortress gathers for the harvest feast.".to_string(),
             FestivalKind::Midwinter => "Midwinter! The fortress gathers round the fire against the long dark.".to_string(),
+            FestivalKind::Dedication => "The fortress gathers to dedicate its great monument!".to_string(),
         };
         self.msg(&text, (255, 215, 60));
         self.festival = Some(Festival { kind, until, venue, attended: Vec::new(), mugs: Vec::new(), told: 0 });

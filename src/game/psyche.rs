@@ -73,7 +73,13 @@ impl Game {
         if !b.built {
             return 0;
         }
-        let base = if b.kind.is_workshop() { 20 } else { 10 };
+        let base = if b.kind == BuildingKind::Monument {
+            400
+        } else if b.kind.is_workshop() {
+            20
+        } else {
+            10
+        };
         base * b.mat.value() * quality_mult(b.quality)
     }
 
