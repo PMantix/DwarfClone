@@ -53,6 +53,8 @@ mod necromancy;
 mod milestones;
 mod mysteries;
 mod megaprojects;
+mod overseer;
+pub use overseer::{run_trial, Overseer, Style, Trial};
 pub use mysteries::{Mystery, MysteryKind};
 pub use necromancy::Necromancer;
 pub fn milestones_banner_ticks() -> u64 {
@@ -299,6 +301,9 @@ pub struct Game {
     /// A vault has been looked for (older saves get one when loaded).
     #[serde(default)]
     vault_placed: bool,
+    /// The AI playing the fortress, if it's been handed over.
+    #[serde(default)]
+    pub overseer: Option<Overseer>,
     /// The name of the fortress's great monument, once dedicated.
     #[serde(default)]
     pub monument: Option<String>,
@@ -454,6 +459,7 @@ impl Game {
             milestones: Vec::new(),
             mysteries: Vec::new(),
             monument: None,
+            overseer: None,
             mysteries_done: Vec::new(),
             siege_warned: false,
             banner: None,
@@ -936,6 +942,9 @@ impl Game {
         }
         if self.tick % 50 == 25 {
             self.festival_tick();
+        }
+        if self.tick % 150 == 7 && self.overseer.is_some() {
+            self.oversee();
         }
         if self.tick % 100 == 60 {
             self.expedition_tick();
