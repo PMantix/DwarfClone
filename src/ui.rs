@@ -778,7 +778,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
     let mut v: Vec<Line> = Vec::new();
     let title;
     match &app.mode {
-        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } => {
+        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } => {
             title = "Main".to_string();
             v.extend(stocks(g));
             v.push(Line::default());
@@ -798,6 +798,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(key_line("m", "Military", false));
             v.push(key_line("n", "Nobles, mandates & rooms", false));
             v.push(key_line("c", "Chronicle of the years", false));
+            v.push(key_line("A", "Autoplay: let the overseer play", g.overseer.is_some()));
             v.push(key_line("L", "Legends of the world", false));
             v.push(key_line("v", "View dwarf at cursor", false));
             v.push(key_line("Tab", "Jump to next dwarf", false));
@@ -1674,6 +1675,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("m", "military: squads, orders, uniforms, alerts"),
         k("n", "nobles, mandates, bedrooms, wealth"),
         k("c", "the chronicle: each year told as a story"),
+        k("A", "autoplay: the overseer plays (pick a style)"),
         k("L", "legends: history, civs, sites, figures"),
         k("Tab", "jump to next dwarf"),
         k("H", "jump back to the wagon"),
@@ -2343,6 +2345,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Span::styled(" ☼ DwarfClone ", Style::default().fg(KEY).add_modifier(Modifier::BOLD)),
         Span::styled(format!("│ {} ", g.date_string()), Style::default().fg(TEXT)),
         Span::styled(format!("│ {} dwarves ", g.alive_count()), Style::default().fg(TEXT)),
+        match &g.overseer {
+            Some(o) => Span::styled(format!("│ AUTO: {} ", o.style.name()), Style::default().fg(BLACK).bg(Color::Rgb(120, 190, 255))),
+            None => Span::raw(""),
+        },
         if g.weather != crate::game::Weather::Clear {
             Span::styled(format!("│ {} ", g.weather.name()), Style::default().fg(Color::Rgb(150, 180, 230)))
         } else {
@@ -2411,6 +2417,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::PickOwner { zone, sel } => draw_pick_owner(f, area, &app.game, zone, sel),
         Mode::Chronicle { idx } => draw_chronicle(f, area, &app.game, idx),
         Mode::Expedition { squad, sel } => draw_expedition(f, area, &app.game, squad, sel),
+        Mode::Autoplay { sel } => draw_autoplay(f, area, &app.game, sel),
         Mode::BuildMenu => draw_build_menu(f, area),
         Mode::Help => popup(f, area, 60, 47, " Help ", help_text()),
         Mode::ConfirmQuit => popup(
@@ -3196,7 +3203,8 @@ fn draw_title(f: &mut Frame, app: &App, sel: usize) {
             0 => Some("forge a world and its history".to_string()),
             1 => saves.first().map(|m| format!("{} ({})", m.fortress, m.date)),
             2 if !saves.is_empty() => Some(format!("{} saved", saves.len())),
-            3 => Some("until next time".to_string()),
+            3 => Some("the overseer plays a fortress for you".to_string()),
+            4 => Some("until next time".to_string()),
             _ => None,
         };
         // Same width on every line so the centered menu lines up.
@@ -3320,6 +3328,36 @@ fn draw_loading(f: &mut Frame, app: &App) {
         ),
         r,
     );
+}
+
+/// The overseer: who's playing, in what style, and what it's been doing.
+fn draw_autoplay(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
+    use crate::game::Style as Pace;
+    let mut v: Vec<Line<'static>> = vec![plain(" The overseer plays the fortress with the same commands you have.".into(), MUTED), Line::default()];
+    let cur = g.overseer.as_ref().map(|o| o.style);
+    let mut rows: Vec<(String, String, bool)> = vec![("Off".into(), "you play".into(), cur.is_none())];
+    for s in Pace::ALL {
+        rows.push((s.name().into(), s.blurb().into(), cur == Some(s)));
+    }
+    for (i, (name, blurb, on)) in rows.into_iter().enumerate() {
+        let hi = if i == sel { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
+        v.push(Line::from(vec![
+            Span::styled(if on { " ► " } else { "   " }, hi.fg(KEY)),
+            Span::styled(format!("{:<10}", name), hi.fg(TEXT).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("{:<50}", blurb), hi.fg(MUTED)),
+        ]));
+    }
+    if let Some(o) = &g.overseer {
+        v.push(Line::default());
+        v.push(header("What it's been doing"));
+        for (_, n) in o.notes.iter().rev().take(8) {
+            v.push(plain(format!(" {}", n), TEXT));
+        }
+    }
+    v.push(Line::default());
+    v.push(plain(" ↑↓ choose · Enter · Esc back      (A opens this again)".into(), MUTED));
+    let h = v.len() as u16 + 2;
+    popup(f, area, 72, h, " Autoplay ", v);
 }
 
 /// Everything that can be built, in two columns.
@@ -3851,6 +3889,27 @@ mod tests {
         let s = dump(&mut app, 80, 30);
         println!("{}", s);
         assert!(s.contains(" G ") && s.contains(" M "), "{}", s);
+    }
+
+    #[test]
+    fn hand_the_fort_to_the_overseer_and_back() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::generated(42);
+        app.mode = Mode::Normal;
+        let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
+        app.on_key(key(KeyCode::Char('A')));
+        assert_eq!(app.mode, Mode::Autoplay { sel: 0 });
+        let s = dump(&mut app, 130, 45);
+        assert!(s.contains("Reckless") && s.contains("you play"), "{}", s);
+        app.on_key(key(KeyCode::Down));
+        app.on_key(key(KeyCode::Enter));
+        assert_eq!(app.game.overseer.as_ref().map(|o| o.style), Some(crate::game::Style::Steady));
+        let s = dump(&mut app, 130, 45);
+        assert!(s.contains("AUTO: Steady"), "{}", s);
+        app.on_key(key(KeyCode::Char('A')));
+        app.on_key(key(KeyCode::Up));
+        app.on_key(key(KeyCode::Enter));
+        assert!(app.game.overseer.is_none());
     }
 
     #[test]

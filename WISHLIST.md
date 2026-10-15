@@ -108,6 +108,7 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
+- **Autoplay** (this commit; step 1 0d5a1e0): the overseer AI plays a fortress in one of five styles; `A` hands it over, *Watch a fort* on the title screen, `--autoplay` runs many and reports ruin or glory.
 - **F15 Megaprojects** (95c75ce): a great monument (`b`, `G`, thirty stone blocks) that rises as scaffolding and, finished, is dedicated to the fortress's greatest hero with a feast, a legend, a milestone and a year named for it; dwarves who pass admire it. The build menu became a two-column popup so every building fits.
 - **F16 Mysteries** (5c6e81e): the Whispering Stone (a gem that whispers to its miner and leads them to the sealed hall, or into a fey mood) and the hooded stranger (a long-lost sibling or friend who joins, or a goblin spy who brings the next siege for certain); each unfolds over days and happens once.
 - **F17 Milestones** (5bd6098): banners across the map for the fortress's firsts (masterwork, artifact, child, festival, hero, broken siege, dragon, vault, great fish, expedition, a deathless year, the necromancer's end) and its population and wealth marks, listed on the status screen.

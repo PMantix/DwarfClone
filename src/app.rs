@@ -14,7 +14,7 @@ use std::collections::HashSet;
 
 pub const SPEEDS: [u32; 6] = [1, 2, 5, 10, 25, 60];
 pub const SAVE_DIR: &str = "saves";
-pub const TITLE_MENU: [&str; 4] = ["New world", "Continue", "Load game", "Quit"];
+pub const TITLE_MENU: [&str; 5] = ["New world", "Continue", "Load game", "Watch a fort", "Quit"];
 
 /// Rows of the world settings screen.
 pub const SETUP_ROWS: [&str; 8] = ["Preset", "Seed", "World size", "History", "Civilizations", "Savagery", "Minerals", "Generate world"];
@@ -258,6 +258,8 @@ pub enum Mode {
     PickOwner { zone: u32, sel: usize },
     /// A page of the fortress's chronicle (index into `Game::chronicles`).
     Chronicle { idx: usize },
+    /// Hand the fortress to the overseer, pick its style, or take it back.
+    Autoplay { sel: usize },
     /// Choose where a squad goes on an expedition.
     Expedition { squad: usize, sel: usize },
     /// Choose an embark site on the world map.
@@ -365,19 +367,23 @@ impl App {
             return;
         }
         if !self.paused {
+            let watching = self.game.overseer.is_some();
             for _ in 0..self.ticks_per_frame() {
                 self.game.step();
                 if self.game.pause_request {
                     self.game.pause_request = false;
-                    self.paused = true;
-                    break;
+                    // The overseer doesn't stop for news; you can.
+                    if !watching {
+                        self.paused = true;
+                        break;
+                    }
                 }
             }
         }
         if self.game.chronicle_ready {
             self.game.chronicle_ready = false;
             if matches!(self.mode, Mode::Normal) {
-                self.paused = true;
+                self.paused = self.game.overseer.is_none();
                 self.mode = Mode::Chronicle { idx: self.game.chronicles.len() - 1 };
             }
         }
@@ -499,6 +505,20 @@ impl App {
         self.run_job("Embarking", move |report| Ok(JobDone::Embarked(Game::embark_with(seed, ow, x, y, size, report))));
     }
 
+    /// A fresh world and fortress, played by the overseer in a random style.
+    pub fn start_watch(&mut self) {
+        let seed = random_seed();
+        self.seed = seed;
+        let style = crate::game::Style::ALL[(seed % crate::game::Style::ALL.len() as u64) as usize];
+        self.run_job("Embarking", move |report| {
+            let ow = Overworld::generate(seed);
+            let (x, y) = ow.default_site();
+            let mut g = Game::embark_with(seed, ow, x, y, crate::world::MapSize::ALL[1], report);
+            g.set_overseer(Some(style));
+            Ok(JobDone::Embarked(g))
+        });
+    }
+
     /// Save on a worker thread; the game is handed back when it's done.
     pub fn start_save(&mut self, autosave: bool, after: AfterSave) {
         if self.game.is_placeholder() {
@@ -542,8 +562,15 @@ impl App {
             Ok(JobDone::Embarked(g)) => {
                 self.game = g;
                 self.cursor = self.game.embark;
-                self.paused = true;
-                self.mode = Mode::Help;
+                if self.game.overseer.is_some() {
+                    // Watching: straight in, and quick.
+                    self.paused = false;
+                    self.speed = 4;
+                    self.mode = Mode::Normal;
+                } else {
+                    self.paused = true;
+                    self.mode = Mode::Help;
+                }
             }
             Ok(JobDone::Saved(g, meta, after)) => {
                 self.game = g;
@@ -600,6 +627,7 @@ impl App {
                         self.mode = Mode::LoadMenu { sel: 0, confirm: false };
                     }
                 }
+                3 => self.start_watch(),
                 _ => self.quit = true,
             },
             _ => {}
@@ -1055,6 +1083,19 @@ impl App {
                     _ => {}
                 }
             }
+            Mode::Autoplay { sel } => {
+                let n = crate::game::Style::ALL.len() + 1;
+                match k.code {
+                    KeyCode::Up => self.mode = Mode::Autoplay { sel: (sel + n - 1) % n },
+                    KeyCode::Down => self.mode = Mode::Autoplay { sel: (sel + 1) % n },
+                    KeyCode::Enter => {
+                        let style = if sel == 0 { None } else { Some(crate::game::Style::ALL[sel - 1]) };
+                        self.game.set_overseer(style);
+                        self.mode = Mode::Normal;
+                    }
+                    _ => self.mode = Mode::Normal,
+                }
+            }
             Mode::Expedition { squad, sel } => {
                 let dests = self.game.destinations();
                 let n = dests.len().max(1);
@@ -1162,6 +1203,10 @@ impl App {
             KeyCode::Char('o') => self.mode = Mode::Traffic { level: 2, corner: None },
             KeyCode::Char('m') => self.mode = Mode::Military,
             KeyCode::Char('n') => self.mode = Mode::Nobles,
+            KeyCode::Char('A') => {
+                let sel = self.game.overseer.as_ref().map_or(0, |o| 1 + crate::game::Style::ALL.iter().position(|&s| s == o.style).unwrap_or(0));
+                self.mode = Mode::Autoplay { sel };
+            }
             KeyCode::Char('c') => match self.game.chronicles.len() {
                 0 => self.flash = Some("No chronicle yet: the chronicler writes at the turn of each year.".into()),
                 n => self.mode = Mode::Chronicle { idx: n - 1 },

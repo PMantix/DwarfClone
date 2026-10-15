@@ -54,7 +54,7 @@ mod milestones;
 mod mysteries;
 mod megaprojects;
 mod overseer;
-pub use overseer::{run_trial, Overseer, Style, Trial};
+pub use overseer::{run_trial, Overseer, Style};
 pub use mysteries::{Mystery, MysteryKind};
 pub use necromancy::Necromancer;
 pub fn milestones_banner_ticks() -> u64 {
@@ -945,6 +945,9 @@ impl Game {
         }
         if self.tick % 150 == 7 && self.overseer.is_some() {
             self.oversee();
+        }
+        if self.tick % 10 == 3 && self.overseer.is_some() {
+            self.oversee_alert();
         }
         if self.tick % 100 == 60 {
             self.expedition_tick();

@@ -10,7 +10,18 @@ to their labors, needs, personalities and moods.
 ```
 cargo run --release            # title screen; new worlds get a random seed
 cargo run --release -- 12345   # the first new world uses this seed
+cargo run --release -- --autoplay --runs 10 --years 5   # let the overseer play 10 forts
 ```
+
+**Autoplay.** The overseer is an AI that plays a fortress with the same commands you have:
+it digs in, builds workshops and halls, keeps stocks with work orders, fills posts, sets
+labors, raises and arms a squad, hangs a gate with a drawbridge on a lever and a corridor of
+cage traps, shelters everyone when an army comes, mines, trades, and (by style) engraves,
+raises a monument, sinks shafts or sends expeditions. Styles: Steady, Builder, Delver,
+Warlord and Reckless. Press `A` in a fortress to hand it over (or take it back), or pick
+*Watch a fort* on the title screen. From the command line, `--autoplay` plays many forts side
+by side and reports how each ended (`--runs`, `--years`, `--style`, `--seed`). Most end in
+ruin; that's the fun of it.
 
 Use Windows Terminal (or any truecolor + Unicode terminal) at 130x40 or larger.
 Press `?` in game for keys.

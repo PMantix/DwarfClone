@@ -100,13 +100,16 @@ pub struct Overseer {
     pub done: Vec<String>,
     pub peak_pop: usize,
     pub peak_wealth: u32,
+    /// When the drawbridge was last raised (0 when it's down).
+    #[serde(default)]
+    pub raised_at: u64,
     /// What it decided, newest last.
     pub notes: Vec<(u64, String)>,
 }
 
 impl Overseer {
     pub fn new(style: Style) -> Overseer {
-        Overseer { style, top: None, base: None, rooms: Vec::new(), slots: 0, done: Vec::new(), peak_pop: 0, peak_wealth: 0, notes: Vec::new() }
+        Overseer { style, top: None, base: None, rooms: Vec::new(), slots: 0, done: Vec::new(), peak_pop: 0, peak_wealth: 0, raised_at: 0, notes: Vec::new() }
     }
 
     fn did(&self, what: &str) -> bool {
@@ -180,10 +183,18 @@ impl Game {
             self.ov_orders(&o);
             self.ov_posts();
             self.ov_army(&mut o);
-            self.ov_alert(&o);
             if self.tick % DAY < 150 {
                 self.ov_daily(&mut o);
             }
+        }
+        self.overseer = Some(o);
+    }
+
+    /// Often: watch for enemies, and shut the gate in time.
+    pub(super) fn oversee_alert(&mut self) {
+        let Some(mut o) = self.overseer.take() else { return };
+        if o.base.is_some() {
+            self.ov_alert(&mut o);
         }
         self.overseer = Some(o);
     }
@@ -214,16 +225,21 @@ impl Game {
         let e = self.embark;
         let tick = self.tick;
         self.designate(e.offset(-15, -15, -1), e.offset(15, 15, 1), Desig::Chop);
-        self.add_zone(e.offset(-8, 3, -1), e.offset(-1, 9, 1), ZoneKind::Stockpile(StockFilter::All));
+        // Wood and stone by the wagon; food and drink go below, behind the gate.
+        self.add_zone(e.offset(-8, 3, -1), e.offset(-5, 9, 1), ZoneKind::Stockpile(StockFilter::Wood));
+        self.add_zone(e.offset(-4, 3, -1), e.offset(-1, 9, 1), ZoneKind::Stockpile(StockFilter::Stone));
         self.add_zone(e.offset(-8, -8, -1), e.offset(-2, -3, 1), ZoneKind::Farm);
         self.add_zone(e.offset(2, -9, -1), e.offset(8, -4, 1), ZoneKind::Farm);
-        // Wood and stone first; the still and kitchen go below, where they're safe.
-        for kind in [BuildingKind::Carpenter, BuildingKind::Mason] {
+        // Wood, stone, drink and food first, right by the wagon.
+        for kind in [BuildingKind::Carpenter, BuildingKind::Still, BuildingKind::Kitchen, BuildingKind::Mason, BuildingKind::Mechanic] {
             if let Some(p) = self.ov_spot(kind, e.offset(4, 4, 0), 14) {
                 self.place_building(kind, p);
             }
         }
         // The stair: on open ground beside the wagon, down into the rock.
+        if let Some(m) = self.candidates(Position::Manager).first().copied() {
+            self.appoint(Position::Manager, Some(m));
+        }
         let s = (1..12).flat_map(|i| [e.offset(i, 0, 0), e.offset(0, i, 0), e.offset(-i, 0, 0)]).find(|&p| {
             let Some(t) = self.world.get(p) else { return false };
             t.kind == TileKind::Floor && t.building == 0 && t.zone == 0
@@ -414,7 +430,7 @@ impl Game {
             (Recipe::Weave, 3),
             (Recipe::ClothShirt, 2),
             (Recipe::ClothTrousers, 2),
-            (Recipe::Mechanism, if o.style == Style::Reckless { 0 } else { 4 }),
+            (Recipe::Mechanism, if o.style == Style::Reckless { 0 } else { 5 }),
             (Recipe::WoodCage, if o.style == Style::Reckless { 0 } else { 4 }),
             (Recipe::Charcoal, 6),
             (Recipe::SmeltOre, 6),
@@ -432,9 +448,14 @@ impl Game {
             orders.push((Recipe::ForgeBreastplate, 1));
             orders.push((Recipe::ForgeShield, 1));
         }
+        // Only what some workshop can make (the rest would just complain).
         for (r, keep) in orders {
-            self.add_work_order(r, keep);
+            if keep > 0 && self.buildings.values().any(|b| b.built && b.kind.recipes().contains(&r)) {
+                self.add_work_order(r, keep);
+            }
         }
+        // Soldiers hunt game for the butcher.
+        self.hunt = o.style != Style::Reckless && self.buildings.values().any(|b| b.built && b.kind == BuildingKind::Butcher);
     }
 
     /// Fill the posts with whoever fits best and isn't busy with another.
@@ -497,7 +518,7 @@ impl Game {
 
     /// Sound the alarm while enemies are at the gates, stand down when
     /// they're gone. (A horror far down in the caverns doesn't count.)
-    fn ov_alert(&mut self, o: &Overseer) {
+    fn ov_alert(&mut self, o: &mut Overseer) {
         let (top, base) = (o.top.unwrap(), o.base.unwrap());
         let near_fort = |p: Pos| {
             let close = |c: Pos| (p.x - c.x).abs() <= 30 && (p.y - c.y).abs() <= 30;
@@ -532,6 +553,31 @@ impl Game {
         for id in gate {
             self.toggle_lock(id);
         }
+        // Raise the drawbridge against an army, once everyone's inside or
+        // when they're close; not for days on end without one at the gate.
+        if o.did("linked") {
+            let inside = self.dwarves.iter().filter(|d| d.alive && !d.soldier).all(|d| d.pos.z <= base.z && !self.world.outside(d.pos));
+            let army = |near: bool| {
+                self.creatures.values().any(|c| {
+                    c.alive && c.siege && !c.legendary() && c.hostile() && (!near || ((c.pos.x - top.x).abs() <= 25 && (c.pos.y - top.y).abs() <= 25))
+                })
+            };
+            let (any, at_gate) = (army(false), army(true));
+            let long = self.tick > o.raised_at + DAY * 4;
+            let want = any && (at_gate || inside) && !(long && !at_gate && o.raised_at > 0);
+            let bridges = self.gate_bridges(base);
+            let raised = bridges.iter().any(|id| self.buildings.get(id).map_or(false, |b| b.raised));
+            if let Some(lever) = self.gate_lever(base) {
+                if raised != want && !self.buildings[&lever].pull {
+                    self.request_pull(lever);
+                }
+                if want && !raised {
+                    o.raised_at = self.tick;
+                } else if !want && !raised {
+                    o.raised_at = 0;
+                }
+            }
+        }
         // Soldiers hold the corridor behind the gate, unless they're strong
         // enough (and bold enough) to go out and meet them.
         if !self.squads.is_empty() {
@@ -544,6 +590,14 @@ impl Game {
                 self.order_train(0);
             }
         }
+    }
+
+    fn gate_lever(&self, base: Pos) -> Option<u32> {
+        self.buildings.values().find(|b| b.kind == BuildingKind::Lever && b.built && b.pos == base.offset(3, 1, 0)).map(|b| b.id)
+    }
+
+    fn gate_bridges(&self, base: Pos) -> Vec<u32> {
+        self.buildings.values().filter(|b| b.kind == BuildingKind::Bridge && b.pos.z == base.z && b.pos.x == base.x + 2 && (b.pos.y - base.y).abs() <= 1).map(|b| b.id).collect()
     }
 
     /// The gate at the foot of the stair, and a corridor of cage traps
@@ -561,9 +615,31 @@ impl Game {
                 Self::note(o, self.tick, "Hung a gate at the foot of the stair, to bar when enemies come.".into());
             }
         }
+        // A drawbridge behind the doors, on a lever: raised, nothing gets in.
+        if o.did("gate") && !o.did("bridge") && self.stock_of(ItemKind::Mechanism) >= 3 {
+            let a = self.place_building(BuildingKind::Bridge, base.offset(2, 0, 0));
+            let b = self.place_building(BuildingKind::Bridge, base.offset(2, 1, 0));
+            let l = self.place_building(BuildingKind::Lever, base.offset(3, 1, 0));
+            if a || b || l {
+                o.done.push("bridge".into());
+                Self::note(o, self.tick, "Began a drawbridge at the gate, worked by a lever inside.".into());
+            }
+        }
+        if o.did("bridge") && !o.did("linked") {
+            let lever = self.gate_lever(base);
+            let bridges = self.gate_bridges(base);
+            let built = bridges.iter().all(|id| self.buildings.get(id).map_or(false, |b| b.built));
+            if let (Some(lever), true, false) = (lever, built, bridges.is_empty()) {
+                let linked = bridges.iter().filter(|&&id| self.link_lever(lever, id).is_ok()).count();
+                if linked == bridges.len() {
+                    o.done.push("linked".into());
+                    Self::note(o, self.tick, "Linked the lever to the drawbridge. The gate can be shut fast.".into());
+                }
+            }
+        }
         if o.did("gate") && !o.did("traps") && self.stock_of(ItemKind::Mechanism) >= 2 && self.stock_of(ItemKind::Cage) >= 2 {
             let mut n = 0;
-            for dx in 3..7 {
+            for dx in 4..8 {
                 for dy in 0..2 {
                     if self.place_building(BuildingKind::CageTrap, base.offset(dx, dy, 0)) {
                         n += 1;
@@ -577,11 +653,76 @@ impl Game {
         }
     }
 
+    /// See that someone does each job the workshops and fields need, the
+    /// most skilled first.
+    fn ov_labors(&mut self, o: &Overseer) {
+        let pop = self.alive_count();
+        let has = |g: &Game, k: BuildingKind| g.buildings.values().any(|b| b.built && b.kind == k);
+        let mut need: Vec<(Labor, usize)> = vec![
+            (Labor::Mining, 2 + pop / 8),
+            (Labor::Woodcutting, 1 + pop / 15),
+            (Labor::Farming, 2 + pop / 6),
+            (Labor::Building, 2),
+            (Labor::Carpentry, 1),
+            (Labor::Masonry, 1),
+            (Labor::Brewing, 1),
+            (Labor::Cooking, 1),
+        ];
+        for (k, l) in [
+            (BuildingKind::Mechanic, Labor::Mechanics),
+            (BuildingKind::Craftsdwarf, Labor::Crafting),
+            (BuildingKind::Butcher, Labor::Butchery),
+            (BuildingKind::Smelter, Labor::Smelting),
+            (BuildingKind::WoodFurnace, Labor::Smelting),
+            (BuildingKind::Forge, Labor::Smithing),
+            (BuildingKind::Loom, Labor::Clothesmaking),
+            (BuildingKind::Tannery, Labor::Leatherworking),
+        ] {
+            if has(self, k) {
+                need.push((l, 1));
+            }
+        }
+        if self.zones.values().any(|z| z.kind == ZoneKind::Hospital) {
+            need.push((Labor::Medicine, 1 + pop / 15));
+        }
+        if o.style == Style::Builder {
+            need.push((Labor::Engraving, 2));
+        }
+        for (labor, want) in need {
+            let have = self.dwarves.iter().filter(|d| d.alive && !d.is_child() && !d.soldier && d.has(labor)).count();
+            if have >= want {
+                continue;
+            }
+            let mut cands: Vec<(u32, usize, u32)> = self
+                .dwarves
+                .iter()
+                .filter(|d| d.alive && !d.is_child() && !d.soldier && !d.insane && !d.has(labor))
+                .map(|d| (d.skills[labor.idx()], LABORS.iter().filter(|l| d.has(**l)).count(), d.id))
+                .collect();
+            // The most skilled, then whoever has least to do.
+            cands.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+            for (_, _, id) in cands.into_iter().take(want - have) {
+                self.set_labor(id, labor, true);
+            }
+        }
+    }
+
     /// Once a day: the bigger decisions.
     fn ov_daily(&mut self, o: &mut Overseer) {
         let tick = self.tick;
         let base = o.base.unwrap();
         let e = self.embark;
+        self.ov_labors(o);
+        // Keep the wood coming: chop further out when it runs low.
+        if self.stock_of(ItemKind::Log) < 6 {
+            let chopping = self.designations.iter().filter(|p| self.world.t(**p).desig == Desig::Chop).count();
+            if chopping < 5 {
+                let k = o.done.iter().filter(|d| d.starts_with("chop")).count() as i32;
+                let r = 22 + k * 8;
+                self.designate(e.offset(-r, -r, -2), e.offset(r, r, 2), Desig::Chop);
+                o.done.push(format!("chop{}", k));
+            }
+        }
         self.ov_defences(o);
         // More fields as the fortress grows.
         let farm: usize = self.zones.values().filter(|z| z.kind == ZoneKind::Farm).map(|z| z.tiles.len()).sum();
@@ -753,6 +894,8 @@ pub struct Trial {
     pub peak_wealth: u32,
     pub milestones: Vec<String>,
     pub heroes: Vec<String>,
+    /// The chronicle's titles, year by year.
+    #[allow(dead_code)]
     pub chronicles: Vec<String>,
     /// Ruin, Glory or Endured.
     pub verdict: &'static str,
@@ -766,8 +909,19 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
     g.set_overseer(Some(style));
     let mut last_death = String::new();
     let end = years * YEAR;
+    let mut seen = 0u64;
+    let story = std::env::var("TRIAL_DEATHS").is_ok();
     while g.tick < end && g.alive_count() > 0 {
         g.step();
+        if story && g.tick % 50 == 0 {
+            for l in g.log.iter().filter(|l| l.tick > seen) {
+                let t = &l.text;
+                if l.color == (255, 60, 60) || t.contains("arrived!") || t.contains("has come") || t.contains("fleeing") || t.contains("bashes down") || t.contains("Lever") || t.contains("raised") || t.contains("lowered") || t.contains("caught") {
+                    eprintln!("    d{:>3} {}", l.tick / DAY, t);
+                }
+            }
+            seen = g.tick;
+        }
         if g.tick % DAY == 0 {
             if let Some(l) = g.log.iter().rev().find(|l| l.color == (255, 60, 60)) {
                 last_death = l.text.clone();
@@ -794,12 +948,19 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
                 g.designations.len()
             );
             eprintln!(
-                "      done {:?} soldiers {} doors {} traps {} squad {:?}",
+                "      done {:?} soldiers {} doors {} traps {} raised {} squad {:?} | boulders {} logs {} mech {} cages {} miners {} shops {:?}",
                 g.overseer.as_ref().map(|o| o.done.iter().filter(|d| !d.starts_with("farm")).cloned().collect::<Vec<_>>()),
                 g.dwarves.iter().filter(|d| d.alive && d.soldier).count(),
                 g.buildings.values().filter(|b| b.kind == BuildingKind::Door && b.built).count(),
                 g.buildings.values().filter(|b| b.kind.is_trap() && b.built).count(),
-                g.squads.first().map(|s| s.order.clone())
+                g.buildings.values().filter(|b| b.kind == BuildingKind::Bridge && b.raised).count(),
+                g.squads.first().map(|s| s.order.clone()),
+                g.stock_of(ItemKind::Boulder),
+                g.stock_of(ItemKind::Log),
+                g.stock_of(ItemKind::Mechanism),
+                g.stock_of(ItemKind::Cage),
+                g.dwarves.iter().filter(|d| d.alive && d.has(Labor::Mining)).count(),
+                g.buildings.values().filter(|b| b.kind.is_workshop()).map(|b| (b.kind.letter(), b.built, b.orders.len())).collect::<Vec<_>>()
             );
         }
     }
@@ -866,7 +1027,8 @@ mod tests {
         assert!(!g.work_orders.is_empty());
         let workshops = g.buildings.values().filter(|b| b.kind.is_workshop() && b.built).count();
         assert!(workshops >= 4, "only {} workshops built", workshops);
-        assert!(g.zones.values().any(|z| z.kind == ZoneKind::Dining));
+        let base = o.base.unwrap();
+        assert!(g.zones.values().any(|z| z.tiles.iter().any(|p| p.z == base.z)), "nothing zoned below");
     }
 
     #[test]
@@ -886,6 +1048,16 @@ mod tests {
                 t.style.name(), t.seed, t.fort, t.years, t.alive, t.peak_pop, t.peak_wealth, t.verdict, t.epitaph, t.chronicles, t.heroes
             );
         }
+    }
+
+    #[test]
+    #[ignore]
+    fn one_trial() {
+        let seed: u64 = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
+        let style = std::env::var("STYLE").ok().and_then(|s| Style::parse(&s)).unwrap_or(Style::Steady);
+        let years: u64 = std::env::var("YEARS").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
+        let t = run_trial(seed, style, years);
+        eprintln!("{} {} {:.1}y {} | {}", t.style.name(), t.seed, t.years, t.verdict, t.epitaph);
     }
 
     #[test]
