@@ -258,6 +258,8 @@ pub enum Mode {
     PickOwner { zone: u32, sel: usize },
     /// A page of the fortress's chronicle (index into `Game::chronicles`).
     Chronicle { idx: usize },
+    /// How many tiles to add on each side of the map.
+    GrowMap { n: i32, e: i32, s: i32, w: i32 },
     /// Past announcements: `filter` picks which, `scroll` counts back from
     /// the newest.
     Reports { filter: usize, scroll: usize },
@@ -315,7 +317,8 @@ pub struct App {
     /// Skip the pacing and generate as fast as possible.
     pub gen_fast: bool,
     /// Index into `MapSize::ALL` for the next embark.
-    pub embark_size: usize,
+    /// The fortress map to embark on.
+    pub embark_size: crate::world::MapSize,
     /// The squad selected on the military screen.
     pub squad_sel: usize,
     /// Where the mouse is, and any drag under way.
@@ -363,7 +366,7 @@ impl App {
             world_params: WorldParams { seed, ..WorldParams::default() },
             worldgen: None,
             gen_fast: false,
-            embark_size: 1,
+            embark_size: crate::world::MapSize::MEDIUM,
             squad_sel: 0,
             hover: None,
             drag: None,
@@ -521,7 +524,7 @@ impl App {
     fn start_embark(&mut self, x: i32, y: i32) {
         let ow = self.game.overworld.clone();
         let seed = self.seed;
-        let size = crate::world::MapSize::ALL[self.embark_size];
+        let size = self.embark_size;
         self.run_job("Embarking", move |report| Ok(JobDone::Embarked(Game::embark_with(seed, ow, x, y, size, report))));
     }
 
@@ -536,6 +539,19 @@ impl App {
             let mut g = Game::embark_with(seed, ow, x, y, crate::world::MapSize::ALL[1], report);
             g.set_overseer(Some(style));
             Ok(JobDone::Embarked(g))
+        });
+    }
+
+    /// Grow the map on a worker thread (it's a whole new map's worth of work).
+    pub fn start_grow(&mut self, sides: (i32, i32, i32, i32)) {
+        let mut game = std::mem::replace(&mut self.game, Game::placeholder(Overworld::empty()));
+        self.run_job("Growing the map", move |report| match game.grow_map(sides, report) {
+            Ok(_) => Ok(JobDone::Grown(game, (sides.3, sides.0))),
+            Err(e) => {
+                // Hand the fortress back unharmed.
+                game.msg(&e, (240, 150, 110));
+                Ok(JobDone::Grown(game, (0, 0)))
+            }
         });
     }
 
@@ -609,6 +625,15 @@ impl App {
                         self.mode = Mode::Title { sel: 1 };
                     }
                 }
+            }
+            Ok(JobDone::Grown(g, (dx, dy))) => {
+                self.game = g;
+                self.cursor = self.cursor.offset(dx, dy, 0);
+                self.view_x += dx;
+                self.view_y += dy;
+                self.paused = true;
+                self.mode = Mode::Normal;
+                self.flash = Some(format!("The map is now {}×{}.", self.game.world.w, self.game.world.h));
             }
             Ok(JobDone::Loaded(g)) => {
                 self.game = g;
@@ -1213,6 +1238,32 @@ impl App {
                     _ => {}
                 }
             }
+            Mode::GrowMap { mut n, mut e, mut s, mut w } => {
+                let by = if k.modifiers.contains(KeyModifiers::SHIFT) { -16 } else { 16 };
+                let (ww, wh) = (self.game.world.w, self.game.world.h);
+                match k.code {
+                    KeyCode::Up => n = (n + by).max(0),
+                    KeyCode::Down => s = (s + by).max(0),
+                    KeyCode::Right => e = (e + by).max(0),
+                    KeyCode::Left => w = (w + by).max(0),
+                    KeyCode::Enter if n + e + s + w > 0 => {
+                        self.start_grow((n, e, s, w));
+                        return;
+                    }
+                    _ => {
+                        self.mode = Mode::Normal;
+                        return;
+                    }
+                }
+                // Keep within bounds.
+                if ww + e + w > 320 {
+                    e = e.min(320 - ww - w).max(0);
+                }
+                if wh + n + s > 256 {
+                    s = s.min(256 - wh - n).max(0);
+                }
+                self.mode = Mode::GrowMap { n, e, s, w };
+            }
             Mode::Reports { filter, scroll } => {
                 let n = crate::ui::REPORT_FILTERS.len();
                 let page = 20;
@@ -1373,6 +1424,7 @@ impl App {
             KeyCode::Char('m') => self.mode = Mode::Military,
             KeyCode::Char('n') => self.mode = Mode::Nobles,
             KeyCode::Char('r') => self.mode = Mode::Reports { filter: 0, scroll: 0 },
+            KeyCode::Char('M') => self.mode = Mode::GrowMap { n: 0, e: 0, s: 0, w: 0 },
             KeyCode::Char('B') => {
                 if self.game.overseer.is_some() {
                     self.mode = Mode::Brain { sel: 0 };
@@ -1848,7 +1900,29 @@ impl App {
             KeyCode::Left => nx -= step,
             KeyCode::Right => nx += step,
             KeyCode::Char('s') | KeyCode::Char('S') => {
-                self.embark_size = (self.embark_size + 1) % crate::world::MapSize::ALL.len();
+                // The next preset.
+                use crate::world::MapSize;
+                let i = MapSize::ALL.iter().position(|&m| m == self.embark_size).map_or(0, |i| (i + 1) % MapSize::ALL.len());
+                self.embark_size = MapSize::ALL[i];
+                return;
+            }
+            KeyCode::Char('[') | KeyCode::Char(']') => {
+                let s = &mut self.embark_size;
+                s.w = (s.w + if k.code == KeyCode::Char(']') { 16 } else { -16 }).clamp(48, 256);
+                return;
+            }
+            KeyCode::Char('{') | KeyCode::Char('}') => {
+                let s = &mut self.embark_size;
+                s.h = (s.h + if k.code == KeyCode::Char('}') { 16 } else { -16 }).clamp(48, 192);
+                return;
+            }
+            KeyCode::Char('d') | KeyCode::Char('D') => {
+                let s = &mut self.embark_size;
+                s.d = match s.d {
+                    32 => 48,
+                    48 => 64,
+                    _ => 32,
+                };
                 return;
             }
             KeyCode::Char('l') | KeyCode::Char('L') => {
@@ -1856,7 +1930,7 @@ impl App {
                 return;
             }
             KeyCode::Char('?') => {
-                self.flash = Some("Arrows pick a site, Enter embarks, l opens legends, Esc back to the title.".into());
+                self.flash = Some("Arrows pick a site, Enter embarks. Map size: s presets, [ ] width, { } height, d depth. l legends, Esc back.".into());
                 return;
             }
             KeyCode::Char('Q') => {

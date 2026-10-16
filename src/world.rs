@@ -1,9 +1,9 @@
 use crate::geom::{Pos, DIRS8};
 use crate::items::ItemKind;
 use crate::material::Mat;
-use crate::noise::Noise;
+
 use crate::overworld::EmbarkParams;
-use crate::rng::Rng;
+
 use serde::{Deserialize, Serialize};
 
 /// Fortress map dimensions, chosen at embark.
@@ -236,6 +236,22 @@ pub struct World {
     /// 0 none, 1 light, 2 heavy.
     #[serde(default)]
     pub aquifer: u8,
+    /// Where tile (0, 0) sits in the land's own coordinates (moves when the
+    /// map grows north or west).
+    #[serde(default)]
+    pub origin: (i32, i32),
+    /// The size the map was first made (features are laid out over it).
+    #[serde(default)]
+    pub base: Option<(i32, i32)>,
+    /// The level lakes fill to.
+    #[serde(default)]
+    pub water_level: i32,
+    /// The site's features (`terrain::feat` bits).
+    #[serde(default)]
+    pub features: u32,
+    /// The seed the land was made from (0 in older saves).
+    #[serde(default)]
+    pub gen_seed: u64,
 }
 
 fn default_caverns() -> Vec<(i32, i32)> {
@@ -287,7 +303,7 @@ mod tiles_rle {
 impl World {
     /// A one-cell stand-in used before a fortress exists.
     pub fn empty() -> World {
-        World { w: 1, h: 1, d: 1, tiles: vec![Tile::default()], surface: vec![0], caverns: Vec::new(), restrict: 0, aquifer: 0 }
+        World { w: 1, h: 1, d: 1, tiles: vec![Tile::default()], surface: vec![0], caverns: Vec::new(), restrict: 0, aquifer: 0, origin: (0, 0), base: None, water_level: 0, features: 0, gen_seed: 0 }
     }
 
     pub fn in_bounds(&self, p: Pos) -> bool {
@@ -500,332 +516,6 @@ impl World {
 
 /// Generate a fresh embark region.
 pub fn generate(seed: u64, params: &EmbarkParams) -> World {
-    let MapSize { w, h, d } = params.size;
-    // Deeper maps add rock below the usual layers (and room for a second cavern).
-    let base = (d - 32).max(0);
-    let height_n = Noise::new(seed);
-    let soil_n = Noise::new(seed ^ 0x1111);
-    let rock_n = Noise::new(seed ^ 0x2222);
-    let cave_n = Noise::new(seed ^ 0x3333);
-    let ore_n = Noise::new(seed ^ 0x4444);
-    let forest_n = Noise::new(seed ^ 0x5555);
-    let pool_n = Noise::new(seed ^ 0x6666);
-    let mut rng = Rng::new(seed ^ 0x7777);
-
-    // Height map, then relaxed so neighbours never differ by more than one level
-    // (every slope gets a ramp and the whole surface is walkable).
-    let mut surf = vec![0i32; (w * h) as usize];
-    for y in 0..h {
-        for x in 0..w {
-            let v = height_n.fbm2(x as f64 / 34.0, y as f64 / 34.0, 4);
-            let lo = (9 + base) as f64;
-            surf[(y * w + x) as usize] = (18.0 + base as f64 + (v - 0.5) * 18.0 * params.relief).round().clamp(lo, lo + 18.0) as i32;
-        }
-    }
-    loop {
-        let mut changed = false;
-        for y in 0..h {
-            for x in 0..w {
-                for &(dx, dy) in DIRS8.iter() {
-                    let (nx, ny) = (x + dx, y + dy);
-                    if nx < 0 || ny < 0 || nx >= w || ny >= h {
-                        continue;
-                    }
-                    let n = surf[(ny * w + nx) as usize];
-                    let c = &mut surf[(y * w + x) as usize];
-                    if *c > n + 1 {
-                        *c = n + 1;
-                        changed = true;
-                    }
-                }
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-
-    let mut sorted = surf.clone();
-    sorted.sort_unstable();
-    let water_level = if params.lake <= 0.0 {
-        0
-    } else {
-        sorted[((sorted.len() as f64 * params.lake) as usize).min(sorted.len() - 1)]
-    };
-
-    let mut world = World {
-        w,
-        h,
-        d,
-        tiles: vec![Tile::default(); (w * h * d) as usize],
-        surface: surf.clone(),
-        // Two cavern layers, three on deep maps; the upper ones only open out
-        // where there's enough rock above them.
-        caverns: if base >= 12 {
-            vec![(5, 8), (5 + base / 2, 8 + base / 2), (5 + base, 8 + base)]
-        } else {
-            vec![(5 + base, 8 + base), (11 + base, 13 + base)]
-        },
-        restrict: 0,
-        aquifer: params.aquifer,
-    };
-    let bands = world.caverns.clone();
-
-    for y in 0..h {
-        for x in 0..w {
-            let hh = surf[(y * w + x) as usize];
-            for z in 0..d {
-                let p = Pos::new(x, y, z);
-                let t = world.t_mut(p);
-                if z == 0 {
-                    t.kind = TileKind::Wall;
-                    t.mat = Mat::Bedrock;
-                } else if z < hh {
-                    t.kind = TileKind::Wall;
-                    let depth = hh - z;
-                    t.mat = if depth <= 3 {
-                        let v = soil_n.fbm2(x as f64 / 14.0, y as f64 / 14.0, 2);
-                        if v < 0.42 {
-                            Mat::Loam
-                        } else if v < 0.62 {
-                            Mat::Clay
-                        } else {
-                            Mat::Sand
-                        }
-                    } else if z >= 13 + base {
-                        if rock_n.fbm3(x as f64 / 20.0, y as f64 / 20.0, z as f64 / 3.0, 2) < 0.5 {
-                            Mat::Sandstone
-                        } else {
-                            Mat::Limestone
-                        }
-                    } else if z >= 4 {
-                        if rock_n.fbm3(x as f64 / 9.0, y as f64 / 9.0, z as f64 / 2.0, 2) > 0.66 {
-                            Mat::Marble
-                        } else {
-                            Mat::Granite
-                        }
-                    } else {
-                        Mat::Basalt
-                    };
-                } else if z == hh {
-                    t.kind = TileKind::Floor;
-                    t.mat = if hh < water_level { Mat::Sand } else { Mat::Grass };
-                }
-            }
-        }
-    }
-
-    // Natural ramps on every slope.
-    for y in 0..h {
-        for x in 0..w {
-            let hh = surf[(y * w + x) as usize];
-            let higher = DIRS8.iter().any(|&(dx, dy)| {
-                let (nx, ny) = (x + dx, y + dy);
-                nx >= 0 && ny >= 0 && nx < w && ny < h && surf[(ny * w + nx) as usize] == hh + 1
-            });
-            if higher {
-                world.t_mut(Pos::new(x, y, hh)).kind = TileKind::Ramp;
-            }
-        }
-    }
-
-    // Ore veins and gem clusters inside the rock layers.
-    for z in 1..d {
-        for y in 0..h {
-            for x in 0..w {
-                let p = Pos::new(x, y, z);
-                let t = *world.t(p);
-                if t.kind != TileKind::Wall || !t.mat.is_building_stone() {
-                    continue;
-                }
-                let v = ore_n.fbm3(x as f64 / 7.0, y as f64 / 7.0, z as f64 / 3.0, 2);
-                if (v - 0.5).abs() < 0.016 * params.minerals {
-                    world.t_mut(p).mat = match t.mat {
-                        Mat::Sandstone | Mat::Limestone => {
-                            if (x + z) % 3 == 0 { Mat::Coal } else { Mat::Hematite }
-                        }
-                        Mat::Granite | Mat::Marble => {
-                            if v > 0.5 { Mat::Malachite } else { Mat::NativeGold }
-                        }
-                        _ => Mat::Hematite,
-                    };
-                } else if rng.chance(0.0015 * params.minerals) {
-                    world.t_mut(p).mat = Mat::Amethyst;
-                }
-            }
-        }
-    }
-
-    // Cavern layers deep underground.
-    for z in bands.iter().flat_map(|&(lo, hi)| lo..=hi) {
-        for y in 1..h - 1 {
-            for x in 1..w - 1 {
-                let hh = surf[(y * w + x) as usize];
-                if z >= hh - 4 {
-                    continue;
-                }
-                let v = cave_n.fbm3(x as f64 / 11.0, y as f64 / 11.0, z as f64 / 3.5, 3);
-                if v > 0.6 {
-                    let t = world.t_mut(Pos::new(x, y, z));
-                    t.kind = TileKind::Open;
-                    t.mat = Mat::Air;
-                }
-            }
-        }
-    }
-    for z in bands.iter().flat_map(|&(lo, hi)| lo..=hi) {
-        for y in 1..h - 1 {
-            for x in 1..w - 1 {
-                let p = Pos::new(x, y, z);
-                if world.t(p).kind != TileKind::Open || !world.solid(p.down()) {
-                    continue;
-                }
-                let floor_mat = world.t(p.down()).mat;
-                let t = world.t_mut(p);
-                t.kind = TileKind::Floor;
-                t.mat = floor_mat;
-            }
-        }
-    }
-    // Cavern ramps where the cavern floor steps up by one level.
-    for z in bands.iter().flat_map(|&(lo, hi)| lo..=hi) {
-        for y in 1..h - 1 {
-            for x in 1..w - 1 {
-                let p = Pos::new(x, y, z);
-                if world.t(p).kind != TileKind::Floor || world.kind(p.up()) != Some(TileKind::Open) {
-                    continue;
-                }
-                let step = DIRS8.iter().any(|&(dx, dy)| {
-                    world.solid(p.offset(dx, dy, 0)) && world.walkable(p.offset(dx, dy, 1))
-                });
-                if step {
-                    world.t_mut(p).kind = TileKind::Ramp;
-                }
-            }
-        }
-    }
-    // Cavern pools and towering mushroom trees.
-    for z in bands.iter().flat_map(|&(lo, hi)| lo..=hi) {
-        for y in 1..h - 1 {
-            for x in 1..w - 1 {
-                let p = Pos::new(x, y, z);
-                if world.t(p).kind != TileKind::Floor {
-                    continue;
-                }
-                if pool_n.fbm2(x as f64 / 6.0, y as f64 / 6.0 + z as f64 * 10.0, 2) > 0.68 {
-                    world.t_mut(p).water = 7;
-                } else if rng.chance(0.07) {
-                    let t = world.t_mut(p);
-                    t.kind = TileKind::Tree;
-                    t.mat = Mat::Wood;
-                } else if rng.chance(0.05) {
-                    world.t_mut(p).kind = TileKind::Shrub;
-                }
-            }
-        }
-    }
-
-    // The magma sea: a molten layer just above the bedrock under a basalt
-    // roof, with air above it, a few basalt islands and a shore around them.
-    let sea_n = Noise::new(seed ^ 0x8888);
-    if d > 8 {
-        for y in 1..h - 1 {
-            for x in 1..w - 1 {
-                // The cave above is a little wider than the sea, leaving a shore.
-                let v = sea_n.fbm2(x as f64 / 12.0, y as f64 / 12.0, 2);
-                if v < 0.3 {
-                    continue;
-                }
-                if v >= 0.36 {
-                    let t = world.t_mut(Pos::new(x, y, 1));
-                    t.kind = TileKind::Open;
-                    t.mat = Mat::Air;
-                    t.magma = 7;
-                }
-                let t = world.t_mut(Pos::new(x, y, 2));
-                t.kind = TileKind::Open;
-                t.mat = Mat::Air;
-            }
-        }
-        for y in 1..h - 1 {
-            for x in 1..w - 1 {
-                let p = Pos::new(x, y, 2);
-                if world.t(p).kind == TileKind::Open && world.solid(p.down()) {
-                    let t = world.t_mut(p);
-                    t.kind = TileKind::Floor;
-                    t.mat = Mat::Basalt;
-                }
-            }
-        }
-    }
-
-    // An aquifer: rock two to four levels down that holds water, in broad
-    // patches across the map.
-    if params.aquifer > 0 {
-        let aq_n = Noise::new(seed ^ 0x9999);
-        for y in 0..h {
-            for x in 0..w {
-                if aq_n.fbm2(x as f64 / 18.0, y as f64 / 18.0, 2) < 0.45 {
-                    continue;
-                }
-                let hh = surf[(y * w + x) as usize];
-                for z in (hh - 4).max(1)..=hh - 2 {
-                    let t = world.t_mut(Pos::new(x, y, z));
-                    if t.kind == TileKind::Wall && !t.mat.is_ore() && !t.mat.is_gem() {
-                        t.aquifer = true;
-                    }
-                }
-            }
-        }
-    }
-
-    // Surface lakes, forests and shrubs.
-    for y in 0..h {
-        for x in 0..w {
-            let hh = surf[(y * w + x) as usize];
-            if hh < water_level {
-                for z in hh..water_level {
-                    world.t_mut(Pos::new(x, y, z)).water = 7;
-                }
-                continue;
-            }
-            let p = Pos::new(x, y, hh);
-            if world.t(p).kind != TileKind::Floor {
-                continue;
-            }
-            let forest = forest_n.fbm2(x as f64 / 16.0, y as f64 / 16.0, 3);
-            if forest > 0.55 && rng.chance((0.30 * params.forest).min(0.8)) || rng.chance(0.015 * params.forest) {
-                let t = world.t_mut(p);
-                t.kind = TileKind::Tree;
-                t.mat = Mat::Wood;
-            } else if rng.chance(0.05) {
-                world.t_mut(p).kind = TileKind::Shrub;
-            }
-        }
-    }
-
-    // Everything under the open sky is known, plus the cliff faces beside it.
-    for y in 0..h {
-        for x in 0..w {
-            let hh = surf[(y * w + x) as usize];
-            for z in hh..d {
-                world.t_mut(Pos::new(x, y, z)).revealed = true;
-            }
-        }
-    }
-    for y in 0..h {
-        for x in 0..w {
-            let hh = surf[(y * w + x) as usize];
-            for z in hh..d {
-                for &(dx, dy) in DIRS8.iter() {
-                    let q = Pos::new(x + dx, y + dy, z);
-                    if world.in_bounds(q) {
-                        world.t_mut(q).revealed = true;
-                    }
-                }
-            }
-        }
-    }
-
-    world
+    let MapSize { w, h, .. } = params.size;
+    crate::terrain::generate_region(seed, params, (0, 0), (w, h), None)
 }

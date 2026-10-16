@@ -121,10 +121,7 @@ mod tests {
             g.spawn_item(ItemKind::Log, Mat::Wood, e);
         }
         g.spawn_item(ItemKind::Log, Mat::Wood, e);
-        let site = (2..20)
-            .flat_map(|r| [e.offset(r, 0, 0), e.offset(-r - 2, 0, 0), e.offset(0, r, 0)])
-            .find(|&p| g.can_place(BuildingKind::Carpenter, p))
-            .unwrap();
+        let site = g.ov_spot(BuildingKind::Carpenter, e.offset(3, 0, 0), 20).expect("room for a workshop");
         assert!(g.place_building(BuildingKind::Carpenter, site));
         let shop = g.world.t(site).building;
         for _ in 0..2 * DAY {
@@ -158,10 +155,7 @@ mod tests {
         for _ in 0..6 {
             g.spawn_item(ItemKind::Log, Mat::Wood, e);
         }
-        let site = (2..20)
-            .flat_map(|r| [e.offset(r, 0, 0), e.offset(-r - 2, 0, 0), e.offset(0, r, 0)])
-            .find(|&p| g.can_place(BuildingKind::Carpenter, p))
-            .unwrap();
+        let site = g.ov_spot(BuildingKind::Carpenter, e.offset(3, 0, 0), 20).expect("room for a workshop");
         assert!(g.place_building(BuildingKind::Carpenter, site));
         let shop = g.world.t(site).building;
         for _ in 0..2 * DAY {

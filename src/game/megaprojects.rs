@@ -7,10 +7,13 @@ use super::festivals::FestivalKind;
 impl Game {
     /// The monument is finished: name it for the greatest of the fortress,
     /// and hold a feast.
-    pub(super) fn dedicate_monument(&mut self, bld: u32) {
+    pub(super) fn dedicate_monument(&mut self, bld: u32, builder: &Dwarf) {
         let fort = self.fortress_name.clone();
-        let hero = self.dwarves.iter().filter(|d| d.epithet.is_some()).max_by_key(|d| (d.epithet_rank, d.kills, d.id)).map(|d| d.called());
-        let leader = self.dwarves.iter().filter(|d| d.alive && d.noble.is_some()).map(|d| d.called()).next();
+        // Everyone, including whoever set the last block (out of the list
+        // for their own turn).
+        let all: Vec<&Dwarf> = self.dwarves.iter().filter(|d| d.id != builder.id).chain(std::iter::once(builder)).collect();
+        let hero = all.iter().filter(|d| d.epithet.is_some()).max_by_key(|d| (d.epithet_rank, d.kills, d.id)).map(|d| d.called());
+        let leader = all.iter().filter(|d| d.alive && d.noble.is_some()).map(|d| d.called()).next();
         let name = match (hero, leader) {
             (Some(h), _) => format!("the Statue of {}", h),
             (None, Some(l)) => format!("the Statue of {}", l),

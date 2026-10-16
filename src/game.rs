@@ -53,6 +53,7 @@ mod necromancy;
 mod milestones;
 mod mysteries;
 mod megaprojects;
+mod grow;
 mod overseer;
 mod ambitions;
 mod layout;
@@ -257,9 +258,15 @@ pub struct Game {
     /// Last failed dig search per kind (mine, chop): (version, tick).
     #[serde(skip)]
     dig_fail: [Option<(u64, u64)>; 4],
-    /// Cells holding water, rebuilt from the map when missing (e.g. after loading).
+    /// Cells holding water that may still flow, rebuilt from the map when
+    /// missing (e.g. after loading).
     #[serde(skip)]
     water_cells: Option<Vec<usize>>,
+    /// Water at rest (nowhere to flow), looked at again now and then.
+    #[serde(skip)]
+    water_still: Vec<usize>,
+    #[serde(skip)]
+    fluid_calls: u32,
     /// Magma cells that may still flow; rebuilt whenever the map changes.
     #[serde(skip)]
     magma_cells: Option<Vec<usize>>,
@@ -408,6 +415,7 @@ impl Game {
         params.minerals = ow.minerals;
         params.size = size;
         params.aquifer = ow.aquifer(sx, sy);
+        params.features = if std::env::var("NO_FEATURES").is_ok() { 0 } else { crate::terrain::site_features(seed, sx, sy, cell.biome) };
         let world = world::generate(seed ^ ((sx as u64) << 20) ^ ((sy as u64) << 40), &params);
         report("Loading the wagon", 0.8);
         let embark = find_embark(&world);
@@ -446,6 +454,8 @@ impl Game {
             pause_request: false,
             autosave_request: false,
             water_cells: None,
+            water_still: Vec::new(),
+            fluid_calls: 0,
             magma_cells: None,
             magma_seen: 0,
             aquifer_leaks: None,
@@ -1065,22 +1075,27 @@ impl Game {
     }
 
     fn fluids(&mut self) {
+        self.fluid_calls = self.fluid_calls.wrapping_add(1);
         let mut cells = match self.water_cells.take() {
             Some(c) => c,
-            None => self
-                .world
-                .tiles
-                .iter()
-                .enumerate()
-                .filter(|(_, t)| t.water > 0)
-                .map(|(i, _)| i)
-                .collect(),
+            None => {
+                self.water_still.clear();
+                self.world.tiles.iter().enumerate().filter(|(_, t)| t.water > 0).map(|(i, _)| i).collect()
+            }
         };
-        let mut wet: HashSet<usize> = HashSet::with_capacity(cells.len() + 16);
+        // Water at rest is looked at again every forty turns, in case
+        // something nearby has changed (a channel dug, a gate opened).
+        if self.fluid_calls % 40 == 0 && !self.water_still.is_empty() {
+            cells.append(&mut self.water_still);
+            cells.sort_unstable();
+            cells.dedup();
+        }
         for i in (1..cells.len()).rev() {
             let j = self.rng.range(0, i as i32 + 1) as usize;
             cells.swap(i, j);
         }
+        let mut active: Vec<usize> = Vec::with_capacity(cells.len() + 16);
+        let mut still: Vec<usize> = Vec::new();
         for i in cells {
             let p = self.world.pos_of(i);
             let t = self.world.tiles[i];
@@ -1088,7 +1103,7 @@ impl Game {
                 continue;
             }
             if t.frozen {
-                wet.insert(i);
+                still.push(i);
                 continue;
             }
             // Fall through anything without a floor.
@@ -1098,7 +1113,7 @@ impl Game {
                     if self.world.t(b).magma > 0 {
                         self.quench(b);
                         self.world.tiles[i].water -= 1;
-                        wet.insert(i);
+                        active.push(i);
                         continue;
                     }
                     let room = 7 - self.world.t(b).water;
@@ -1106,27 +1121,30 @@ impl Game {
                         let amt = room.min(t.water);
                         self.world.t_mut(b).water += amt;
                         self.world.tiles[i].water -= amt;
-                        wet.insert(self.world.idx(b));
+                        active.push(self.world.idx(b));
                         if self.world.tiles[i].water > 0 {
-                            wet.insert(i);
+                            active.push(i);
                         }
                         continue;
                     }
                 }
             }
             // Level out sideways.
+            let mut moved = false;
             let (dx, dy) = DIRS4[self.rng.range(0, 4) as usize];
             let q = p.offset(dx, dy, 0);
             if !self.world.blocks_water(q) && self.world.t(q).magma > 0 {
                 self.quench(q);
                 self.world.tiles[i].water -= 1;
+                moved = true;
             } else if !self.world.blocks_water(q) {
                 let qw = self.world.t(q).water;
                 let here = self.world.tiles[i].water;
                 if qw + 1 < here || (here == 1 && qw == 0 && self.rng.chance(0.1)) {
                     self.world.t_mut(q).water += 1;
                     self.world.tiles[i].water -= 1;
-                    wet.insert(self.world.idx(q));
+                    active.push(self.world.idx(q));
+                    moved = true;
                 }
             }
             let here = self.world.tiles[i].water;
@@ -1136,13 +1154,36 @@ impl Game {
                     self.world.tiles[i].water = 0;
                 }
             }
-            if self.world.tiles[i].water > 0 {
-                wet.insert(i);
+            let here = self.world.tiles[i].water;
+            if here == 0 {
+                continue;
+            }
+            // Still: no way down and no lower neighbour to level out into.
+            if !moved && here > 1 && !self.water_can_flow(p, here) {
+                still.push(i);
+            } else {
+                active.push(i);
             }
         }
-        let mut next: Vec<usize> = wet.into_iter().collect();
-        next.sort_unstable();
-        self.water_cells = Some(next);
+        active.sort_unstable();
+        active.dedup();
+        self.water_still.extend(still);
+        self.water_cells = Some(active);
+    }
+
+    /// Whether water at `p` (`here` deep) has anywhere to go.
+    fn water_can_flow(&self, p: Pos, here: u8) -> bool {
+        let t = self.world.t(p);
+        if matches!(t.kind, TileKind::Open | TileKind::StairDown | TileKind::StairUD) {
+            let b = p.down();
+            if self.world.in_bounds(b) && !self.world.blocks_water(b) && (self.world.t(b).water < 7 || self.world.t(b).magma > 0) {
+                return true;
+            }
+        }
+        DIRS4.iter().any(|&(dx, dy)| {
+            let q = p.offset(dx, dy, 0);
+            !self.world.blocks_water(q) && (self.world.t(q).magma > 0 || self.world.t(q).water + 1 < here)
+        })
     }
 
     fn grow_farms(&mut self) {
@@ -2388,7 +2429,7 @@ impl Game {
                                     let name = self.buildings[&bld].name();
                                     self.msg(&format!("{} has been completed.", name), (160, 220, 255));
                                     if self.buildings[&bld].kind == BuildingKind::Monument {
-                                        self.dedicate_monument(bld);
+                                        self.dedicate_monument(bld, d);
                                     }
                                 }
                             }
@@ -3048,6 +3089,18 @@ mod bench {
             g.step();
         }
         eprintln!("large map, 1 year: {:?}, alive {}/{}, items {}", t.elapsed(), g.alive_count(), g.dwarves.len(), g.items.len());
+        {
+            use std::sync::atomic::Ordering::Relaxed;
+            eprintln!(
+                "  features {:?}; searches {} ({} nodes), astar {} ({} nodes), water tiles {}",
+                crate::terrain::feature_names(g.world.features),
+                crate::path::SEARCHES.load(Relaxed),
+                crate::path::SEARCH_NODES.load(Relaxed),
+                crate::path::ASTARS.load(Relaxed),
+                crate::path::ASTAR_NODES.load(Relaxed),
+                g.world.tiles.iter().filter(|t| t.water > 0).count()
+            );
+        }
         for l in g.log.iter().filter(|l| l.color == (255, 60, 60)).take(8) {
             eprintln!("  t{} {}", l.tick, l.text);
         }

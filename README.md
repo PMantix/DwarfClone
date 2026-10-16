@@ -68,6 +68,15 @@ your embark site; the biome shapes the map (relief, forest, lakes, savage wildli
 nearby goblins, and any civilization at war with yours in the world's history, decide how
 often sieges come.
 
+**Sites and maps.** Every site has its own features, shown on the world map before you
+embark: a river with fords, a chasm crossed by natural bridges, a volcano with a magma
+crater, terraced mesas, sharp peaks, an oasis, a glacier, a bog of shallow pools, a coast, tors
+of bare rock, an underground river or a hidden gem grotto. Pick the map size there too: `s`
+for Small, Medium or Large, `[` `]` for width and `{` `}` for height (16 at a time), `d` for
+depth. In the fortress, `M` grows the map north, east, south or west (16 tiles a press): the
+new land continues the old, the fortress and everything in it stays where it was, and the
+status screen shows the land's features and size.
+
 **Fortress.** A small (64×48), medium (96×64) or large (144×96, 48 levels deep) region, picked
 with `s` on the world map: soil over sedimentary and igneous rock, ore veins, gems,
 and hidden cavern layers (two, three on deep maps) with pools, tower mushrooms and things that wake when you

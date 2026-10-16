@@ -17,6 +17,8 @@ pub enum AfterSave {
 
 pub enum JobDone {
     Embarked(Game),
+    /// The map has grown; the old map moved by (dx, dy).
+    Grown(Game, (i32, i32)),
     Saved(Game, SaveMeta, AfterSave),
     Loaded(Game),
 }

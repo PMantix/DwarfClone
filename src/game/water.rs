@@ -311,8 +311,8 @@ mod tests {
     fn tunnel(g: &mut Game) -> (Pos, Pos, Pos) {
         let e = g.embark;
         for z in (2..e.z - 3).rev() {
-            for y in 3..g.world.h - 3 {
-                let start = Pos::new(e.x, y, z);
+            for (x, y) in (3..g.world.h - 3).flat_map(|y| [(e.x, y), (e.x - 12, y), (e.x + 12, y)]) {
+                let start = Pos::new(x, y, z);
                 let row: Vec<Pos> = (-1..9).map(|dx| start.offset(dx, 0, 0)).collect();
                 let rock = row.iter().all(|&p| {
                     [p, p.down(), p.up(), p.offset(0, 1, 0), p.offset(0, -1, 0)].iter().all(|&q| g.world.solid(q))
@@ -504,7 +504,8 @@ mod tests {
         g.world.t_mut(rock).kind = TileKind::Floor;
         g.dig_version += 1;
         let mut damp = false;
-        for _ in 0..6000 {
+        // A drip now and then (one chance in fifty every 25 ticks).
+        for _ in 0..20000 {
             g.step();
             let w = g.world.t(rock).water;
             assert!(w <= 1, "a light aquifer flooded to {}", w);

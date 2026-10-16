@@ -13,6 +13,7 @@ mod overworld;
 mod path;
 mod rng;
 mod saves;
+mod terrain;
 mod title;
 mod ui;
 mod world;

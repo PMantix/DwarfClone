@@ -102,12 +102,13 @@ Ideas not ranked yet. Add a line on why each matters.
 - A true temperature model (heat from magma and fire, cold snaps killing crops, dwarves needing warm clothes); bucket brigades against fire; dragons breathing it.
 - Murky or stagnant water drunk from puddles should feel worse than river water; doctors could clean wounds with well water and soap.
 - Corpses that rot (miasma) and refuse that needs a stockpile far from the halls.
-- Mini-map and saved camera spots: get around a 96×64 map faster.
+- Mini-map and saved camera spots: get around a big map faster (more so now maps can grow to 320×256).
 - Adventure mode: explore the generated world. Out of scope until fortress mode is deep.
 - Hunting labor and hunters with crossbows (after W04's crossbows).
 
 ## Done
 
+- **Varied sites, map sizes, growing the map, faster water** (this commit; mouse d0c2fb0, reports 592b6dc, slowdowns e4cb4f8): twelve site features chosen per world cell and shown before embark; free map width, height and depth; `M` grows the map on any side with new land continuing the old (the save is shifted wholesale); still water sleeps until something nearby changes (a year runs two to three times faster).
 - **Overseer layouts and grand works** (this commit; brain 9e557ea): five hall temperaments, room shapes (pillared, round, cross, L), rooms only where rock surrounds them and always behind the gate, the Architect's grand works. Fixes: dwarves on a prayer or carousing break now drink, eat and sleep first (they could die of thirst beside full barrels); threats behind solid rock no longer send dwarves fleeing; a desperately thirsty or hungry dwarf stops fleeing.
 - **Rot and miasma** (c785694): bodies rot; underground they give off miasma that drifts, fades and sickens dwarves; after forty days they're bones (citizens wait for burial). The overseer keeps a refuse pile outside.
 - **Autoplay** (3ce70ec; step 1 4f27d18): the overseer AI plays a fortress in one of five styles; `A` hands it over, *Watch a fort* on the title screen, `--autoplay` runs many and reports ruin or glory.

@@ -878,7 +878,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
     let mut v: Vec<Line> = Vec::new();
     let title;
     match &app.mode {
-        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } | Mode::Reports { .. } => {
+        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GrowMap { .. } => {
             title = "Main".to_string();
             v.extend(stocks(g));
             v.push(Line::default());
@@ -899,6 +899,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(key_line("n", "Nobles, mandates & rooms", false));
             v.push(key_line("c", "Chronicle of the years", false));
             v.push(key_line("r", "Reports: past announcements", false));
+            v.push(key_line("M", "Grow the map", false));
             v.push(key_line("A", "Autoplay: let the overseer play", g.overseer.is_some()));
             if g.overseer.is_some() {
                 v.push(key_line("B", "The overseer's brain", false));
@@ -1780,6 +1781,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("n", "nobles, mandates, bedrooms, wealth"),
         k("c", "the chronicle: each year told as a story"),
         k("r", "reports: every past announcement, filtered"),
+        k("M", "grow the map north, east, south or west"),
         k("A", "autoplay: the overseer plays (pick a style)"),
         k("B", "the overseer's brain: senses, ambitions, nudges"),
         k("L", "legends: history, civs, sites, figures"),
@@ -1841,19 +1843,40 @@ fn draw_world(f: &mut Frame, app: &mut App, cx: i32, cy: i32) {
     f.render_widget(block, cols[0]);
     let view = paint_world(f, inner, ow, ow.h, Some((cx, cy)));
     // Outline the land the fortress map will cover, east and south of the cursor.
-    let size = crate::world::MapSize::ALL[app.embark_size];
-    let (fw, fh) = embark_footprint(app.embark_size);
+    let size = app.embark_size;
+    let (fw, fh) = embark_footprint(size);
     paint_footprint(f, inner, ow, view, (cx, cy), (fw, fh));
     let mut lines = world_info(ow, cx, cy, &app.flash);
+    // What the land holds here.
+    let biome = ow.cell(cx, cy).biome;
+    let bits = crate::terrain::site_features(app.seed, cx, cy, biome);
+    if bits != 0 {
+        let mut feats = vec![Line::from(Span::styled("The land here:", Style::default().fg(MUTED)))];
+        for (b, _, what) in crate::terrain::FEATURES.iter() {
+            if bits & b != 0 {
+                feats.push(plain(format!(" · {}", what), Color::Rgb(170, 220, 170)));
+            }
+        }
+        let at = 2.min(lines.len());
+        for (i, l) in feats.into_iter().enumerate() {
+            lines.insert(at + i, l);
+        }
+    }
     lines.insert(
         1,
         Line::from(vec![
             Span::styled("Embark: ", Style::default().fg(MUTED)),
             Span::styled(
-                format!("{} {}×{}, {} deep", crate::world::MapSize::NAMES[app.embark_size], size.w, size.h, size.d),
+                format!(
+                    "{} {}×{}, {} deep",
+                    crate::world::MapSize::ALL.iter().position(|&m| m == size).map_or("Custom", |i| crate::world::MapSize::NAMES[i]),
+                    size.w,
+                    size.h,
+                    size.d
+                ),
                 Style::default().fg(KEY),
             ),
-            Span::styled("  (s)", Style::default().fg(MUTED)),
+            Span::styled("  (s [ ] { } d)", Style::default().fg(MUTED)),
         ]),
     );
     let mut side = cols[1];
@@ -1966,8 +1989,9 @@ fn paint_world(f: &mut Frame, inner: Rect, ow: &Overworld, rows: i32, cursor: Op
 }
 
 /// How many world cells an embark of each size covers (wide, high).
-fn embark_footprint(size: usize) -> (i32, i32) {
-    [(1, 1), (2, 1), (3, 2)][size.min(2)]
+/// World cells a fortress map covers (about 48 tiles to a cell).
+fn embark_footprint(size: crate::world::MapSize) -> (i32, i32) {
+    (((size.w + 40) / 48).max(1), ((size.h + 16) / 48).max(1))
 }
 
 /// Tint the cells an embark at `at` would cover (the cursor cell itself is already marked).
@@ -2534,6 +2558,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::Expedition { squad, sel } => draw_expedition(f, area, &app.game, squad, sel),
         Mode::Autoplay { sel } => draw_autoplay(f, area, &app.game, sel),
         Mode::Brain { sel } => draw_brain(f, area, &app.game, sel),
+        Mode::GrowMap { n, e, s, w } => draw_grow(f, area, &app.game, (n, e, s, w)),
         Mode::Reports { filter, scroll } => draw_reports(f, area, &app.game, filter, scroll),
         Mode::BuildMenu => draw_build_menu(f, area),
         Mode::Help => {
@@ -2856,6 +2881,11 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
                     v.push(plain(format!("☼ {}", text), Color::Rgb(230, 200, 110)));
                 }
             }
+            let feats = crate::terrain::feature_names(g.world.features);
+            if !feats.is_empty() {
+                v.push(plain(format!("The land: {}", feats.join(", ")), Color::Rgb(170, 220, 170)));
+            }
+            v.push(plain(format!("Map {}×{}, {} deep (M to grow it)", g.world.w, g.world.h, g.world.d), MUTED));
             if let Some(n) = g.necromancer.as_ref().filter(|n| n.known && n.alive) {
                 v.push(plain(format!("The necromancer {} dwells in {}. Bury your dead.", n.name, n.tower), Color::Rgb(190, 120, 230)));
             }
@@ -3458,6 +3488,33 @@ fn draw_loading(f: &mut Frame, app: &App) {
         ),
         r,
     );
+}
+
+/// Choosing how much land to add on each side.
+fn draw_grow(f: &mut Frame, area: Rect, g: &Game, (n, e, s, w): (i32, i32, i32, i32)) {
+    let (nw, nh) = (g.world.w + e + w, g.world.h + n + s);
+    let edge = |label: &str, by: i32| {
+        Line::from(vec![
+            Span::styled(format!("   {:<6}", label), Style::default().fg(TEXT)),
+            Span::styled(if by > 0 { format!("+{} tiles", by) } else { "—".into() }, Style::default().fg(if by > 0 { Color::Rgb(120, 220, 120) } else { MUTED })),
+        ])
+    };
+    let v = vec![
+        plain(format!(" The map is {}×{}. New land continues the old.", g.world.w, g.world.h), TEXT),
+        Line::default(),
+        edge("North", n),
+        edge("East", e),
+        edge("South", s),
+        edge("West", w),
+        Line::default(),
+        plain(format!(" New size: {}×{}, {} deep (at most 320×256)", nw, nh, g.world.d), Color::Rgb(255, 215, 60)),
+        Line::default(),
+        plain(" ↑ → ↓ ← add 16 tiles on that side".into(), MUTED),
+        plain(" Shift+arrow takes 16 back".into(), MUTED),
+        plain(" Enter grow it · Esc cancel".into(), MUTED),
+    ];
+    let h = v.len() as u16 + 2;
+    popup(f, area, 60, h, " Grow the map ", v);
 }
 
 /// Filters for the reports screen.
