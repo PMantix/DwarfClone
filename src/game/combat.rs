@@ -1137,17 +1137,32 @@ impl Game {
                 self.creature_step(c, info.move_delay);
             }
         } else {
-            if c.path.is_empty() && !matches!(c.species, Species::Merchant | Species::Visitor) && self.rng.chance(0.03) {
-                let q = c.pos.offset(self.rng.range(-6, 7), self.rng.range(-6, 7), 0);
-                if self.world.passable(q, info.mover) {
-                    if let Some(p) = path::astar(&self.world, c.pos, q, 600, info.mover) {
-                        c.path = p.into_iter().rev().collect();
-                    }
-                }
+            if c.path.is_empty() && !matches!(c.species, Species::Merchant | Species::Visitor) && self.rng.chance(if c.hostile() { 0.05 } else { 0.03 }) {
+                // Prowl about (up and down stairs too), rather than stand where it came in.
+                self.creature_wander(c, if c.hostile() { 12 } else { 7 });
             }
             self.creature_step(c, info.move_delay + 1);
         }
         true
+    }
+
+    /// Set off for somewhere a few steps away that it can walk to.
+    fn creature_wander(&mut self, c: &mut Creature, r: i32) {
+        let start = c.pos;
+        let salt = self.rng.range(0, 1 << 20);
+        // Cave things keep to the caves (they hunt into the halls, but don't
+        // stroll up them), and the rest keep to the open air if they're in it.
+        let cave = c.species.dwells_underground();
+        let open_air = self.world.outside(start);
+        let w = &self.world;
+        let found = path::search(w, start, 900, c.mover(), |q| {
+            let d = (q.x - start.x).abs() + (q.y - start.y).abs() + (q.z - start.z).abs() * 3;
+            let ground = if cave { !w.t(q).dug && w.t(q).built_from.is_none() } else { !open_air || w.outside(q) };
+            ground && d >= r / 2 && d <= r && (q.x * 31 + q.y * 17 + q.z * 7 + salt).rem_euclid(5) == 0
+        });
+        if let Some((_, path)) = found {
+            c.path = path.into_iter().rev().collect();
+        }
     }
 
     pub(super) fn creature_step(&mut self, c: &mut Creature, delay: u32) {
@@ -1223,7 +1238,11 @@ impl Game {
                     c.bash = locked(p);
                     c.path = path.into_iter().rev().collect();
                 } else {
+                    // Shut out: prowl round the walls until a way in opens.
                     c.think_cd = 120;
+                    if c.path.is_empty() {
+                        self.creature_wander(c, 10);
+                    }
                 }
             }
             return;

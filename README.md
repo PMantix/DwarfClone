@@ -31,9 +31,16 @@ nine ambitions, green links pulling and red pushing, each ambition sized by its 
 next. Pick one and nudge it with ←→ (−3..+3) to provoke the overseer into battle or coax it
 into building, or press `f` to make it take that ambition up now.
 
-Each fortress gets a temperament for its halls: orderly rows either side of an axis, a sprawl
-of odd-sized rooms on tunnels, rings of rooms round a central rotunda, mirrored wings where
-every room has its twin, or a warren of round, crossed and crooked rooms on winding passages.
+Each overseer has a taste in halls, and its fortress follows a plan of halls first: a great
+hall with rooms opening off both sides and a cross hall at its end; mirrored wings on cross
+halls, every room with its twin; rooms round a pillared atrium; a grid of lanes with rooms back
+to back between them; or a round hub with spokes. Rooms open onto their hall through a door,
+and after the first dormitory dwarves sleep in rows of bedrooms, a bed and a door each (so
+each gets a room of their own). A tidy Steady overseer leans to the great hall and the grid, a
+Builder to the atrium and the wings, a Warlord to the grid, a Delver to the warren and spokes;
+a Reckless one sprawls. The sprawl and the warren have no plan at all: odd rooms on tunnels,
+or round, crossed and crooked rooms on winding passages. The dead get buried: when a dwarf
+lies unburied the overseer orders a tomb and coffins.
 Rooms come as plain halls, pillared halls, round halls, crosses and L-shapes, are only cut where
 solid rock surrounds them, and always open behind the gate; when a level is full, a stair
 inside the gate leads down to the next. The *Architect* ambition raises a grand work: a

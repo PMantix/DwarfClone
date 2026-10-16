@@ -10,41 +10,54 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Layout {
-    /// Neat rows of rooms either side of a long axis.
+    /// A great hall with rooms opening off either side, bedrooms in rows.
     #[default]
     Orderly,
     /// Rooms of every size, scattered, joined by tunnels.
     Sprawling,
-    /// A rotunda at the heart, rooms in rings round it.
+    /// A pillared atrium at the heart, rooms opening onto it.
     Radial,
-    /// Every room has its twin across the axis.
+    /// Cross halls off a spine; every room has its twin across it.
     Symmetric,
     /// Small round and crooked rooms on winding tunnels.
     Warren,
+    /// Lanes off a spine, rooms back to back between them.
+    Grid,
+    /// A round hub with halls running out from it.
+    Spokes,
 }
 
 impl Layout {
     #[allow(dead_code)]
-    pub const ALL: [Layout; 5] = [Layout::Orderly, Layout::Sprawling, Layout::Radial, Layout::Symmetric, Layout::Warren];
+    pub const ALL: [Layout; 7] = [Layout::Orderly, Layout::Sprawling, Layout::Radial, Layout::Symmetric, Layout::Warren, Layout::Grid, Layout::Spokes];
 
     pub fn name(self) -> &'static str {
         match self {
-            Layout::Orderly => "orderly rows",
+            Layout::Orderly => "a great hall with rooms off it",
             Layout::Sprawling => "a sprawl",
-            Layout::Radial => "rings round a rotunda",
+            Layout::Radial => "rooms round a pillared atrium",
             Layout::Symmetric => "mirrored wings",
             Layout::Warren => "a warren",
+            Layout::Grid => "a grid of lanes",
+            Layout::Spokes => "a hub with spokes",
         }
+    }
+
+    /// Whether this layout works from a plan of halls (the rest just dig).
+    pub fn planned(self) -> bool {
+        !matches!(self, Layout::Sprawling | Layout::Warren)
     }
 
     /// What a style tends to dig.
     pub fn pick(style: Style, roll: u32) -> Layout {
         let options: &[Layout] = match style {
-            Style::Steady => &[Layout::Orderly, Layout::Symmetric, Layout::Sprawling, Layout::Radial],
-            Style::Builder => &[Layout::Radial, Layout::Symmetric, Layout::Symmetric, Layout::Orderly],
-            Style::Delver => &[Layout::Warren, Layout::Sprawling, Layout::Warren],
-            Style::Warlord => &[Layout::Orderly, Layout::Orderly, Layout::Symmetric],
-            Style::Reckless => &[Layout::Sprawling, Layout::Warren],
+            // A tidy mind likes halls; a builder likes a show; a delver digs
+            // where the rock leads; a warlord wants barracks lanes.
+            Style::Steady => &[Layout::Orderly, Layout::Grid, Layout::Symmetric, Layout::Radial, Layout::Spokes],
+            Style::Builder => &[Layout::Radial, Layout::Symmetric, Layout::Spokes, Layout::Orderly],
+            Style::Delver => &[Layout::Warren, Layout::Spokes, Layout::Sprawling, Layout::Grid],
+            Style::Warlord => &[Layout::Grid, Layout::Orderly, Layout::Spokes, Layout::Symmetric],
+            Style::Reckless => &[Layout::Sprawling, Layout::Warren, Layout::Orderly],
         };
         options[roll as usize % options.len()]
     }
@@ -149,7 +162,7 @@ impl Game {
         }
         let hall = matches!(kind, RoomUse::Dining | RoomUse::Tavern | RoomUse::Temple | RoomUse::Meeting);
         match o.layout {
-            Layout::Orderly => Shape::Rect { w: 7, h: 6 },
+            Layout::Orderly | Layout::Grid | Layout::Spokes => Shape::Rect { w: 7, h: 6 },
             Layout::Symmetric => {
                 if hall {
                     Shape::Pillared { w: 9, h: 7 }
@@ -210,7 +223,7 @@ impl Game {
         let near = |p: Pos| anchors.iter().map(|a| (a.x - p.x).abs() + (a.y - p.y).abs()).min().unwrap_or(0);
         let mut out: Vec<(i32, Pos)> = Vec::new();
         match o.layout {
-            Layout::Orderly | Layout::Symmetric => {
+            Layout::Orderly | Layout::Symmetric | Layout::Grid | Layout::Spokes => {
                 // Rows either side of the axis, moving outwards.
                 let on_level = o.rooms.iter().filter(|r| r.a.z == z).count() as i32;
                 for col in 0..12 {
@@ -273,12 +286,16 @@ impl Game {
     /// bend, or (in a warren) with a wander in the middle.
     fn tunnel(&mut self, o: &Overseer, from: Pos, to: Pos) -> Vec<Pos> {
         let mut pts = vec![from];
+        let b = o.base.unwrap();
         if o.layout == Layout::Warren {
-            let mid = Pos::new((from.x + to.x) / 2 + self.rng.range(-4, 5), (from.y + to.y) / 2 + self.rng.range(-4, 5), from.z);
+            let mut mid = Pos::new((from.x + to.x) / 2 + self.rng.range(-4, 5), (from.y + to.y) / 2 + self.rng.range(-4, 5), from.z);
+            // Never a bend inside the gatehouse: the tunnel couldn't get there.
+            if mid.z == b.z {
+                mid.x = mid.x.max(b.x + 14);
+            }
             pts.push(mid);
         }
         pts.push(to);
-        let b = o.base.unwrap();
         let mut path = Vec::new();
         for w in pts.windows(2) {
             let (a, c) = (w[0], w[1]);
@@ -291,7 +308,10 @@ impl Game {
                     p.y += (ty - p.y).signum();
                 }
             };
-            while p != c {
+            // (A bound, in case the target lies where the tunnel may not go.)
+            let mut steps = 0;
+            while p != c && steps < 400 {
+                steps += 1;
                 step(&mut p, c.x, c.y, x_first);
                 // Never into the gatehouse or past it towards the stair.
                 if p.x < b.x + 14 && p.z == b.z {
@@ -305,7 +325,7 @@ impl Game {
 
     /// Whether a tunnel can go through `p`: open dry ground already, or rock
     /// a miner can dig (no water, no aquifer, no bedrock).
-    fn tunnel_ok(&self, p: Pos) -> bool {
+    pub(super) fn tunnel_ok(&self, p: Pos) -> bool {
         let Some(t) = self.world.get(p) else { return false };
         if t.water > 0 || t.magma > 0 || t.aquifer {
             return false;
@@ -328,6 +348,23 @@ impl Game {
             let z = Self::level_z(o, level);
             if z < 3 {
                 return None;
+            }
+            // The plan's next room, if the layout has a plan and room left in it.
+            if o.layout.planned() {
+                if let Some(room) = self.plan_slot(o, kind, level) {
+                    let halls: Vec<Pos> = room.doors.clone();
+                    let door = room.doors.first().copied().unwrap_or(room.a);
+                    self.open_room(o, level, room.a, room.b, &halls, door);
+                    return Some(room);
+                }
+                // Bedrooms only come in the plan's rows.
+                if kind == RoomUse::Bedrooms {
+                    if level > o.level + 1 || Self::level_z(o, level + 1) < 3 {
+                        return None;
+                    }
+                    level += 1;
+                    continue;
+                }
             }
             // The first spot that fits and that a tunnel can reach.
             let hub = Self::level_hub(o, level);
@@ -359,33 +396,43 @@ impl Game {
                 level += 1;
                 continue;
             };
-            if level > o.level {
-                o.level = level;
-            }
             for &p in &tiles {
                 self.designate(p, p, Desig::Dig);
             }
             for &p in &path {
                 self.designate(p, p, Desig::Dig);
             }
-            // The inner stair down to a new level.
-            if level > 0 && !o.did(&format!("level{}", level)) {
-                let top = Pos::new(b.x + 9, b.y + 1, b.z);
-                self.designate(top, Pos::new(top.x, top.y, z), Desig::StairUD);
-                o.done.push(format!("level{}", level));
-                Self::note_ov(o, self.tick, format!("Opened a new level of halls, at depth {}.", b.z - z));
-            }
-            // The shelter reaches it.
-            if let Some(i) = self.burrows.iter().position(|bw| Some(bw.bit) == self.alert_burrow) {
-                self.paint_burrow(i, o0.offset(-1, -1, 0), o0.offset(w, h, 0), true);
-                for &p in &path {
-                    self.paint_burrow(i, p, p, true);
-                }
-            }
-            o.anchors.push(door);
-            o.anchors.push(o0.offset(w / 2, h / 2, 0));
-            return Some(Room { kind, a: o0, b: o0.offset(w - 1, h - 1, 0), stage: 0, tiles, shape: Some(shape), since: self.tick });
+            let _ = b;
+            self.open_room(o, level, o0, o0.offset(w - 1, h - 1, 0), &path, door);
+            let kind = if kind == RoomUse::Bedrooms { RoomUse::Dormitory } else { kind };
+            return Some(Room { kind, a: o0, b: o0.offset(w - 1, h - 1, 0), stage: 0, tiles, shape: Some(shape), since: self.tick, doors: Vec::new(), beds: Vec::new() });
         }
+    }
+
+    /// A room is under way on level `level`: open the level if it's new,
+    /// take it into the shelter, and remember the way to it.
+    fn open_room(&mut self, o: &mut Overseer, level: i32, a: Pos, b: Pos, path: &[Pos], door: Pos) {
+        let base = o.base.unwrap();
+        let z = Self::level_z(o, level);
+        if level > o.level {
+            o.level = level;
+        }
+        // The inner stair down to a new level.
+        if level > 0 && !o.did(&format!("level{}", level)) {
+            let top = Pos::new(base.x + 9, base.y + 1, base.z);
+            self.designate(top, Pos::new(top.x, top.y, z), Desig::StairUD);
+            o.done.push(format!("level{}", level));
+            Self::note_ov(o, self.tick, format!("Opened a new level of halls, at depth {}.", base.z - z));
+        }
+        // The shelter reaches it.
+        if let Some(i) = self.burrows.iter().position(|bw| Some(bw.bit) == self.alert_burrow) {
+            self.paint_burrow(i, a.offset(-1, -1, 0), b.offset(1, 1, 0), true);
+            for &p in path {
+                self.paint_burrow(i, p, p, true);
+            }
+        }
+        o.anchors.push(door);
+        o.anchors.push(Pos::new((a.x + b.x) / 2, (a.y + b.y) / 2, a.z));
     }
 }
 
@@ -401,7 +448,10 @@ mod tests {
             if only.as_deref().map_or(false, |l| !layout.name().contains(l)) {
                 continue;
             }
-            let mut g = Game::new(5);
+            let seed = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(5);
+            let ow = crate::overworld::Overworld::generate(seed);
+            let (sx, sy) = ow.default_site();
+            let mut g = Game::embark_with(seed, ow, sx, sy, crate::world::MapSize { w: 144, h: 96, d: 48 }, &|_, _| {});
             g.set_overseer(Some(Style::Builder));
             g.overseer.as_mut().unwrap().nudges = vec![0, 0, 0, 0, 0, 3, 0, 0, 3];
             for _ in 0..30 {
@@ -415,11 +465,16 @@ mod tests {
             let b = o.base.unwrap();
             eprintln!("== {} ({} rooms: {:?})", layout.name(), o.rooms.len(), o.rooms.iter().map(|r| r.kind).collect::<Vec<_>>());
             let mut s = String::new();
-            for y in (b.y - 24).max(0)..(b.y + 25).min(g.world.h) {
-                for x in (b.x - 2).max(0)..(b.x + 70).min(g.world.w) {
+            for y in (b.y - 30).max(0)..(b.y + 31).min(g.world.h) {
+                for x in (b.x + 8).max(0)..(b.x + 90).min(g.world.w) {
                     let t = g.world.t(Pos::new(x, y, b.z));
                     s.push(if t.building != 0 {
-                        'b'
+                        match g.buildings.get(&t.building).map(|b| b.kind) {
+                            Some(BuildingKind::Door) => 'D',
+                            Some(BuildingKind::Bed) => 'B',
+                            Some(BuildingKind::Coffin) => 'C',
+                            _ => 'b',
+                        }
                     } else if t.desig != Desig::None {
                         '+'
                     } else if !t.kind.solid() {

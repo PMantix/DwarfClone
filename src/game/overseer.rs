@@ -79,6 +79,8 @@ pub enum RoomUse {
     Jail,
     /// The Architect's grand work (see `game::layout`).
     Grand,
+    /// A row of bedrooms off a hall, a bed and a door each.
+    Bedrooms,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -96,6 +98,12 @@ pub struct Room {
     /// When it was laid out.
     #[serde(default)]
     pub since: u64,
+    /// Doors onto its hall (rooms from a plan).
+    #[serde(default)]
+    pub doors: Vec<Pos>,
+    /// Where its beds go (a row of bedrooms).
+    #[serde(default)]
+    pub beds: Vec<Pos>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -146,6 +154,12 @@ pub struct Overseer {
     /// Doors and room centres new tunnels can join.
     #[serde(default)]
     pub anchors: Vec<Pos>,
+    /// Slots of the layout's plan already used or found blocked: (level, slot).
+    #[serde(default)]
+    pub plan_taken: Vec<(i32, u32)>,
+    /// How far east the plan of halls runs (0: not drawn up yet).
+    #[serde(default)]
+    pub plan_len: i32,
     /// What it decided, newest last.
     pub notes: Vec<(u64, String)>,
 }
@@ -173,6 +187,8 @@ impl Overseer {
             layout: Layout::Orderly,
             level: 0,
             anchors: Vec::new(),
+            plan_taken: Vec::new(),
+            plan_len: 0,
             notes: Vec::new(),
         }
     }
@@ -380,12 +396,25 @@ impl Game {
         let want = 5 + self.alive_count() / 3;
         let digging = o.rooms.iter().filter(|r| r.stage == 0).count();
         let dig_jobs = self.designations.iter().filter(|p| matches!(self.world.t(**p).desig, Desig::Dig | Desig::StairUD)).count();
+        // The dead want burying: a tomb, and coffins in it.
+        if self.tick % DAY < 150 {
+            self.ov_burials(o);
+        }
         // An ambition's rooms first, then the style's plan.
         let next = o.wants.first().copied().map(|k| (k, true)).or_else(|| plan.get(o.planned).map(|&k| (k, false)));
+        // Past the first dormitory, a planned fortress sleeps in bedrooms.
+        let next = next.map(|(k, w)| {
+            if k == RoomUse::Dormitory && o.layout.planned() && o.rooms.iter().any(|r| r.kind == RoomUse::Dormitory) {
+                (RoomUse::Bedrooms, w)
+            } else {
+                (k, w)
+            }
+        });
         if let Some((kind, wanted)) = next.filter(|_| (o.rooms.len() < want || !o.wants.is_empty()) && digging < 2 && dig_jobs < 120) {
             match self.plan_room(o, kind) {
                 Some(room) => {
-                    let what = match (kind, room.shape) {
+                    let what = match (room.kind, room.shape) {
+                        (RoomUse::Bedrooms, _) => format!("Dug out a row of {} bedrooms.", room.beds.len()),
                         (RoomUse::Grand, Some(s)) => format!("Began its grand work: a great {}.", s.describe()),
                         (_, Some(s)) if !matches!(s, Shape::Rect { .. }) => format!("Dug out a {} for a {:?}.", s.describe(), kind).to_lowercase().replace("dug out", "Dug out"),
                         _ => format!("Dug out a room for a {:?}.", kind).to_lowercase().replace("dug out", "Dug out"),
@@ -430,11 +459,39 @@ impl Game {
         // Keep a bed for everyone in the dormitories.
         if self.tick % DAY < 150 {
             let beds = self.buildings.values().filter(|b| b.kind == BuildingKind::Bed).count();
+            // A planned fortress digs another row of bedrooms.
+            if beds < self.alive_count() + 1
+                && o.layout.planned()
+                && !o.wants.contains(&RoomUse::Bedrooms)
+                && !o.rooms.iter().any(|r| r.stage == 0 && matches!(r.kind, RoomUse::Bedrooms | RoomUse::Dormitory))
+                && o.rooms.iter().any(|r| r.kind == RoomUse::Dormitory)
+            {
+                o.wants.push(RoomUse::Bedrooms);
+            }
             if beds < self.alive_count() + 1 {
                 for r in o.rooms.iter().filter(|r| r.kind == RoomUse::Dormitory && r.stage == 1).cloned().collect::<Vec<_>>() {
                     self.ov_grid(&r, BuildingKind::Bed, 2, 2, (self.alive_count() + 1).saturating_sub(beds));
                 }
             }
+        }
+    }
+
+    /// Every dwarf lying unburied wants a coffin: put more in the tomb, or
+    /// dig a tomb if there is none.
+    fn ov_burials(&mut self, o: &mut Overseer) {
+        let unburied = self.items.values().filter(|it| it.free() && self.burial_corpse(it)).count();
+        if unburied == 0 {
+            return;
+        }
+        let free = self.buildings.values().filter(|b| b.kind == BuildingKind::Coffin && b.occupant.is_none()).count();
+        if free >= unburied {
+            return;
+        }
+        if let Some(t) = o.rooms.iter().find(|r| r.kind == RoomUse::Tomb && r.stage == 1).cloned() {
+            self.ov_grid(&t, BuildingKind::Coffin, 2, 2, unburied - free);
+        } else if !o.rooms.iter().any(|r| r.kind == RoomUse::Tomb && r.stage == 0) && !o.wants.contains(&RoomUse::Tomb) {
+            o.wants.insert(0, RoomUse::Tomb);
+            Self::note(o, self.tick, "The dead lie unburied. Ordered a tomb dug.".into());
         }
     }
 
@@ -459,7 +516,17 @@ impl Game {
     fn ov_fit(&mut self, o: &mut Overseer, r: &Room) {
         let tick = self.tick;
         let zone = |k| Some(k);
+        // Rooms off a hall get their doors.
+        for &d in &r.doors {
+            self.place_building(BuildingKind::Door, d);
+        }
         let z = match r.kind {
+            RoomUse::Bedrooms => {
+                for &p in &r.beds {
+                    self.place_building(BuildingKind::Bed, p);
+                }
+                None
+            }
             RoomUse::Workshops => {
                 let have: Vec<BuildingKind> = self.buildings.values().map(|b| b.kind).collect();
                 let todo: Vec<BuildingKind> = WORKSHOPS.iter().copied().filter(|k| !have.contains(k)).collect();
@@ -567,9 +634,10 @@ impl Game {
             (Recipe::Charcoal, 6),
             (Recipe::SmeltOre, 6),
         ];
-        if o.style != Style::Reckless {
-            orders.push((Recipe::WoodCoffin, 2));
-        }
+        // Coffins for the dead, and a couple in hand.
+        let unburied = self.items.values().filter(|it| it.free() && self.burial_corpse(it)).count() as u32;
+        orders.push((Recipe::WoodCoffin, 2 + unburied));
+        orders.push((Recipe::WoodDoor, 2 + o.rooms.iter().filter(|r| r.stage == 0).map(|r| r.doors.len() as u32).sum::<u32>()));
         if o.style != Style::Reckless {
             orders.push((Recipe::WoodCrossbow, 3));
             orders.push((Recipe::Bolts, 6));
@@ -1023,6 +1091,9 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
             }
             seen = g.tick;
         }
+        if g.tick % DAY == 0 && std::env::var("TRIAL_PACE").is_ok() {
+            eprintln!("  day {} at {:?}: {} rooms, {} designations, {} creatures", g.tick / DAY, std::time::Instant::now(), g.overseer.as_ref().map_or(0, |o| o.rooms.len()), g.designations.len(), g.creatures.len());
+        }
         if g.tick % DAY == 0 {
             if let Some(l) = g.log.iter().rev().find(|l| l.color == (255, 60, 60)) {
                 last_death = l.text.clone();
@@ -1132,6 +1203,31 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_overseer_buries_its_dead() {
+        let mut g = Game::new(5);
+        g.set_overseer(Some(Style::Steady));
+        for _ in 0..DAY * 3 {
+            g.step();
+        }
+        let mut d = std::mem::take(&mut g.dwarves[0]);
+        g.kill(&mut d, "was struck down");
+        let name = d.name.clone();
+        g.dwarves[0] = d;
+        let mut days = 0;
+        while !g.dwarves[0].rested && days < 40 {
+            for _ in 0..DAY {
+                g.step();
+                g.creatures.retain(|_, c| c.tame || !c.hostile());
+            }
+            days += 1;
+        }
+        let o = g.overseer.as_ref().unwrap();
+        assert!(o.rooms.iter().any(|r| r.kind == RoomUse::Tomb), "no tomb dug: {:?}", o.notes.iter().rev().take(8).collect::<Vec<_>>());
+        assert!(g.dwarves[0].rested, "{} still lies unburied after {} days", name, days);
+        eprintln!("{} buried after {} days", name, days);
+    }
 
     #[test]
     fn the_overseer_digs_in_and_builds_a_fortress() {

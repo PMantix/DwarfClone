@@ -57,6 +57,7 @@ mod grow;
 mod overseer;
 mod ambitions;
 mod layout;
+mod blueprint;
 mod miasma;
 pub use ambitions::{Ambition, Sense};
 
