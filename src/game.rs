@@ -256,7 +256,7 @@ pub struct Game {
     dig_version: u64,
     /// Last failed dig search per kind (mine, chop): (version, tick).
     #[serde(skip)]
-    dig_fail: [Option<(u64, u64)>; 3],
+    dig_fail: [Option<(u64, u64)>; 4],
     /// Cells holding water, rebuilt from the map when missing (e.g. after loading).
     #[serde(skip)]
     water_cells: Option<Vec<usize>>,
@@ -505,7 +505,7 @@ impl Game {
             alert_burrow: None,
             civ_alert: false,
             dig_version: 0,
-            dig_fail: [None, None, None],
+            dig_fail: [None, None, None, None],
             haul_retry: 0,
             treating: HashSet::new(),
             slaughtering: HashSet::new(),

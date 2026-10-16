@@ -88,7 +88,16 @@ impl Game {
                 deep(q) || (w.kind(q) == Some(TileKind::Open) && deep(q.down()))
             })
         };
-        let Some((stand, path)) = path::search(w, d.pos, SEARCH_LIMIT, Mover::Dwarf, bank) else { return false };
+        // Nothing to fish from last time and nothing dug since: don't look again yet.
+        if let Some((v, t)) = self.dig_fail[3] {
+            if v == self.dig_version && self.tick < t + 600 {
+                return false;
+            }
+        }
+        let Some((stand, path)) = path::search(w, d.pos, SEARCH_LIMIT, Mover::Dwarf, bank) else {
+            self.dig_fail[3] = Some((self.dig_version, self.tick));
+            return false;
+        };
         d.task = Task::Fish { stand };
         Self::set_path(d, path);
         true

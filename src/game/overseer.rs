@@ -1258,6 +1258,7 @@ mod tests {
             }
         }
         eprintln!("  typical: {}", days[days.len() / 2].1);
+
     }
 
     #[test]
