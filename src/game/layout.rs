@@ -24,6 +24,7 @@ pub enum Layout {
 }
 
 impl Layout {
+    #[allow(dead_code)]
     pub const ALL: [Layout; 5] = [Layout::Orderly, Layout::Sprawling, Layout::Radial, Layout::Symmetric, Layout::Warren];
 
     pub fn name(self) -> &'static str {
@@ -302,6 +303,20 @@ impl Game {
         path
     }
 
+    /// Whether a tunnel can go through `p`: open dry ground already, or rock
+    /// a miner can dig (no water, no aquifer, no bedrock).
+    fn tunnel_ok(&self, p: Pos) -> bool {
+        let Some(t) = self.world.get(p) else { return false };
+        if t.water > 0 || t.magma > 0 || t.aquifer {
+            return false;
+        }
+        if t.kind.solid() {
+            t.kind == TileKind::Wall && t.mat.diggable() && t.built_from.is_none() && t.mat != Mat::Bedrock
+        } else {
+            t.kind.has_floor() || t.kind == TileKind::Open && !t.revealed
+        }
+    }
+
     /// Find a place for a room of `kind`, dig it and its tunnel. None if
     /// there's nowhere left to put it.
     pub(super) fn plan_room(&mut self, o: &mut Overseer, kind: RoomUse) -> Option<Room> {
@@ -314,8 +329,30 @@ impl Game {
             if z < 3 {
                 return None;
             }
-            let spot = self.room_spots(o, shape, level).into_iter().find(|&p| self.room_fits(o, shape, p));
-            let Some(o0) = spot else {
+            // The first spot that fits and that a tunnel can reach.
+            let hub = Self::level_hub(o, level);
+            let anchors: Vec<Pos> = o.anchors.iter().copied().filter(|a| a.z == z).chain(std::iter::once(hub)).collect();
+            let dist = |p: Pos, a: Pos| (a.x - p.x).abs() + (a.y - p.y).abs();
+            let mut found = None;
+            let spots = self.room_spots(o, shape, level);
+            for o0 in spots {
+                if !self.room_fits(o, shape, o0) {
+                    continue;
+                }
+                let tiles: Vec<Pos> = shape.tiles().into_iter().map(|(x, y)| o0.offset(x, y, 0)).collect();
+                // The door: the room's tile nearest the halls.
+                let (door, anchor) = tiles
+                    .iter()
+                    .flat_map(|&t| anchors.iter().map(move |&a| (t, a)))
+                    .min_by_key(|&(t, a)| dist(t, a))
+                    .unwrap();
+                let path = self.tunnel(o, door, anchor);
+                if path.iter().all(|&p| self.tunnel_ok(p)) {
+                    found = Some((o0, tiles, door, path));
+                    break;
+                }
+            }
+            let Some((o0, tiles, door, path)) = found else {
                 if level > o.level + 1 {
                     return None;
                 }
@@ -325,20 +362,9 @@ impl Game {
             if level > o.level {
                 o.level = level;
             }
-            let tiles: Vec<Pos> = shape.tiles().into_iter().map(|(x, y)| o0.offset(x, y, 0)).collect();
-            // The door: the room's tile nearest the halls.
-            let hub = Self::level_hub(o, level);
-            let anchors: Vec<Pos> = o.anchors.iter().copied().filter(|a| a.z == z).chain(std::iter::once(hub)).collect();
-            let dist = |p: Pos, a: Pos| (a.x - p.x).abs() + (a.y - p.y).abs();
-            let (door, anchor) = tiles
-                .iter()
-                .flat_map(|&t| anchors.iter().map(move |&a| (t, a)))
-                .min_by_key(|&(t, a)| dist(t, a))
-                .unwrap();
             for &p in &tiles {
                 self.designate(p, p, Desig::Dig);
             }
-            let path = self.tunnel(o, door, anchor);
             for &p in &path {
                 self.designate(p, p, Desig::Dig);
             }
@@ -358,7 +384,7 @@ impl Game {
             }
             o.anchors.push(door);
             o.anchors.push(o0.offset(w / 2, h / 2, 0));
-            return Some(Room { kind, a: o0, b: o0.offset(w - 1, h - 1, 0), stage: 0, tiles, shape: Some(shape) });
+            return Some(Room { kind, a: o0, b: o0.offset(w - 1, h - 1, 0), stage: 0, tiles, shape: Some(shape), since: self.tick });
         }
     }
 }

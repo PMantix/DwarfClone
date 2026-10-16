@@ -294,6 +294,10 @@ pub struct Game {
     /// Some tile has snow on it (so a thaw knows to look).
     #[serde(default)]
     snow_lying: bool,
+    /// Whether creatures could reach places, remembered briefly:
+    /// (creature, its spot, the place) -> (when, answer, dig version).
+    #[serde(skip)]
+    reach_cache: std::cell::RefCell<HashMap<(u32, i32, i32, i32, i32, i32, i32), (u64, bool, u64)>>,
     /// Tiles with miasma in them, rebuilt from the map when missing.
     #[serde(skip)]
     miasma_cells: Option<Vec<usize>>,
@@ -456,6 +460,7 @@ impl Game {
             snow_lying: false,
             fire_cells: None,
             miasma_cells: None,
+            reach_cache: Default::default(),
             flames: Vec::new(),
             festival: None,
             year_log: YearLog::default(),
@@ -1302,7 +1307,7 @@ impl Game {
         if d.task == Task::Idle {
             // Thirst, hunger and exhaustion come before any break.
             let urgent = d.thirst > THIRSTY || d.hunger > HUNGRY || d.fatigue > TIRED || d.body.needs_rest();
-            if d.idle_cd > 0 && !urgent {
+            if d.idle_cd > 0 {
                 d.idle_cd -= 1;
             } else if !urgent && self.on_break(d) {
                 d.idle_cd = 20 + self.rng.range(0, 20) as u32;
@@ -2328,9 +2333,10 @@ impl Game {
                     Some(true) => match self.travel(d, site) {
                         Travel::Moving => {}
                         Travel::Failed => {
+                            // Nobody can get there yet: leave it a couple of days.
                             self.release_task(d);
                             if let Some(b) = self.buildings.get_mut(&bld) {
-                                b.retry_tick = self.tick + 600;
+                                b.retry_tick = self.tick + DAY * 2;
                             }
                         }
                         Travel::Arrived => {

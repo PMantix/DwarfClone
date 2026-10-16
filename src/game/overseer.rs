@@ -93,6 +93,9 @@ pub struct Room {
     pub tiles: Vec<Pos>,
     #[serde(default)]
     pub shape: Option<Shape>,
+    /// When it was laid out.
+    #[serde(default)]
+    pub since: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -179,6 +182,7 @@ impl Overseer {
     }
 
     pub(super) fn did(&self, what: &str) -> bool {
+
         self.done.iter().any(|d| d == what)
     }
 }
@@ -339,6 +343,14 @@ impl Game {
         Self::note(o, tick, format!("Struck the earth: a stair down {} levels, farms and a stockpile by the wagon.", depth));
     }
 
+    /// Whether a dwarf could walk from the foot of the stair into the room.
+    fn room_reachable(&self, o: &Overseer, r: &Room) -> bool {
+        let tiles: Vec<Pos> = if r.tiles.is_empty() { box_iter(r.a, r.b).collect() } else { r.tiles.clone() };
+        let Some(&inside) = tiles.iter().find(|&&p| self.world.walkable(p)) else { return false };
+        let base = o.base.unwrap();
+        path::astar(&self.world, base, inside, 40_000, Mover::Dwarf).is_some()
+    }
+
     /// How much of a room has been cut out so far.
     fn room_dug(&self, r: &Room) -> f64 {
         if r.tiles.is_empty() {
@@ -392,11 +404,27 @@ impl Game {
                 }
             }
         }
+        // Fit rooms out once they're dug and somebody can walk in (checked
+        // once a day: it's a long search when they can't).
+        let daily = self.tick % DAY < 150;
         for i in 0..o.rooms.len() {
-            if o.rooms[i].stage == 0 && self.room_dug(&o.rooms[i]) >= 0.9 {
+            if o.rooms[i].stage != 0 {
+                continue;
+            }
+            let dug = self.room_dug(&o.rooms[i]) >= 0.9;
+            if dug && daily && self.room_reachable(o, &o.rooms[i]) {
                 let r = o.rooms[i].clone();
                 self.ov_fit(o, &r);
                 o.rooms[i].stage = 1;
+            } else if daily && self.tick > o.rooms[i].since + DAY * 15 && !self.room_reachable(o, &o.rooms[i]) {
+                // Still out of reach after a fortnight: give it up.
+                let r = o.rooms[i].clone();
+                let tiles = if r.tiles.is_empty() { box_iter(r.a, r.b).collect() } else { r.tiles.clone() };
+                for p in tiles {
+                    self.designate(p, p, Desig::None);
+                }
+                o.rooms[i].stage = 2;
+                Self::note(o, tick, format!("Gave up on a {:?} nobody could reach.", r.kind).to_lowercase().replace("gave", "Gave"));
             }
         }
         // Keep a bed for everyone in the dormitories.
@@ -1177,6 +1205,59 @@ mod tests {
             eprintln!("    kinds {:?} by z-from-base {:?}", kinds, zs);
             last = std::time::Instant::now();
         }
+    }
+
+    #[test]
+    #[ignore]
+    fn find_slow_days() {
+        use std::sync::atomic::Ordering::Relaxed;
+        let seed: u64 = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(500);
+        let style = std::env::var("STYLE").ok().and_then(|s| Style::parse(&s)).unwrap_or(Style::Steady);
+        let mut g = Game::new(seed);
+        g.set_overseer(Some(style));
+        let mut days: Vec<(u128, String)> = Vec::new();
+        for day in 0..(YEAR * 2 / DAY) {
+            let c0 = [crate::path::SEARCHES.load(Relaxed), crate::path::SEARCH_NODES.load(Relaxed), crate::path::ASTARS.load(Relaxed), crate::path::ASTAR_NODES.load(Relaxed)];
+            let t = std::time::Instant::now();
+            for _ in 0..DAY {
+                g.step();
+            }
+            let ms = t.elapsed().as_millis();
+            let c1 = [crate::path::SEARCHES.load(Relaxed), crate::path::SEARCH_NODES.load(Relaxed), crate::path::ASTARS.load(Relaxed), crate::path::ASTAR_NODES.load(Relaxed)];
+            let flee = g.dwarves.iter().filter(|d| d.alive && d.task == Task::Flee).count();
+            let hostile = g.creatures.values().filter(|c| c.alive && c.hostile()).count();
+            days.push((
+                ms,
+                format!(
+                    "day {:>3} {:>5}ms pop {:>2} searches {:>6} ({:>9} nodes) astar {:>6} ({:>8} nodes) desig {:>3} hostile {:>2} flee {:>2} alert {} creatures {}",
+                    day,
+                    ms,
+                    g.alive_count(),
+                    c1[0] - c0[0],
+                    c1[1] - c0[1],
+                    c1[2] - c0[2],
+                    c1[3] - c0[3],
+                    g.designations.len(),
+                    hostile,
+                    flee,
+                    g.alert,
+                    g.creatures.len()
+                ),
+            ));
+            if g.alive_count() == 0 {
+                break;
+            }
+        }
+        let mut sorted: Vec<u128> = days.iter().map(|d| d.0).collect();
+        sorted.sort();
+        let median = sorted[sorted.len() / 2];
+        eprintln!("median day {}ms over {} days", median, days.len());
+        for (ms, line) in &days {
+            if *ms > median * 3 && *ms > 60 {
+                eprintln!("  SLOW {}", line);
+            }
+        }
+        eprintln!("  typical: {}", days[days.len() / 2].1);
     }
 
     #[test]

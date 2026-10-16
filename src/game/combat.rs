@@ -131,13 +131,33 @@ impl Game {
         c.alive && !c.body.unconscious() && (!c.species.dwells_underground() || self.world.t(c.pos).revealed)
     }
 
+    /// Whether a creature has a way to `p`, remembered for a little while
+    /// (asked every few ticks by every dwarf, and a beast sealed off in the
+    /// caverns would otherwise be searched for each time).
+    fn can_reach(&self, c: &Creature, p: Pos, limit: usize) -> bool {
+        let key = (c.id, c.pos.x / 3, c.pos.y / 3, c.pos.z, p.x / 3, p.y / 3, p.z);
+        let mut cache = self.reach_cache.borrow_mut();
+        if let Some(&(at, ok, ver)) = cache.get(&key) {
+            if self.tick < at + 120 && ver == self.dig_version {
+                return ok;
+            }
+        }
+        if cache.len() > 4000 {
+            let tick = self.tick;
+            cache.retain(|_, v| tick < v.0 + 120);
+        }
+        let ok = path::astar(&self.world, c.pos, p, limit, c.mover()).is_some();
+        cache.insert(key, (self.tick, ok, self.dig_version));
+        ok
+    }
+
     /// Active hostile creatures close enough to worry about: near, and with
     /// a way through (a beast behind solid rock is no threat yet).
     pub(super) fn threats_near(&self, p: Pos, r: i32) -> Vec<(u32, Pos)> {
         self.creatures
             .values()
             .filter(|c| c.hostile() && self.creature_active(c) && near(c.pos, p, r))
-            .filter(|c| adjacent(c.pos, p) || path::astar(&self.world, c.pos, p, (r * r * 6) as usize, c.mover()).is_some())
+            .filter(|c| adjacent(c.pos, p) || self.can_reach(c, p, (r * r * 6) as usize))
             .map(|c| (c.id, c.pos))
             .collect()
     }
@@ -1094,8 +1114,10 @@ impl Game {
                 match path::astar(&self.world, c.pos, dpos, 8000, info.mover) {
                     Some(p) => c.path = p.into_iter().rev().collect(),
                     None => {
+                        // No way there: give it a rest before trying again.
                         c.target = None;
                         c.path.clear();
+                        c.think_cd = 90;
                         return true;
                     }
                 }
@@ -1207,12 +1229,16 @@ impl Game {
             return;
         }
         if c.target.is_none() {
+            // The nearest dwarf it can actually get to (a beast in a sealed
+            // cavern doesn't wear itself out hunting dwarves through rock).
             let r = info.aggro;
-            c.target = dwarves
-                .iter()
-                .filter(|(_, p)| near(*p, c.pos, r))
-                .min_by_key(|(_, p)| dist2(*p, c.pos))
-                .map(|(id, _)| *id);
+            let mut prey: Vec<(u32, Pos)> = dwarves.iter().copied().filter(|(_, p)| near(*p, c.pos, r)).collect();
+            prey.sort_by_key(|(_, p)| dist2(*p, c.pos));
+            let limit = (r * r * 8).clamp(400, 4000) as usize;
+            c.target = prey.iter().find(|(_, p)| self.can_reach(c, *p, limit)).map(|(id, _)| *id);
+            if c.target.is_none() && !prey.is_empty() {
+                c.think_cd = 90;
+            }
         }
     }
 

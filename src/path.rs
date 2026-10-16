@@ -16,6 +16,12 @@ fn rebuild(came: &HashMap<Pos, (u32, Pos)>, start: Pos, end: Pos) -> Vec<Pos> {
 
 /// Dijkstra flood from `start` to the cheapest position satisfying `goal`.
 /// Returns that position and the path to it (excluding `start`).
+/// Searches run and nodes expanded, for finding what makes the game slow.
+pub static SEARCHES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static SEARCH_NODES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static ASTARS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static ASTAR_NODES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 pub fn search<F: FnMut(Pos) -> bool>(
     world: &World,
     start: Pos,
@@ -29,15 +35,19 @@ pub fn search<F: FnMut(Pos) -> bool>(
     heap.push(Reverse((0u32, start)));
     let mut nb = Vec::with_capacity(16);
     let mut expanded = 0;
+    use std::sync::atomic::Ordering::Relaxed;
+    SEARCHES.fetch_add(1, Relaxed);
     while let Some(Reverse((cost, p))) = heap.pop() {
         if came[&p].0 < cost {
             continue;
         }
         if goal(p) {
+            SEARCH_NODES.fetch_add(expanded as u64, Relaxed);
             return Some((p, rebuild(&came, start, p)));
         }
         expanded += 1;
         if expanded > limit {
+            SEARCH_NODES.fetch_add(expanded as u64, Relaxed);
             return None;
         }
         world.neighbors(p, &mut nb, m);
@@ -70,12 +80,16 @@ pub fn astar(world: &World, start: Pos, goal: Pos, limit: usize, m: Mover) -> Op
     heap.push(Reverse((heuristic(start, goal), start)));
     let mut nb = Vec::with_capacity(16);
     let mut expanded = 0;
+    use std::sync::atomic::Ordering::Relaxed;
+    ASTARS.fetch_add(1, Relaxed);
     while let Some(Reverse((_, p))) = heap.pop() {
         if p == goal {
+            ASTAR_NODES.fetch_add(expanded as u64, Relaxed);
             return Some(rebuild(&came, start, p));
         }
         expanded += 1;
         if expanded > limit {
+            ASTAR_NODES.fetch_add(expanded as u64, Relaxed);
             return None;
         }
         let cost = came[&p].0;
