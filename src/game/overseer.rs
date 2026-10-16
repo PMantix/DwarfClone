@@ -7,6 +7,7 @@
 use super::*;
 use crate::buildings::Recipe;
 use super::ambitions::Ambition;
+use super::layout::{Layout, Shape};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -87,6 +88,11 @@ pub struct Room {
     pub b: Pos,
     /// 0 dug out (designated), 1 fitted out.
     pub stage: u8,
+    /// The tiles it's cut from (empty: all of a..b).
+    #[serde(default)]
+    pub tiles: Vec<Pos>,
+    #[serde(default)]
+    pub shape: Option<Shape>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -128,6 +134,15 @@ pub struct Overseer {
     /// Your nudges to each ambition (in `Ambition::ALL` order), -3..=3.
     #[serde(default)]
     pub nudges: Vec<i8>,
+    /// How it lays out its halls.
+    #[serde(default)]
+    pub layout: Layout,
+    /// The deepest level of halls it has opened.
+    #[serde(default)]
+    pub level: i32,
+    /// Doors and room centres new tunnels can join.
+    #[serde(default)]
+    pub anchors: Vec<Pos>,
     /// What it decided, newest last.
     pub notes: Vec<(u64, String)>,
 }
@@ -152,6 +167,9 @@ impl Overseer {
             planned: 0,
             last_siege: 0,
             nudges: Vec::new(),
+            layout: Layout::Orderly,
+            level: 0,
+            anchors: Vec::new(),
             notes: Vec::new(),
         }
     }
@@ -308,78 +326,26 @@ impl Game {
             return;
         }
         self.designate(s, base, Desig::StairUD);
+        // The gatehouse: the corridor every way in passes through.
+        self.designate(base.offset(1, 0, 0), base.offset(14, 1, 0), Desig::Dig);
         o.top = Some(s);
         o.base = Some(base);
         o.slots = 0;
+        o.layout = Layout::pick(o.style, self.rng.range(0, 1000) as u32);
+        Self::note(o, tick, format!("It means to lay the fortress out as {}.", o.layout.name()));
         if let Some(m) = self.candidates(Position::Manager).first().copied() {
             self.appoint(Position::Manager, Some(m));
         }
         Self::note(o, tick, format!("Struck the earth: a stair down {} levels, farms and a stockpile by the wagon.", depth));
     }
 
-    fn ov_dims(o: &Overseer) -> (i32, i32) {
-        if o.style == Style::Reckless {
-            (11, 9)
-        } else {
-            (7, 6)
+    /// How much of a room has been cut out so far.
+    fn room_dug(&self, r: &Room) -> f64 {
+        if r.tiles.is_empty() {
+            return self.dug_share(r.a, r.b);
         }
-    }
-
-    /// Rooms each level's corridor has room for, on each side.
-    pub(super) fn ov_per_level(&self, o: &Overseer) -> i32 {
-        let b = o.base.unwrap();
-        let (w, _) = Self::ov_dims(o);
-        ((self.world.w - 3 - (b.x + 2)) / (w + 1)).clamp(1, 6)
-    }
-
-    /// The box for room `i`, and its level. Each level is a corridor of
-    /// rooms on both sides; deeper levels are reached by a stair inside
-    /// the gate (the hub).
-    pub(super) fn ov_room_box(&self, o: &Overseer, i: usize) -> Option<(Pos, Pos, i32)> {
-        let b = o.base.unwrap();
-        let (w, d) = Self::ov_dims(o);
-        let per = self.ov_per_level(o) as usize;
-        let level = (i / (2 * per)) as i32;
-        let within = i % (2 * per);
-        let (slot, north) = ((within / 2) as i32, within % 2 == 0);
-        let z = b.z - 2 * level;
-        if z < 3 {
-            return None;
-        }
-        let x0 = b.x + 2 + (w + 1) * slot;
-        Some(if north {
-            (Pos::new(x0, b.y - d, z), Pos::new(x0 + w - 1, b.y - 1, z), level)
-        } else {
-            (Pos::new(x0, b.y + 2, z), Pos::new(x0 + w - 1, b.y + 1 + d, z), level)
-        })
-    }
-
-    /// The stair inside the gate that leads to the deeper levels.
-    pub(super) fn ov_hub(o: &Overseer) -> Pos {
-        o.base.unwrap().offset(9, 1, 0)
-    }
-
-    /// Open up a level: its corridor, and the stair down to it.
-    fn ov_open_level(&mut self, o: &mut Overseer, level: i32) {
-        let b = o.base.unwrap();
-        let (w, _) = Self::ov_dims(o);
-        let per = self.ov_per_level(o);
-        let z = b.z - 2 * level;
-        let x_end = b.x + 2 + (w + 1) * per;
-        if level == 0 {
-            self.designate(b.offset(1, 0, 0), Pos::new(x_end, b.y + 1, z), Desig::Dig);
-        } else {
-            let hub = Self::ov_hub(o);
-            self.designate(Pos::new(b.x + 2, b.y, z), Pos::new(x_end, b.y + 1, z), Desig::Dig);
-            self.designate(hub.offset(0, 0, -2 * (level - 1)), Pos::new(hub.x, hub.y, z), Desig::StairUD);
-            // The shelter reaches down too.
-            if let Some(i) = self.burrows.iter().position(|bw| Some(bw.bit) == self.alert_burrow) {
-                self.paint_burrow(i, Pos::new(b.x, b.y - 10, z), Pos::new(x_end + 1, b.y + 10, z + 1), true);
-            }
-            Self::note(o, self.tick, format!("Opened a new level of halls, {} below the first.", 2 * level));
-        }
-        o.slots = o.slots.max(per);
-        o.done.push(format!("level{}", level));
+        let dug = r.tiles.iter().filter(|p| self.world.get(**p).map_or(false, |t| !t.kind.solid())).count();
+        dug as f64 / r.tiles.len() as f64
     }
 
     fn dug_share(&self, a: Pos, b: Pos) -> f64 {
@@ -405,24 +371,29 @@ impl Game {
         // An ambition's rooms first, then the style's plan.
         let next = o.wants.first().copied().map(|k| (k, true)).or_else(|| plan.get(o.planned).map(|&k| (k, false)));
         if let Some((kind, wanted)) = next.filter(|_| (o.rooms.len() < want || !o.wants.is_empty()) && digging < 2 && dig_jobs < 120) {
-            if let Some((a, b, level)) = self.ov_room_box(o, o.rooms.len()) {
-                if !o.did(&format!("level{}", level)) {
-                    self.ov_open_level(o, level);
+            match self.plan_room(o, kind) {
+                Some(room) => {
+                    let what = match (kind, room.shape) {
+                        (RoomUse::Grand, Some(s)) => format!("Began its grand work: a great {}.", s.describe()),
+                        (_, Some(s)) if !matches!(s, Shape::Rect { .. }) => format!("Dug out a {} for a {:?}.", s.describe(), kind).to_lowercase().replace("dug out", "Dug out"),
+                        _ => format!("Dug out a room for a {:?}.", kind).to_lowercase().replace("dug out", "Dug out"),
+                    };
+                    o.rooms.push(room);
+                    o.slots = (o.rooms.len() as i32 + 1) / 2;
+                    if wanted {
+                        o.wants.remove(0);
+                    } else {
+                        o.planned += 1;
+                    }
+                    Self::note(o, tick, what);
                 }
-                self.designate(a, b, Desig::Dig);
-                o.rooms.push(Room { kind, a, b, stage: 0 });
-                if wanted {
-                    o.wants.remove(0);
-                } else {
-                    o.planned += 1;
+                None => {
+                    o.wants.clear();
                 }
-                Self::note(o, tick, format!("Dug out a room for a {:?}.", kind).to_lowercase().replace("dug out", "Dug out"));
-            } else {
-                o.wants.clear();
             }
         }
         for i in 0..o.rooms.len() {
-            if o.rooms[i].stage == 0 && self.dug_share(o.rooms[i].a, o.rooms[i].b) >= 0.9 {
+            if o.rooms[i].stage == 0 && self.room_dug(&o.rooms[i]) >= 0.9 {
                 let r = o.rooms[i].clone();
                 self.ov_fit(o, &r);
                 o.rooms[i].stage = 1;
@@ -507,7 +478,31 @@ impl Game {
             }
             RoomUse::Office => zone(ZoneKind::Office),
             RoomUse::Jail => zone(ZoneKind::Jail),
-            RoomUse::Grand => zone(ZoneKind::Meeting),
+            RoomUse::Grand => match r.shape {
+                // A great hall to feast in, among the pillars.
+                Some(Shape::Pillared { .. }) => {
+                    self.ov_grid(r, BuildingKind::Table, 3, 2, 20);
+                    let tables: Vec<Pos> = self.buildings.values().filter(|b| b.kind == BuildingKind::Table && r.tiles.contains(&b.pos)).map(|b| b.pos).collect();
+                    for t in tables {
+                        self.place_building(BuildingKind::Chair, t.offset(1, 0, 0));
+                    }
+                    zone(ZoneKind::Dining)
+                }
+                // A rotunda with the monument at its heart.
+                Some(Shape::Round { r: rad }) => {
+                    if !o.did("monument") && self.place_building(BuildingKind::Monument, r.a.offset(rad - 1, rad - 1, 0)) {
+                        o.done.push("monument".into());
+                    }
+                    zone(ZoneKind::Meeting)
+                }
+                // A cross: a temple.
+                Some(Shape::Cross { .. }) => zone(ZoneKind::Temple),
+                // The long gallery: every wall carved.
+                _ => {
+                    self.designate(r.a.offset(-1, -1, 0), r.b.offset(1, 1, 0), Desig::Smooth);
+                    zone(ZoneKind::Meeting)
+                }
+            },
         };
         if let Some(k) = z {
             self.add_zone(r.a, r.b, k);
@@ -873,8 +868,13 @@ impl Game {
         // A safe burrow over the main level for when enemies come.
         if o.style != Style::Reckless && !o.did("burrow") && o.rooms.len() >= 4 {
             if let Some(i) = self.new_burrow() {
-                let r = 12 + o.slots * 8;
-                self.paint_burrow(i, base.offset(-2, -10, 0), base.offset(r, 10, 0), true);
+                self.paint_burrow(i, base.offset(1, 0, 0), base.offset(14, 1, 0), true);
+                for r in &o.rooms {
+                    self.paint_burrow(i, r.a.offset(-1, -1, 0), r.b.offset(1, 1, 0), true);
+                }
+                for a in o.anchors.clone() {
+                    self.paint_burrow(i, a, a, true);
+                }
                 self.set_alert_burrow(i);
                 o.done.push("burrow".into());
                 Self::note(o, tick, "Marked out a burrow to shelter in when enemies come.".into());
@@ -998,6 +998,25 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
         if g.tick % DAY == 0 {
             if let Some(l) = g.log.iter().rev().find(|l| l.color == (255, 60, 60)) {
                 last_death = l.text.clone();
+            }
+        }
+        if std::env::var("TRIAL_PROBE").ok().and_then(|s| s.parse::<u64>().ok()).map_or(false, |d| g.tick == DAY * d) {
+            let drinks: Vec<Pos> = g.items.values().filter(|it| it.kind == ItemKind::Drink).map(|it| it.pos).take(3).collect();
+            let o = g.overseer.as_ref().unwrap();
+            eprintln!("  probe: top {:?} base {:?} drinks {:?}", o.top, o.base, drinks);
+            eprintln!("  alert {} civ {} burrows {}", g.alert, g.civ_alert, g.burrows.len());
+            for it in g.items.values().filter(|it| it.kind == ItemKind::Drink).take(4) {
+                eprintln!("    drink {} at {:?} claimed {:?} forbidden {} container {:?} depot {} dump {} carried {:?} zone {}", it.id, it.pos, it.claimed_by, it.forbidden, it.container, it.to_depot, it.dump, it.carried_by, g.world.t(it.pos).zone);
+            }
+            if let (Some(top), Some(base)) = (o.top, o.base) {
+                for z in base.z..=top.z {
+                    let t = g.world.t(Pos::new(top.x, top.y, z));
+                    eprintln!("    stair z{} {:?} bld {} door {}", z, t.kind, t.building, t.door);
+                }
+            }
+            for d in g.dwarves.iter().filter(|d| d.alive) {
+                let reach = drinks.first().map(|&q| path::astar(&g.world, d.pos, q, 20000, Mover::Dwarf).is_some());
+                eprintln!("    {} at {:?} task {:?} thirst {} reach {:?}", d.name, d.pos, d.task, d.thirst, reach);
             }
         }
         if g.tick % (SEASON / 3) == 0 && std::env::var("TRIAL_LOG").is_ok() {

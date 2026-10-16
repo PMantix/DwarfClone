@@ -55,6 +55,7 @@ mod mysteries;
 mod megaprojects;
 mod overseer;
 mod ambitions;
+mod layout;
 mod miasma;
 pub use ambitions::{Ambition, Sense};
 
@@ -1299,9 +1300,11 @@ impl Game {
         }
 
         if d.task == Task::Idle {
-            if d.idle_cd > 0 {
+            // Thirst, hunger and exhaustion come before any break.
+            let urgent = d.thirst > THIRSTY || d.hunger > HUNGRY || d.fatigue > TIRED || d.body.needs_rest();
+            if d.idle_cd > 0 && !urgent {
                 d.idle_cd -= 1;
-            } else if self.on_break(d) {
+            } else if !urgent && self.on_break(d) {
                 d.idle_cd = 20 + self.rng.range(0, 20) as u32;
                 self.idle_activity(d);
             } else {

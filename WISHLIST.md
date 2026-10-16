@@ -108,7 +108,8 @@ Ideas not ranked yet. Add a line on why each matters.
 
 ## Done
 
-- **Rot and miasma** (this commit): bodies rot; underground they give off miasma that drifts, fades and sickens dwarves; after forty days they're bones (citizens wait for burial). The overseer keeps a refuse pile outside.
+- **Overseer layouts and grand works** (this commit; brain 9e557ea): five hall temperaments, room shapes (pillared, round, cross, L), rooms only where rock surrounds them and always behind the gate, the Architect's grand works. Fixes: dwarves on a prayer or carousing break now drink, eat and sleep first (they could die of thirst beside full barrels); threats behind solid rock no longer send dwarves fleeing; a desperately thirsty or hungry dwarf stops fleeing.
+- **Rot and miasma** (c785694): bodies rot; underground they give off miasma that drifts, fades and sickens dwarves; after forty days they're bones (citizens wait for burial). The overseer keeps a refuse pile outside.
 - **Autoplay** (3ce70ec; step 1 4f27d18): the overseer AI plays a fortress in one of five styles; `A` hands it over, *Watch a fort* on the title screen, `--autoplay` runs many and reports ruin or glory.
 - **F15 Megaprojects** (95c75ce): a great monument (`b`, `G`, thirty stone blocks) that rises as scaffolding and, finished, is dedicated to the fortress's greatest hero with a feast, a legend, a milestone and a year named for it; dwarves who pass admire it. The build menu became a two-column popup so every building fits.
 - **F16 Mysteries** (5c6e81e): the Whispering Stone (a gem that whispers to its miner and leads them to the sealed hall, or into a fey mood) and the hooded stranger (a long-lost sibling or friend who joins, or a goblin spy who brings the next siege for certain); each unfolds over days and happens once.

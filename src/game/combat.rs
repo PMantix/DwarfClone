@@ -131,11 +131,13 @@ impl Game {
         c.alive && !c.body.unconscious() && (!c.species.dwells_underground() || self.world.t(c.pos).revealed)
     }
 
-    /// Active hostile creatures close enough to worry about.
+    /// Active hostile creatures close enough to worry about: near, and with
+    /// a way through (a beast behind solid rock is no threat yet).
     pub(super) fn threats_near(&self, p: Pos, r: i32) -> Vec<(u32, Pos)> {
         self.creatures
             .values()
             .filter(|c| c.hostile() && self.creature_active(c) && near(c.pos, p, r))
+            .filter(|c| adjacent(c.pos, p) || path::astar(&self.world, c.pos, p, (r * r * 6) as usize, c.mover()).is_some())
             .map(|c| (c.id, c.pos))
             .collect()
     }
@@ -209,7 +211,12 @@ impl Game {
             }
             return;
         }
-        if !threats.is_empty() {
+        // Desperate thirst or hunger outweighs fear.
+        let desperate = d.thirst > THIRSTY + 1500 || d.hunger > HUNGRY + 3000;
+        if desperate && d.task == Task::Flee {
+            d.task = Task::Idle;
+        }
+        if !threats.is_empty() && !desperate {
             if d.task != Task::Flee {
                 self.release_task(d);
                 d.task = Task::Flee;

@@ -29,7 +29,16 @@ thirst, a recent siege, crowding, unrest, riches, a monster near the halls, a st
 squad, being unready to march, weariness of the last ambition, and your nudges) wired into the
 nine ambitions, green links pulling and red pushing, each ambition sized by its odds of being
 next. Pick one and nudge it with ←→ (−3..+3) to provoke the overseer into battle or coax it
-into building, or press `f` to make it take that ambition up now. Press `A` in a fortress to hand it over (or take it back), or pick
+into building, or press `f` to make it take that ambition up now.
+
+Each fortress gets a temperament for its halls: orderly rows either side of an axis, a sprawl
+of odd-sized rooms on tunnels, rings of rooms round a central rotunda, mirrored wings where
+every room has its twin, or a warren of round, crossed and crooked rooms on winding passages.
+Rooms come as plain halls, pillared halls, round halls, crosses and L-shapes, are only cut where
+solid rock surrounds them, and always open behind the gate; when a level is full, a stair
+inside the gate leads down to the next. The *Architect* ambition raises a grand work: a
+pillared great hall to feast in, a rotunda with the monument at its heart, a cross-shaped
+temple, or a long gallery with every wall carved. Press `A` in a fortress to hand it over (or take it back), or pick
 *Watch a fort* on the title screen. From the command line, `--autoplay` plays many forts side
 by side and reports how each ended (`--runs`, `--years`, `--style`, `--seed`). Most end in
 ruin; that's the fun of it.

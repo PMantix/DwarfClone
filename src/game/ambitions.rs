@@ -597,7 +597,8 @@ impl Game {
         if deep > 3 && digging == 0 && self.designations.len() < 80 {
             let to = Pos::new(shaft.x, shaft.y, (deep - 4).max(2));
             self.designate(Pos::new(shaft.x, shaft.y, deep), to, Desig::StairUD);
-            self.designate(to.offset(-12, 0, 0), to.offset(12, 0, 0), Desig::Dig);
+            // Tunnels west and north-south only, well clear of the halls to the east.
+            self.designate(to.offset(-14, 0, 0), to, Desig::Dig);
             self.designate(to.offset(0, -12, 0), to.offset(0, 12, 0), Desig::Dig);
             let key = format!("shaft{}", to.z);
             if !o.did(&key) {
@@ -686,20 +687,4 @@ mod tests {
         assert!(o.ambitions.iter().all(|a| Ambition::ALL.contains(&a.1)));
     }
 
-    #[test]
-    fn rooms_go_on_to_deeper_levels() {
-        let mut g = Game::new(5);
-        g.set_overseer(Some(Style::Steady));
-        // Run long enough to dig in, then ask for a lot of rooms.
-        for _ in 0..DAY * 3 {
-            g.step();
-        }
-        let o = g.overseer.as_ref().unwrap().clone();
-        let per = g.ov_per_level(&o) as usize;
-        let (_, _, level) = g.ov_room_box(&o, per * 2).expect("a second level");
-        assert_eq!(level, 1);
-        let (a, _, _) = g.ov_room_box(&o, per * 2).unwrap();
-        assert_eq!(a.z, o.base.unwrap().z - 2);
-        assert!(a.x + 10 < g.world.w, "rooms stay on the map");
-    }
 }
