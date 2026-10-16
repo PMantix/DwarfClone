@@ -258,6 +258,9 @@ pub enum Mode {
     PickOwner { zone: u32, sel: usize },
     /// A page of the fortress's chronicle (index into `Game::chronicles`).
     Chronicle { idx: usize },
+    /// Past announcements: `filter` picks which, `scroll` counts back from
+    /// the newest.
+    Reports { filter: usize, scroll: usize },
     /// Hand the fortress to the overseer, pick its style, or take it back.
     Autoplay { sel: usize },
     /// The overseer's mind: senses, ambitions, and your nudges.
@@ -847,6 +850,16 @@ impl App {
                 }
             }
             MouseEventKind::Down(MouseButton::Right) => self.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+            MouseEventKind::ScrollUp if matches!(self.mode, Mode::Reports { .. }) => {
+                if let Mode::Reports { filter, scroll } = self.mode {
+                    self.mode = Mode::Reports { filter, scroll: scroll + 3 };
+                }
+            }
+            MouseEventKind::ScrollDown if matches!(self.mode, Mode::Reports { .. }) => {
+                if let Mode::Reports { filter, scroll } = self.mode {
+                    self.mode = Mode::Reports { filter, scroll: scroll.saturating_sub(3) };
+                }
+            }
             MouseEventKind::ScrollUp => {
                 self.cursor.z += 1;
                 self.clamp_cursor();
@@ -1200,6 +1213,26 @@ impl App {
                     _ => {}
                 }
             }
+            Mode::Reports { filter, scroll } => {
+                let n = crate::ui::REPORT_FILTERS.len();
+                let page = 20;
+                self.mode = match k.code {
+                    KeyCode::Up => Mode::Reports { filter, scroll: scroll + 1 },
+                    KeyCode::Down => Mode::Reports { filter, scroll: scroll.saturating_sub(1) },
+                    KeyCode::PageUp => Mode::Reports { filter, scroll: scroll + page },
+                    KeyCode::PageDown => Mode::Reports { filter, scroll: scroll.saturating_sub(page) },
+                    KeyCode::Home => Mode::Reports { filter, scroll: usize::MAX / 2 },
+                    KeyCode::End => Mode::Reports { filter, scroll: 0 },
+                    KeyCode::Tab | KeyCode::Right => Mode::Reports { filter: (filter + 1) % n, scroll: 0 },
+                    KeyCode::Left => Mode::Reports { filter: (filter + n - 1) % n, scroll: 0 },
+                    KeyCode::Char(c @ '1'..='9') if (c as usize - '1' as usize) < n => Mode::Reports { filter: c as usize - '1' as usize, scroll: 0 },
+                    KeyCode::Char(' ') => {
+                        self.paused = !self.paused;
+                        Mode::Reports { filter, scroll }
+                    }
+                    _ => Mode::Normal,
+                };
+            }
             Mode::Brain { sel } => {
                 use crate::game::Ambition;
                 let n = Ambition::ALL.len();
@@ -1339,6 +1372,7 @@ impl App {
             KeyCode::Char('o') => self.mode = Mode::Traffic { level: 2, corner: None },
             KeyCode::Char('m') => self.mode = Mode::Military,
             KeyCode::Char('n') => self.mode = Mode::Nobles,
+            KeyCode::Char('r') => self.mode = Mode::Reports { filter: 0, scroll: 0 },
             KeyCode::Char('B') => {
                 if self.game.overseer.is_some() {
                     self.mode = Mode::Brain { sel: 0 };

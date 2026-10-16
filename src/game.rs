@@ -582,8 +582,9 @@ impl Game {
 
     pub fn msg(&mut self, text: &str, color: (u8, u8, u8)) {
         self.log.push(LogEntry { text: text.to_string(), color, tick: self.tick });
-        if self.log.len() > 500 {
-            self.log.remove(0);
+        // Keep the last few thousand for the reports screen.
+        if self.log.len() > 3500 {
+            self.log.drain(..500);
         }
     }
 
@@ -641,6 +642,13 @@ impl Game {
         let day = (self.tick % MONTH) / DAY + 1;
         let year = self.start_year as u64 + year - 1;
         format!("{} {}, Year {} ({})", day_ordinal(day), MONTHS[month], year, SEASONS[month / 3])
+    }
+
+    /// A short date for a past tick ("12 Midsun 201").
+    pub fn short_date(&self, tick: u64) -> String {
+        let month = ((tick % YEAR) / MONTH) as usize;
+        let day = (tick % MONTH) / DAY + 1;
+        format!("{:>2} {} {}", day, MONTHS[month], self.start_year as u64 + tick / YEAR)
     }
 
     pub fn alive_count(&self) -> usize {

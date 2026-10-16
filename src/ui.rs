@@ -878,7 +878,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
     let mut v: Vec<Line> = Vec::new();
     let title;
     match &app.mode {
-        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } => {
+        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } | Mode::Reports { .. } => {
             title = "Main".to_string();
             v.extend(stocks(g));
             v.push(Line::default());
@@ -898,6 +898,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(key_line("m", "Military", false));
             v.push(key_line("n", "Nobles, mandates & rooms", false));
             v.push(key_line("c", "Chronicle of the years", false));
+            v.push(key_line("r", "Reports: past announcements", false));
             v.push(key_line("A", "Autoplay: let the overseer play", g.overseer.is_some()));
             if g.overseer.is_some() {
                 v.push(key_line("B", "The overseer's brain", false));
@@ -1778,6 +1779,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("m", "military: squads, orders, uniforms, alerts"),
         k("n", "nobles, mandates, bedrooms, wealth"),
         k("c", "the chronicle: each year told as a story"),
+        k("r", "reports: every past announcement, filtered"),
         k("A", "autoplay: the overseer plays (pick a style)"),
         k("B", "the overseer's brain: senses, ambitions, nudges"),
         k("L", "legends: history, civs, sites, figures"),
@@ -2515,10 +2517,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(MUTED))
-                .title(Span::styled(" Announcements ", Style::default().fg(KEY))),
+                .title(Span::styled(" Announcements (r: all reports) ", Style::default().fg(KEY))),
         ),
         rows[2],
     );
+    add_target(rows[2], Target::Key(crossterm::event::KeyCode::Char('r')));
 
     match app.mode {
         Mode::Legends { tab, scroll, .. } => draw_legends(f, area, &app.game.overworld, tab, scroll),
@@ -2531,6 +2534,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::Expedition { squad, sel } => draw_expedition(f, area, &app.game, squad, sel),
         Mode::Autoplay { sel } => draw_autoplay(f, area, &app.game, sel),
         Mode::Brain { sel } => draw_brain(f, area, &app.game, sel),
+        Mode::Reports { filter, scroll } => draw_reports(f, area, &app.game, filter, scroll),
         Mode::BuildMenu => draw_build_menu(f, area),
         Mode::Help => {
             popup(f, area, 60, 47, " Help ", help_text());
@@ -2553,7 +2557,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         _ => {}
     }
     // Full-screen views sit over everything else.
-    if matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. }) {
+    if matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. }) {
         add_target(area, Target::Block);
     }
     draw_tooltip(f, app);
@@ -3456,6 +3460,63 @@ fn draw_loading(f: &mut Frame, app: &App) {
     );
 }
 
+/// Filters for the reports screen.
+pub const REPORT_FILTERS: [&str; 5] = ["All", "News", "Combat", "Deaths", "People"];
+
+fn report_kind(text: &str, color: (u8, u8, u8)) -> [bool; 5] {
+    let has = |words: &[&str]| words.iter().any(|w| text.contains(w));
+    let death = color == (255, 60, 60) || has(&["has died", "bled to death", "starved to death", "struck down", "has been slain", "fell on the expedition"]);
+    let blow = has(&[" in the head", " in the upper body", " in the lower body", " in the left ", " in the right ", "blocks", "deflects", "misses"]);
+    let combat = blow || death || has(&["siege", "goblin", "flees", "fleeing", "attack", "army", "breathes fire", "cage trap", "raises the dead", "duel"]);
+    let people = has(&["arrived", "born", "married", "mood", "artifact", "known as", "elected", "made", "hero", "visitor", "bard", "stranger", "joined", "come of age", "festival", "feast"]) && !blow;
+    let routine = blow || has(&["has made ", "has been completed", "Work order", "waiting to be built", "needs ", "It has started", "skies have"]);
+    [true, !routine, combat, death, people]
+}
+
+/// Every announcement still on record, newest at the bottom.
+fn draw_reports(f: &mut Frame, area: Rect, g: &Game, filter: usize, scroll: usize) {
+    let r = Rect::new(area.x + 1, area.y + 1, area.width.saturating_sub(2), area.height.saturating_sub(2));
+    f.render_widget(Clear, r);
+    let tabs: Vec<Span> = REPORT_FILTERS
+        .iter()
+        .enumerate()
+        .flat_map(|(i, n)| {
+            let st = if i == filter { Style::default().fg(BLACK).bg(KEY) } else { Style::default().fg(TEXT) };
+            [Span::styled(format!(" {} {} ", i + 1, n), st), Span::raw(" ")]
+        })
+        .collect();
+    let shown: Vec<&crate::game::LogEntry> = g.log.iter().filter(|e| report_kind(&e.text, e.color)[filter]).collect();
+    let rows = r.height.saturating_sub(4) as usize;
+    let max_scroll = shown.len().saturating_sub(rows);
+    let scroll = scroll.min(max_scroll);
+    let end = shown.len() - scroll;
+    let start = end.saturating_sub(rows);
+    let mut v: Vec<Line<'static>> = vec![Line::from(tabs), Line::default()];
+    let mut last_day = u64::MAX;
+    for e in &shown[start..end] {
+        let day = e.tick / DAY;
+        let date = if day != last_day { g.short_date(e.tick) } else { String::new() };
+        last_day = day;
+        v.push(Line::from(vec![Span::styled(format!("{:<16}", date), Style::default().fg(MUTED)), Span::styled(e.text.clone(), Style::default().fg(rgb(e.color)))]));
+    }
+    let title = format!(
+        " Reports: {} of {} ({}) · ↑↓ PgUp PgDn scroll · Tab/1-5 filter · Esc back ",
+        end,
+        shown.len(),
+        if scroll == 0 { "newest at the bottom".to_string() } else { format!("{} back", scroll) }
+    );
+    f.render_widget(
+        Paragraph::new(v).style(Style::default().bg(Color::Rgb(12, 12, 20))).block(
+            Block::default().borders(Borders::ALL).border_style(Style::default().fg(KEY)).title(Span::styled(title, Style::default().fg(KEY))),
+        ),
+        r,
+    );
+    for i in 0..REPORT_FILTERS.len() {
+        let x = r.x + 1 + REPORT_FILTERS[..i].iter().map(|n| n.len() as u16 + 5).sum::<u16>();
+        add_target(Rect::new(x, r.y + 1, REPORT_FILTERS[i].len() as u16 + 4, 1), Target::Key(crossterm::event::KeyCode::Char((b'1' + i as u8) as char)));
+    }
+}
+
 /// The overseer's mind as a little network: senses on the left fire into
 /// the ambitions on the right, green pulling towards, red pushing away.
 fn draw_brain(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
@@ -4245,6 +4306,33 @@ mod tests {
         assert!(s.lines().count() > 0);
         let tip_rows = s.lines().skip(hy as usize + 1).take(3).collect::<Vec<_>>().join(" ");
         assert!(tip_rows.contains('┌') || tip_rows.contains('│'), "a tooltip should appear by the mouse: {}", tip_rows);
+    }
+
+    #[test]
+    fn reports_scroll_back_through_old_announcements() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::generated(42);
+        for i in 0..200 {
+            app.game.tick += 300;
+            app.game.msg(&format!("Report number {}", i), (200, 200, 200));
+        }
+        app.game.msg("Urist Testbeard has been struck down by the goblin.", (255, 60, 60));
+        app.mode = Mode::Normal;
+        let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
+        app.on_key(key(KeyCode::Char('r')));
+        assert_eq!(app.mode, Mode::Reports { filter: 0, scroll: 0 });
+        let s = dump(&mut app, 130, 40);
+        println!("{}", s);
+        assert!(s.contains("struck down") && s.contains("Report number 199"), "{}", s);
+        for _ in 0..10 {
+            app.on_key(key(KeyCode::PageUp));
+        }
+        let s = dump(&mut app, 130, 40);
+        assert!(s.contains("Report number 0 ") || s.contains("Report number 0\u{20}") || s.contains("Report number 0"), "{}", s);
+        assert!(!s.contains("Report number 199"));
+        app.on_key(key(KeyCode::Char('4')));
+        let s = dump(&mut app, 130, 40);
+        assert!(s.contains("struck down") && !s.contains("Report number 5"), "deaths only: {}", s);
     }
 
     #[test]
