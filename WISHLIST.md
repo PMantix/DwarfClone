@@ -1,114 +1,259 @@
 # Wishlist
 
-What Dwarf Fortress has that DwarfClone doesn't yet, ranked by how much it changes play.
-Sourced from the [DF wiki](https://dwarffortresswiki.org/) and checked against our code.
+What DwarfClone should do next, and why. Ideas come from playing and watching forts, from
+Dwarf Fortress itself (checked against the [DF wiki](https://dwarffortresswiki.org/)) and from
+Tarn's [development page](https://www.bay12games.com/dwarves/dev.html). We favour fun and
+emergent drama over intricate systems: every feature should make a moment you'd tell someone
+about. Losing is fun, but a fortress has to live long enough to have a story.
 
 ## How to use this
 
-- **Pick work** from "Up next", top first. Each item is split into steps that can ship on
-  their own; do one step per commit where possible.
-- **Mark progress** in the step list: `[ ]` todo, `[~]` in progress, `[x]` done (add the
-  commit hash). When every step is done, move the item to "Done" with a one-line summary.
-- **Add ideas** to "Inbox" with a line on why. Promote them into the ranked list when
-  they're understood well enough to have steps.
-- **"Done when"** is the test: each item should leave behind an automated test that proves it.
+- **Pick work** from the roadmap, top milestone first, items in order. Each item is split into
+  steps that ship on their own: one step per commit where possible.
+- **Mark progress** in the step list: `[ ]` todo, `[~]` in progress, `[x]` done (add the commit
+  hash). When every step is done, move the item to "Done" with a one-line summary.
+- **Done when** is the test: each item leaves an automated test behind that proves it. Items
+  about balance are measured with the autoplay batch (`--autoplay --runs N --years Y --seed S`).
+- **Add ideas** to "Inbox" with a line on why. Promote them into a milestone once they have steps.
 - Sizes: **S** one session, **M** a few sessions, **L** a big system.
 
-## Up next
+## Where we stand (October 2026)
 
-Suggested order: the rest of F05 and F07, W20, then the Beyond DF list (B01-B02 next: diplomacy and armies on the map build on F01).
+A batch of 25 overseer-run forts (`--autoplay --runs 25 --years 3 --seed 5000`, v0.2.0) gave
+**no survivors after three years**, and most fell within the first year. The build before
+the planned layouts did the same (0 of the 15 it finished), so this is long-standing, not new.
 
-### Tier 1: basics you'll miss in the first hour
+| Cause of death (all 25 forts) | Dwarves |
+|---|---|
+| Bled to death | 194 |
+| Struck down by goblins and named foes (siege leaders, beasts) | 97 |
+| Starved | 29 |
+| Troglodytes and cave horrors | 24 |
+| Thirst | 15 |
+| The walking dead | 20 |
 
-### Tier 2: what makes a fortress a fortress
+The first goblin siege comes around day 168 with five goblins and often kills a dozen or more
+dwarves in a day. Most of the dead bleed out from wounds nobody treats. Every fort ends the same
+way, and that's the problem to fix first: the drama is in a fort that nearly falls, holds,
+mourns and rebuilds.
 
-### Tier 3: depth
+What's strong now: the world map and its history, varied sites, planned fortress layouts, the
+overseer's ambitions and brain, festivals, heroes, mysteries, legends and the chronicle.
 
-#### W20 Attributes and skill decay (S–M)
-- **DF:** body attributes (strength, agility…), skill decay, social skills, books, teaching.
-- **Us:** 13 skills with experience, plus fighting experience (`dwarf.rs`).
-- **Steps:** [ ] attributes that affect combat and work speed · [ ] skills fade without use · [ ] teaching and demonstrations
+## Roadmap
 
-## Fun first: ideas picked for drama and delight
+### Milestone 1: forts that live to tell the tale (v0.3)
 
-Our own list of features that make stories, chosen because they're exciting to watch or play
-rather than intricate to manage. Each should create moments you'd tell someone about. Ranked
-by fun for the effort; promote one into "Up next" with steps when it's next.
+Goal: in the 25-fort batch, at least 40% of Steady and Warlord forts and some of every other
+style survive three years, and every style still loses forts in memorable ways.
 
-| ID | Idea | The moment it makes | Builds on | Size |
-|---|---|---|---|---|
-| F05 | Disasters (cave-ins done) | ~~Cave-ins~~ (8e392cc); still to come: earthquakes crack walls; the spring melt floods the lower halls; the magma sea surges | W11, W01 | S–M |
-| F07 | Bards and wandering heroes (bards, warriors done) | ~~Bards, wandering warriors who join~~ (1ec4734); still to come: monster hunters who come for the beast in your caverns, performers who dance or tell stories | B08 taverns, legends | S |
+#### S01 Know why forts fall (S)
+- **Why:** balance by evidence, not by guess. The batch report gives one line per fort today.
+- **Steps:** [ ] the batch report tallies causes of death, killers, and siege outcomes (how many
+  came, how many died on each side, whether the shelter and the bridge were used) · [ ] a
+  per-fort timeline with `--story`: arrivals, sieges, deaths, ambitions · [ ] `--compare` runs
+  the same seeds on two builds and prints the difference
+- **Done when:** the batch prints the cause table above and a survival count by year.
 
-## Beyond DF: ideas from Tarn's dev page
+#### S02 Battlefield medicine (M)
+- **Why:** half of all deaths are bleeding. In DF the wounded are carried to bed and sutured.
+- **Steps:** [ ] dwarves who are bleeding stop work and press their wounds (slower bleeding),
+  and friends bandage them with cloth or thread where they lie · [ ] the unconscious and the
+  crippled are carried to a hospital bed by a doctor or any hauler, even during an alert, once
+  the threat is gone · [ ] the overseer always has a doctor and a hospital before the first siege
+  · [ ] bleeding is tuned: a cut limb kills in minutes, a gash in hours
+- **Done when:** a test where three dwarves are gashed sees them carried in and sutured; in the
+  batch, bleeding is no longer more than a quarter of deaths.
 
-From [Bay 12's development page](https://www.bay12games.com/dwarves/dev.html). These are DF's
-own plans; some have shipped since the page was written (taverns, temples and libraries;
-wheelbarrows and minecarts), many haven't. Only the ideas that fit fortress mode or our world
-map are kept here. Several build on the world history we already generate (`overworld.rs`),
-which is where we can go beyond the original. Promote an idea into the ranked list when it's
-next. The size is our guess.
+#### S03 Sieges that build up (M)
+- **Why:** a first siege that wipes out a young fort is no story. DF sends ambushes and small
+  raids first, then grows them with the fort's wealth.
+- **Steps:** [ ] the first contact is a scout or a small raid, seen coming (a warning a day
+  ahead, from the edge of the map); sieges grow with wealth, population and past defeats ·
+  [ ] goblins take captives and loot and leave, rather than always fighting to the last ·
+  [ ] a siege leader can be challenged: kill the leader and the rest flee (it's there; make it
+  visible and announced) · [ ] the second siege remembers how the first one ended (bigger if they
+  lost, a taunt in the announcements)
+- **Done when:** the batch shows first sieges killing fewer than three dwarves on average and
+  later sieges still killing whole forts sometimes.
+
+#### S04 An overseer that defends (M)
+- **Why:** the overseer has a drawbridge, cage traps and a shelter burrow, but forts still die in
+  a day. It should defend like a nervous player.
+- **Steps:** [ ] check that the alert really shelters everyone (civilians caught outside run
+  for the gate, the bridge goes up behind the last one, nobody wanders out to haul) · [ ] soldiers
+  hold the gatehouse instead of charging, with marksdwarves behind fortifications · [ ] a
+  Steady or Warlord overseer drafts and arms a squad before the first siege; a Reckless one may
+  not · [ ] after a siege it learns: more traps where the enemy came in, a second squad, walls
+  · [ ] cavern breaches get walled off or doored the moment they're dug into (troglodytes are the
+  fourth biggest killer)
+- **Done when:** a scripted siege against a fort with shelter, bridge and squad kills fewer than
+  half the goblins' worth of dwarves; the batch meets the milestone goal.
+
+#### S05 Food and water a fort can rely on (S)
+- **Why:** 44 dwarves starved or died of thirst; a fort that runs dry is a sad, quiet ending.
+- **Steps:** [ ] the overseer digs a well or a cistern when the fort has no water within reach
+  of the halls · [ ] food stocks are watched: more farms, fishing and hunting when meals per
+  dwarf fall low · [ ] a dwarf too far gone to work fetches a drink first, wherever it is
+- **Done when:** no thirst or starvation deaths in the batch where food or water existed on the
+  map.
+
+### Milestone 2: the overseer as a character (v0.4)
+
+Goal: watching a fort, you can tell which overseer built it, and its halls look planned and lived in.
+
+#### O01 Overseer personalities (S)
+- **Why:** the layouts made each fort look different; the overseer itself should feel like
+  someone. Today a style picks ambitions and a layout.
+- **Steps:** [ ] each overseer gets a name and two traits (cautious, bold, vain, pious, greedy,
+  sentimental...) that nudge its ambitions, layout, and how it reacts to deaths and sieges ·
+  [ ] the Brain screen shows them, its layout and its plan's progress · [ ] `A` lets you pick the
+  style, layout and traits, or roll them · [ ] its notes speak in its voice ("Grumbled that the
+  dining hall is too plain.")
+- **Done when:** two overseers with the same style but different traits build visibly different
+  forts from the same seed.
+
+#### O02 Plans that fit the land (M)
+- **Why:** every plan runs east from the gate; on a narrow site most of it is wasted.
+- **Steps:** [ ] a plan can face east, west, north or south, and the overseer picks the side with
+  the most solid rock · [ ] a level's plan stretches to the space available, and deeper levels
+  get their own layout (workshops on one, bedrooms on another, like DF forts) · [ ] `p` shows the
+  plan as a ghost overlay on the map: halls and rooms still to come
+- **Done when:** on a site with rock only to the west, a planned fort still fills its plan.
+
+#### O03 Halls that look lived in (M)
+- **Why:** finished forts in DF are smoothed, engraved, furnished and named.
+- **Steps:** [ ] the main halls are smoothed, then engraved, as the fort grows rich · [ ] bedrooms
+  get a cabinet and a chest; nobles get suites with an office and a dining room · [ ] the atrium
+  and the hub get statues and the monument · [ ] halls are named after heroes and events
+  ("the Hall of the Unbeaten") and the names show in the look panel and the chronicle
+- **Done when:** a three-year fort has smoothed main halls, furnished bedrooms and named halls.
+
+#### O04 Defences in the plan (M)
+- **Why:** DF forts are famous for moats, trap halls and walled courtyards.
+- **Steps:** [ ] the gatehouse grows with the fort: a trap corridor, then a moat under a
+  drawbridge, then towers with fortifications · [ ] Warlord and cautious overseers build them
+  sooner · [ ] a siege that breaks on the defences goes into the legends
+- **Done when:** a Warlord fort has a moat and a trap corridor before its third siege.
+
+### Milestone 3: the world comes to you (v0.5)
+
+Goal: the world map is alive. What happens out there reaches the fort, and the fort reaches back.
+
+#### B01 Scouts and armies on the world map (M)
+- **Why:** sieges appear from nowhere. Seeing an army march across the map is a story.
+- **Steps:** [ ] armies and caravans move between sites on the world map, drawn on it · [ ] a
+  scout warns days before a siege, with its size and leader · [ ] roads and tracks between
+  sites drawn on the world map
+- **Done when:** a siege is announced days ahead and the army can be seen approaching.
+
+#### B02 Diplomacy (M)
+- **Why:** neighbours should be people, not just a siege timer.
+- **Steps:** [ ] envoys arrive with demands (tribute, an artifact, a prisoner) or offers
+  (peace, trade) · [ ] paying or refusing changes the next siege · [ ] the overseer decides by its
+  traits
+- **Done when:** paying tribute delays a siege and refusing brings it sooner.
+
+#### F07 Monster hunters and performers (S)
+- **Why:** finishes the wandering heroes (bards and warriors are done).
+- **Steps:** [ ] monster hunters come for a beast in your caverns and may die trying · [ ]
+  performers dance and tell stories in the tavern, and the stories come from the legends
+- **Done when:** a hunter arrives when a cave horror lives and goes after it.
+
+#### W25 Getting around big maps (S)
+- **Why:** maps grow to 320×256 now; scrolling there is slow.
+- **Steps:** [ ] a fortress mini-map (toggle) with the view outlined, clickable · [ ] saved
+  camera spots (Ctrl+1-9 to save, 1-9 to jump) · [ ] typed world names and favourite seeds
+- **Done when:** clicking the mini-map jumps the view there.
+
+### Milestone 4: deep fortress (v0.6)
+
+Goal: the deep places are dangerous and worth it.
+
+#### F05 Disasters (S–M)
+- **Why:** cave-ins are done; the rest make a fort's history.
+- **Steps:** [ ] earthquakes crack walls and open new caverns · [ ] the spring melt floods the
+  lowest halls · [ ] the magma sea surges
+- **Done when:** a flood fills a low hall in spring and dwarves flee it.
+
+#### B13 Lighting (M)
+- **Why:** the caverns should be dark and frightening.
+- **Steps:** [ ] dark caverns and lit halls; torches and lamps · [ ] ambushes from the dark ·
+  [ ] dwarves dislike working in the dark
+- **Done when:** a creature in an unlit cavern can't be seen until a dwarf is close.
+
+#### W26 Water and magma works (M)
+- **Why:** pumps, water wheels and magma channels are DF's great engineering projects.
+- **Steps:** [ ] screw pumps lift water or magma a level · [ ] aquifer tools: pumping a shaft dry,
+  and a warning before embarking on a heavy aquifer · [ ] magma creatures in the sea
+- **Done when:** a pump stack drains a flooded shaft.
+
+### Later
+
+- **W20 Attributes and skill decay (S–M):** body attributes (strength, agility…) that affect
+  combat and work speed; skills fade without use; teaching and demonstrations.
+- **B03-B14** from Tarn's page: army missions, villains and plots, artifact politics, siege AI that
+  digs and bridges, better traps, guilds, starting scenarios, multi-item hauling and minecarts,
+  living farms, myths and magic.
 
 | ID | Idea | What it would add | Builds on | Size |
 |---|---|---|---|---|
-| B01 | Scouts and outside armies | Armies visible on the world map; scouts warn of a siege days ahead; sieges can be delayed or turned back | world map, sieges | M |
-| B02 | Diplomacy | Messengers to and from other sites; siege negotiation (pay tribute or fight); petitions from visitors | civilizations, W15 | M |
-| B03 | Army missions | Send squads off-map: raids, demanding tribute, freeing prisoners, taking over a site (which makes your fort a barony) | W04, world map | L |
+| B03 | Army missions | Send squads off-map: raids, demanding tribute, freeing prisoners, taking over a site (which makes your fort a barony) | F09 expeditions, world map | L |
 | B04 | Villains and plots | Thieves, assassins and infiltrators run by world figures; interrogation uncovers plots; rumors screen | W16, history figures | L |
 | B05 | Artifact politics | Invaders demand or steal artifacts; rumors of where artifacts are; squads sent to recover them | strange moods, B03 | M |
-| B06 | Siege AI | Attackers dig, bridge or climb around defenses and learn from failed assaults | W01, W06 | M |
+| B06 | Siege AI | Attackers dig, bridge or climb around defenses and learn from failed assaults | S03, O04 | M |
 | B07 | Better traps | Rolling stones, multi-tile weapon traps, cage traps that can (with effort) catch megabeasts | W06 | S–M |
 | B08 | Taverns, temples, libraries | Performances, guests renting rooms, prayer, books written by dwarves | W03, W09 | M |
 | B09 | Guilds and sects | Skilled dwarves form guilds and religious groups that demand halls and temples, take sides in grudges, and grant perks | W09, W15 | M |
 | B10 | Starting scenarios | Frontier settlement, mining company, military citadel, prison colony, roadside inn; each changes migrants, caravans and goals | embark | M |
 | B11 | Hauling | Carry several items at once; wheelbarrows; minecarts on tracks | W01 | M |
 | B12 | Living farms | Soil moisture and irrigation, nutrients and fertiliser, weeds and pests, planting trees | W13, W11 | M |
-| B13 | Lighting | Dark caverns; torches, candles and lamps; light affecting moods and ambushes | W18 | M |
 | B14 | Myths and magic | Generated creation myths, deities with powers, wizards and covens, magical invasions | worldgen | XL |
 
 ## Inbox
 
-Ideas not ranked yet. Add a line on why each matters.
+Ideas not ranked yet, with a line on why.
 
-- Typed world names and a "favourite seeds" list on the settings screen.
-- Workshop orders that wait on missing materials still announce often ("Cut a gem needs rough gem"); fold into W14's global orders.
-- Overlapping zones: a tile holds one zone, so a dining hall can't also be the meeting area as it often is in DF.
-- Bridges and drawbridges (with W06 levers), roads, grates, bars, windows, supports: the rest of DF's constructions.
-- A large embark's footprint spans several world cells but takes its biome from the cursor cell only; blend neighbouring biomes into the map.
-- Drawbridges over open space (moats), wider than one tile, flinging what's on them; pressure plates.
-- Linking a lever consumes a mechanism instantly; DF has a mechanic walk over and install it.
+- Workshop orders that wait on missing materials still announce often ("Cut a gem needs rough
+  gem"); fold into W14's global orders.
+- Overlapping zones: a tile holds one zone, so a dining hall can't also be the meeting area as it
+  often is in DF.
+- Roads, grates, bars, windows and supports: the rest of DF's constructions.
+- A large embark spans several world cells but takes its biome from the cursor cell only; blend
+  the neighbours into the map.
+- Drawbridges over open space (moats, see O04), wider than one tile, flinging what's on them;
+  pressure plates.
+- Linking a lever uses a mechanism instantly; DF has a mechanic walk over and install it.
 - Caged animals could be tamed (W08) and caged goblins interrogated (B04).
 - Squad schedules (DF's monthly alerts) and patrol routes; metal crossbows and bolts at the forge.
-- Diagnosis, surgery and soap (DF's fuller medicine); a chief medical dwarf (W15).
-- Grazing and animal hunger, milking and shearing, animal trainers and training levels, egg-laying fowl.
-- Pick a room's owner from a list instead of cycling through dwarves with `o`.
-- Announcements history screen (DF's report log): find out what happened while you weren't looking.
-- More needs (DF has ~30): wander, see family, admire art, eat good food, be creative; a library to meet "learn" with books (B08).
-- Deities and prayer to a specific god; temples dedicated to one (B14); drinking water could meet the drink need a little.
-- Violent ghosts, ghosts that move objects, and haunting that varies with how the dwarf died (DF has several kinds).
-- Nursing babies, children who follow their mother, and a playground or school; sibling and grandparent ties.
-- Pumps and water wheels (DF's screw pumps lift water a level; wheels make power); wells that freeze in winter.
-- Magma creatures (fire imps, magma crabs) in the sea; magma moved by pumps or minecarts into traps and forges higher up.
-- Aquifer tools: pumps to drain a flooded shaft, and DF's trick of freezing or caving in an aquifer; warn before embarking on a heavy one.
-- Glass furnace, kiln (pottery, glazes), jeweler (gem setting) and siege workshop (ballistae, catapults): the rest of DF's workshops from W12's list.
+- Diagnosis and surgery (DF's fuller medicine, after S02).
+- Grazing and animal hunger, milking and shearing, animal trainers, egg-laying fowl.
+- More needs (DF has ~30): wander, see family, admire art, eat good food, be creative; a library
+  for "learn" with books (B08).
+- Deities and prayer to a specific god; temples dedicated to one (B14).
+- Violent ghosts, ghosts that move objects, and haunting that varies with how the dwarf died.
+- Nursing babies, children who follow their mother, a playground or school; sibling and
+  grandparent ties.
+- Glass furnace, kiln, jeweler and siege workshop (ballistae, catapults): the rest of DF's
+  workshops.
 - Dyes and dyed clothes; clothing preferences; cloaks, gloves, hoods; children outgrowing clothes.
-- Fish stocks that run out with overfishing; fish that must be cleaned at a fishery; bees, honey and mead; fruit trees and orchards.
-- Melting metal items back into bars at the smelter (DF's melt mark), and forbidding by area from the designation menu.
-- Minecarts and tracks (DF's hauling network); stockpile links that feed a workshop; minimum skill on workshop profiles.
-- A monarch arriving at the top of the titles; nobles' demands for specific artifacts, banishment and the hammerer; noble offices with a minimum value.
-- Theft and other crimes with witnesses and interrogation; the hammerer; chains and cages in the jail; prisoners fed by others.
-- Werebeasts, vampires and the undead; dragons breathing fire; kidnappers; thieves who are caught and jailed (W16).
-- Prospecting and ore visible through smoothed walls; deeper caverns holding stranger creatures; a cavern-floor fungus forest for underground wood.
-- A true temperature model (heat from magma and fire, cold snaps killing crops, dwarves needing warm clothes); bucket brigades against fire; dragons breathing it.
-- Murky or stagnant water drunk from puddles should feel worse than river water; doctors could clean wounds with well water and soap.
-- Corpses that rot (miasma) and refuse that needs a stockpile far from the halls.
-- Mini-map and saved camera spots: get around a big map faster (more so now maps can grow to 320×256).
+- Fish stocks that run out; fish cleaned at a fishery; bees, honey and mead; orchards.
+- Melting metal items back into bars; forbidding by area from the designation menu.
+- Stockpile links that feed a workshop; minimum skill on workshop profiles.
+- A monarch arriving at the top of the titles; nobles' demands for artifacts, banishment and the
+  hammerer.
+- Theft with witnesses and interrogation; chains and cages in the jail; prisoners fed by others.
+- Werebeasts, vampires and kidnappers.
+- Prospecting and ore seen through smoothed walls; deeper caverns with stranger creatures; a
+  cavern fungus forest for underground wood.
+- A true temperature model (heat from magma, cold snaps killing crops, warm clothes); bucket
+  brigades against fire.
+- Murky puddle water should feel worse than river water.
 - Adventure mode: explore the generated world. Out of scope until fortress mode is deep.
-- Hunting labor and hunters with crossbows (after W04's crossbows).
 
 ## Done
 
-- **Planned fortresses and burials** (this commit): five layouts drawn up as halls first (great hall, mirrored wings, pillared atrium, grid of lanes, hub and spokes) with rooms opening off them through doors and rows of one-dwarf bedrooms; each overseer style prefers its own; the dead now get a tomb and coffins; hostiles with nobody to chase prowl (cave beasts in the caves, the rest in the open) instead of standing at the stairs; a warren tunnel bending into the gatehouse no longer hangs the game.
+- **Planned fortresses and burials** (8c1e195): five layouts drawn up as halls first (great hall, mirrored wings, pillared atrium, grid of lanes, hub and spokes) with rooms opening off them through doors and rows of one-dwarf bedrooms; each overseer style prefers its own; the dead now get a tomb and coffins; hostiles with nobody to chase prowl (cave beasts in the caves, the rest in the open) instead of standing at the stairs; a warren tunnel bending into the gatehouse no longer hangs the game.
 - **An atlas of a world map, smoother level changes, mouse panning** (ecfc2a1): one character a cell; ridged mountain ranges, rivers and lakes, volcanoes, both poles cold; five new biomes (jungle, taiga, savanna, badlands, glacier); bigger worlds with more peoples and beasts; a river or volcano on the world map comes with the site; the terminal is written once a frame (level changes on big maps were hundreds of small writes); a middle or left drag pans the view alone and hides the cursor until a click or arrow key.
 - **Varied sites, map sizes, growing the map, faster water** (3c04e68; mouse d0c2fb0, reports 592b6dc, slowdowns e4cb4f8): twelve site features chosen per world cell and shown before embark; free map width, height and depth; `M` grows the map on any side with new land continuing the old (the save is shifted wholesale); still water sleeps until something nearby changes (a year runs two to three times faster).
 - **Overseer layouts and grand works** (this commit; brain 9e557ea): five hall temperaments, room shapes (pillared, round, cross, L), rooms only where rock surrounds them and always behind the gate, the Architect's grand works. Fixes: dwarves on a prayer or carousing break now drink, eat and sleep first (they could die of thirst beside full barrels); threats behind solid rock no longer send dwarves fleeing; a desperately thirsty or hungry dwarf stops fleeing.
