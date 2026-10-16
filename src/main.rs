@@ -56,7 +56,9 @@ fn main() -> Result<()> {
 
     enable_raw_mode()?;
     execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
-    let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
+    // One write to the console a frame: unbuffered, a level change on a big
+    // map is hundreds of small writes, which Windows consoles are slow at.
+    let mut terminal = Terminal::new(CrosstermBackend::new(io::BufWriter::with_capacity(1 << 20, io::stdout())))?;
     terminal.hide_cursor()?;
 
     let result = run(&mut terminal, &mut app);
@@ -144,7 +146,7 @@ fn autoplay_batch(args: &[String]) {
     }
 }
 
-fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> Result<()> {
+fn run(terminal: &mut Terminal<CrosstermBackend<io::BufWriter<io::Stdout>>>, app: &mut App) -> Result<()> {
     while !app.quit {
         let start = Instant::now();
         terminal.draw(|f| ui::draw(f, app))?;

@@ -154,12 +154,19 @@ mod tests {
         let e = g.embark;
         // A patch of surface shrubs next to the wagon.
         let mut shrubs = Vec::new();
-        for dx in 3..7 {
-            let p = e.offset(dx, 4, 0);
-            let p = Pos::new(p.x, p.y, g.world.surface_z(p.x, p.y));
-            if g.world.t(p).kind == TileKind::Floor && g.world.t(p).building == 0 && g.world.t(p).zone == 0 {
-                g.world.t_mut(p).kind = TileKind::Shrub;
-                shrubs.push(p);
+        'look: for r in 3..14 {
+            for dx in -r..=r {
+                for dy in [-r, r] {
+                    let p = e.offset(dx, dy, 0);
+                    let p = Pos::new(p.x, p.y, g.world.surface_z(p.x, p.y));
+                    if g.world.t(p).kind == TileKind::Floor && g.world.t(p).building == 0 && g.world.t(p).zone == 0 && g.world.t(p).water == 0 {
+                        g.world.t_mut(p).kind = TileKind::Shrub;
+                        shrubs.push(p);
+                        if shrubs.len() == 4 {
+                            break 'look;
+                        }
+                    }
+                }
             }
         }
         assert!(shrubs.len() >= 2, "no room for shrubs");

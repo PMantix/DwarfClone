@@ -63,6 +63,11 @@ pub fn site_features(seed: u64, sx: i32, sy: i32, biome: Biome) -> u32 {
         Biome::Tundra => &[(GLACIER, 0.6), (TORS, 0.3), (RIVER, 0.2), (PEAKS, 0.2)],
         Biome::Swamp => &[(BOG, 0.9), (RIVER, 0.3)],
         Biome::Ocean => &[(COAST, 1.0), (TORS, 0.2), (RIVER, 0.2)],
+        Biome::Jungle => &[(RIVER, 0.6), (BOG, 0.35), (CHASM, 0.1), (TORS, 0.15)],
+        Biome::Taiga => &[(RIVER, 0.4), (BOG, 0.2), (TORS, 0.3), (GLACIER, 0.1)],
+        Biome::Savanna => &[(RIVER, 0.3), (TORS, 0.4), (OASIS, 0.2), (MESAS, 0.15)],
+        Biome::Badlands => &[(MESAS, 0.85), (CHASM, 0.35), (TORS, 0.3), (VOLCANO, 0.08)],
+        Biome::Glacier => &[(GLACIER, 1.0), (PEAKS, 0.3), (CHASM, 0.15)],
     };
     let mut bits = 0;
     for &(b, p) in odds {

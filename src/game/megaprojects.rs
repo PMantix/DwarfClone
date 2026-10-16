@@ -63,9 +63,10 @@ mod tests {
         let mut g = Game::new(81);
         g.creatures.retain(|_, c| c.tame);
         let e = g.embark;
-        let site = (3..25)
-            .flat_map(|r| [e.offset(r, 0, 0), e.offset(-r, 0, 0), e.offset(0, r, 0), e.offset(0, -r, 0)])
-            .find(|&p| g.can_place(BuildingKind::Monument, p))
+        let site = (3..30)
+            .flat_map(|r| (-r..=r).flat_map(move |k| [e.offset(k, -r, 0), e.offset(k, r, 0), e.offset(-r, k, 0), e.offset(r, k, 0)]))
+            .map(|p| Pos::new(p.x, p.y, g.world.surface_z(p.x, p.y)))
+            .find(|&p| g.can_place(BuildingKind::Monument, p) && crate::path::astar(&g.world, e, p, 20_000, crate::world::Mover::Dwarf).is_some())
             .expect("nowhere to build");
         assert!(g.place_building(BuildingKind::Monument, site));
         let id = g.world.t(site).building;

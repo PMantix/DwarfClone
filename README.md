@@ -54,8 +54,8 @@ drag a box (or click both corners). Hovering over the map shows what's there.
 
 ## Features
 
-**World creation.** New world opens a settings screen: preset, seed, world size (up to
-256×128), history length, number of civilizations, savagery and minerals. Then you watch the continent appear and its
+**World creation.** New world opens a settings screen: preset, seed, world size (128×56,
+192×80 or 288×120), history length, number of civilizations, savagery and minerals. Then you watch the continent appear and its
 history play out year by year (Space hurries it), and accept it or roll another.
 
 **World & history.** A continent of biomes (mountains, hills, forests, grassland,
@@ -67,6 +67,12 @@ Browse it all in the legends viewer (`L`). You choose
 your embark site; the biome shapes the map (relief, forest, lakes, savage wildlife) and
 nearby goblins, and any civilization at war with yours in the world's history, decide how
 often sieges come.
+
+**The world map.** One character a cell, like an atlas: mountain ranges run in long ridges
+(snow on the high peaks), rivers drawn as lines wind from the wet heights to the sea or pool
+into lakes, a few volcanoes smoulder, and the climate runs from ice caps at both poles through
+taiga and tundra to jungle, savanna, desert and badlands in the warm middle. A river on the
+world map flows through the fortress map embarked there, and a volcano brings its crater.
 
 **Sites and maps.** Every site has its own features, shown on the world map before you
 embark: a river with fords, a chasm crossed by natural bridges, a volcano with a magma

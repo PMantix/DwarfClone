@@ -32,6 +32,8 @@ impl Game {
             let kind = match self.biome {
                 Biome::Ocean => "sea serpent",
                 Biome::Swamp => "bog eel",
+                Biome::Jungle => "river crocodile",
+                Biome::Glacier | Biome::Tundra | Biome::Taiga => "ice char",
                 _ => "great pike",
             };
             let name = format!("Old {}", self.rng.pick(&NAMES));

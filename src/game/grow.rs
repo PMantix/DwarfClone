@@ -97,7 +97,10 @@ mod tests {
 
     #[test]
     fn the_map_grows_and_everything_moves_with_it() {
-        let mut g = Game::new(81);
+        // A site without chasms, mesas and the like, which have cliffs of their own.
+        use crate::terrain::feat;
+        let rough = feat::CHASM | feat::MESAS | feat::TORS | feat::PEAKS | feat::VOLCANO | feat::GLACIER;
+        let mut g = (81..120).map(Game::new).find(|g| g.world.features & rough == 0).expect("a plain site");
         for _ in 0..200 {
             g.step();
         }

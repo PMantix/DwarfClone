@@ -328,15 +328,19 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
 
     let (vw, vh) = (inner.width as i32, inner.height as i32);
     let (ww, wh) = (g.world.w, g.world.h);
-    // Keep the cursor inside the view with a margin.
+    // Keep the cursor inside the view with a margin (unless the view was panned).
     let margin = 4;
+    if app.free_view && (app.cursor.x, app.cursor.y) != app.pan_from {
+        app.free_view = false;
+    }
+    let follow = !app.free_view;
     if vw >= ww {
         app.view_x = -(vw - ww) / 2;
     } else {
-        if app.cursor.x < app.view_x + margin {
+        if follow && app.cursor.x < app.view_x + margin {
             app.view_x = app.cursor.x - margin;
         }
-        if app.cursor.x > app.view_x + vw - 1 - margin {
+        if follow && app.cursor.x > app.view_x + vw - 1 - margin {
             app.view_x = app.cursor.x - vw + 1 + margin;
         }
         app.view_x = app.view_x.clamp(0, ww - vw);
@@ -344,10 +348,10 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
     if vh >= wh {
         app.view_y = -(vh - wh) / 2;
     } else {
-        if app.cursor.y < app.view_y + margin {
+        if follow && app.cursor.y < app.view_y + margin {
             app.view_y = app.cursor.y - margin;
         }
-        if app.cursor.y > app.view_y + vh - 1 - margin {
+        if follow && app.cursor.y > app.view_y + vh - 1 - margin {
             app.view_y = app.cursor.y - vh + 1 + margin;
         }
         app.view_y = app.view_y.clamp(0, wh - vh);
@@ -396,7 +400,7 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
     };
 
     let year_frac = (g.tick % crate::game::YEAR) as f32 / crate::game::YEAR as f32;
-    let cold = matches!(g.biome, crate::overworld::Biome::Tundra | crate::overworld::Biome::Mountain);
+    let cold = g.biome.cold();
     let buf = f.buffer_mut();
     for sy in 0..vh {
         for sx in 0..vw {
@@ -576,7 +580,7 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                     bg = if ok { Color::Rgb(20, 110, 20) } else { Color::Rgb(130, 20, 20) };
                 }
             }
-            if wx == app.cursor.x && wy == app.cursor.y {
+            if wx == app.cursor.x && wy == app.cursor.y && !app.free_view {
                 bg = Color::Rgb(220, 200, 0);
                 fg = BLACK;
                 if ch == ' ' {
@@ -1849,7 +1853,8 @@ fn draw_world(f: &mut Frame, app: &mut App, cx: i32, cy: i32) {
     let mut lines = world_info(ow, cx, cy, &app.flash);
     // What the land holds here.
     let biome = ow.cell(cx, cy).biome;
-    let bits = crate::terrain::site_features(app.seed, cx, cy, biome);
+    let _ = biome;
+    let bits = ow.site_features(app.seed, cx, cy);
     if bits != 0 {
         let mut feats = vec![Line::from(Span::styled("The land here:", Style::default().fg(MUTED)))];
         for (b, _, what) in crate::terrain::FEATURES.iter() {
@@ -1925,10 +1930,10 @@ struct WorldView {
 fn paint_world(f: &mut Frame, inner: Rect, ow: &Overworld, rows: i32, cursor: Option<(i32, i32)>) -> WorldView {
     let (iw, ih) = (inner.width as i32, inner.height as i32);
     let rows = rows.min(ow.cells.len() as i32 / ow.w.max(1));
-    // Two characters per cell when it fits, so the map isn't squashed.
-    let wide = ow.w * 2 <= iw && ow.h <= ih;
-    let cw = if wide { 2 } else { 1 };
-    let mut view = if wide || cursor.is_some() {
+    // One character a cell, like a page of an atlas.
+    let fits = ow.w <= iw && ow.h <= ih;
+    let cw = 1;
+    let mut view = if fits || cursor.is_some() {
         let (cols, vrows) = ((iw / cw).min(ow.w), ih.min(ow.h));
         let (cx, cy) = cursor.unwrap_or((ow.w / 2, ow.h / 2));
         WorldView {
@@ -1963,7 +1968,7 @@ fn paint_world(f: &mut Frame, inner: Rect, ow: &Overworld, rows: i32, cursor: Op
                 }
             }
             let c = ow.cell(pick.0, pick.1);
-            let (mut ch, mut fg) = c.biome.glyph();
+            let (mut ch, mut fg) = ow.look(pick.0, pick.1);
             let mut bg = if c.evil { Color::Rgb(45, 10, 55) } else { BLACK };
             if c.site > 0 {
                 let st = &ow.sites[(c.site - 1) as usize];
@@ -1980,9 +1985,7 @@ fn paint_world(f: &mut Frame, inner: Rect, ow: &Overworld, rows: i32, cursor: Op
                 }
             }
             let (sx, sy) = (ox + vx * cw, oy + vy);
-            for dx in 0..cw {
-                buf.get_mut((sx + dx) as u16, sy as u16).set_char(if dx == 0 { ch } else { ' ' }).set_fg(fg).set_bg(bg);
-            }
+            buf.get_mut(sx as u16, sy as u16).set_char(ch).set_fg(fg).set_bg(bg);
         }
     }
     view
@@ -1999,7 +2002,8 @@ fn paint_footprint(f: &mut Frame, inner: Rect, ow: &Overworld, view: WorldView, 
     if view.scale != 1 {
         return;
     }
-    let cw = if ow.w * 2 <= inner.width as i32 && ow.h <= inner.height as i32 { 2 } else { 1 };
+    let _ = ow;
+    let cw = 1;
     let ox = inner.x as i32 + ((inner.width as i32 - view.cols * cw) / 2).max(0);
     let oy = inner.y as i32 + ((inner.height as i32 - view.rows) / 2).max(0);
     let buf = f.buffer_mut();
@@ -4020,6 +4024,76 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
+    fn frame_time_by_level() {
+        let path = std::env::var("FORT").unwrap();
+        let mut g: Game = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        g.after_load();
+        let mut app = App::with_game_for_tests(g);
+        app.mode = Mode::Normal;
+        let mut term = Terminal::new(TestBackend::new(200, 60)).unwrap();
+        for z in 0..app.game.world.d {
+            app.cursor.z = z;
+            let t0 = std::time::Instant::now();
+            for _ in 0..5 {
+                term.draw(|f| draw(f, &mut app)).unwrap();
+            }
+            println!("z {:>2}: {:>7.2} ms a frame", z, t0.elapsed().as_secs_f64() * 200.0);
+        }
+    }
+
+    /// What changing level costs the terminal: bytes written for the frame.
+    #[test]
+    #[ignore]
+    fn bytes_per_level_change() {
+        use std::io::Write;
+        #[derive(Clone, Default)]
+        struct Count(std::rc::Rc<std::cell::Cell<usize>>);
+        impl Write for Count {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.set(self.0.get() + b.len());
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let path = std::env::var("FORT").unwrap();
+        let mut g: Game = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        g.after_load();
+        let mut app = App::with_game_for_tests(g);
+        app.mode = Mode::Normal;
+        let n = Count::default();
+        let backend = ratatui::backend::CrosstermBackend::new(n.clone());
+        let mut term = Terminal::with_options(backend, ratatui::TerminalOptions { viewport: ratatui::Viewport::Fixed(Rect::new(0, 0, 200, 60)) }).unwrap();
+        let mut tot = 0;
+        for z in (0..app.game.world.d).rev() {
+            app.cursor.z = z;
+            n.0.set(0);
+            term.draw(|f| draw(f, &mut app)).unwrap();
+            println!("z {:>2}: {:>7} bytes", z, n.0.get());
+            tot += n.0.get();
+        }
+        println!("average {}", tot / app.game.world.d as usize);
+    }
+
+    #[test]
+    #[ignore]
+    fn show_world_map() {
+        let seed = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(42);
+        let mut app = App::generated(seed);
+        println!("{}", dump(&mut app, 170, 60));
+        let ow = &app.game.overworld;
+        let mut counts = std::collections::BTreeMap::new();
+        for c in &ow.cells {
+            *counts.entry(c.biome.name()).or_insert(0) += 1;
+        }
+        let (sx, sy) = ow.default_site();
+        println!("default site {:?} {:?} feats {:?}", (sx, sy), ow.cell(sx, sy).biome, crate::terrain::feature_names(ow.site_features(seed, sx, sy)));
+        println!("{:?} rivers {} volcanoes {} sites {}", counts, ow.cells.iter().filter(|c| c.river != 0).count(), ow.cells.iter().filter(|c| c.volcano).count(), ow.sites.len());
+    }
+
+    #[test]
     fn render_snapshot() {
         let mut app = App::generated(42);
         app.mode = Mode::Normal;
@@ -4351,7 +4425,11 @@ mod tests {
         app.on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), r.x + 20, r.y + 10));
         app.on_mouse(mouse(MouseEventKind::Drag(MouseButton::Left), r.x + 17, r.y + 10));
         app.on_mouse(mouse(MouseEventKind::Up(MouseButton::Left), r.x + 17, r.y + 10));
-        assert_eq!(app.cursor.x, c0.x + 3, "the map pans with the drag");
+        assert_eq!(app.cursor, c0, "panning leaves the cursor alone");
+        assert!(app.free_view, "and hides it");
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        assert!(!app.free_view);
+        assert_eq!(app.cursor.x, (app.view_x + r.width as i32 / 2).clamp(0, app.game.world.w - 1), "an arrow brings the cursor back mid-view");
         // Hovering over the wagon shows what's there.
         dump(&mut app, 130, 45);
         let e = app.game.embark;

@@ -342,7 +342,15 @@ mod tests {
         g.set_squad_member(b, ids[3], true);
         assert!(g.dwarves.iter().filter(|d| d.soldier).count() == 4);
         let surface = |g: &Game, p: Pos| Pos::new(p.x, p.y, g.world.surface_z(p.x, p.y));
-        let (sa, sb) = (surface(&g, e.offset(-8, 0, 0)), surface(&g, e.offset(8, 0, 0)));
+        // Two stations either side of the wagon, on dry ground the squads can walk to.
+        let station = |g: &Game, dir: i32| {
+            (6..20)
+                .flat_map(|r| (-4..=4).map(move |dy| e.offset(dir * r, dy, 0)))
+                .map(|p| surface(g, p))
+                .find(|&p| g.world.walkable(p) && g.world.t(p).water == 0 && crate::path::astar(&g.world, e, p, 20_000, crate::world::Mover::Dwarf).is_some())
+                .expect("no dry ground for a station")
+        };
+        let (sa, sb) = (station(&g, -1), station(&g, 1));
         g.order_station(a, sa);
         g.order_station(b, sb);
         for _ in 0..DAY / 2 {

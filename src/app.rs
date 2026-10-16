@@ -324,6 +324,11 @@ pub struct App {
     /// Where the mouse is, and any drag under way.
     pub hover: Option<(u16, u16)>,
     pub drag: Option<Drag>,
+    /// The view was panned with the mouse: it stays where it was put and the
+    /// cursor is hidden until a click or an arrow key brings it back.
+    pub free_view: bool,
+    /// Where the cursor was when the pan began; moving it any other way ends the pan.
+    pub pan_from: (i32, i32),
 }
 
 impl App {
@@ -340,6 +345,11 @@ impl App {
         let mut app = App::with_game(seed, Game::new(seed));
         app.seed_used = true;
         app
+    }
+
+    #[cfg(test)]
+    pub fn with_game_for_tests(game: Game) -> App {
+        App::with_game(1, game)
     }
 
     fn with_game(seed: u64, game: Game) -> App {
@@ -370,6 +380,8 @@ impl App {
             squad_sel: 0,
             hover: None,
             drag: None,
+            free_view: false,
+            pan_from: (0, 0),
         }
     }
 
@@ -746,6 +758,15 @@ impl App {
 
     fn move_cursor(&mut self, k: &KeyEvent) -> bool {
         let step = if k.modifiers.contains(KeyModifiers::SHIFT) { 10 } else { 1 };
+        if self.free_view && matches!(k.code, KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right) {
+            // Back from a pan: the cursor comes back in the middle of the view.
+            let r = self.map_rect;
+            self.cursor.x = self.view_x + r.width as i32 / 2;
+            self.cursor.y = self.view_y + r.height as i32 / 2;
+            self.free_view = false;
+            self.clamp_cursor();
+            return true;
+        }
         match k.code {
             KeyCode::Up => self.cursor.y -= step,
             KeyCode::Down => self.cursor.y += step,
@@ -840,9 +861,10 @@ impl App {
                     if dx != 0 || dy != 0 {
                         self.view_x -= dx;
                         self.view_y -= dy;
-                        self.cursor.x -= dx;
-                        self.cursor.y -= dy;
-                        self.clamp_cursor();
+                        if !self.free_view {
+                            self.free_view = true;
+                            self.pan_from = (self.cursor.x, self.cursor.y);
+                        }
                         d.col = col;
                         d.row = row;
                         d.moved = true;
@@ -863,7 +885,8 @@ impl App {
                 } else if !d.moved && in_map {
                     // A click: move there; a second click on the same tile looks at it.
                     let p = tile(self);
-                    let again = p == self.cursor;
+                    let again = p == self.cursor && !self.free_view;
+                    self.free_view = false;
                     self.cursor = p;
                     self.clamp_cursor();
                     match self.mode {

@@ -43,7 +43,7 @@ impl Weather {
 impl Game {
     /// Whether this site's winters freeze its surface water.
     pub fn freezes(&self) -> bool {
-        !matches!(self.biome, Biome::Desert | Biome::Swamp | Biome::Ocean)
+        !matches!(self.biome, Biome::Desert | Biome::Swamp | Biome::Ocean | Biome::Jungle | Biome::Savanna | Biome::Badlands)
     }
 
     /// At the turn of a season: winter freezes the water under the open sky
@@ -86,12 +86,16 @@ impl Game {
             Biome::Desert => 0.03,
             Biome::Swamp => 0.45,
             Biome::Ocean | Biome::Forest => 0.3,
-            Biome::Mountain | Biome::Tundra => 0.25,
+            Biome::Mountain | Biome::Tundra | Biome::Taiga => 0.25,
+            Biome::Jungle => 0.5,
+            Biome::Savanna => 0.12,
+            Biome::Badlands => 0.05,
+            Biome::Glacier => 0.2,
             _ => 0.2,
         };
-        let cold = self.freezes() && (season == 3 || (season == 2 && self.biome == Biome::Tundra));
+        let cold = self.freezes() && (season == 3 || (season == 2 && matches!(self.biome, Biome::Tundra | Biome::Glacier | Biome::Taiga)) || self.biome == Biome::Glacier && season != 1);
         // A drought may grip a summer: no rain until autumn.
-        if season == 1 && self.tick % SEASON < DAY && !matches!(self.biome, Biome::Swamp | Biome::Ocean) && self.rng.chance(0.15) {
+        if season == 1 && self.tick % SEASON < DAY && !matches!(self.biome, Biome::Swamp | Biome::Ocean | Biome::Jungle | Biome::Glacier) && self.rng.chance(0.15) {
             self.drought = true;
             self.msg("A drought grips the land. No rain will fall this summer.", (230, 190, 110));
             self.gossip("The old ones say they have never seen the brook so low.".into());
@@ -232,10 +236,16 @@ mod tests {
         g.biome = Biome::Forest;
         let e = g.embark;
         // A little pond under the open sky.
-        let pond = (2..20)
-            .map(|r| e.offset(r, -4, 0))
+        // A spot with dry, walkable ground all round it to scramble onto.
+        let pond = (2..30)
+            .flat_map(|r| [e.offset(r, -4, 0), e.offset(-r, 4, 0), e.offset(4, r, 0), e.offset(-4, -r, 0)])
             .map(|p| Pos::new(p.x, p.y, g.world.surface_z(p.x, p.y)))
-            .find(|&p| g.world.walkable(p) && g.world.t(p).building == 0)
+            .find(|&p| {
+                g.world.walkable(p)
+                    && g.world.t(p).building == 0
+                    && g.world.t(p).water == 0
+                    && [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().all(|&(dx, dy)| g.world.walkable(p.offset(dx, dy, 0)) && g.world.t(p.offset(dx, dy, 0)).water == 0)
+            })
             .unwrap();
         g.world.t_mut(pond).kind = TileKind::Open;
         g.world.t_mut(pond).water = 7;
