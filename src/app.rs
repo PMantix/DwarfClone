@@ -274,6 +274,16 @@ pub enum Mode {
     ConfirmQuit,
 }
 
+/// A mouse drag under way: where it last was, whether it's drawing a box
+/// (true) or panning the map, and whether it has moved.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Drag {
+    pub col: u16,
+    pub row: u16,
+    pub boxing: bool,
+    pub moved: bool,
+}
+
 pub struct App {
     pub game: Game,
     pub cursor: Pos,
@@ -305,6 +315,9 @@ pub struct App {
     pub embark_size: usize,
     /// The squad selected on the military screen.
     pub squad_sel: usize,
+    /// Where the mouse is, and any drag under way.
+    pub hover: Option<(u16, u16)>,
+    pub drag: Option<Drag>,
 }
 
 impl App {
@@ -349,6 +362,8 @@ impl App {
             gen_fast: false,
             embark_size: 1,
             squad_sel: 0,
+            hover: None,
+            drag: None,
         }
     }
 
@@ -683,7 +698,7 @@ impl App {
         self.cursor.z = self.cursor.z.clamp(0, w.d - 1);
     }
 
-    fn uses_map_cursor(&self) -> bool {
+    pub fn uses_map_cursor(&self) -> bool {
         matches!(
             self.mode,
             Mode::Normal
@@ -716,22 +731,122 @@ impl App {
         true
     }
 
+    /// Pick row `i` of the list on screen, as if moved there and Enter pressed.
+    fn select_row(&mut self, i: usize) {
+        self.mode = match self.mode.clone() {
+            Mode::Title { .. } => Mode::Title { sel: i },
+            Mode::Autoplay { .. } => Mode::Autoplay { sel: i },
+            Mode::Appoint { pos, .. } => Mode::Appoint { pos, sel: i },
+            Mode::PickOwner { zone, .. } => Mode::PickOwner { zone, sel: i },
+            Mode::Expedition { squad, .. } => Mode::Expedition { squad, sel: i },
+            other => other,
+        };
+        self.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    }
+
+    /// Modes where a click and drag on the map draws a box.
+    fn boxing(&self) -> bool {
+        matches!(
+            self.mode,
+            Mode::Designate { .. } | Mode::Stockpile { .. } | Mode::Zone { .. } | Mode::Traffic { .. } | Mode::Construct { .. } | Mode::Burrows { .. }
+        )
+    }
+
+    fn box_corner(&self) -> Option<Pos> {
+        match &self.mode {
+            Mode::Designate { corner, .. }
+            | Mode::Stockpile { corner, .. }
+            | Mode::Zone { corner, .. }
+            | Mode::Traffic { corner, .. }
+            | Mode::Construct { corner, .. }
+            | Mode::Burrows { corner, .. } => *corner,
+            _ => None,
+        }
+    }
+
     pub fn on_mouse(&mut self, m: MouseEvent) {
         let r = self.map_rect;
+        let (col, row) = (m.column, m.row);
+        let in_map = col >= r.x && row >= r.y && col < r.x + r.width && row < r.y + r.height;
+        let tile = |app: &App| Pos::new(app.view_x + col as i32 - r.x as i32, app.view_y + row as i32 - r.y as i32, app.cursor.z);
         match m.kind {
+            MouseEventKind::Moved => self.hover = Some((col, row)),
             MouseEventKind::Down(MouseButton::Left) => {
-                if m.column >= r.x && m.row >= r.y && m.column < r.x + r.width && m.row < r.y + r.height {
-                    if !self.uses_map_cursor() {
-                        return;
-                    }
-                    self.cursor.x = self.view_x + (m.column - r.x) as i32;
-                    self.cursor.y = self.view_y + (m.row - r.y) as i32;
+                self.hover = Some((col, row));
+                // Menus, lists and buttons first.
+                match crate::ui::target_at(col, row) {
+                    Some(crate::ui::Target::Key(k)) => return self.on_key(KeyEvent::new(k, KeyModifiers::NONE)),
+                    Some(crate::ui::Target::Row(i)) => return self.select_row(i),
+                    Some(crate::ui::Target::Block) => return,
+                    None => {}
+                }
+                if !in_map || !self.uses_map_cursor() {
+                    return;
+                }
+                if self.boxing() {
+                    // Press to start a box, drag, let go to finish it (or click twice).
+                    self.cursor = tile(self);
                     self.clamp_cursor();
-                    if !matches!(self.mode, Mode::Normal) {
+                    let starting = self.box_corner().is_none();
+                    self.confirm();
+                    if starting {
+                        self.drag = Some(Drag { col, row, boxing: true, moved: false });
+                    }
+                    return;
+                }
+                self.drag = Some(Drag { col, row, boxing: false, moved: false });
+            }
+            MouseEventKind::Down(MouseButton::Middle) => self.drag = Some(Drag { col, row, boxing: false, moved: false }),
+            MouseEventKind::Drag(_) => {
+                self.hover = Some((col, row));
+                let Some(mut d) = self.drag else { return };
+                if d.boxing {
+                    if in_map {
+                        self.cursor = tile(self);
+                        self.clamp_cursor();
+                        d.moved = true;
+                    }
+                } else {
+                    // Pan: the map follows the mouse.
+                    let (dx, dy) = (col as i32 - d.col as i32, row as i32 - d.row as i32);
+                    if dx != 0 || dy != 0 {
+                        self.view_x -= dx;
+                        self.view_y -= dy;
+                        self.cursor.x -= dx;
+                        self.cursor.y -= dy;
+                        self.clamp_cursor();
+                        d.col = col;
+                        d.row = row;
+                        d.moved = true;
+                    }
+                }
+                self.drag = Some(d);
+            }
+            MouseEventKind::Up(_) => {
+                let Some(d) = self.drag.take() else { return };
+                if d.boxing {
+                    if d.moved && self.box_corner().is_some() {
+                        if in_map {
+                            self.cursor = tile(self);
+                            self.clamp_cursor();
+                        }
                         self.confirm();
+                    }
+                } else if !d.moved && in_map {
+                    // A click: move there; a second click on the same tile looks at it.
+                    let p = tile(self);
+                    let again = p == self.cursor;
+                    self.cursor = p;
+                    self.clamp_cursor();
+                    match self.mode {
+                        Mode::Normal if again => self.mode = Mode::Look { sel: 0 },
+                        Mode::Look { .. } => self.mode = Mode::Look { sel: 0 },
+                        Mode::Place(_) | Mode::LinkLever { .. } | Mode::KillTarget { .. } => self.confirm(),
+                        _ => {}
                     }
                 }
             }
+            MouseEventKind::Down(MouseButton::Right) => self.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
             MouseEventKind::ScrollUp => {
                 self.cursor.z += 1;
                 self.clamp_cursor();

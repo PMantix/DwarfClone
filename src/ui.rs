@@ -17,6 +17,95 @@ use std::collections::{HashMap, HashSet};
 
 const SIDEBAR_W: u16 = 38;
 
+/// What a mouse click on part of the screen does, gathered as the frame is
+/// drawn: press a key, pick a row in a list, or nothing (a panel that sits
+/// over what's beneath).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Target {
+    Key(crossterm::event::KeyCode),
+    Row(usize),
+    Block,
+}
+
+thread_local! {
+    static TARGETS: std::cell::RefCell<Vec<(Rect, Target)>> = std::cell::RefCell::new(Vec::new());
+}
+
+fn add_target(r: Rect, t: Target) {
+    TARGETS.with(|v| v.borrow_mut().push((r, t)));
+}
+
+/// The topmost thing at a screen cell, if any.
+pub fn target_at(col: u16, row: u16) -> Option<Target> {
+    TARGETS.with(|v| v.borrow().iter().rev().find(|(r, _)| col >= r.x && row >= r.y && col < r.x + r.width && row < r.y + r.height).map(|x| x.1))
+}
+
+/// The key a `key_line` offers, if this line is one.
+fn key_of(line: &Line) -> Option<crossterm::event::KeyCode> {
+    use crossterm::event::KeyCode;
+    let first = line.spans.first()?;
+    if first.style.fg != Some(KEY) || !first.style.add_modifier.contains(Modifier::BOLD) {
+        return None;
+    }
+    let k = first.content.trim();
+    let mut chars = k.chars();
+    match (chars.next(), chars.next()) {
+        (Some(c), None) => Some(KeyCode::Char(c)),
+        _ => match k {
+            "Esc" => Some(KeyCode::Esc),
+            "Enter" => Some(KeyCode::Enter),
+            "Tab" => Some(KeyCode::Tab),
+            "Space" => Some(KeyCode::Char(' ')),
+            _ => None,
+        },
+    }
+}
+
+/// Make each key line drawn in `inner` clickable.
+fn register_lines(inner: Rect, lines: &[Line], wrap: bool) {
+    let width = inner.width.max(1) as usize;
+    let mut y = inner.y;
+    for l in lines {
+        if y >= inner.y + inner.height {
+            break;
+        }
+        let rows = if wrap { ((l.width().max(1) + width - 1) / width) as u16 } else { 1 };
+        if let Some(k) = key_of(l) {
+            add_target(Rect::new(inner.x, y, inner.width, rows.min(inner.y + inner.height - y)), Target::Key(k));
+        }
+        y += rows;
+    }
+}
+
+/// A short note on what's under the mouse, beside it.
+fn draw_tooltip(f: &mut Frame, app: &App) {
+    let Some((col, row)) = app.hover else { return };
+    let r = app.map_rect;
+    if app.drag.is_some() || !app.uses_map_cursor() || col < r.x || row < r.y || col >= r.x + r.width || row >= r.y + r.height {
+        return;
+    }
+    let g = &app.game;
+    let p = Pos::new(app.view_x + (col - r.x) as i32, app.view_y + (row - r.y) as i32, app.cursor.z);
+    if !g.world.in_bounds(p) || !g.world.t(p).revealed {
+        return;
+    }
+    let lines: Vec<Line<'static>> = cursor_info(g, p).into_iter().skip(1).filter(|l| l.width() > 0).take(8).collect();
+    if lines.is_empty() {
+        return;
+    }
+    let w = (lines.iter().map(|l| l.width()).max().unwrap_or(10) as u16 + 2).min(46);
+    let h = lines.len() as u16 + 2;
+    let area = f.size();
+    let x = if col + 2 + w < area.width { col + 2 } else { col.saturating_sub(w + 1) };
+    let y = if row + 1 + h < area.height { row + 1 } else { row.saturating_sub(h) };
+    let tip = Rect::new(x, y, w, h);
+    f.render_widget(Clear, tip);
+    f.render_widget(
+        Paragraph::new(lines).style(Style::default().bg(Color::Rgb(18, 18, 30))).block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(MUTED))),
+        tip,
+    );
+}
+
 fn rgb(c: (u8, u8, u8)) -> Color {
     Color::Rgb(c.0, c.1, c.2)
 }
@@ -2321,6 +2410,7 @@ fn draw_trade(f: &mut Frame, area: Rect, app: &App, side: usize, sel: [usize; 2]
 }
 
 pub fn draw(f: &mut Frame, app: &mut App) {
+    TARGETS.with(|v| v.borrow_mut().clear());
     let area = f.size();
     match app.mode {
         Mode::Title { sel } => return draw_title(f, app, sel),
@@ -2398,6 +2488,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_map(f, app, mid[0]);
 
     let (title, lines) = sidebar(app);
+    register_lines(Rect::new(mid[1].x + 1, mid[1].y + 1, mid[1].width.saturating_sub(2), mid[1].height.saturating_sub(2)), &lines, true);
     let side = Paragraph::new(lines)
         .block(
             Block::default()
@@ -2441,8 +2532,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::Autoplay { sel } => draw_autoplay(f, area, &app.game, sel),
         Mode::Brain { sel } => draw_brain(f, area, &app.game, sel),
         Mode::BuildMenu => draw_build_menu(f, area),
-        Mode::Help => popup(f, area, 60, 47, " Help ", help_text()),
-        Mode::ConfirmQuit => popup(
+        Mode::Help => {
+            popup(f, area, 60, 47, " Help ", help_text());
+        }
+        Mode::ConfirmQuit => {
+            popup(
             f,
             area,
             40,
@@ -2454,9 +2548,15 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 key_line("y", "Quit without saving", false),
                 plain("  any other key: keep playing".into(), MUTED),
             ],
-        ),
+            );
+        }
         _ => {}
     }
+    // Full-screen views sit over everything else.
+    if matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. }) {
+        add_target(area, Target::Block);
+    }
+    draw_tooltip(f, app);
     if app.in_fortress() && matches!(app.mode, Mode::Normal) {
         let over = if app.map_rect.width > 0 { app.map_rect } else { area };
         draw_banner(f, over, &app.game);
@@ -3264,6 +3364,9 @@ fn draw_title(f: &mut Frame, app: &App, sel: usize) {
     let w = 66.min(area.width);
     let top = (area.y + sky + 1).min(area.y + area.height.saturating_sub(h));
     let r = Rect::new(area.x + (area.width - w) / 2, top, w, h.min(area.height));
+    for i in 0..TITLE_MENU.len() {
+        add_target(Rect::new(r.x + 1, r.y + 2 + i as u16, r.width.saturating_sub(2), 1), Target::Row(i));
+    }
     f.render_widget(Clear, r);
     f.render_widget(
         Paragraph::new(v).wrap(Wrap { trim: false }).alignment(ratatui::layout::Alignment::Center).style(Style::default().bg(Color::Rgb(12, 12, 20))).block(
@@ -3497,7 +3600,10 @@ fn draw_autoplay(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
     v.push(Line::default());
     v.push(plain(" ↑↓ choose · Enter · b its brain · Esc back".into(), MUTED));
     let h = v.len() as u16 + 2;
-    popup(f, area, 72, h, " Autoplay ", v);
+    let r = popup(f, area, 72, h, " Autoplay ", v);
+    for i in 0..=Pace::ALL.len() {
+        add_target(Rect::new(r.x + 1, r.y + 3 + i as u16, r.width.saturating_sub(2), 1), Target::Row(i));
+    }
 }
 
 /// Everything that can be built, in two columns.
@@ -3564,7 +3670,10 @@ fn draw_expedition(f: &mut Frame, area: Rect, g: &Game, squad: usize, sel: usize
     v.push(Line::default());
     v.push(plain(" ↑↓ choose · Enter send them · Esc cancel".into(), MUTED));
     let h = v.len() as u16 + 2;
-    popup(f, area, 84, h, " Send on an expedition ", v);
+    let r = popup(f, area, 84, h, " Send on an expedition ", v);
+    for i in 0..g.destinations().len() {
+        add_target(Rect::new(r.x + 1, r.y + 4 + i as u16, r.width.saturating_sub(2), 1), Target::Row(i));
+    }
 }
 
 /// A milestone's banner across the top of the screen while it's fresh.
@@ -3687,7 +3796,10 @@ fn draw_pick_owner(f: &mut Frame, area: Rect, g: &Game, zone: u32, sel: usize) {
     v.push(Line::default());
     v.push(plain(" ↑↓ choose · Enter assign · Esc cancel   ► owns it now".into(), MUTED));
     let h = v.len() as u16 + 2;
-    popup(f, area, 76, h, &format!(" Who owns this {}? ", kind.name().to_lowercase()), v);
+    let r = popup(f, area, 76, h, &format!(" Who owns this {}? ", kind.name().to_lowercase()), v);
+    for row in first..rows.min(first + room) {
+        add_target(Rect::new(r.x + 1, r.y + 3 + (row - first) as u16, r.width.saturating_sub(2), 1), Target::Row(row));
+    }
 }
 
 /// The list of dwarves who could take a post, best suited first.
@@ -3741,13 +3853,18 @@ fn draw_appoint(f: &mut Frame, area: Rect, g: &Game, pos: usize, sel: usize) {
     v.push(Line::default());
     v.push(plain(" ↑↓ choose · Enter appoint · Esc cancel   ► holds it now".into(), MUTED));
     let h = v.len() as u16 + 2;
-    popup(f, area, 72, h, &format!(" Appoint {} ", p.title().to_lowercase()), v);
+    let r = popup(f, area, 72, h, &format!(" Appoint {} ", p.title().to_lowercase()), v);
+    for row in first..rows.min(first + room) {
+        add_target(Rect::new(r.x + 1, r.y + 6 + (row - first) as u16, r.width.saturating_sub(2), 1), Target::Row(row));
+    }
 }
 
-fn popup(f: &mut Frame, area: Rect, w: u16, h: u16, title: &str, lines: Vec<Line<'static>>) {
+fn popup(f: &mut Frame, area: Rect, w: u16, h: u16, title: &str, lines: Vec<Line<'static>>) -> Rect {
     let w = w.min(area.width);
     let h = h.min(area.height);
     let r = Rect::new(area.x + (area.width - w) / 2, area.y + (area.height - h) / 2, w, h);
+    add_target(r, Target::Block);
+    register_lines(Rect::new(r.x + 1, r.y + 1, r.width.saturating_sub(2), r.height.saturating_sub(2)), &lines, false);
     f.render_widget(Clear, r);
     f.render_widget(
         Paragraph::new(lines)
@@ -3760,6 +3877,7 @@ fn popup(f: &mut Frame, area: Rect, w: u16, h: u16, title: &str, lines: Vec<Line
             ),
         r,
     );
+    r
 }
 
 
@@ -4080,6 +4198,53 @@ mod tests {
         assert!(after > before, "nudging should raise the odds ({} -> {})", before, after);
         app.on_key(key(KeyCode::Char('f')));
         assert_eq!(app.game.overseer.as_ref().unwrap().ambition, Some(crate::game::Ambition::Muster));
+    }
+
+    #[test]
+    fn the_mouse_drags_boxes_clicks_menus_and_shows_tooltips() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        let mut app = App::generated(42);
+        app.mode = Mode::Normal;
+        dump(&mut app, 130, 45);
+        let mouse = |kind, column, row| MouseEvent { kind, column, row, modifiers: KeyModifiers::NONE };
+        // Click the "Build" entry in the side panel.
+        let s = dump(&mut app, 130, 45);
+        let (by, line) = s.lines().enumerate().find(|(_, l)| l.contains("Build")).expect("a Build entry");
+        let bx = line.char_indices().position(|(_, c)| c == 'B').unwrap() as u16;
+        app.on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), bx, by as u16));
+        assert_eq!(app.mode, Mode::BuildMenu, "clicking the menu entry should open it");
+        app.on_mouse(mouse(MouseEventKind::Down(MouseButton::Right), 5, 5));
+        assert_eq!(app.mode, Mode::Normal, "right click goes back");
+        // Drag a dig box across the map.
+        app.on_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+        dump(&mut app, 130, 45);
+        let r = app.map_rect;
+        let before = app.game.designations.len();
+        app.on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), r.x + 5, r.y + 5));
+        app.on_mouse(mouse(MouseEventKind::Drag(MouseButton::Left), r.x + 9, r.y + 8));
+        app.on_mouse(mouse(MouseEventKind::Up(MouseButton::Left), r.x + 9, r.y + 8));
+        let a = Pos::new(app.view_x + 5, app.view_y + 5, app.cursor.z);
+        assert!(matches!(app.mode, Mode::Designate { corner: None, .. }), "the box should be finished");
+        assert_eq!(app.cursor, Pos::new(app.view_x + 9, app.view_y + 8, a.z));
+        let _ = before;
+        // Drag to pan in normal mode.
+        app.mode = Mode::Normal;
+        let c0 = app.cursor;
+        app.on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), r.x + 20, r.y + 10));
+        app.on_mouse(mouse(MouseEventKind::Drag(MouseButton::Left), r.x + 17, r.y + 10));
+        app.on_mouse(mouse(MouseEventKind::Up(MouseButton::Left), r.x + 17, r.y + 10));
+        assert_eq!(app.cursor.x, c0.x + 3, "the map pans with the drag");
+        // Hovering over the wagon shows what's there.
+        dump(&mut app, 130, 45);
+        let e = app.game.embark;
+        app.cursor = e;
+        dump(&mut app, 130, 45);
+        let (hx, hy) = ((e.x - app.view_x) as u16 + r.x, (e.y - app.view_y) as u16 + r.y);
+        app.on_mouse(mouse(MouseEventKind::Moved, hx, hy));
+        let s = dump(&mut app, 130, 45);
+        assert!(s.lines().count() > 0);
+        let tip_rows = s.lines().skip(hy as usize + 1).take(3).collect::<Vec<_>>().join(" ");
+        assert!(tip_rows.contains('┌') || tip_rows.contains('│'), "a tooltip should appear by the mouse: {}", tip_rows);
     }
 
     #[test]

@@ -46,6 +46,12 @@ ruin; that's the fun of it.
 Use Windows Terminal (or any truecolor + Unicode terminal) at 130x40 or larger.
 Press `?` in game for keys.
 
+**Mouse.** Click any key entry in the side panel or a menu to use it, and rows in lists
+(appointments, room owners, expeditions, autoplay, the title menu) to pick them. On the map,
+click to move the cursor (click again to look), drag to pan, scroll to change level, and
+right-click to go back. In digging, zone, stockpile, traffic, burrow and construction modes,
+drag a box (or click both corners). Hovering over the map shows what's there.
+
 ## Features
 
 **World creation.** New world opens a settings screen: preset, seed, world size (up to
