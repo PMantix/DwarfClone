@@ -58,10 +58,11 @@ mod overseer;
 mod ambitions;
 mod layout;
 mod blueprint;
+pub mod annals;
 mod miasma;
 pub use ambitions::{Ambition, Sense};
 
-pub use overseer::{run_trial, Overseer, Style};
+pub use overseer::{run_trial, Overseer, Style, Trial};
 pub use mysteries::{Mystery, MysteryKind};
 pub use necromancy::Necromancer;
 pub fn milestones_banner_ticks() -> u64 {
@@ -299,6 +300,9 @@ pub struct Game {
     /// A summer without rain.
     #[serde(default)]
     pub drought: bool,
+    /// How each dwarf died and how each siege went.
+    #[serde(default)]
+    pub annals: annals::Annals,
     /// Some tile has snow on it (so a thaw knows to look).
     #[serde(default)]
     snow_lying: bool,
@@ -468,6 +472,7 @@ impl Game {
             crimes: Vec::new(),
             weather: Weather::Clear,
             drought: false,
+            annals: Default::default(),
             snow_lying: false,
             fire_cells: None,
             miasma_cells: None,
@@ -987,6 +992,9 @@ impl Game {
         if self.tick % 50 == 0 {
             self.count_fits();
         }
+        if self.tick % 50 == 10 {
+            self.annals_tick();
+        }
         if self.orders_due(self.tick) {
             self.manage_orders();
         }
@@ -1456,6 +1464,7 @@ impl Game {
         }
         let name = d.name.clone();
         self.msg(&format!("{} {}.", name, cause), (255, 60, 60));
+        self.note_death(d, cause);
         self.hero_fell(d, cause);
         self.year_log.deaths.push(d.called());
         let tick = self.tick;

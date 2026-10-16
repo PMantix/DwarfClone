@@ -23,19 +23,20 @@ A batch of 25 overseer-run forts (`--autoplay --runs 25 --years 3 --seed 5000`, 
 **no survivors after three years**, and most fell within the first year. The build before
 the planned layouts did the same (0 of the 15 it finished), so this is long-standing, not new.
 
-| Cause of death (all 25 forts) | Dwarves |
-|---|---|
-| Bled to death | 194 |
-| Struck down by goblins and named foes (siege leaders, beasts) | 97 |
-| Starved | 29 |
-| Troglodytes and cave horrors | 24 |
-| Thirst | 15 |
-| The walking dead | 20 |
+S01's report on the same batch (saved as `batches/baseline-v0.2.0.json`):
 
-The first goblin siege comes around day 168 with five goblins and often kills a dozen or more
-dwarves in a day. Most of the dead bleed out from wounds nobody treats. Every fort ends the same
-way, and that's the problem to fix first: the drama is in a fort that nearly falls, holds,
-mourns and rebuilds.
+- **Standing:** 13 forts after year 1, 3 after year 2, 1 after year 3 (a Warlord fort).
+- **Deaths (451):** bled to death 45%, struck down 35%, fell on an expedition 10%, starvation
+  6%, thirst 4%.
+- **Killers:** goblins 55% of all deaths; cave horrors, troglodytes, the walking dead, dragons
+  and wolves about 5% each.
+- **Where:** 58% died during a siege, 36% under the open sky, and **32% inside the shelter**:
+  the alert burrow doesn't keep goblins out (the bridge went up in only 22% of first sieges).
+- **Sieges:** about five goblins each. The first kills 5.5 dwarves on average and the second
+  8.5, while dwarves kill fewer than one goblin per siege.
+
+So the order is clear: the shelter and the bridge (S04), dwarves who fight back (S04), the
+bleeding (S02), and expeditions that cost a tenth of all deaths (a new item below, S06).
 
 What's strong now: the world map and its history, varied sites, planned fortress layouts, the
 overseer's ambitions and brain, festivals, heroes, mysteries, legends and the chronicle.
@@ -49,10 +50,11 @@ style survive three years, and every style still loses forts in memorable ways.
 
 #### S01 Know why forts fall (S)
 - **Why:** balance by evidence, not by guess. The batch report gives one line per fort today.
-- **Steps:** [ ] the batch report tallies causes of death, killers, and siege outcomes (how many
-  came, how many died on each side, whether the shelter and the bridge were used) · [ ] a
-  per-fort timeline with `--story`: arrivals, sieges, deaths, ambitions · [ ] `--compare` runs
-  the same seeds on two builds and prints the difference
+- **Steps:** [x] the batch report tallies causes of death, killers, and siege outcomes (how many
+  came, how many died on each side, whether the shelter and the bridge were used) (this commit)
+  · [x] a per-fort timeline with `--story`: arrivals, sieges, deaths, ambitions (this commit) ·
+  [x] `--out` saves a batch and `--compare A B` prints two side by side (this commit); the
+  baseline is `batches/baseline-v0.2.0.json`
 - **Done when:** the batch prints the cause table above and a survival count by year.
 
 #### S02 Battlefield medicine (M)
@@ -89,6 +91,14 @@ style survive three years, and every style still loses forts in memorable ways.
   fourth biggest killer)
 - **Done when:** a scripted siege against a fort with shelter, bridge and squad kills fewer than
   half the goblins' worth of dwarves; the batch meets the milestone goal.
+
+#### S06 Expeditions worth the risk (S)
+- **Why:** 43 of 451 deaths (10%) were dwarves who fell on expeditions, most of them in the
+  first year, when a fort can least spare them.
+- **Steps:** [ ] the overseer sends expeditions only with a strong, armed squad and spare
+  dwarves at home · [ ] odds are shown before sending, and a squad that's losing comes home early
+  with its wounded
+- **Done when:** expedition deaths fall below 5% of all deaths in the batch.
 
 #### S05 Food and water a fort can rely on (S)
 - **Why:** 44 dwarves starved or died of thirst; a fort that runs dry is a sad, quiet ending.

@@ -11,6 +11,7 @@ mod material;
 mod noise;
 mod overworld;
 mod path;
+mod report;
 mod rng;
 mod saves;
 mod terrain;
@@ -37,6 +38,17 @@ fn restore_terminal() {
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
+    if let Some(i) = args.iter().position(|a| a == "--compare") {
+        // `--compare before.json after.json`: two saved batches side by side.
+        let load = |p: Option<&String>| -> Result<Vec<game::Trial>> {
+            let p = p.ok_or_else(|| anyhow::anyhow!("--compare needs two batch files (from --out)"))?;
+            Ok(serde_json::from_str(&std::fs::read_to_string(p)?)?)
+        };
+        let (a, b) = (load(args.get(i + 1))?, load(args.get(i + 2))?);
+        let years = a.iter().chain(b.iter()).map(|t| t.alive_by_year.len()).max().unwrap_or(1).max(1);
+        print!("{}", report::compare(&a, &b, years));
+        return Ok(());
+    }
     if args.iter().any(|a| a == "--autoplay") {
         autoplay_batch(&args);
         return Ok(());
@@ -71,8 +83,10 @@ fn main() -> Result<()> {
     result
 }
 
-/// `--autoplay [--runs N] [--years Y] [--style NAME] [--seed S]`: play many
-/// fortresses with the overseer, side by side, and tell how each ended.
+/// `--autoplay [--runs N] [--years Y] [--style NAME] [--seed S] [--story]
+/// [--out FILE]`: play many fortresses with the overseer, side by side, tell
+/// how each ended and why forts fell; `--story` adds each fort's timeline,
+/// `--out` saves the batch for `--compare`.
 fn autoplay_batch(args: &[String]) {
     use game::{run_trial, Style};
     let opt = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
@@ -102,6 +116,7 @@ fn autoplay_batch(args: &[String]) {
         }));
     }
     drop(tx);
+    let story = args.iter().any(|a| a == "--story");
     let mut all = Vec::new();
     for t in rx {
         println!(
@@ -118,7 +133,12 @@ fn autoplay_batch(args: &[String]) {
             t.heroes.len(),
             t.epitaph
         );
-        if !t.ambitions.is_empty() {
+        if story {
+            for (day, what) in &t.story {
+                println!("           y{} d{:<3} {}", day / (game::YEAR / game::DAY) + 1, day % (game::YEAR / game::DAY), what);
+            }
+            println!();
+        } else if !t.ambitions.is_empty() {
             println!("           its ambitions: {}", t.ambitions.join(" → "));
         }
         all.push(t);
@@ -126,23 +146,13 @@ fn autoplay_batch(args: &[String]) {
     for h in handles {
         let _ = h.join();
     }
-    println!();
-    println!("  {:<9} {:>5} {:>6} {:>6} {:>8} {:>10}", "style", "runs", "glory", "ruin", "avg yrs", "avg ☼peak");
-    for s in Style::ALL {
-        let mine: Vec<_> = all.iter().filter(|t| t.style == s).collect();
-        if mine.is_empty() {
-            continue;
+    all.sort_by_key(|t| t.seed);
+    print!("{}", report::report(&all, years as usize));
+    if let Some(path) = opt("--out") {
+        match serde_json::to_string(&all).map_err(anyhow::Error::from).and_then(|s| std::fs::write(&path, s).map_err(anyhow::Error::from)) {
+            Ok(()) => println!("\n  Saved the batch to {} (compare two with --compare A B).", path),
+            Err(e) => println!("\n  Couldn't save the batch to {}: {}", path, e),
         }
-        let n = mine.len() as f64;
-        println!(
-            "  {:<9} {:>5} {:>6} {:>6} {:>8.1} {:>10.0}",
-            s.name(),
-            mine.len(),
-            mine.iter().filter(|t| t.verdict == "Glory").count(),
-            mine.iter().filter(|t| t.verdict == "Ruin").count(),
-            mine.iter().map(|t| t.years).sum::<f64>() / n,
-            mine.iter().map(|t| t.peak_wealth as f64).sum::<f64>() / n
-        );
     }
 }
 

@@ -1050,7 +1050,7 @@ impl Game {
 }
 
 /// How one autoplayed fortress turned out.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Trial {
     pub seed: u64,
     pub style: Style,
@@ -1067,9 +1067,20 @@ pub struct Trial {
     #[allow(dead_code)]
     pub chronicles: Vec<String>,
     /// Ruin, Glory or Endured.
-    pub verdict: &'static str,
+    pub verdict: String,
     /// The last word on it: what ended it, or its greatest moment.
     pub epitaph: String,
+    /// How each dwarf died and each siege went.
+    #[serde(default)]
+    pub deaths: Vec<super::annals::DeathNote>,
+    #[serde(default)]
+    pub sieges: Vec<super::annals::SiegeNote>,
+    /// Dwarves alive at the end of each year it lasted into.
+    #[serde(default)]
+    pub alive_by_year: Vec<usize>,
+    /// What happened, in order: (day, what).
+    #[serde(default)]
+    pub story: Vec<(u64, String)>,
 }
 
 /// Play one fortress with `style` for up to `years`, from a fresh world.
@@ -1079,17 +1090,40 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
     let mut last_death = String::new();
     let end = years * YEAR;
     let mut seen = 0u64;
-    let story = std::env::var("TRIAL_DEATHS").is_ok();
+    let mut story: Vec<(u64, String)> = Vec::new();
+    let mut alive_by_year = Vec::new();
+    let mut ambitions_told = 0;
     while g.tick < end && g.alive_count() > 0 {
         g.step();
-        if story && g.tick % 50 == 0 {
+        if g.tick % YEAR == 0 {
+            alive_by_year.push(g.alive_count());
+        }
+        // The fort's story: arrivals, sieges and monsters, deaths, milestones, ambitions.
+        if g.tick % 50 == 0 {
             for l in g.log.iter().filter(|l| l.tick > seen) {
                 let t = &l.text;
-                if l.color == (255, 60, 60) || t.contains("arrived!") || t.contains("has come") || t.contains("fleeing") || t.contains("bashes down") || t.contains("Lever") || t.contains("raised") || t.contains("lowered") || t.contains("caught") {
-                    eprintln!("    d{:>3} {}", l.tick / DAY, t);
+                let tell = l.color == (255, 60, 60)
+                    || t.contains("arrived")
+                    || t.contains("march to war")
+                    || t.contains("up from the caverns")
+                    || t.contains("descends upon")
+                    || t.contains("are fleeing")
+                    || t.contains("bashes down")
+                    || t.contains("Milestone")
+                    || t.contains("raises the dead");
+                // (Not the seasons, nor the merchants.)
+                let routine = t.contains("Merchants") || ["Spring", "Summer", "Autumn", "Winter"].iter().any(|s| t.starts_with(s));
+                if tell && !routine && story.len() < 400 {
+                    story.push((l.tick / DAY, t.clone()));
                 }
             }
             seen = g.tick;
+            if let Some(o) = g.overseer.as_ref() {
+                for (tick, a) in o.ambitions.iter().skip(ambitions_told) {
+                    story.push((tick / DAY, format!("The overseer took up {}.", a.name())));
+                }
+                ambitions_told = o.ambitions.len();
+            }
         }
         if g.tick % DAY == 0 && std::env::var("TRIAL_PACE").is_ok() {
             eprintln!("  day {} at {:?}: {} rooms, {} designations, {} creatures", g.tick / DAY, std::time::Instant::now(), g.overseer.as_ref().map_or(0, |o| o.rooms.len()), g.designations.len(), g.creatures.len());
@@ -1158,6 +1192,8 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
     if let Some(l) = g.log.iter().rev().find(|l| l.color == (255, 60, 60)) {
         last_death = l.text.clone();
     }
+    // Close the books on a siege the fort fell to.
+    g.annals_tick();
     if std::env::var("TRIAL_TAIL").is_ok() {
         for l in g.log.iter().rev().take(60).collect::<Vec<_>>().into_iter().rev() {
             eprintln!("    t{:>6} {}", l.tick, l.text);
@@ -1173,7 +1209,8 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
         "Glory"
     } else {
         "Endured"
-    };
+    }
+    .to_string();
     let epitaph = if alive == 0 {
         format!("Fell in year {}: {}", g.tick / YEAR + 1, last_death)
     } else if let Some(m) = &g.monument {
@@ -1197,6 +1234,10 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
         chronicles: g.chronicles.iter().map(|c| c.title.clone()).collect(),
         verdict,
         epitaph,
+        deaths: g.annals.deaths.clone(),
+        sieges: g.annals.sieges.clone(),
+        alive_by_year,
+        story,
     }
 }
 

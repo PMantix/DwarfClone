@@ -860,6 +860,7 @@ impl Game {
         }
         self.siege_size = n as u32;
         self.siege_routed = false;
+        self.note_siege(species.info().plural, n as u32, &general_name);
         self.siege_race = Some(foe.race);
         self.year_log.siege = Some(civ_name.clone());
         let plural = species.info().plural;
@@ -914,6 +915,7 @@ impl Game {
     }
 
     pub(super) fn creature_died(&mut self, mut c: Creature) {
+        self.note_foe_slain(&c);
         c.alive = false;
         // Squads sent after it are done.
         let mut done = Vec::new();
@@ -1267,6 +1269,7 @@ impl Game {
         let def = self.dwarf_fighter(&d);
         let msg = self.strike(&att, &def, &mut d.body);
         d.attacker = Some((c.id, self.tick));
+        self.note_wound(d.id, c);
         if let Some(m) = msg {
             self.msg(&m, (255, 120, 100));
         }

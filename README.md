@@ -11,7 +11,17 @@ to their labors, needs, personalities and moods.
 cargo run --release            # title screen; new worlds get a random seed
 cargo run --release -- 12345   # the first new world uses this seed
 cargo run --release -- --autoplay --runs 10 --years 5   # let the overseer play 10 forts
+cargo run --release -- --autoplay --runs 25 --years 3 --seed 5000 --story --out after.json
+cargo run --release -- --compare batches/baseline-v0.2.0.json after.json
 ```
+
+A batch ends with a report on why forts fall: how many were still standing at the end of each
+year, deaths by cause and by killer (a dwarf who bleeds out is put down to whoever wounded
+them), where dwarves died (in a siege, outdoors, in the shelter, as soldiers), and every siege by
+its order (first, second, later) with its size, losses on both sides, whether the shelter was
+called and the bridge raised, and how it ended. `--story` prints each fort's timeline
+(arrivals, sieges, monsters, deaths, milestones, ambitions); `--out` saves the batch, and
+`--compare A B` sets two saved batches side by side, down to the forts whose fate changed.
 
 **Autoplay.** The overseer is an AI that plays a fortress with the same commands you have:
 it digs in, builds workshops and halls, keeps stocks with work orders, fills posts, sets
