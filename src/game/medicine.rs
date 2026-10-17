@@ -80,6 +80,22 @@ impl Game {
         self.bleed_params.set(Some(p));
         p
     }
+
+    /// How strongly the overseer feels its wounded (the `Wounded` sense):
+    /// nothing for one, rising from two dwarves bleeding or abed with
+    /// wounds, full at five.
+    pub(super) fn wounded_sense(&self) -> f64 {
+        let n = self
+            .dwarves
+            .iter()
+            .filter(|d| d.alive && (d.body.bleed_rate() > 0 || matches!(d.task, Task::Rest { .. }) && d.body.needs_rest()))
+            .count();
+        if n < 2 {
+            0.0
+        } else {
+            ((n - 1) as f64 / 4.0).min(1.0)
+        }
+    }
 }
 
 /// What a patient still needs, most urgent first.
@@ -305,6 +321,23 @@ mod tests {
         let (treated, blood_treated) = bleed_out(true);
         assert!(treated < untreated, "sutured after {} ticks, untreated stopped after {}", treated, untreated);
         assert!(blood_treated > blood_untreated, "treated lost more blood ({} vs {})", blood_treated, blood_untreated);
+    }
+
+    #[test]
+    fn the_overseer_feels_its_bleeding_wounded() {
+        let mut g = Game::new(5);
+        g.set_overseer(Some(crate::game::Style::Steady));
+        let wounded = |g: &Game| g.overseer_brain().unwrap().senses.iter().find(|s| s.0 == crate::game::ambitions::Sense::Wounded).unwrap().1;
+        g.dwarves[0].body.wound(Part::LeftLeg, 9, true);
+        assert_eq!(wounded(&g), 0.0, "one cut leg is no worry");
+        for i in 1..5 {
+            g.dwarves[i].body.wound(Part::LowerBody, 12, true);
+        }
+        assert_eq!(wounded(&g), 1.0);
+        for d in g.dwarves.iter_mut() {
+            d.body.suture();
+        }
+        assert_eq!(wounded(&g), 0.0, "sutured, nobody is bleeding");
     }
 
     #[test]

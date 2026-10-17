@@ -308,14 +308,12 @@ impl Body {
     }
 
     /// The part bleeding fastest, if any.
-    #[allow(dead_code)] // (first aid, S02 P7)
     pub fn worst_bleed(&self) -> Option<Part> {
         PARTS.iter().copied().filter(|p| self.bleeds[p.idx()] > 0).max_by_key(|p| (self.bleeds[p.idx()], -(p.idx() as i32)))
     }
 
     /// Game ticks until this body bleeds to death if it lies still and
     /// nobody helps; None if it isn't bleeding or will clot first.
-    #[allow(dead_code)] // (first aid, S02 P7)
     pub fn ticks_to_death(&self) -> Option<u64> {
         if self.dead || self.bleed_rate() == 0 {
             return None;

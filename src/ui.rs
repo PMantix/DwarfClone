@@ -1690,7 +1690,9 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
         v.push(Line::default());
         v.push(header("Health"));
         if d.body.bleeding > 0 {
-            v.push(plain(format!("  Bleeding (blood {}%)", d.body.blood * 100 / d.body.max_blood), Color::Rgb(255, 60, 60)));
+            let from = d.body.worst_bleed().map_or(String::new(), |p| format!(" from the {}", p.name()));
+            let help = if d.body.ticks_to_death().is_some() { ", needs help" } else { "" };
+            v.push(plain(format!("  Bleeding{} (blood {}%{})", from, d.body.blood * 100 / d.body.max_blood, help), Color::Rgb(255, 60, 60)));
         }
         if d.body.infected() {
             v.push(plain("  An infected wound".into(), Color::Rgb(220, 160, 60)));
@@ -4488,7 +4490,9 @@ mod tests {
         app.game.toggle_soldier(id);
         app.game.dwarves[0].body.wound(crate::body::Part::LeftArm, 15, true);
         app.mode = Mode::Unit { id, sel: 2 };
-        println!("{}", dump(&mut app, 130, 50));
+        let card = dump(&mut app, 130, 50);
+        println!("{}", card);
+        assert!(card.contains("Bleeding from the left arm"), "the card should say where the dwarf bleeds");
         let s1 = app.game.new_squad();
         let s2 = app.game.new_squad();
         let (a, b) = (app.game.dwarves[1].id, app.game.dwarves[2].id);

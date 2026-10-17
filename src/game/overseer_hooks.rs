@@ -26,8 +26,9 @@ impl Game {
     /// ambition with weight × strength, so a weight of 1.3 is as strong a pull
     /// as `Besieged` has on Fortify. A sense not listed fires at 0.
     pub(super) fn extra_senses(&self, o: &Overseer) -> Vec<(Sense, f64, Vec<(Ambition, f64)>)> {
-        let senses = Vec::new();
+        let mut senses = Vec::new();
         // M1 (survival): Lesson, Prowlers, Unarmed, Wounded.
+        senses.push((Sense::Wounded, self.wounded_sense(), vec![(Ambition::Provision, 0.6), (Ambition::Venture, -1.5)]));
         let _ = o;
         senses
     }
