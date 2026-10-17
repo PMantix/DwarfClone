@@ -281,7 +281,9 @@ impl Game {
                 d.misery = d.misery.saturating_sub(25);
             }
             if d.misery >= 2 * DAY as u32 && !d.insane {
-                self.go_insane(d, "has been stricken by melancholy");
+                if !self.goes_catatonic(d) {
+                    self.go_insane(d, "has been stricken by melancholy");
+                }
                 return;
             }
         }

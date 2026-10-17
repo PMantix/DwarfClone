@@ -1359,7 +1359,7 @@ impl Game {
         }
         if d.tantrum > 0 {
             d.tantrum -= 1;
-        } else if d.stress >= d.tantrum_threshold() {
+        } else if !d.insane && d.stress >= d.tantrum_threshold() {
             if self.goes_berserk(d) {
                 return;
             }
@@ -2289,8 +2289,15 @@ impl Game {
             Task::Slaughter { creature } => self.do_slaughter(d, creature),
             Task::Punish { culprit } => self.do_punish(d, culprit),
             // Not given out yet: the items that use them add their own arms.
-            Task::FirstAid { .. } | Task::Rescue { .. } | Task::Press | Task::Catatonic | Task::Coax { .. } => self.release_task(d),
+            Task::FirstAid { .. } | Task::Rescue { .. } | Task::Press => self.release_task(d),
             Task::Berserk => self.do_berserk(d),
+            // (They lie where they are: breakdowns.rs.)
+            Task::Catatonic => {
+                if d.fit == breakdowns::Fit::None {
+                    self.release_task(d);
+                }
+            }
+            Task::Coax { patient } => self.do_coax(d, patient),
             Task::Wander { target } => match self.travel(d, target) {
                 Travel::Moving => {}
                 Travel::Arrived => d.task = Task::Idle,

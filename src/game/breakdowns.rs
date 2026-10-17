@@ -53,9 +53,14 @@ impl Game {
 
     /// Daily: madness shifts. Raving can burn out into melancholy (from which
     /// the old lifting applies), and melancholy that festers turns to raving.
+    /// The catatonic may be brought back by those who sat with them.
     pub(super) fn shift_daily(&mut self) {
         let tick = self.tick;
         for i in 0..self.dwarves.len() {
+            if self.dwarves[i].alive && matches!(self.dwarves[i].fit, Fit::Catatonic { .. }) {
+                self.catatonia_daily(i);
+                continue;
+            }
             let d = &self.dwarves[i];
             if !d.alive || !d.insane || d.fit != Fit::None || tick < d.mad_since + 10 * DAY {
                 continue;
@@ -95,8 +100,13 @@ fn dist2(a: Pos, b: Pos) -> i32 {
 impl Game {
     /// In `update_dwarf`, after the psyche: a dwarf in a fit spends the turn
     /// on it (true). Also lets go of any job a mad dwarf picked up while
-    /// sipping, which they would otherwise hold forever.
+    /// sipping, which they would otherwise hold forever, and ends any
+    /// tantrum (the mad don't throw them; one left running would go on
+    /// punching people for ever).
     pub(super) fn in_a_fit(&mut self, d: &mut Dwarf) -> bool {
+        if d.insane {
+            d.tantrum = 0;
+        }
         match d.fit {
             Fit::None => {
                 if d.insane && !matches!(d.task, Task::Idle | Task::Wander { .. } | Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Eat { .. }) {
@@ -116,7 +126,22 @@ impl Game {
                 self.do_berserk(d);
                 true
             }
-            Fit::Catatonic { .. } => true,
+            Fit::Catatonic { .. } => {
+                // Only desperate thirst or hunger stirs them, as it does the mad.
+                let sipping = matches!(d.task, Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Eat { .. });
+                if sipping || d.thirst > THIRSTY + 6000 || d.hunger > HUNGRY + 12000 {
+                    if d.task == Task::Catatonic {
+                        d.task = Task::Idle;
+                    }
+                    return false;
+                }
+                if d.task != Task::Catatonic {
+                    self.release_task(d);
+                    d.task = Task::Catatonic;
+                }
+                d.path.clear();
+                true
+            }
         }
     }
 
@@ -388,6 +413,173 @@ impl Game {
     }
 }
 
+impl Game {
+    /// Where misery would make melancholy: now and then (more often for an
+    /// anxious dwarf) it is catatonia instead, and they lie where they are
+    /// (true). Called from `psyche_tick`.
+    pub(super) fn goes_catatonic(&mut self, d: &mut Dwarf) -> bool {
+        let mut p = self.knob("catatonia.chance", 0.15);
+        if d.personality.anxiety > 25 {
+            p += self.knob("catatonia.anxious", 0.1);
+        }
+        if !self.rng.chance(p) {
+            return false;
+        }
+        self.go_insane(d, "has gone catatonic, and lies where they are");
+        d.fit = Fit::Catatonic { since: self.tick, coaxed: 0 };
+        d.task = Task::Catatonic;
+        d.path.clear();
+        self.count("catatonic", 1);
+        true
+    }
+
+    /// The day's sittings a catatonic dwarf can take in.
+    fn coax_cap(&self) -> u32 {
+        self.knob("coax.per_day", 2.0) as u32
+    }
+
+    /// Catatonic, and nobody sitting with them yet (or on the way).
+    fn wants_coaxing(&self, p: &Dwarf) -> bool {
+        p.alive
+            && matches!(p.fit, Fit::Catatonic { coaxed, .. } if coaxed < self.coax_cap())
+            && !self.dwarves.iter().any(|o| o.task == (Task::Coax { patient: p.id }))
+    }
+
+    /// Daily for each catatonic dwarf: each sitting with a friend gives a
+    /// chance to bring them back (and a little time heals on its own).
+    fn catatonia_daily(&mut self, i: usize) {
+        let Fit::Catatonic { since, coaxed } = self.dwarves[i].fit else { return };
+        let p = self.knob("coax.chance", 0.25) * coaxed as f64 + self.knob("catatonia.lift", 0.03);
+        let back = self.rng.chance(p.min(1.0));
+        let tick = self.tick;
+        let d = &mut self.dwarves[i];
+        d.fit = Fit::Catatonic { since, coaxed: 0 };
+        if !back {
+            return;
+        }
+        d.fit = Fit::None;
+        d.insane = false;
+        d.melancholy = false;
+        d.misery = 0;
+        if d.task == Task::Catatonic {
+            d.task = Task::Idle;
+        }
+        d.think("came back to the world", -40, tick);
+        let (id, name, spouse) = (d.id, d.name.clone(), d.spouse);
+        let friend = self
+            .dwarves
+            .iter()
+            .filter(|o| o.alive && o.id != id && (spouse == Some(o.id) || o.regard(id) >= 30))
+            .max_by_key(|o| o.regard(id) + if spouse == Some(o.id) { 100 } else { 0 })
+            .map(|o| o.name.clone());
+        self.count("mended", 1);
+        self.count("catatonia.mended", 1);
+        let pos = self.dwarves[i].pos;
+        match friend.filter(|_| coaxed > 0) {
+            Some(f) => {
+                self.msg(&format!("{} sat with {} until they spoke again.", f, name), (140, 190, 255));
+                self.spotlight("Spoke again", &format!("{} sat with {} until they spoke again.", f, name), Some(pos), (140, 190, 255));
+                let fort = self.fortress_name.clone();
+                self.legend(format!("{} sat with {} at {} until they spoke again.", f, name, fort));
+            }
+            None => self.msg(&format!("{} has spoken again.", name), (140, 190, 255)),
+        }
+    }
+
+    /// A finder: a spouse or friend (regard >= 30) goes and sits with a
+    /// catatonic dwarf.
+    pub(super) fn find_coax(&mut self, d: &mut Dwarf) -> bool {
+        if d.insane || d.fit != Fit::None {
+            return false;
+        }
+        let at: HashMap<Pos, u32> = self
+            .dwarves
+            .iter()
+            .filter(|p| (d.spouse == Some(p.id) || d.regard(p.id) >= 30) && self.wants_coaxing(p))
+            .map(|p| (p.pos, p.id))
+            .collect();
+        if at.is_empty() {
+            return false;
+        }
+        let beside = |q: Pos| at.keys().any(|p| adjacent(*p, q));
+        let Some((stand, path)) = path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, beside) else { return false };
+        let Some((_, &patient)) = at.iter().find(|(p, _)| adjacent(**p, stand)) else { return false };
+        d.task = Task::Coax { patient };
+        Self::set_path(d, path);
+        true
+    }
+
+    /// Sitting with a catatonic friend: walk over, then stay a while.
+    pub(super) fn do_coax(&mut self, d: &mut Dwarf, patient: u32) {
+        let Some(p) = self.dwarves.iter().find(|p| p.id == patient && p.alive && matches!(p.fit, Fit::Catatonic { .. })) else {
+            self.release_task(d);
+            return;
+        };
+        let (ppos, pname) = (p.pos, p.name.clone());
+        if !adjacent(ppos, d.pos) {
+            if let Travel::Failed = self.travel(d, ppos) {
+                self.release_task(d);
+                d.idle_cd = 100;
+            }
+            return;
+        }
+        if !Self::labor(d, 200, 0) {
+            return;
+        }
+        d.task = Task::Idle;
+        let tick = self.tick;
+        d.think(&format!("sat with {}, who said nothing", pname), 4, tick);
+        d.satisfy(crate::dwarf::NeedKind::Socialize, 150);
+        self.count("coax", 1);
+        if let Some(p) = self.dwarves.iter_mut().find(|p| p.id == patient) {
+            if let Fit::Catatonic { coaxed, .. } = &mut p.fit {
+                *coaxed += 1;
+            }
+            p.adjust_regard(d.id, 5);
+        }
+    }
+
+    /// The overseer's daily round: a sentimental overseer asks a catatonic
+    /// dwarf's closest friend to leave their work and sit with them.
+    pub(super) fn ov_coax(&mut self, o: &mut Overseer) {
+        if !o.has(super::personality::Trait::Sentimental) || self.alert {
+            return;
+        }
+        let tick = self.tick;
+        let lonely: Vec<(u32, String, Option<u32>)> =
+            self.dwarves.iter().filter(|p| self.wants_coaxing(p)).map(|p| (p.id, p.name.clone(), p.spouse)).collect();
+        for (patient, pname, spouse) in lonely {
+            let friend = self
+                .dwarves
+                .iter()
+                .enumerate()
+                .filter(|(_, f)| {
+                    f.alive
+                        && f.id != patient
+                        && !f.insane
+                        && f.fit == Fit::None
+                        && !f.is_child()
+                        && !f.task.is_need()
+                        && f.mood.is_none()
+                        && f.jailed_until == 0
+                        && (spouse == Some(f.id) || f.regard(patient) >= 30)
+                })
+                .max_by_key(|(_, f)| f.regard(patient) + if spouse == Some(f.id) { 100 } else { 0 })
+                .map(|(j, f)| (j, f.name.clone()));
+            let Some((j, fname)) = friend else { continue };
+            let mut f = std::mem::take(&mut self.dwarves[j]);
+            self.release_task(&mut f);
+            f.task = Task::Coax { patient };
+            f.path.clear();
+            self.dwarves[j] = f;
+            self.count("coax.asked", 1);
+            if !o.notes.iter().rev().take(8).any(|(_, n)| n.contains(&pname) && n.contains("sit with")) {
+                Self::note_ov(o, tick, format!("Asked {} to sit with {}, who lies unspeaking.", fname, pname));
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -542,5 +734,123 @@ mod tests {
         }
         let d = g.dwarves.iter().find(|d| d.id == b).unwrap();
         assert!(matches!(d.task, Task::Wander { .. }), "the bystander should run: {:?}", d.task);
+    }
+
+    /// A working well near the wagon (as in water.rs's tests).
+    fn built_well(g: &mut Game) -> Pos {
+        let e = g.embark;
+        for r in 2..20 {
+            for dx in -r..=r {
+                let p = e.offset(dx, r, 0);
+                let (a, b) = (p.down(), p.down().down());
+                let floor_ok = g.world.walkable(p) && g.world.t(p).building == 0 && !g.items.values().any(|it| it.pos == p);
+                if floor_ok && g.world.solid(a) && g.world.solid(b) && g.world.walkable(p.offset(-1, 0, 0)) {
+                    g.world.t_mut(p).kind = TileKind::Open;
+                    g.world.t_mut(a).kind = TileKind::Open;
+                    g.world.t_mut(a).water = 7;
+                    g.water_cells = None;
+                    assert!(g.place_building(BuildingKind::Well, p));
+                    let id = g.world.t(p).building;
+                    let b = g.buildings.get_mut(&id).unwrap();
+                    b.built = true;
+                    b.mat = Mat::Granite;
+                    return p;
+                }
+            }
+        }
+        panic!("nowhere to dig a well");
+    }
+
+    #[test]
+    fn a_catatonic_dwarf_is_coaxed_back_and_given_water() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        built_well(&mut g);
+        let e = g.embark;
+        g.spawn_item(ItemKind::Bucket, Mat::Wood, e);
+        for d in g.dwarves.iter_mut() {
+            d.labors[Labor::Medicine.idx()] = false;
+        }
+        g.dwarves[2].labors[Labor::Medicine.idx()] = true;
+        // Dwarf 0 breaks down into catatonia; dwarf 1 is their friend.
+        g.knobs.set.insert("catatonia.chance".into(), 1.0);
+        let (id, friend) = (g.dwarves[0].id, g.dwarves[1].id);
+        g.dwarves[1].relations.retain(|r| r.0 != id);
+        g.dwarves[1].relations.push((id, 60));
+        let mut d = std::mem::take(&mut g.dwarves[0]);
+        assert!(g.goes_catatonic(&mut d));
+        assert!(d.insane && !d.melancholy && d.task == Task::Catatonic);
+        assert_eq!(breakdown_mood(&d).map(|m| m.0), Some("Catatonic"));
+        d.thirst = THIRSTY / 2 + 50;
+        let at = d.pos;
+        g.dwarves[0] = d;
+        let mut back = None;
+        for t in 0..5 * DAY {
+            g.step();
+            let d = g.dwarves.iter_mut().find(|d| d.id == id).unwrap();
+            d.hunger = 0;
+            if d.fit == Fit::None {
+                back = Some(t);
+                break;
+            }
+            assert_eq!(d.pos, at, "a catatonic dwarf doesn't move");
+            assert!(d.alive);
+        }
+        assert!(back.is_some(), "still catatonic after five days");
+        let d = g.dwarves.iter().find(|d| d.id == id).unwrap();
+        assert!(!d.insane, "back to themselves");
+        let name = d.name.clone();
+        assert!(g.log.iter().any(|l| l.text.contains("bringing water for") && l.text.contains(&name)), "no doctor brought water");
+        let fname = g.dwarves.iter().find(|d| d.id == friend).unwrap().name.clone();
+        assert!(g.log.iter().any(|l| l.text.contains("until they spoke again") && l.text.contains(&fname)), "the friend didn't bring them back");
+        assert!(g.annals.counters.get("coax").copied().unwrap_or(0) >= 1);
+        assert_eq!(g.annals.counters.get("catatonic"), Some(&1));
+        assert_eq!(g.annals.counters.get("mended"), Some(&1));
+    }
+
+    #[test]
+    fn a_sentimental_overseer_sends_a_friend() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        g.knobs.set.insert("catatonia.chance".into(), 1.0);
+        let id = g.dwarves[0].id;
+        g.dwarves[1].relations.retain(|r| r.0 != id);
+        g.dwarves[1].relations.push((id, 40));
+        let mut d = std::mem::take(&mut g.dwarves[0]);
+        assert!(g.goes_catatonic(&mut d));
+        g.dwarves[0] = d;
+        g.alert = false;
+        let mut o = Overseer::new(super::super::Style::Steady);
+        o.traits = vec![super::super::personality::Trait::Cautious];
+        g.ov_coax(&mut o);
+        let sent = |g: &Game| g.dwarves.iter().any(|f| f.task == Task::Coax { patient: id });
+        assert!(!sent(&g), "only a sentimental overseer");
+        o.traits = vec![super::super::personality::Trait::Sentimental];
+        g.ov_coax(&mut o);
+        assert!(sent(&g), "nobody was sent");
+        assert!(o.notes.iter().any(|(_, n)| n.contains("sit with")));
+    }
+
+    #[test]
+    fn a_desperate_catatonic_dwarf_stirs_to_drink_and_throws_no_tantrum() {
+        let mut g = Game::new(11);
+        g.creatures.retain(|_, c| c.tame);
+        g.knobs.set.insert("catatonia.chance".into(), 1.0);
+        let mut d = std::mem::take(&mut g.dwarves[0]);
+        assert!(g.goes_catatonic(&mut d));
+        d.thirst = THIRSTY + 7000;
+        d.hunger = 0;
+        d.tantrum = 900;
+        d.stress = 3000;
+        let id = d.id;
+        g.dwarves[0] = d;
+        for _ in 0..600 {
+            g.step();
+            let d = g.dwarves.iter().find(|d| d.id == id).unwrap();
+            assert_eq!(d.tantrum, 0, "a mad dwarf keeps a tantrum going");
+        }
+        let d = g.dwarves.iter().find(|d| d.id == id).unwrap();
+        assert!(d.alive && d.thirst < 1000, "never drank (thirst {}, task {:?})", d.thirst, d.task);
+        assert!(matches!(d.fit, Fit::Catatonic { .. }) || !d.insane);
     }
 }

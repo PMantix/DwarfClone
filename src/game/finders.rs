@@ -12,6 +12,7 @@ pub(super) const FINDERS: &[(&str, Finder)] = &[
     ("punishment", |g, d| g.find_punishment(d)),
     ("lever", |g, d| g.find_lever_pull(d)),
     ("patient", |g, d| d.has(Labor::Medicine) && g.find_patient(d)),
+    ("coax", |g, d| g.find_coax(d)),
     ("slaughter", |g, d| d.has(Labor::Butchery) && g.find_slaughter(d)),
     ("burial", |g, d| d.has(Labor::Hauling) && g.find_burial(d)),
     ("construct", |g, d| d.has(Labor::Building) && (g.find_construct(d) || g.find_build_tile(d))),
