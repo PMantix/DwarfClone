@@ -945,6 +945,7 @@ impl Game {
         if o.style == Style::Reckless {
             return;
         }
+        self.ov_quarry(o);
         let base = o.base.unwrap();
         // The gate: a door on each row of the two-wide corridor. It isn't a
         // gate until both are there, and a door broken down is hung again.
@@ -1010,6 +1011,83 @@ impl Game {
             if n > 0 {
                 o.done.push("traps".into());
                 Self::note(o, self.tick, format!("Set {} cage traps in the entrance corridor.", n));
+            }
+        }
+    }
+
+    /// Plain stone for the gate's mechanisms. A fort whose halls are cut in
+    /// soil, ore or coal has none to make them from, and its drawbridge never
+    /// comes: until the lever is linked, keep a few boulders of it in hand,
+    /// quarried where it shows beside the halls, or else down the inner stair
+    /// at the first layer of stone.
+    fn ov_quarry(&mut self, o: &mut Overseer) {
+        if o.did("linked") {
+            return;
+        }
+        let base = o.base.unwrap();
+        let loose = self.items.values().filter(|it| it.kind == ItemKind::Boulder && it.mat.is_building_stone() && it.free()).count();
+        if loose + self.stock_of(ItemKind::Mechanism) >= self.knob("gate.stone", 4.0) as usize {
+            return;
+        }
+        let stone = |t: &crate::world::Tile| t.kind == TileKind::Wall && t.mat.is_building_stone() && !t.aquifer && t.built_from.is_none();
+        // Some already being cut: wait for it.
+        if self.designations.iter().any(|p| (base.z - 4..=base.z).contains(&p.z) && {
+            let t = self.world.t(*p);
+            t.desig == Desig::Dig && stone(t)
+        }) {
+            return;
+        }
+        // Stone in sight, beside ground already dug (the main level, or the
+        // quarry below it).
+        let mut seen: Vec<(i32, Pos)> = Vec::new();
+        for dz in -4..=0 {
+            for dy in -14..=14 {
+                for dx in -14..=30 {
+                    let p = base.offset(dx, dy, dz);
+                    let Some(t) = self.world.get(p) else { continue };
+                    let beside = || DIRS8.iter().any(|&(ex, ey)| self.world.get(p.offset(ex, ey, 0)).map_or(false, |q| q.dug && !q.kind.solid() && q.water <= 3));
+                    if t.revealed && t.desig == Desig::None && stone(t) && beside() {
+                        seen.push((dx.abs() + dy.abs() - dz * 4, p));
+                    }
+                }
+            }
+        }
+        if !seen.is_empty() {
+            seen.sort();
+            for &(_, p) in seen.iter().take(6) {
+                self.designate(p, p, Desig::Dig);
+            }
+            self.count("gate.quarry", 1);
+            if !o.did("quarry") {
+                o.done.push("quarry".into());
+                Self::note(o, self.tick, "Had plain stone quarried beside the halls, for the gate's mechanisms.".into());
+            }
+            return;
+        }
+        // None: sink the inner stair to the first layer of stone (not into an
+        // aquifer, nor into the caverns) and cut a pocket there.
+        if o.did("quarry") {
+            return;
+        }
+        let (sx, sy) = (base.x + 9, base.y + 1);
+        let roof = self.world.caverns.iter().map(|c| c.1).max().unwrap_or(0);
+        let wet = |g: &Game, p: Pos| g.world.get(p).map_or(true, |t| t.aquifer || t.water > 0);
+        for dz in 1..=4 {
+            let z = base.z - dz;
+            if z < 3 || z <= roof + 1 || wet(self, Pos::new(sx, sy, z)) {
+                return;
+            }
+            let pocket: Vec<Pos> = box_iter(Pos::new(sx - 2, sy - 1, z), Pos::new(sx + 2, sy + 1, z)).collect();
+            if pocket.iter().any(|&p| wet(self, p)) {
+                continue;
+            }
+            if pocket.iter().filter(|&&p| stone(self.world.t(p))).count() >= 4 {
+                self.designate(pocket[0], *pocket.last().unwrap(), Desig::Dig);
+                self.designate(Pos::new(sx, sy, base.z), Pos::new(sx, sy, z), Desig::StairUD);
+                o.done.push("quarry".into());
+                self.count("gate.quarry", 1);
+                Self::note(o, self.tick, format!("No plain stone in the halls for the gate's mechanisms: sank the inner stair {} levels to quarry some.", dz));
+                return;
             }
         }
     }
@@ -1954,5 +2032,19 @@ mod tests {
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
         assert_eq!(deaths, vec![(158085, "Nothar Alehold"), (158570, "Grenda Anvilbrew"), (159678, "Dorna Stonebeard"), (159880, "Odda Stonefist")]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
+    }
+
+    /// The gate is whole, its drawbridge linked to the lever, before the
+    /// first army can come (day 168), whatever rock the halls are cut in:
+    /// 5000's main level is clay, 5003's gatehouse hematite and coal, and
+    /// neither had plain stone for the mechanisms until the overseer
+    /// quarried it.
+    #[test]
+    fn the_gate_is_whole_by_the_first_siege() {
+        for (seed, style) in [(5000, Style::Steady), (5003, Style::Steady), (5000, Style::Warlord), (5003, Style::Builder), (5000, Style::Delver)] {
+            let g = trial_game(seed, style, 168);
+            let o = g.overseer.as_ref().unwrap();
+            assert!(o.did("linked"), "{} {}: no linked drawbridge by day 168 (done {:?})", style.name(), seed, o.done);
+        }
     }
 }
