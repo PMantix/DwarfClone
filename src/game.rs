@@ -68,6 +68,7 @@ pub mod knobs;
 mod schedule;
 mod finders;
 mod overseer_hooks;
+mod wildlife;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
