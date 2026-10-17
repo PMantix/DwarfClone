@@ -634,6 +634,12 @@ pub struct Creature {
     /// The hunting pack it came with (the first of them's id), 0 if none.
     #[serde(default)]
     pub pack: u32,
+    /// The dwarf it shadows, waiting for them to be alone.
+    #[serde(default)]
+    pub stalk: Option<u32>,
+    /// Hurt, it keeps its distance until this tick (0: never hurt yet).
+    #[serde(default)]
+    pub wary_until: u64,
 }
 
 fn yes() -> bool {
@@ -679,6 +685,8 @@ impl Creature {
             breathes_fire: false,
             breath_cd: 0,
             pack: 0,
+            stalk: None,
+            wary_until: 0,
         }
     }
 

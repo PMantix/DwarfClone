@@ -1022,6 +1022,7 @@ impl Game {
             self.dragon_hoard(&c);
         }
         self.pet_died(&c);
+        self.pack_breaks(&c);
         if let Some(f) = c.figure {
             let label = c.title();
             let kind = self.overworld.figures.get(f as usize).map_or("beast".to_string(), |x| x.kind.clone());
@@ -1119,6 +1120,7 @@ impl Game {
             c.path.clear();
             self.msg(&format!("The wounded {} flees!", info.name), (160, 230, 160));
         }
+        self.wild_nerve(c);
         c.attack_cd = c.attack_cd.saturating_sub(1);
         c.breath_cd = c.breath_cd.saturating_sub(1);
         c.move_cd = c.move_cd.saturating_sub(1);
