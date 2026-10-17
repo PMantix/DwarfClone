@@ -290,6 +290,69 @@ impl Game {
         s
     }
 
+    /// A besieger (in its think, every 15 ticks or so) goes to free one of
+    /// its own from a cage it can reach, and works at the bars for about 250
+    /// ticks; the captive comes out to fight again. Returns true while it's
+    /// busy at that. It turns on a dwarf who comes close instead.
+    pub(super) fn rescue_target(&mut self, c: &mut Creature, dwarves: &[(u32, Pos)]) -> bool {
+        if c.legendary() || c.leaving || dwarves.iter().any(|(_, p)| super::combat::near(*p, c.pos, 2)) {
+            return false;
+        }
+        let Some(civ) = self.annals.sieges.iter().rev().find(|s| s.ended.is_none()).and_then(|s| s.civ) else { return false };
+        let cages: Vec<(usize, Pos)> = self
+            .captives
+            .iter()
+            .enumerate()
+            .filter(|(_, k)| k.caged() && k.civ == Some(civ))
+            .filter_map(|(i, k)| self.items.get(&k.cage).filter(|it| it.label.is_some() && it.carried_by.is_none()).map(|it| (i, it.pos)))
+            .collect();
+        if cages.is_empty() {
+            return false;
+        }
+        let by = |q: Pos, p: Pos| q == p || super::combat::adjacent(q, p);
+        // At the bars: work them loose.
+        if let Some(&(i, at)) = cages.iter().find(|(_, p)| by(c.pos, *p)) {
+            c.path.clear();
+            c.move_cd = 16;
+            c.bash_work += 15;
+            if c.bash_work >= 250 {
+                c.bash_work = 0;
+                self.free_captive(c, i, at);
+            }
+            return true;
+        }
+        // On the way already.
+        if c.path.first().map_or(false, |&dest| cages.iter().any(|(_, p)| by(dest, *p))) {
+            return true;
+        }
+        let mover = c.species.info().mover;
+        if let Some((_, path)) = path::search(&self.world, c.pos, SEARCH_LIMIT, mover, |q| cages.iter().any(|(_, p)| by(q, *p))) {
+            c.path = path.into_iter().rev().collect();
+            c.target = None;
+            c.bash = None;
+            c.bash_work = 0;
+            return true;
+        }
+        false
+    }
+
+    /// `c` has broken captive `i` out of the cage at `at`: they rejoin the siege.
+    fn free_captive(&mut self, c: &Creature, i: usize, at: Pos) {
+        let (title, _, _) = self.empty_cage(i, Fate::Escaped);
+        let k = self.captives[i].clone();
+        let id = self.spawn_creature(k.species, at, c.leave_tick.saturating_sub(self.tick));
+        if let Some(n) = self.creatures.get_mut(&id) {
+            n.siege = true;
+            n.label = Some(k.name.clone());
+        }
+        self.count("escaped", 1);
+        let text = format!("The {} has freed {} from the cage!", c.name(), title);
+        self.msg(&text, (255, 120, 80));
+        if k.general {
+            self.spotlight("A general set loose", &text, Some(at), (255, 120, 80));
+        }
+    }
+
     /// The captives still in their cages.
     pub fn caged(&self) -> impl Iterator<Item = &Captive> {
         self.captives.iter().filter(|c| c.caged())
@@ -525,6 +588,33 @@ mod tests {
         assert_eq!(g.captives[0].fate, Fate::Ransomed);
         let gold: u32 = g.items.values().filter(|it| it.kind == ItemKind::Bar && it.mat == Mat::Gold).map(|it| it.value()).sum();
         assert!(gold >= 900 && g.items.values().filter(|it| it.kind == ItemKind::Bar && it.mat == Mat::Gold).count() > gold0, "a general's ransom: ☼{}", gold);
+    }
+
+    #[test]
+    fn besiegers_free_their_own() {
+        let (mut g, tid) = siege_and_trap(21, 4);
+        let gob = g.creatures.values().find(|c| c.siege && c.general.is_none()).unwrap().id;
+        g.spring_trap(tid, gob);
+        let cage = g.captives[0].cage;
+        let at = g.items[&cage].pos;
+        // One goblin left, a little way off, and nobody else about.
+        let keep = g.creatures.values().find(|c| c.siege).unwrap().id;
+        g.creatures.retain(|id, _| *id == keep);
+        let start = (2..8).map(|r| at.offset(r, 0, 0)).find(|p| g.world.passable(*p, crate::world::Mover::Goblin)).unwrap_or(at);
+        g.creatures.get_mut(&keep).unwrap().pos = start;
+        let saved: Vec<Dwarf> = std::mem::take(&mut g.dwarves);
+        for _ in 0..400 {
+            g.update_creatures();
+            g.tick += 1;
+        }
+        g.dwarves = saved;
+        let k = &g.captives[0];
+        assert_eq!(k.fate, Fate::Escaped, "the goblin should have broken them out");
+        assert!(g.items[&cage].label.is_none());
+        assert_eq!(g.creatures.values().filter(|c| c.siege && c.alive).count(), 2, "two besiegers now");
+        assert!(g.creatures.values().any(|c| c.label.as_deref() == Some(k.name.as_str())));
+        assert!(g.log.iter().any(|l| l.text.contains("from the cage")));
+        assert!(g.cage_lines().is_empty());
     }
 
     #[test]

@@ -1373,6 +1373,10 @@ impl Game {
                     return;
                 }
             }
+            // One of theirs in a cage: break them out.
+            if !self.captives.is_empty() && self.rescue_target(c, &dwarves) {
+                return;
+            }
             if dwarves.is_empty() {
                 c.think_cd = 200;
                 return;
