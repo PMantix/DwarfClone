@@ -14,6 +14,7 @@ impl Game {
         self.ov_captives(o);
         self.ov_coax(o);
         self.ov_readiness(o);
+        self.ov_water(o);
         let _ = o;
     }
 
@@ -22,6 +23,8 @@ impl Game {
     pub(super) fn ov_alert_hooks(&mut self, o: &mut Overseer) {
         // M1 (survival):
         self.ov_berserk(o);
+        self.ov_cistern_gate(o);
+        let _ = o;
     }
 
     /// Senses beyond the brain's own: each is (sense, how strongly it fires

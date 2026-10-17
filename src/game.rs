@@ -72,6 +72,7 @@ mod wildlife;
 pub mod captives;
 pub mod breakdowns;
 pub mod readiness;
+mod cistern;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -418,6 +419,9 @@ pub struct Game {
     /// The bleed knobs, read once (`bleed_params`).
     #[serde(skip)]
     bleed_params: std::cell::Cell<Option<crate::body::BleedParams>>,
+    /// Wells being sunk and cisterns being filled (`cistern.rs`).
+    #[serde(default)]
+    pub waterworks: cistern::Waterworks,
     /// A new page has been written and should be shown.
     #[serde(skip)]
     pub chronicle_ready: bool,
@@ -552,6 +556,7 @@ impl Game {
             chronicles: Vec::new(),
             knobs: Default::default(),
             bleed_params: Default::default(),
+            waterworks: Default::default(),
             chronicle_ready: false,
             creatures: BTreeMap::new(),
             station: None,
@@ -1818,8 +1823,12 @@ impl Game {
             })
         };
         if let Some((stand, path)) = path::search(w, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| water_near(p)) {
+            let at_well = wells.iter().any(|q| q.z == stand.z && (q.x - stand.x).abs() <= 1 && (q.y - stand.y).abs() <= 1);
             d.task = Task::DrinkWater { stand };
             Self::set_path(d, path);
+            if at_well {
+                self.count("well_drinks", 1);
+            }
             return true;
         }
         self.trouble(troubles::Lack::Drink);
