@@ -24,8 +24,18 @@ pub enum Biome {
     Glacier,
 }
 
-/// How a biome shapes the embark region.
+/// A world cell near the site, as the embark map sees it.
 #[derive(Clone, Copy, Debug)]
+pub struct Around {
+    pub x: i32,
+    pub y: i32,
+    pub biome: Biome,
+    pub elev: u8,
+    pub evil: bool,
+}
+
+/// How a biome shapes the embark region.
+#[derive(Clone, Debug)]
 pub struct EmbarkParams {
     /// Multiplier on hill height.
     pub relief: f64,
@@ -43,9 +53,43 @@ pub struct EmbarkParams {
     pub aquifer: u8,
     /// The site's features (`terrain::feat` bits).
     pub features: u32,
+    /// The site's own biome.
+    pub biome: Biome,
+    /// Its world cell, and the cells round it (empty: just the one biome
+    /// everywhere, as before).
+    pub home: (i32, i32),
+    pub around: Vec<Around>,
 }
 
 impl Biome {
+    pub const ALL: [Biome; 13] = [
+        Biome::Ocean,
+        Biome::Mountain,
+        Biome::Hills,
+        Biome::Forest,
+        Biome::Grassland,
+        Biome::Desert,
+        Biome::Tundra,
+        Biome::Swamp,
+        Biome::Jungle,
+        Biome::Taiga,
+        Biome::Savanna,
+        Biome::Badlands,
+        Biome::Glacier,
+    ];
+
+    /// 1 + its place in `ALL` (0 means unknown).
+    pub fn code(self) -> u8 {
+        Biome::ALL.iter().position(|&b| b == self).unwrap_or(0) as u8 + 1
+    }
+
+    pub fn from_code(c: u8) -> Option<Biome> {
+        match (c & 0x7f) as usize {
+            0 => None,
+            i => Biome::ALL.get(i - 1).copied(),
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Biome::Ocean => "ocean",
@@ -88,8 +132,20 @@ impl Biome {
     }
 
     pub fn params(self) -> EmbarkParams {
-        let p = |relief, forest, lake, savagery| EmbarkParams { relief, forest, lake, savagery, minerals: 1.0, size: crate::world::MapSize::MEDIUM, aquifer: 0, features: 0 };
-        match self {
+        let p = |relief, forest, lake, savagery| EmbarkParams {
+            relief,
+            forest,
+            lake,
+            savagery,
+            minerals: 1.0,
+            size: crate::world::MapSize::MEDIUM,
+            aquifer: 0,
+            features: 0,
+            biome: Biome::Grassland,
+            home: (0, 0),
+            around: Vec::new(),
+        };
+        let mut e = match self {
             Biome::Mountain => p(1.6, 0.3, 0.03, 0.3),
             Biome::Hills => p(1.2, 0.7, 0.06, 0.2),
             Biome::Forest => p(0.8, 1.7, 0.08, 0.25),
@@ -103,7 +159,9 @@ impl Biome {
             Biome::Savanna => p(0.4, 0.4, 0.04, 0.3),
             Biome::Badlands => p(1.4, 0.03, 0.0, 0.25),
             Biome::Glacier => p(0.8, 0.0, 0.02, 0.2),
-        }
+        };
+        e.biome = self;
+        e
     }
 }
 
@@ -1021,6 +1079,28 @@ impl Overworld {
         }
     }
 
+    /// Everything the embark map takes from the world: the site's biome and
+    /// features, and the cells round it (their biomes and heights blend in
+    /// toward the map's edges).
+    pub fn embark_params(&self, seed: u64, sx: i32, sy: i32, size: crate::world::MapSize) -> EmbarkParams {
+        let mut p = self.cell(sx, sy).biome.params();
+        p.minerals = self.minerals;
+        p.size = size;
+        p.aquifer = self.aquifer(sx, sy);
+        p.features = self.site_features(seed, sx, sy);
+        p.home = (sx, sy);
+        for dy in -3..=3 {
+            for dx in -3..=3 {
+                let (x, y) = (sx + dx, sy + dy);
+                if x >= 0 && y >= 0 && x < self.w && y < self.h {
+                    let c = self.cell(x, y);
+                    p.around.push(Around { x, y, biome: c.biome, elev: c.elev, evil: c.evil });
+                }
+            }
+        }
+        p
+    }
+
     /// The site's features: its own roll, plus what the world map shows
     /// (a river through the cell, a volcano on it).
     pub fn site_features(&self, seed: u64, x: i32, y: i32) -> u32 {
@@ -1533,6 +1613,14 @@ impl Overworld {
                 };
                 if c.evil {
                     score -= 30;
+                }
+                // The map spreads east and south into the neighbours: a first
+                // fortress wants land there, not the sea.
+                for (dx, dy, cost) in [(1, 0, 14), (0, 1, 14), (1, 1, 14), (-1, 0, 5), (0, -1, 5), (-1, -1, 3), (1, -1, 3), (-1, 1, 3)] {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx < 0 || ny < 0 || nx >= self.w || ny >= self.h || self.cell(nx, ny).biome == Biome::Ocean {
+                        score -= cost;
+                    }
                 }
                 // A river makes a kind first fortress; the frozen far north and south don't.
                 if c.river != 0 {

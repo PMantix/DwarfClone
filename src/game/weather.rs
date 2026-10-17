@@ -147,8 +147,13 @@ impl Game {
             }
             self.snow_lying = true;
         } else if self.snow_lying && season != 3 {
-            for t in self.world.tiles.iter_mut() {
-                t.snow = false;
+            // (A glacier's snow never melts.)
+            let wh = (self.world.w * self.world.h) as usize;
+            let keep: Vec<bool> = (0..wh).map(|i| self.world.biomes.get(i).and_then(|&c| crate::overworld::Biome::from_code(c)) == Some(Biome::Glacier)).collect();
+            for (i, t) in self.world.tiles.iter_mut().enumerate() {
+                if !keep[i % wh] {
+                    t.snow = false;
+                }
             }
             self.snow_lying = false;
         }

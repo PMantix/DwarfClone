@@ -252,6 +252,10 @@ pub struct World {
     /// The seed the land was made from (0 in older saves).
     #[serde(default)]
     pub gen_seed: u64,
+    /// Each column's biome (`Biome::code`, with 0x80 for an evil taint);
+    /// empty in older saves.
+    #[serde(default)]
+    pub biomes: Vec<u8>,
 }
 
 fn default_caverns() -> Vec<(i32, i32)> {
@@ -303,11 +307,20 @@ mod tiles_rle {
 impl World {
     /// A one-cell stand-in used before a fortress exists.
     pub fn empty() -> World {
-        World { w: 1, h: 1, d: 1, tiles: vec![Tile::default()], surface: vec![0], caverns: Vec::new(), restrict: 0, aquifer: 0, origin: (0, 0), base: None, water_level: 0, features: 0, gen_seed: 0 }
+        World { w: 1, h: 1, d: 1, tiles: vec![Tile::default()], surface: vec![0], caverns: Vec::new(), restrict: 0, aquifer: 0, origin: (0, 0), base: None, water_level: 0, features: 0, gen_seed: 0, biomes: Vec::new() }
     }
 
     pub fn in_bounds(&self, p: Pos) -> bool {
         p.x >= 0 && p.y >= 0 && p.z >= 0 && p.x < self.w && p.y < self.h && p.z < self.d
+    }
+
+    /// The biome a column belongs to, and whether evil taints it.
+    pub fn biome_at(&self, x: i32, y: i32) -> Option<(crate::overworld::Biome, bool)> {
+        if x < 0 || y < 0 || x >= self.w || y >= self.h {
+            return None;
+        }
+        let c = *self.biomes.get((y * self.w + x) as usize)?;
+        crate::overworld::Biome::from_code(c).map(|b| (b, c & 0x80 != 0))
     }
 
     pub fn idx(&self, p: Pos) -> usize {

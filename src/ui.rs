@@ -133,11 +133,44 @@ fn hash2(x: i32, y: i32) -> u32 {
 /// spring, autumn colours, bare branches in winter, fallen leaves.
 /// `year_frac` runs 0..1 through the year from the first day of spring.
 fn foliage(w: &World, p: Pos, year_frac: f32, cold: bool) -> Option<(char, Color)> {
+    use crate::overworld::Biome as B;
     let t = w.t(p);
     if !t.revealed || !w.outside(p) {
         return None;
     }
     let h = hash2(p.x * 3 + 11, p.y * 5 + 7);
+    // What grows here depends on the land: cacti in the desert, conifers in
+    // the taiga, acacias on the savanna, dense green in the jungle, and
+    // twisted, sickly growth where evil lies on the land.
+    let (biome, evil) = w.biome_at(p.x, p.y).unwrap_or((B::Forest, false));
+    let cold = cold || biome.cold();
+    let pick = |opts: &[(char, (u8, u8, u8))]| {
+        let (c, col) = opts[(h as usize / 5) % opts.len()];
+        (c, Color::Rgb(col.0, col.1, col.2))
+    };
+    if evil && matches!(t.kind, TileKind::Tree | TileKind::Shrub) {
+        return Some(pick(&[('♣', (120, 95, 125)), ('¥', (105, 85, 110)), ('♠', (95, 80, 100))]));
+    }
+    if t.kind == TileKind::Shrub {
+        return Some(match biome {
+            B::Desert | B::Badlands => pick(&[('*', (170, 150, 90)), ('"', (150, 140, 80))]),
+            B::Swamp => pick(&[('"', (120, 160, 90)), ('|', (110, 140, 80))]),
+            B::Jungle => pick(&[('"', (40, 190, 70)), ('♣', (60, 170, 60))]),
+            B::Tundra | B::Glacier | B::Taiga => pick(&[('"', (110, 140, 120)), ('·', (130, 150, 130))]),
+            B::Savanna => pick(&[('"', (180, 165, 70)), ('*', (160, 150, 70))]),
+            _ => ('"', Color::Rgb(90, 190, 90)),
+        });
+    }
+    if t.kind == TileKind::Tree {
+        match biome {
+            B::Desert | B::Badlands => return Some(pick(&[('Ψ', (90, 165, 95)), ('Ψ', (110, 175, 100)), ('¥', (150, 130, 90))])),
+            B::Jungle => return Some(pick(&[('♠', (25, 120, 45)), ('♣', (35, 165, 55)), ('Γ', (60, 150, 60)), ('♣', (20, 140, 70))])),
+            B::Savanna => return Some(pick(&[('τ', (150, 150, 60)), ('τ', (130, 140, 55)), ('♣', (120, 140, 60))])),
+            B::Taiga | B::Tundra | B::Glacier => return Some(pick(&[('♠', (35, 105, 65)), ('↑', (45, 115, 75)), ('♠', (55, 125, 85))])),
+            B::Swamp => return Some(pick(&[('♣', (60, 120, 90)), ('♣', (70, 110, 70)), ('♠', (50, 100, 80))])),
+            _ => {}
+        }
+    }
     // Each tree turns a little ahead of or behind its neighbours.
     let jitter = (h % 100) as f32 / 100.0 * 0.06 - 0.03;
     let f = (year_frac + jitter).rem_euclid(1.0);
@@ -237,10 +270,28 @@ fn tile_look(w: &World, p: Pos) -> (char, Color, Color) {
         }
         TileKind::Fortification => ('#', mc, BLACK),
         TileKind::Floor => {
+            use crate::overworld::Biome as B;
+            let h = hash2(p.x, p.y);
+            let shade = 0.75 + (h % 7) as f32 * 0.05;
             if t.mat == Mat::Grass {
-                let h = hash2(p.x, p.y);
-                let g = [',', '.', '`', '\'', ','][(h % 5) as usize];
-                let shade = 0.75 + (h % 7) as f32 * 0.05;
+                // Grass by its land: tall and golden on the savanna, short and
+                // pale on the tundra, dark under the pines, sickly where evil lies.
+                let (biome, evil) = w.biome_at(p.x, p.y).unwrap_or((B::Grassland, false));
+                let (glyphs, (r, gg, b)): (&[char], (u8, u8, u8)) = match biome {
+                    B::Savanna => (&['"', '"', ',', '\'', '"'], (190, 172, 80)),
+                    B::Tundra => (&['.', ',', '`', '.', '\''], (150, 166, 142)),
+                    B::Taiga => (&[',', '\'', '.', ',', '`'], (72, 132, 88)),
+                    B::Jungle => (&['"', ',', '"', '\'', '"'], (40, 168, 72)),
+                    B::Swamp => (&['"', ',', '"', '.', '\''], (88, 138, 106)),
+                    B::Mountain | B::Hills => (&[',', '.', '`', '\'', ','], (112, 152, 90)),
+                    B::Desert | B::Badlands => (&['.', ',', '`', '.', '\''], (172, 160, 92)),
+                    _ => (&[',', '.', '`', '\'', ','], (70, 160, 60)),
+                };
+                let (r, gg, b) = if evil { (126, 104, 136) } else { (r, gg, b) };
+                (glyphs[(h % 5) as usize], dim(Color::Rgb(r, gg, b), shade), BLACK)
+            } else if w.outside(p) && matches!(t.mat, Mat::Sand | Mat::Clay) {
+                // Dunes and dry earth under the sky.
+                let g = if t.mat == Mat::Sand { ['.', '~', '.', ',', '~', '.'][(h % 6) as usize] } else { ['.', ',', '.', '`', '.', '_'][(h % 6) as usize] };
                 (g, dim(mc, shade), BLACK)
             } else {
                 ('.', dim(mc, 0.8), BLACK)
@@ -413,7 +464,7 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
             }
             let t = g.world.t(p);
             let (mut ch, mut fg, mut bg) = tile_look(&g.world, p);
-            if (t.kind == TileKind::Tree || t.mat == Mat::Grass) && t.water == 0 {
+            if (t.kind == TileKind::Tree || t.kind == TileKind::Shrub || t.mat == Mat::Grass) && t.water == 0 {
                 if let Some((c, col)) = foliage(&g.world, p, year_frac, cold) {
                     (ch, fg) = (c, col);
                 }
@@ -4219,6 +4270,76 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn show_default_site() {
+        let seed: u64 = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(42);
+        let g = Game::new(seed);
+        let w = &g.world;
+        let e = g.embark;
+        eprintln!("seed {} site {:?} {:?} embark {:?} features {:?}", seed, g.site, g.biome, e, crate::terrain::feature_names(w.features));
+        for y in (e.y - 12).max(0)..(e.y + 12).min(w.h) {
+            let row: String = ((e.x - 30).max(0)..(e.x + 30).min(w.w))
+                .map(|x| {
+                    let s = w.surface_z(x, y);
+                    if (x, y) == (e.x, e.y) { return 'W'; }
+                    let t = w.t(Pos::new(x, y, s));
+                    if t.water > 0 { '≈' } else if t.kind == TileKind::Tree { '♣' } else if t.kind == TileKind::Ramp { '^' } else { char::from_digit(((s - e.z).rem_euclid(10)) as u32, 10).unwrap() }
+                })
+                .collect();
+            eprintln!("  {}", row);
+        }
+    }
+
+    /// One site of each biome, embarked and drawn at the surface by the wagon.
+    #[test]
+    #[ignore]
+    fn show_biome_sites() {
+        use crate::overworld::{Biome, Overworld};
+        let only = std::env::var("BIOME").ok();
+        let ow = Overworld::generate(42);
+        for b in Biome::ALL {
+            if b == Biome::Ocean || only.as_deref().map_or(false, |o| !b.name().contains(o)) {
+                continue;
+            }
+            // A site of this biome, preferably with something different next door.
+            let found = (0..ow.h).flat_map(|y| (0..ow.w).map(move |x| (x, y))).filter(|&(x, y)| ow.embarkable(x, y) && ow.cell(x, y).biome == b).max_by_key(|&(x, y)| {
+                let mut diff = 0;
+                for (dx, dy) in [(1, 0), (0, 1), (1, 1)] {
+                    if x + dx < ow.w && y + dy < ow.h && ow.cell(x + dx, y + dy).biome != b {
+                        diff += 1;
+                    }
+                }
+                diff
+            });
+            let Some((x, y)) = found else { continue };
+            let next: Vec<&str> = [(1, 0), (0, 1), (1, 1)].iter().filter(|&&(dx, dy)| x + dx < ow.w && y + dy < ow.h).map(|&(dx, dy)| ow.cell(x + dx, y + dy).biome.name()).collect();
+            let g = Game::embark_with(42, ow.clone(), x, y, crate::world::MapSize::MEDIUM, &|_, _| {});
+            // Every column's top, seen from above.
+            let w = &g.world;
+            println!("== {} at ({}, {}), east/south/southeast: {:?}", b.name(), x, y, next);
+            for yy in (0..w.h).step_by(2) {
+                let row: String = (0..w.w)
+                    .map(|xx| {
+                        let mut p = Pos::new(xx, yy, w.surface_z(xx, yy));
+                        while p.z + 1 < w.d && w.t(p.up()).water > 0 {
+                            p = p.up();
+                        }
+                        let (mut ch, _, _) = tile_look(w, p);
+                        if let Some((c, _)) = foliage(w, p, 0.3, false) {
+                            ch = c;
+                        }
+                        if w.t(p).water > 0 {
+                            ch = '≈';
+                        }
+                        ch
+                    })
+                    .collect();
+                println!("  {}", row);
+            }
+        }
+    }
+
+    #[test]
+    #[ignore]
     fn show_world_map() {
         let seed = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(42);
         let mut app = App::generated(seed);
@@ -4267,7 +4388,8 @@ mod tests {
     fn render_look_and_status() {
         let mut app = App::generated(42);
         let e = app.game.embark;
-        app.game.add_zone(e.offset(-8, -8, -1), e.offset(-3, -3, 1), ZoneKind::Meeting);
+        let a = app.game.flat_patch(6, 6, 3);
+        app.game.add_zone(a, a.offset(5, 5, 0), ZoneKind::Meeting);
         app.mode = Mode::Normal;
         for _ in 0..3000 {
             app.game.step();
@@ -4315,7 +4437,9 @@ mod tests {
         app.mode = Mode::Zone { tool: ZoneTool::Bedroom, corner: None };
         println!("{}", dump(&mut app, 130, 45));
         // A bedroom handed to a dwarf from look mode.
-        (2..12).map(|i| e.offset(i, -6, 0)).find(|&p| app.game.add_zone(p, p.offset(1, 1, 0), ZoneKind::Bedroom) > 0).unwrap();
+        let _ = e;
+        let b = app.game.flat_patch(2, 2, 2);
+        assert!(app.game.add_zone(b, b.offset(1, 1, 0), ZoneKind::Bedroom) > 0);
         let zid = *app.game.zones.keys().max().unwrap();
         app.cursor = app.game.zones[&zid].tiles[0];
         app.mode = Mode::Look { sel: 0 };

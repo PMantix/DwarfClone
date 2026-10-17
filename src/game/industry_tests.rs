@@ -92,7 +92,8 @@ fn goods_go_into_barrels_and_seeds_get_planted() {
     let mut g = Game::new(78);
     g.creatures.clear();
     let e = g.embark;
-    let n = g.add_zone(e.offset(-4, 3, -1), e.offset(0, 6, 1), ZoneKind::Stockpile(StockFilter::Food));
+    let a = g.flat_patch(5, 4, 3);
+    let n = g.add_zone(a, a.offset(4, 3, 0), ZoneKind::Stockpile(StockFilter::Food));
     assert!(n > 4);
     let mut farm = 0;
     for (dx, dy) in [(-10, -10), (2, -10), (-10, 10), (2, 10)] {

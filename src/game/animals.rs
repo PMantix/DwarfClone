@@ -293,19 +293,9 @@ mod tests {
         let mut g = Game::new(91);
         let e = g.embark;
         // A pasture of open floor beside the wagon.
-        let mut corner = None;
-        'find: for dy in -12..12 {
-            for dx in -12..12 {
-                let a = e.offset(dx, dy, 0);
-                let a = crate::geom::Pos::new(a.x, a.y, g.world.surface_z(a.x, a.y));
-                if g.add_zone(a, a.offset(5, 5, 0), ZoneKind::Pasture) >= 20 {
-                    corner = Some(a);
-                    break 'find;
-                }
-                g.remove_zones(a, a.offset(5, 5, 0));
-            }
-        }
-        corner.expect("no room for a pasture");
+        let _ = e;
+        let a = g.flat_patch(6, 6, 3);
+        assert!(g.add_zone(a, a.offset(5, 5, 0), ZoneKind::Pasture) >= 20, "no room for a pasture");
         // The corner tile itself may not be in the zone (a tree, say); the zone is the newest.
         let zid = *g.zones.keys().max().unwrap();
         let goats: Vec<u32> = g.creatures.values().filter(|c| c.tame && c.species == Species::Goat).map(|c| c.id).collect();

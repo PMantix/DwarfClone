@@ -30,7 +30,12 @@ fn enclosed_rooms_are_detected_and_assigned() {
     let mut g = Game::new(90);
     let e = g.embark;
     // Hollow out a 4x3 chamber deep under the wagon, sealed by rock.
-    let c = Pos::new(e.x, e.y, g.world.surface_z(e.x, e.y) - 6);
+    let solid = |g: &Game, c: Pos| (-1..=3).all(|dy| (-1..=4).all(|dx| g.world.get(c.offset(dx, dy, 0)).map_or(false, |t| t.kind == TileKind::Wall && t.water == 0)));
+    let c = (0..30)
+        .flat_map(|r| [e.offset(r, 0, 0), e.offset(-r, 0, 0), e.offset(0, r, 0), e.offset(0, -r, 0)])
+        .map(|p| Pos::new(p.x, p.y, g.world.surface_z(p.x, p.y) - 6))
+        .find(|&c| solid(&g, c))
+        .expect("solid rock somewhere near");
     for dy in 0..3 {
         for dx in 0..4 {
             let t = g.world.t_mut(c.offset(dx, dy, 0));

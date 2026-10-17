@@ -31,6 +31,10 @@ fn shift_positions(v: &mut serde_json::Value, dx: i64, dy: i64) {
 }
 
 impl Game {
+    fn world_size(&self) -> world::MapSize {
+        world::MapSize { w: self.world.w, h: self.world.h, d: self.world.d }
+    }
+
     /// Add land on each side: (north, east, south, west) tiles.
     pub fn grow_map(&mut self, (n, e, s, w): (i32, i32, i32, i32), report: Report) -> Result<String, String> {
         if n < 0 || e < 0 || s < 0 || w < 0 || n + e + s + w == 0 {
@@ -42,9 +46,11 @@ impl Game {
         }
         report("Surveying the new land", 0.1);
         let (sx, sy) = self.site;
-        let cell = self.overworld.cell(sx, sy).clone();
-        let mut params = cell.biome.params();
-        params.minerals = self.overworld.minerals;
+        let mut params = self.overworld.embark_params(self.world.gen_seed, sx, sy, self.world_size());
+        if self.world.biomes.is_empty() {
+            // An older map, made before the neighbours blended in: keep it one biome.
+            params.around.clear();
+        }
         params.aquifer = self.world.aquifer;
         params.features = self.world.features;
         params.size = world::MapSize { w: new_w, h: new_h, d: self.world.d };

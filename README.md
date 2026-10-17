@@ -106,6 +106,19 @@ into lakes, a few volcanoes smoulder, and the climate runs from ice caps at both
 taiga and tundra to jungle, savanna, desert and badlands in the warm middle. A river on the
 world map flows through the fortress map embarked there, and a volcano brings its crater.
 
+**The land you embark on.** The local map follows the world map. Each biome has its own
+ground and growth: sand dunes and cacti in the desert, red clay and scrub in the badlands, bare
+rock on the mountain heights, snow that never melts on a glacier, short pale grass on the tundra,
+dark grass under the pines of the taiga, tall golden grass and acacias on the savanna, dense
+palms and undergrowth in the jungle, reeds in the swamp, sickly grass and twisted trees where
+evil lies. The rock beneath differs too: granite and marble in the mountains and the cold north,
+sandstone and limestone in the warm lowlands, with thick soil on the plains and almost none on
+the heights. And the neighbours reach in: the map stands on its world cell at the top left and
+runs east and south into the cells beside it, so a coast shows the sea along that side,
+mountains next door lift the land toward them, and a big embark spanning several cells
+blends their biomes along ragged borders. Growing the map (`M`) carries on into the
+neighbours the same way.
+
 **Sites and maps.** Every site has its own features, shown on the world map before you
 embark: a river with fords, a chasm crossed by natural bridges, a volcano with a magma
 crater, terraced mesas, sharp peaks, an oasis, a glacier, a bog of shallow pools, a coast, tors

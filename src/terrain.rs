@@ -137,6 +137,40 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
     let coast_side = frng.range(0, 4);
     let top = d - 3;
 
+    // Which world cell each column lies in (the site's own, or a neighbour's
+    // toward the edges, with a ragged border), for its biome and its height.
+    const CELL: f64 = 48.0;
+    let biome_n = Noise::new(seed ^ 0xD4D4);
+    let around = |c: (i32, i32)| params.around.iter().find(|a| (a.x, a.y) == c);
+    let home_elev = around(params.home).map_or(128.0, |a| a.elev as f64);
+    let local = |ax: i32, ay: i32| -> (Biome, bool) {
+        if params.around.is_empty() {
+            return (params.biome, false);
+        }
+        let jx = (biome_n.fbm2(ax as f64 / 11.0, ay as f64 / 11.0, 2) - 0.5) * 22.0;
+        let jy = (biome_n.fbm2(ay as f64 / 11.0 + 40.0, ax as f64 / 11.0, 2) - 0.5) * 22.0;
+        let c = (params.home.0 + ((ax as f64 + jx) / CELL).floor() as i32, params.home.1 + ((ay as f64 + jy) / CELL).floor() as i32);
+        around(c).map_or((params.biome, false), |a| (a.biome, a.evil))
+    };
+    // The world's own heights, smoothly: mountains next door lift that side,
+    // the sea next door drops it.
+    let lift = |ax: i32, ay: i32| -> f64 {
+        if params.around.is_empty() {
+            return 0.0;
+        }
+        let (fx, fy) = (ax as f64 / CELL - 0.5, ay as f64 / CELL - 0.5);
+        let (i0, j0) = (fx.floor(), fy.floor());
+        let smooth = |t: f64| t * t * (3.0 - 2.0 * t);
+        let (tx, ty) = (smooth(fx - i0), smooth(fy - j0));
+        let e = |i: f64, j: f64| around((params.home.0 + i as i32, params.home.1 + j as i32)).map_or(home_elev, |a| a.elev as f64);
+        let top_row = e(i0, j0) + (e(i0 + 1.0, j0) - e(i0, j0)) * tx;
+        let bottom_row = e(i0, j0 + 1.0) + (e(i0 + 1.0, j0 + 1.0) - e(i0, j0 + 1.0)) * tx;
+        let v = top_row + (bottom_row - top_row) * ty;
+        ((v - home_elev) / 9.0).clamp(-9.0, 7.0)
+    };
+    let sea = 14 + deep;
+    let mut col = vec![0u8; (w * h) as usize];
+
     // Height map.
     let mut surf = vec![0i32; (w * h) as usize];
     let mut river_cell = vec![false; (w * h) as usize];
@@ -145,7 +179,10 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
             let (ax, ay) = (x + ox, y + oy);
             let v = height_n.fbm2(ax as f64 / 34.0, ay as f64 / 34.0, 4);
             let lo = (9 + deep) as f64;
-            let mut hh = 18.0 + deep as f64 + (v - 0.5) * 18.0 * params.relief;
+            let mut hh = 18.0 + deep as f64 + (v - 0.5) * 18.0 * params.relief + lift(ax, ay);
+            let (b, evil) = local(ax, ay);
+            col[(y * w + x) as usize] = b.code() | if evil { 0x80 } else { 0 };
+
             if has(feat::PEAKS) {
                 let r = 1.0 - (2.0 * ridge_n.fbm2(ax as f64 / 22.0, ay as f64 / 22.0, 3) - 1.0).abs();
                 hh += r * r * r * 12.0 * params.relief.max(0.6);
@@ -168,6 +205,11 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                     hh += (1.0 - r / 14.0) * 11.0;
                 }
             }
+            if b == Biome::Ocean {
+                // The sea next door: under water, shelving down (after the
+                // features, which could otherwise lift it back up).
+                hh = hh.min(sea as f64 - 2.0 - (v * 3.0).floor());
+            }
             let cap = (lo + 18.0).max(if has(feat::PEAKS) || volcano.is_some() { lo + 24.0 } else { lo + 18.0 });
             let mut hi = hh.round().clamp(lo, cap.min(top as f64)) as i32;
             if let Some(c) = &river {
@@ -189,6 +231,9 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                     surf[(ny * w + nx) as usize] = old.surface_z(x, y);
                     fixed[(ny * w + nx) as usize] = true;
                     river_cell[(ny * w + nx) as usize] = false;
+                    if let Some(&c) = old.biomes.get((y * old.w + x) as usize) {
+                        col[(ny * w + nx) as usize] = c;
+                    }
                 }
             }
         }
@@ -265,6 +310,9 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
             }
         }
     };
+    // A shore on the map: the sea fills to its level.
+    let water_level = if col.iter().any(|&c| Biome::from_code(c) == Some(Biome::Ocean)) { water_level.max(sea) } else { water_level };
+    let biome_of = |i: usize| Biome::from_code(col[i]).unwrap_or(params.biome);
 
     let mut world = World {
         w,
@@ -286,6 +334,7 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
         water_level,
         features: bits,
         gen_seed: seed,
+        biomes: col.clone(),
     };
     let bands = world.caverns.clone();
 
@@ -293,6 +342,35 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
         for x in 0..w {
             let (ax, ay) = (x + ox, y + oy);
             let hh = surf[(y * w + x) as usize];
+            let b = biome_of((y * w + x) as usize);
+            use Biome as B;
+            // How deep the soil lies: bare rock on the heights, deep sand in the desert.
+            let soil = match b {
+                B::Mountain | B::Glacier => i32::from(hh <= 20 + deep),
+                B::Badlands => 1,
+                B::Tundra => 2,
+                B::Desert => 4,
+                _ => 3,
+            };
+            let sv = soil_n.fbm2(ax as f64 / 14.0, ay as f64 / 14.0, 2);
+            let soil_mat = match b {
+                B::Desert => Mat::Sand,
+                B::Badlands => {
+                    if sv < 0.6 { Mat::Clay } else { Mat::Sand }
+                }
+                B::Swamp | B::Jungle => {
+                    if sv < 0.55 { Mat::Loam } else { Mat::Clay }
+                }
+                _ => {
+                    if sv < 0.42 {
+                        Mat::Loam
+                    } else if sv < 0.62 {
+                        Mat::Clay
+                    } else {
+                        Mat::Sand
+                    }
+                }
+            };
             for z in 0..d {
                 let p = Pos::new(x, y, z);
                 let t = world.t_mut(p);
@@ -302,33 +380,54 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                 } else if z < hh {
                     t.kind = TileKind::Wall;
                     let depth = hh - z;
-                    t.mat = if depth <= 3 {
-                        let v = soil_n.fbm2(ax as f64 / 14.0, ay as f64 / 14.0, 2);
-                        if v < 0.42 {
-                            Mat::Loam
-                        } else if v < 0.62 {
-                            Mat::Clay
-                        } else {
-                            Mat::Sand
-                        }
+                    t.mat = if depth <= soil {
+                        soil_mat
                     } else if z >= 13 + deep {
-                        if rock_n.fbm3(ax as f64 / 20.0, ay as f64 / 20.0, z as f64 / 3.0, 2) < 0.5 {
-                            Mat::Sandstone
-                        } else {
-                            Mat::Limestone
+                        let r = rock_n.fbm3(ax as f64 / 20.0, ay as f64 / 20.0, z as f64 / 3.0, 2);
+                        match b {
+                            // Granite in the high and cold places, sedimentary rock elsewhere.
+                            B::Mountain | B::Glacier | B::Tundra | B::Taiga => {
+                                if r < 0.62 { Mat::Granite } else { Mat::Marble }
+                            }
+                            _ => {
+                                if r < 0.5 { Mat::Sandstone } else { Mat::Limestone }
+                            }
                         }
                     } else if z >= 4 {
-                        if rock_n.fbm3(ax as f64 / 9.0, ay as f64 / 9.0, z as f64 / 2.0, 2) > 0.66 {
-                            Mat::Marble
-                        } else {
-                            Mat::Granite
+                        let r = rock_n.fbm3(ax as f64 / 9.0, ay as f64 / 9.0, z as f64 / 2.0, 2);
+                        match b {
+                            B::Mountain | B::Glacier => {
+                                if r > 0.68 { Mat::Basalt } else { Mat::Granite }
+                            }
+                            B::Desert | B::Badlands | B::Savanna => {
+                                if r < 0.42 {
+                                    Mat::Sandstone
+                                } else if r > 0.66 {
+                                    Mat::Marble
+                                } else {
+                                    Mat::Granite
+                                }
+                            }
+                            _ => {
+                                if r > 0.66 { Mat::Marble } else { Mat::Granite }
+                            }
                         }
                     } else {
                         Mat::Basalt
                     };
                 } else if z == hh {
                     t.kind = TileKind::Floor;
-                    t.mat = if hh < water_level { Mat::Sand } else { Mat::Grass };
+                    // Sand under water, and a beach along the sea.
+                    t.mat = if hh < water_level || b == B::Ocean && hh <= water_level + 1 {
+                        Mat::Sand
+                    } else {
+                        match b {
+                            B::Desert | B::Ocean => Mat::Sand,
+                            B::Badlands => soil_mat,
+                            B::Mountain | B::Glacier if soil == 0 => Mat::Granite,
+                            _ => Mat::Grass,
+                        }
+                    };
                 }
             }
         }
@@ -517,7 +616,13 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                 continue;
             }
             let forest = forest_n.fbm2(ax as f64 / 16.0, ay as f64 / 16.0, 3);
-            if forest > 0.55 && rng.chance((0.30 * params.forest).min(0.8)) || rng.chance(0.015 * params.forest) {
+            // Trees by the column's own biome (and none on bare rock or snowfields).
+            let b = biome_of((y * w + x) as usize);
+            let trees = if world.t(p).mat == Mat::Grass || matches!(b, Biome::Desert | Biome::Badlands) { b.params().forest } else { 0.0 };
+            if b == Biome::Glacier {
+                world.t_mut(p).snow = true;
+            }
+            if forest > 0.55 && rng.chance((0.30 * trees).min(0.8)) || rng.chance(0.015 * trees) {
                 let t = world.t_mut(p);
                 t.kind = TileKind::Tree;
                 t.mat = Mat::Wood;
@@ -758,6 +863,36 @@ mod tests {
 
     fn count(w: &World, f: impl Fn(&Tile, Pos) -> bool) -> usize {
         (0..w.tiles.len()).filter(|&i| f(&w.tiles[i], w.pos_of(i))).count()
+    }
+
+    #[test]
+    fn the_neighbours_reach_onto_the_map() {
+        use crate::overworld::Around;
+        let mut p = Biome::Grassland.params();
+        p.size = MapSize::MEDIUM;
+        p.home = (10, 10);
+        // Sea to the east, desert to the south, grassland elsewhere.
+        for dy in -3..=3 {
+            for dx in -3..=3 {
+                let biome = if dx >= 1 && dy <= 0 { Biome::Ocean } else if dy >= 1 { Biome::Desert } else { Biome::Grassland };
+                let elev = if biome == Biome::Ocean { 60 } else { 120 };
+                p.around.push(Around { x: 10 + dx, y: 10 + dy, biome, elev, evil: false });
+            }
+        }
+        let w = generate_region(5, &p, (0, 0), (96, 64), None);
+        let share = |x0: i32, x1: i32, y0: i32, y1: i32, f: &dyn Fn(i32, i32) -> bool| {
+            let n = ((x1 - x0) * (y1 - y0)) as f64;
+            (y0..y1).flat_map(|y| (x0..x1).map(move |x| (x, y))).filter(|&(x, y)| f(x, y)).count() as f64 / n
+        };
+        let wet = |x: i32, y: i32| w.t(Pos::new(x, y, w.surface_z(x, y))).water > 0;
+        let sandy = |x: i32, y: i32| w.t(Pos::new(x, y, w.surface_z(x, y))).mat == Mat::Sand;
+        let east = share(70, 96, 0, 40, &wet);
+        let west = share(0, 30, 0, 40, &wet);
+        assert!(east > 0.6 && west < 0.3, "the sea should fill the east: east {:.2} west {:.2}", east, west);
+        let south = share(0, 40, 54, 64, &sandy);
+        assert!(south > 0.5, "the desert should reach the south edge: {:.2}", south);
+        assert_eq!(w.biome_at(5, 5).map(|b| b.0), Some(Biome::Grassland));
+        assert_eq!(w.biome_at(5, 62).map(|b| b.0), Some(Biome::Desert));
     }
 
     #[test]

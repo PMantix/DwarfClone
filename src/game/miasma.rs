@@ -141,7 +141,7 @@ mod tests {
         assert!(spread >= 4, "miasma should drift through the room ({} tiles)", spread);
         assert!(g.dwarves[0].thoughts.iter().any(|t| t.text == "was sickened by miasma"));
         // Out in the open, no stink gathers.
-        let top = Pos::new(e.x + 3, e.y + 3, g.world.surface_z(e.x + 3, e.y + 3));
+        let top = g.flat_patch(3, 3, 10).offset(1, 1, 0);
         let out = g.spawn_item(ItemKind::Carcass, Mat::Flesh, top);
         g.items.get_mut(&out).unwrap().wear = ROT_DAYS + 2;
         for _ in 0..10 {

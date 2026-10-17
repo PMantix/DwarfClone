@@ -422,12 +422,7 @@ impl Game {
 
     pub fn embark_with(seed: u64, ow: Overworld, sx: i32, sy: i32, size: world::MapSize, report: &dyn Fn(&str, f32)) -> Game {
         report("Surveying the site", 0.05);
-        let cell = ow.cell(sx, sy).clone();
-        let mut params = cell.biome.params();
-        params.minerals = ow.minerals;
-        params.size = size;
-        params.aquifer = ow.aquifer(sx, sy);
-        params.features = ow.site_features(seed, sx, sy);
+        let params = ow.embark_params(seed, sx, sy, size);
         let world = world::generate(seed ^ ((sx as u64) << 20) ^ ((sy as u64) << 40), &params);
         report("Loading the wagon", 0.8);
         let embark = find_embark(&world);
@@ -3291,8 +3286,8 @@ mod traffic_tests {
     #[test]
     fn idle_dwarves_gather_at_meeting_area() {
         let mut g = Game::new(11);
-        let e = g.embark;
-        let n = g.add_zone(e.offset(-8, -8, -1), e.offset(-3, -3, 1), ZoneKind::Meeting);
+        let a = g.flat_patch(6, 6, 3);
+        let n = g.add_zone(a, a.offset(5, 5, 0), ZoneKind::Meeting);
         assert!(n > 4, "no room for a meeting area");
         // No work designated, so once fed and watered everyone should drift there.
         run(&mut g, 3 * DAY);

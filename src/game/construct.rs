@@ -397,12 +397,17 @@ mod tests {
     #[test]
     fn walls_block_goblins_and_come_down_again() {
         let mut g = Game::new(31);
-        let start = floor_run(&g, 1);
+        // A tile with level open ground all round it.
+        let start = g.open_patch(3, 3, 3).offset(1, 1, 0);
         // Enclose the tile with a ring of walls built from logs.
         let ring: Vec<Pos> = DIRS8.iter().map(|&(dx, dy)| start.offset(dx, dy, 0)).collect();
-        let far = start.offset(10, 0, 0);
-        let far = Pos::new(far.x, far.y, g.world.surface_z(far.x, far.y));
-        assert!(path::astar(&g.world, far, start, 40_000, Mover::Goblin).is_some(), "no path to begin with");
+        // Somewhere a goblin could come from.
+        let far = (8..30)
+            .flat_map(|d| [start.offset(d, 0, 0), start.offset(-d, 0, 0), start.offset(0, d, 0), start.offset(0, -d, 0)])
+            .filter(|p| g.world.in_bounds(*p))
+            .map(|p| Pos::new(p.x, p.y, g.world.surface_z(p.x, p.y)))
+            .find(|&p| g.world.walkable(p) && path::astar(&g.world, p, start, 40_000, Mover::Goblin).is_some())
+            .expect("no path to begin with");
         // Plan four of the eight walls (the wagon has logs for that); wall off the
         // rest directly so the test is only about what gets built.
         let mut planned = 0;
