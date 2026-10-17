@@ -113,14 +113,13 @@ mod tests {
                 (158570, "Grenda Anvilbrew", "struck down"),
                 (159678, "Dorna Stonebeard", "struck down"),
                 (159880, "Odda Stonefist", "bled to death"),
-                (382530, "Borra Coalhelm", "struck down"),
-                (382680, "Kolvar Silverhold", "struck down"),
+                (203076, "Borra Embergrip", "struck down"),
             ]
         );
         let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
-        assert_eq!(sieges, vec![]);
-        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (11, 4736, 22));
-        assert_eq!(t.ambitions, ["Revel", "Fortify", "Prosper", "Revel", "Expand", "Prosper", "Revel", "Delve"]);
+        assert_eq!(sieges, vec![(202445, "goblins", 3, "routed")]);
+        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (12, 5004, 30));
+        assert_eq!(t.ambitions, ["Revel", "Fortify", "Prosper", "Revel", "Provision", "Muster", "Expand", "Revel", "Revel", "Expand", "Prosper", "Muster", "Expand"]);
     }
 
     /// The tasks the survival items will hand out are in place but do nothing
