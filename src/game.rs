@@ -73,6 +73,7 @@ pub mod captives;
 pub mod breakdowns;
 pub mod readiness;
 mod cistern;
+mod openings;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
