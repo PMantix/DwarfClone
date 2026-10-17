@@ -67,6 +67,7 @@ mod miasma;
 pub mod knobs;
 mod schedule;
 mod finders;
+mod overseer_hooks;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;

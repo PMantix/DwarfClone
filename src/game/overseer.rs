@@ -865,9 +865,7 @@ impl Game {
             } else if !any {
                 o.army_since = 0;
             }
-            // (A cautious overseer bars the gate sooner, a bold one later.)
-            let patience = if o.has(super::personality::Trait::Cautious) { 60 } else if o.has(super::personality::Trait::Bold) { 260 } else { 150 };
-            let waited = any && self.tick > o.army_since + patience;
+            let waited = any && self.tick > o.army_since + self.bar_patience(o);
             let long = self.tick > o.raised_at + DAY * 4;
             let want = any && (at_gate || inside || waited) && !(long && !at_gate && o.raised_at > 0);
             let bridges = self.gate_bridges(base);
@@ -903,6 +901,21 @@ impl Game {
                 }
             }
             let _ = holding;
+        }
+        // Whatever the items add (overseer_hooks.rs).
+        self.ov_alert_hooks(o);
+    }
+
+    /// How long an army may be on the map before the drawbridge goes up
+    /// regardless, in ticks. (A cautious overseer bars the gate sooner, a
+    /// bold one later.)
+    pub(super) fn bar_patience(&self, o: &Overseer) -> u64 {
+        if o.has(super::personality::Trait::Cautious) {
+            60
+        } else if o.has(super::personality::Trait::Bold) {
+            260
+        } else {
+            150
         }
     }
 
@@ -1140,6 +1153,8 @@ impl Game {
         }
         // And whatever it has its heart set on.
         self.ov_ambition(o);
+        // Whatever the items add (overseer_hooks.rs).
+        self.ov_daily_hooks(o);
         let _ = tick;
     }
 

@@ -194,6 +194,7 @@ impl Game {
                 "withdrew"
             }
             .into();
+            self.on_siege_end(i);
         }
     }
 }

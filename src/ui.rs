@@ -3882,7 +3882,8 @@ fn draw_brain(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
             }
             ctx.layer();
             // Senses: lit by how strongly they fire.
-            for (i, &(s, level)) in brain.senses.iter().enumerate() {
+            for &(s, level) in brain.senses.iter() {
+                let i = Sense::ALL.iter().position(|&x| x == s).unwrap_or(0);
                 let c = (60.0 + 195.0 * level) as u8;
                 ctx.draw(&Circle { x: sx, y: sense_y(i), radius: 1.6, color: Color::Rgb(c, c, (c as f64 * 0.6) as u8) });
                 ctx.print(1.0, sense_y(i), Span::styled(format!("{:<11}", s.name()), Style::default().fg(Color::Rgb(c.max(120), c.max(120), 150))));
