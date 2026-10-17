@@ -301,6 +301,8 @@ impl BuildingKind {
                 ForgeHelm,
                 ForgeBreastplate,
                 ForgeShield,
+                ForgeCrossbow,
+                ForgeBolts,
             ],
             BuildingKind::Craftsdwarf => &[StoneCraft, BoneCraft, CutGem, SpinThread],
             BuildingKind::Tannery => &[Tan],
@@ -507,6 +509,8 @@ pub enum Recipe {
     Ash,
     MakeSoap,
     Mill,
+    ForgeCrossbow,
+    ForgeBolts,
 }
 
 impl Recipe {
@@ -562,6 +566,8 @@ impl Recipe {
             Ash => "Burn wood to ash",
             MakeSoap => "Make soap",
             Mill => "Mill grain into flour",
+            ForgeCrossbow => "Forge crossbow",
+            ForgeBolts => "Forge bolts",
         }
     }
 
@@ -608,6 +614,8 @@ impl Recipe {
             Ash => 'a',
             MakeSoap => 's',
             Mill => 'm',
+            ForgeCrossbow => 'x',
+            ForgeBolts => 'l',
         }
     }
 
@@ -633,6 +641,7 @@ impl Recipe {
             Ash => Labor::Smelting,
             MakeSoap => Labor::Soapmaking,
             Mill => Labor::Farming,
+            ForgeCrossbow | ForgeBolts => Labor::Smithing,
         }
     }
 
@@ -650,7 +659,7 @@ impl Recipe {
             SmeltOre => &[Input::Ore, Input::Fuel],
             MakeSteel => &[Input::IronBar, Input::Fuel, Input::Flux],
             ForgeBreastplate => &[Input::Bar, Input::Bar, Input::Fuel],
-            ForgePick | ForgeAxe | ForgeSword | ForgeSpear | ForgeHammer | ForgeHelm | ForgeShield => {
+            ForgePick | ForgeAxe | ForgeSword | ForgeSpear | ForgeHammer | ForgeHelm | ForgeShield | ForgeCrossbow | ForgeBolts => {
                 &[Input::Bar, Input::Fuel]
             }
             BoneCraft => &[Input::Bone],
@@ -754,6 +763,8 @@ impl Recipe {
             ClothTrousers => one(ItemKind::Trousers),
             Ash => vec![(ItemKind::Ash, Mat::Wood, None)],
             Mill => vec![(ItemKind::Flour, m, None), (ItemKind::Flour, m, None), (ItemKind::Seed, m, None)],
+            ForgeCrossbow => one(ItemKind::Crossbow),
+            ForgeBolts => vec![(ItemKind::Bolt, m, None); 3],
             MakeSoap => {
                 let fat = inputs.get(1).and_then(|i| i.label.clone());
                 vec![(ItemKind::Soap, Mat::Flesh, fat.clone()), (ItemKind::Soap, Mat::Flesh, fat)]
@@ -770,7 +781,8 @@ impl Recipe {
             Butcher => 120,
             SmeltOre | MakeSteel => 160,
             ForgeBreastplate => 260,
-            ForgePick | ForgeAxe | ForgeSword | ForgeSpear | ForgeHammer | ForgeHelm | ForgeShield => 200,
+            ForgePick | ForgeAxe | ForgeSword | ForgeSpear | ForgeHammer | ForgeHelm | ForgeShield | ForgeCrossbow => 200,
+            ForgeBolts => 180,
             CutGem => 180,
             _ => 150,
         }

@@ -343,3 +343,37 @@ fn grain_is_milled_into_flour_and_baked_into_more_meals() {
     run(&mut g, DAY);
     assert_eq!(count(&g, ItemKind::Meal, None), meals + 3, "flour should make three meals");
 }
+
+#[test]
+fn forge_makes_iron_bolts_and_crossbows() {
+    // Both are on the forge's list, each with a key of its own.
+    let list = BuildingKind::Forge.recipes();
+    assert!(list.contains(&Recipe::ForgeBolts) && list.contains(&Recipe::ForgeCrossbow));
+    assert!(BuildingKind::MagmaForge.recipes().contains(&Recipe::ForgeBolts));
+    let keys: Vec<char> = list.iter().map(|r| r.key()).collect();
+    assert!(keys.iter().all(|k| keys.iter().filter(|x| *x == k).count() == 1), "keys clash: {:?}", keys);
+
+    let mut g = Game::new(77);
+    g.creatures.retain(|_, c| c.tame);
+    let e = g.embark;
+    for _ in 0..4 {
+        g.spawn_item(ItemKind::Boulder, Mat::Granite, e);
+    }
+    for _ in 0..2 {
+        g.spawn_item(ItemKind::Bar, Mat::Iron, e);
+        g.spawn_item(ItemKind::Charcoal, Mat::Coal, e);
+    }
+    for d in g.dwarves.iter_mut() {
+        d.labors[Labor::Smithing.idx()] = true;
+    }
+    let forge = place_near(&mut g, BuildingKind::Forge);
+    run(&mut g, 2 * DAY);
+    assert!(g.buildings[&forge].built, "forge not built");
+    g.add_order(forge, Recipe::ForgeBolts);
+    g.add_order(forge, Recipe::ForgeCrossbow);
+    run(&mut g, 3 * DAY);
+    let bolts = count(&g, ItemKind::Bolt, Some(Mat::Iron));
+    let bows = count(&g, ItemKind::Crossbow, Some(Mat::Iron));
+    assert_eq!((bolts, bows), (3, 1), "iron bolt bundles and crossbows forged");
+    assert!(g.buildings[&forge].orders.is_empty());
+}

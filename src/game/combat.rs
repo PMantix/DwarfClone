@@ -392,8 +392,11 @@ impl Game {
             Travel::Arrived => {
                 let kind = self.items[&item].kind;
                 if kind == ItemKind::Bolt {
-                    // Bolts go into the quiver.
-                    self.items.remove(&item);
+                    // Bolts go into the quiver; the best of them are shot first.
+                    let mat = self.items.remove(&item).map(|it| it.mat);
+                    if d.ammo == 0 || Self::bolt_damage(mat) > Self::bolt_damage(d.ammo_mat) {
+                        d.ammo_mat = mat;
+                    }
                     d.ammo += 10;
                     d.task = Task::Idle;
                     return;
