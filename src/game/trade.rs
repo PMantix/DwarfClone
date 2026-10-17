@@ -196,7 +196,7 @@ impl Game {
                 self.caravan.as_mut().unwrap().arrived = true;
                 self.caravan.as_mut().unwrap().leave_tick = self.tick + DAY * 6;
                 self.msg(&format!("Merchants from the {} have arrived at the depot.", name), (240, 240, 160));
-                self.pause_request = true;
+                self.spotlight("Traders", &format!("Merchants from the {} have arrived at the depot. They'll stay six days: press t at the depot to trade.", name), Some(depot), (240, 240, 160));
             }
             c.path.clear();
             return;

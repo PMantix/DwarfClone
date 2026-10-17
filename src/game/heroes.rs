@@ -85,6 +85,7 @@ impl Game {
         let fort = self.fortress_name.clone();
         self.legend(format!("{}, who {}, {} at {}.", name, d.deed.clone().unwrap_or_default(), cause, fort));
         self.msg(&format!("The hero {} is dead. The fortress mourns.", name), (255, 120, 90));
+        self.spotlight("A hero falls", &format!("{}, who {}, {}. The fortress mourns.", name, d.deed.clone().unwrap_or_default(), cause), Some(d.pos), (255, 120, 90));
     }
 }
 

@@ -882,7 +882,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
     let mut v: Vec<Line> = Vec::new();
     let title;
     match &app.mode {
-        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GrowMap { .. } => {
+        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GrowMap { .. } | Mode::GameOver => {
             title = "Main".to_string();
             v.extend(stocks(g));
             v.push(Line::default());
@@ -1785,6 +1785,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("n", "nobles, mandates, bedrooms, wealth"),
         k("c", "the chronicle: each year told as a story"),
         k("r", "reports: every past announcement, filtered"),
+        k("\\", "status, brain, reports, chronicle, legends: side pane or full screen"),
         k("M", "grow the map north, east, south or west"),
         k("A", "autoplay: the overseer plays (pick a style)"),
         k("B", "the overseer's brain: senses, ambitions, nudges"),
@@ -2464,10 +2465,13 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Min(10), Constraint::Length(7)])
         .split(area);
+    // A side pane takes the sidebar's place and more, leaving the map live beside it.
+    let pane_w = if app.docked && app.dockable() && area.width >= 100 { Some((area.width * 3 / 5).clamp(64, area.width - 36)) } else { None };
     let mid = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(20), Constraint::Length(SIDEBAR_W)])
+        .constraints([Constraint::Min(20), Constraint::Length(pane_w.unwrap_or(SIDEBAR_W))])
         .split(rows[1]);
+    let pane = pane_w.map(|w| Rect::new(area.x + area.width - w, rows[1].y, w, rows[1].height + rows[2].height));
 
     // Status bar.
     let g = &app.game;
@@ -2518,6 +2522,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_map(f, app, mid[0]);
 
     let (title, lines) = sidebar(app);
+    if pane.is_none() {
     register_lines(Rect::new(mid[1].x + 1, mid[1].y + 1, mid[1].width.saturating_sub(2), mid[1].height.saturating_sub(2)), &lines, true);
     let side = Paragraph::new(lines)
         .block(
@@ -2528,6 +2533,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         )
         .wrap(Wrap { trim: false });
     f.render_widget(side, mid[1]);
+    }
 
     // Announcements.
     let g = &app.game;
@@ -2551,7 +2557,18 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     );
     add_target(rows[2], Target::Key(crossterm::event::KeyCode::Char('r')));
 
+    // Side-pane screens draw into the pane; the rest over the whole screen.
+    let full = area;
+    let area = match pane {
+        Some(p) => {
+            f.render_widget(Clear, p);
+            f.render_widget(Block::default().style(Style::default().bg(Color::Rgb(12, 12, 20))), p);
+            p
+        }
+        None => full,
+    };
     match app.mode {
+        Mode::GameOver => draw_game_over(f, full, &app.game),
         Mode::Legends { tab, scroll, .. } => draw_legends(f, area, &app.game.overworld, tab, scroll),
         Mode::Trade { side, sel } => draw_trade(f, area, app, side, sel),
         Mode::Status { tab, scroll } => draw_status(f, area, &app.game, tab, scroll),
@@ -2586,14 +2603,137 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         _ => {}
     }
     // Full-screen views sit over everything else.
-    if matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. }) {
+    if matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GameOver) {
         add_target(area, Target::Block);
+    }
+    if let Some(p) = pane {
+        let hint = " \\ full screen · Esc close ";
+        let w = hint.chars().count() as u16;
+        if p.width > w + 2 {
+            f.render_widget(Paragraph::new(Span::styled(hint, Style::default().fg(MUTED))), Rect::new(p.x + p.width - w - 1, p.y + p.height - 1, w, 1));
+        }
+    } else if app.dockable() && !app.docked {
+        let hint = " \\ side pane ";
+        let w = hint.chars().count() as u16;
+        f.render_widget(Paragraph::new(Span::styled(hint, Style::default().fg(MUTED))), Rect::new(full.x + full.width.saturating_sub(w + 1), full.y + full.height - 1, w, 1));
     }
     draw_tooltip(f, app);
     if app.in_fortress() && matches!(app.mode, Mode::Normal) {
         let over = if app.map_rect.width > 0 { app.map_rect } else { area };
         draw_banner(f, over, &app.game);
+        if let Some((s, _)) = &app.spot {
+            draw_spotlight(f, over, s, app.game.overseer.is_some());
+        }
     }
+}
+
+/// A big moment, told in a card over the top of the map (the camera is on it).
+fn draw_spotlight(f: &mut Frame, map: Rect, s: &crate::game::spotlight::Spotlight, auto: bool) {
+    let w = (map.width.saturating_sub(6)).min(70).max(30);
+    let col = rgb(s.color);
+    let inner = w.saturating_sub(4) as usize;
+    let mut lines = vec![Line::default()];
+    for l in wrap_words(&s.text, inner) {
+        lines.push(Line::from(Span::styled(format!(" {}", l), Style::default().fg(TEXT))));
+    }
+    lines.push(Line::default());
+    lines.push(Line::from(Span::styled(
+        if auto { " (the overseer carries on)" } else { " Enter: go on · Space: go on and unpause" },
+        Style::default().fg(MUTED),
+    )));
+    let h = lines.len() as u16 + 2;
+    let r = Rect::new(map.x + (map.width.saturating_sub(w)) / 2, map.y + 1, w.min(map.width), h.min(map.height));
+    f.render_widget(Clear, r);
+    f.render_widget(
+        Paragraph::new(lines).style(Style::default().bg(Color::Rgb(18, 12, 10))).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(ratatui::widgets::BorderType::Double)
+                .border_style(Style::default().fg(col))
+                .title(Span::styled(format!(" {} ", s.title), Style::default().fg(col).add_modifier(Modifier::BOLD))),
+        ),
+        r,
+    );
+}
+
+/// Split text into lines of at most `w` characters, on spaces.
+fn wrap_words(text: &str, w: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > w {
+            out.push(std::mem::take(&mut line));
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line.push_str(word);
+    }
+    if !line.is_empty() {
+        out.push(line);
+    }
+    out
+}
+
+/// The fortress has fallen: how long it stood, who lived there and how they died.
+fn draw_game_over(f: &mut Frame, area: Rect, g: &Game) {
+    let years = g.tick as f64 / crate::game::YEAR as f64;
+    let mut causes: Vec<(String, usize)> = Vec::new();
+    for d in &g.annals.deaths {
+        let what = match (&d.killer, d.cause.as_str()) {
+            (Some(k), "struck down") => format!("struck down by {}s", k),
+            (Some(k), "bled to death") => format!("bled from {} wounds", k),
+            _ => d.cause.clone(),
+        };
+        match causes.iter_mut().find(|c| c.0 == what) {
+            Some(c) => c.1 += 1,
+            None => causes.push((what, 1)),
+        }
+    }
+    causes.sort_by(|a, b| b.1.cmp(&a.1));
+    let red = Color::Rgb(220, 70, 60);
+    let gold = Color::Rgb(255, 215, 60);
+    let mut v = vec![
+        Line::default(),
+        Line::from(Span::styled(format!("The fortress of {} has fallen.", g.fortress_name), Style::default().fg(red).add_modifier(Modifier::BOLD))).alignment(ratatui::layout::Alignment::Center),
+        Line::from(Span::styled(g.date_string(), Style::default().fg(MUTED))).alignment(ratatui::layout::Alignment::Center),
+        Line::default(),
+        plain(format!(" It stood {:.1} years, and {} dwarves lived there.", years, g.dwarves.len()), TEXT),
+        plain(format!(" When it fell it was worth ☼{}.", g.wealth()), TEXT),
+    ];
+    let sieges = g.annals.sieges.len();
+    if sieges > 0 {
+        let broken = g.annals.sieges.iter().filter(|s| s.outcome == "routed").count();
+        v.push(plain(format!(" It weathered {} siege{} and broke {}.", sieges, if sieges == 1 { "" } else { "s" }, broken), TEXT));
+    }
+    if let Some(m) = &g.monument {
+        v.push(plain(format!(" It raised {}.", m), gold));
+    }
+    let heroes: Vec<String> = g.dwarves.iter().filter(|d| d.epithet.is_some()).map(|d| d.called()).collect();
+    if !heroes.is_empty() {
+        v.push(plain(format!(" Its heroes: {}.", heroes.join(", ")), gold));
+    }
+    v.push(Line::default());
+    v.push(plain(" How they died:".into(), KEY));
+    for (what, n) in causes.iter().take(6) {
+        v.push(plain(format!("   {:>3}  {}", n, what), TEXT));
+    }
+    if let Some(l) = g.log.iter().rev().find(|l| l.color == (255, 60, 60)) {
+        v.push(Line::default());
+        v.push(plain(format!(" The last to fall: {}", l.text), red));
+    }
+    v.push(Line::default());
+    let mut keys = vec![];
+    if !g.chronicles.is_empty() {
+        keys.push(key_line("c", "Read the chronicle", false));
+    }
+    keys.push(key_line("l", "Legends of the world", false));
+    keys.push(key_line("r", "Every report", false));
+    keys.push(key_line("w", "Look upon the ruins", false));
+    keys.push(key_line("t", "Return to the title (the ruin is saved)", false));
+    v.extend(keys);
+    let h = v.len() as u16 + 2;
+    popup(f, area, 78, h, " ☠ Game over ☠ ", v);
 }
 
 fn item_line(it: &Item, extra: &str, selected: bool) -> Line<'static> {
@@ -4444,6 +4584,106 @@ mod tests {
     }
 
     #[test]
+    fn a_siege_stops_the_game_and_turns_the_camera_to_it() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::generated(42);
+        app.mode = Mode::Normal;
+        dump(&mut app, 130, 45);
+        let foe = app.game.neighbors.first().cloned().expect("a neighbour");
+        let mut foe = foe;
+        foe.race = crate::overworld::Race::Goblin;
+        app.game.lay_siege(&foe);
+        let general = app.game.creatures.values().find(|c| c.general.is_some()).unwrap().pos;
+        app.paused = false;
+        app.frame();
+        assert!(app.paused, "a siege should pause the game");
+        let (s, _) = app.spot.clone().expect("the siege should be in the spotlight");
+        assert_eq!(s.title, "Siege!");
+        assert!((app.cursor.x - general.x).abs() <= 4 && (app.cursor.y - general.y).abs() <= 4, "the camera should be on the army");
+        let screen = dump(&mut app, 130, 45);
+        assert!(screen.contains("Siege!") && screen.contains("Enter: go on"), "{}", screen);
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(app.spot.is_none());
+        // With the overseer playing it goes by on its own.
+        app.game.set_overseer(Some(crate::game::Style::Steady));
+        app.game.spotlight_for_test("Traders", "Merchants are here.");
+        app.frame();
+        assert!(app.spot.is_some());
+        for _ in 0..120 {
+            app.frame();
+        }
+        assert!(app.spot.is_none(), "the card should go by on its own when the overseer plays");
+    }
+
+    #[test]
+    #[ignore]
+    fn show_new_screens() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::generated(42);
+        app.mode = Mode::Normal;
+        for _ in 0..2000 {
+            app.game.step();
+        }
+        let foe = app.game.neighbors.first().cloned().unwrap();
+        let mut foe = foe;
+        foe.race = crate::overworld::Race::Goblin;
+        dump(&mut app, 150, 46);
+        app.game.lay_siege(&foe);
+        app.paused = false;
+        app.frame();
+        println!("{}", dump(&mut app, 150, 46));
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        app.on_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE));
+        println!("{}", dump(&mut app, 150, 46));
+        app.mode = Mode::Normal;
+        for i in 0..app.game.dwarves.len() {
+            let mut d = std::mem::take(&mut app.game.dwarves[i]);
+            app.game.kill_for_test(&mut d, "has been struck down by the goblin");
+            app.game.dwarves[i] = d;
+        }
+        app.frame();
+        println!("{}", dump(&mut app, 150, 46));
+    }
+
+    #[test]
+    fn when_the_last_dwarf_dies_the_game_is_over() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::generated(42);
+        app.mode = Mode::Normal;
+        for i in 0..app.game.dwarves.len() {
+            let mut d = std::mem::take(&mut app.game.dwarves[i]);
+            app.game.kill_for_test(&mut d, "has been struck down by the goblin");
+            app.game.dwarves[i] = d;
+        }
+        app.frame();
+        assert_eq!(app.mode, Mode::GameOver);
+        let s = dump(&mut app, 130, 45);
+        assert!(s.contains("has fallen") && s.contains("Game over") && s.contains("How they died"), "{}", s);
+        app.on_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::Normal);
+        app.frame();
+        assert_eq!(app.mode, Mode::Normal, "it's told once");
+    }
+
+    #[test]
+    fn status_and_brain_open_beside_the_map() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::generated(42);
+        app.mode = Mode::Normal;
+        dump(&mut app, 170, 50);
+        let full_map = app.map_rect.width;
+        app.on_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::Status { .. }));
+        let s = dump(&mut app, 170, 50);
+        assert!(app.map_rect.width > 20 && app.map_rect.width < full_map, "the map should stay, narrower: {}", app.map_rect.width);
+        assert!(s.contains("full screen"), "{}", s);
+        app.on_key(KeyEvent::new(KeyCode::Char('\\'), KeyModifiers::NONE));
+        assert!(!app.docked);
+        let s = dump(&mut app, 170, 50);
+        assert!(s.contains("side pane"), "{}", s);
+    }
+
+    #[test]
     fn reports_scroll_back_through_old_announcements() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let mut app = App::generated(42);
@@ -4453,6 +4693,8 @@ mod tests {
         }
         app.game.msg("Urist Testbeard has been struck down by the goblin.", (255, 60, 60));
         app.mode = Mode::Normal;
+        // Full screen, so only the reports are on it (docked, the announcements show beside).
+        app.docked = false;
         let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
         app.on_key(key(KeyCode::Char('r')));
         assert_eq!(app.mode, Mode::Reports { filter: 0, scroll: 0 });

@@ -31,7 +31,8 @@ impl Game {
         }
         self.festival = None;
         self.start_festival(FestivalKind::Dedication);
-        self.pause_request = true;
+        let at = self.buildings.get(&bld).map(|b| b.pos);
+        self.spotlight("A monument", &format!("{} stands complete! It will be remembered.", cap_first(&name)), at, (255, 215, 60));
     }
 
     /// Daily: dwarves who pass the monument stop to admire it.

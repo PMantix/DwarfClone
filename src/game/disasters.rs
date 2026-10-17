@@ -83,7 +83,7 @@ impl Game {
         self.msg(tick_msg, (255, 120, 60));
         let fort = self.fortress_name.clone();
         self.legend(format!("The ceiling of a great hall in {} fell in.", fort));
-        self.pause_request = true;
+        self.spotlight("Cave-in!", tick_msg, Some(q), (255, 120, 60));
     }
 }
 

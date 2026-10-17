@@ -551,7 +551,12 @@ impl Game {
             self.msg(&format!("{} has come to {}! A {} of legend is upon you!", label, fort, kind), (255, 60, 60));
         }
         self.legend(format!("{} attacked {}.", label, fort));
-        self.pause_request = true;
+        let text = if kind == "dragon" {
+            format!("{} descends upon {}! The sky burns with dragonfire.", label, fort)
+        } else {
+            format!("{}, a {} of legend, has come to {}.", label, kind, fort)
+        };
+        self.spotlight(if kind == "dragon" { "A dragon!" } else { "A beast of legend!" }, &text, Some(entry), (255, 60, 60));
         Some(id)
     }
 
@@ -728,7 +733,7 @@ impl Game {
         self.msg(&format!("{} has come up from the caverns! {}", label, desc), (230, 120, 255));
         let fort = self.fortress_name.clone();
         self.legend(format!("{} emerged from the depths beneath {}.", label, fort));
-        self.pause_request = true;
+        self.spotlight("From the deep", &format!("{} has come up from the caverns. {}", label, desc), Some(p), (230, 120, 255));
         id
     }
 
@@ -794,7 +799,7 @@ impl Game {
 
     /// An army of `foe`'s people arrives at the edge of the map, led by a
     /// general out of their history.
-    pub(super) fn lay_siege(&mut self, foe: &Neighbor) {
+    pub(crate) fn lay_siege(&mut self, foe: &Neighbor) {
         let Some(entry) = self.edge_entry() else { return };
         let (species, mats, weapons, armor): (Species, &[Mat], &[ItemKind], [f64; 3]) = match foe.race {
             Race::Goblin => (
@@ -877,7 +882,7 @@ impl Game {
         self.msg(&text, (255, 70, 70));
         let name = self.fortress_name.clone();
         self.legend(format!("{} led the {} in a siege of {}.", general_name, civ_name, name));
-        self.pause_request = true;
+        self.spotlight("Siege!", &text, Some(entry), (255, 70, 70));
     }
 
     /// The attackers lose heart and run for the edge of the map.
@@ -896,6 +901,8 @@ impl Game {
             _ => "goblins",
         };
         self.msg(&format!("The {} are fleeing!", who), (120, 255, 120));
+        let fort = self.fortress_name.clone();
+        self.spotlight("The siege is broken", &format!("The {} are fleeing from {}!", who, fort), None, (120, 255, 120));
     }
 
     pub(super) fn update_creatures(&mut self) {
@@ -990,6 +997,7 @@ impl Game {
             }
             self.legend(format!("{}, {}, fell at {}.", label, c.desc.clone().unwrap_or_default(), fort));
             self.msg(&format!("{}, who led the attack, has fallen!", label), (255, 215, 60));
+            self.spotlight("Their leader falls", &format!("{}, who led the attack, has fallen!", label), Some(c.pos), (255, 215, 60));
             let tick = self.tick;
             for d in self.dwarves.iter_mut().filter(|d| d.alive) {
                 d.think(&format!("cheered the fall of {}", label), -8, tick);

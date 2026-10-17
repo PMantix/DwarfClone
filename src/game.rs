@@ -59,6 +59,7 @@ mod ambitions;
 mod layout;
 mod blueprint;
 pub mod annals;
+pub mod spotlight;
 mod miasma;
 pub use ambitions::{Ambition, Sense};
 
@@ -303,6 +304,12 @@ pub struct Game {
     /// How each dwarf died and how each siege went.
     #[serde(default)]
     pub annals: annals::Annals,
+    /// Big moments waiting to be shown (see `spotlight`).
+    #[serde(skip)]
+    pub spotlights: Vec<spotlight::Spotlight>,
+    /// Every dwarf is dead and the fall has been told.
+    #[serde(default)]
+    pub fallen: bool,
     /// Some tile has snow on it (so a thaw knows to look).
     #[serde(default)]
     snow_lying: bool,
@@ -473,6 +480,8 @@ impl Game {
             weather: Weather::Clear,
             drought: false,
             annals: Default::default(),
+            spotlights: Vec::new(),
+            fallen: false,
             snow_lying: false,
             fire_cells: None,
             miasma_cells: None,
@@ -2799,14 +2808,14 @@ impl Game {
                 "You have breached the magma sea! Magma workshops can be built over it.",
                 (255, 120, 40),
             );
-            self.pause_request = true;
+            self.spotlight("The magma sea", "The miners have broken through into the magma sea. Its heat can drive forges and smelters, and it will burn anything it touches.", Some(q), (255, 120, 40));
         } else if broke_in {
             self.warn(
                 "cavern",
                 "You have discovered an expansive cavern deep underground.",
                 (120, 200, 255),
             );
-            self.pause_request = true;
+            self.spotlight("A cavern", "The miners have broken into a vast cavern deep underground. Strange fungus grows there, and strange things live in the dark.", Some(q), (120, 200, 255));
         }
     }
 

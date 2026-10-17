@@ -69,7 +69,9 @@ impl Game {
             }
         }
         let horde = 3 + self.alive_count() / 5;
+        let mut at = corpses.first().map(|c| c.1);
         if let Some(entry) = self.edge_entry() {
+            at = at.or(Some(entry));
             for _ in 0..horde {
                 let p = self.spot_near(entry, 3);
                 let id = self.spawn_creature(Species::Undead, p, u64::MAX);
@@ -93,7 +95,7 @@ impl Game {
         self.msg(&format!("{} of {} raises the dead against {}!{}", n.name, n.tower, fort, ours), (190, 120, 230));
         self.legend(format!("{} the necromancer raised the dead against {}.", n.name, fort));
         self.year_log.undead = true;
-        self.pause_request = true;
+        self.spotlight("The dead walk", &format!("{} of {} raises the dead against {}!{}", n.name, n.tower, fort, ours), at, (190, 120, 230));
     }
 
     /// One of the walking dead is destroyed: our own dead fall back as

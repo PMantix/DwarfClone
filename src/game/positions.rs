@@ -308,7 +308,8 @@ impl Game {
                     let title = earned.title().to_lowercase();
                     self.msg(&format!("{} has made {} {} of {}!", cap(&civ), name, title, fort), (255, 215, 60));
                     self.legend(format!("{} was made {} of {}.", name, title, fort));
-                    self.pause_request = true;
+                    let at = self.dwarves[i].pos;
+                    self.spotlight("A new noble", &format!("{} has made {} {} of {}!", cap(&civ), name, title, fort), Some(at), (255, 215, 60));
                 }
             }
         }

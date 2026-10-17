@@ -153,7 +153,7 @@ impl Game {
                     d.ghost = true;
                     d.pos = at;
                     self.msg(&format!("The ghost of {} has risen to haunt the fortress!", name), (180, 200, 255));
-                    self.pause_request = true;
+                    self.spotlight("A ghost", &format!("The ghost of {} has risen to haunt the fortress! Bury the body, or carve a memorial slab, to lay it to rest.", name), Some(at), (180, 200, 255));
                 }
             }
         }

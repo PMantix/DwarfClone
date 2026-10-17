@@ -118,7 +118,7 @@ impl Game {
                             &format!("{} wakes and draws a map in the dust: the whispers led to {}, sealed in the rock at depth {}. Its carved walls can now be seen.", name, v.name, v.min.z),
                             (255, 215, 60),
                         );
-                        self.pause_request = true;
+                        self.spotlight("The whispers", &format!("{} has found the way to {}, sealed in the rock.", name, v.name), Some(v.min), (255, 215, 60));
                     }
                     None => {
                         // Or they were a craftsdwarf's muse all along.

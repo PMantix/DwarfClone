@@ -63,6 +63,21 @@ ruin; that's the fun of it.
 Use Windows Terminal (or any truecolor + Unicode terminal) at 130x40 or larger.
 Press `?` in game for keys.
 
+**Big moments.** A siege at the gates, a dragon or a beast of legend, something from the
+caverns, the dead rising, traders at the depot, a hero struck down, a cave-in, a ghost, an
+artifact, a new noble, a siege broken or its leader slain: the game pauses, turns the camera to
+where it happened and tells it in a card over the map (Enter goes on, Space goes on and
+unpauses). When the overseer plays, the card goes by on its own after a few seconds.
+
+**Side panes.** The status (`z`), brain (`B`), reports (`r`), chronicle (`c`) and legends (`L`)
+screens open beside the map, which stays live in a narrower view; `\` switches between the side
+pane and full screen.
+
+**Game over.** When the last dwarf dies, the fortress has fallen: a page tells how long it
+stood, who lived there, its sieges, heroes and monument, how they died and who fell last, with
+the chronicle, legends and reports a key away, or a look upon the ruins. Returning to the title
+keeps the ruin saved.
+
 **Mouse.** Click any key entry in the side panel or a menu to use it, and rows in lists
 (appointments, room owners, expeditions, autoplay, the title menu) to pick them. On the map,
 click to move the cursor (click again to look), drag to pan, scroll to change level, and

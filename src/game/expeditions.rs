@@ -232,7 +232,7 @@ impl Game {
         self.dwarves.extend(home);
         self.msg(&format!("{} have returned in triumph from {}, led by {}, with {} treasures!{}", squad, dest.name, leader_name, n, gone), (255, 215, 60));
         self.legend(format!("{} of {}, led by {}, {} {}.", squad, fort, leader_name, what, dest.name));
-        self.pause_request = true;
+        self.spotlight("Home in triumph", &format!("{} have returned from {}, led by {}, with {} treasures!{}", squad, dest.name, leader_name, n, gone), None, (255, 215, 60));
     }
 }
 

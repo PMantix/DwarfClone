@@ -277,6 +277,8 @@ pub enum Mode {
     Trade { side: usize, sel: [usize; 2] },
     Help,
     ConfirmQuit,
+    /// Every dwarf is dead: the fortress has fallen.
+    GameOver,
 }
 
 /// A mouse drag under way: where it last was, whether it's drawing a box
@@ -327,6 +329,11 @@ pub struct App {
     /// The view was panned with the mouse: it stays where it was put and the
     /// cursor is hidden until a click or an arrow key brings it back.
     pub free_view: bool,
+    /// The big moment being shown, and for how many frames.
+    pub spot: Option<(crate::game::spotlight::Spotlight, u32)>,
+    /// Status, brain, reports, chronicle and legends open as a side pane
+    /// beside the map (true) or over the whole screen.
+    pub docked: bool,
     /// Where the cursor was when the pan began; moving it any other way ends the pan.
     pub pan_from: (i32, i32),
 }
@@ -381,6 +388,8 @@ impl App {
             hover: None,
             drag: None,
             free_view: false,
+            spot: None,
+            docked: true,
             pan_from: (0, 0),
         }
     }
@@ -413,6 +422,34 @@ impl App {
                         break;
                     }
                 }
+            }
+        }
+        // The fortress has fallen.
+        if self.in_fortress() && !self.game.fallen && !self.game.dwarves.is_empty() && self.game.alive_count() == 0 {
+            self.game.fallen = true;
+            self.game.spotlights.clear();
+            self.spot = None;
+            self.paused = true;
+            self.mode = Mode::GameOver;
+            return;
+        }
+        // A big moment: turn the camera to it and tell it. When the overseer
+        // plays, the card goes by on its own after a few seconds.
+        if let Some((_, frames)) = self.spot.as_mut() {
+            *frames += 1;
+            if self.game.overseer.is_some() && *frames > 100 {
+                self.spot = None;
+            }
+        }
+        if self.spot.is_none() && self.mode == Mode::Normal {
+            if let Some(s) = self.game.take_spotlight() {
+                if let Some(p) = s.at.filter(|p| self.game.world.in_bounds(*p)) {
+                    self.free_view = false;
+                    self.cursor = p;
+                    self.view_x = p.x - self.map_rect.width as i32 / 2;
+                    self.view_y = p.y - self.map_rect.height as i32 / 2;
+                }
+                self.spot = Some((s, 0));
             }
         }
         if self.game.chronicle_ready {
@@ -738,6 +775,11 @@ impl App {
         self.cursor.z = self.cursor.z.clamp(0, w.d - 1);
     }
 
+    /// Screens that can sit beside the map as a side pane.
+    pub fn dockable(&self) -> bool {
+        matches!(self.mode, Mode::Status { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Chronicle { .. } | Mode::Legends { from_world: false, .. })
+    }
+
     pub fn uses_map_cursor(&self) -> bool {
         matches!(
             self.mode,
@@ -926,7 +968,31 @@ impl App {
             self.quit = true;
             return;
         }
+        // A big moment on screen: any key goes on (Space unpauses too).
+        if self.spot.is_some() && self.mode == Mode::Normal {
+            self.spot = None;
+            if k.code == KeyCode::Char(' ') {
+                self.paused = false;
+            }
+            return;
+        }
+        // The side panes open full screen, and back.
+        if k.code == KeyCode::Char('\\') && self.dockable() {
+            self.docked = !self.docked;
+            return;
+        }
         match self.mode.clone() {
+            Mode::GameOver => {
+                match k.code {
+                    KeyCode::Char('c') if !self.game.chronicles.is_empty() => self.mode = Mode::Chronicle { idx: self.game.chronicles.len() - 1 },
+                    KeyCode::Char('l') => self.mode = Mode::Legends { tab: 0, scroll: usize::MAX, from_world: false },
+                    KeyCode::Char('r') => self.mode = Mode::Reports { filter: 0, scroll: 0 },
+                    KeyCode::Char('t') => self.start_save(false, AfterSave::Title),
+                    KeyCode::Char('w') | KeyCode::Esc => self.mode = Mode::Normal,
+                    _ => {}
+                }
+                return;
+            }
             Mode::Loading => return,
             Mode::WorldSetup { sel } => return self.key_world_setup(k, sel),
             Mode::WorldGen => return self.key_worldgen(k),
@@ -961,6 +1027,7 @@ impl App {
         }
         let mode = self.mode.clone();
         match mode {
+            Mode::GameOver => {}
             Mode::Normal => self.key_normal(k),
             Mode::Designate { kind, corner } => match k.code {
                 KeyCode::Enter => self.confirm(),
