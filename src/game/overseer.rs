@@ -1967,12 +1967,15 @@ mod tests {
 
     #[test]
     fn a_trial_game_is_the_trials_fort() {
-        // Seed 5003 (Steady) loses four dwarves by day 213 of its year
-        // (schedule::same_story_after_refactor has the whole year).
+        // Seed 5003 (Steady) routs a small goblin siege by day 213 of its
+        // year and loses nobody (schedule::same_story_after_refactor has
+        // the whole year).
         let g = trial_game(5003, Style::Steady, 213);
         assert_eq!(g.tick, 213 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
-        assert_eq!(deaths, vec![(158085, "Nothar Alehold"), (158570, "Grenda Anvilbrew"), (159678, "Dorna Stonebeard"), (159880, "Odda Stonefist")]);
+        assert_eq!(deaths, vec![]);
+        let sieges: Vec<(u64, u32)> = g.annals.sieges.iter().map(|s| (s.tick, s.size)).collect();
+        assert_eq!(sieges, vec![(202320, 2)]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
     }
 }

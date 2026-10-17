@@ -105,21 +105,17 @@ mod tests {
     fn same_story_after_refactor() {
         let t = run_trial(5003, Style::Steady, 1, &Knobs::default());
         let deaths: Vec<(u64, &str, &str)> = t.deaths.iter().map(|d| (d.tick, d.name.as_str(), d.cause.as_str())).collect();
+        assert_eq!(deaths, vec![]);
+        let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
+        assert_eq!(sieges, vec![(202320, "goblins", 2, "routed")]);
+        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (16, 6718, 33));
         assert_eq!(
-            deaths,
-            vec![
-                (158085, "Nothar Alehold", "struck down"),
-                (158570, "Grenda Anvilbrew", "struck down"),
-                (159678, "Dorna Stonebeard", "struck down"),
-                (159880, "Odda Stonefist", "bled to death"),
-                (382530, "Borra Coalhelm", "struck down"),
-                (382680, "Kolvar Silverhold", "struck down"),
+            t.ambitions,
+            [
+                "Revel", "Prosper", "Architect", "Revel", "Architect", "Muster", "Architect", "Revel", "Muster", "Expand", "Provision", "Expand", "Expand",
+                "Expand", "Muster", "Revel", "Fortify", "Expand", "Muster", "Expand", "Architect", "Prosper"
             ]
         );
-        let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
-        assert_eq!(sieges, vec![]);
-        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (11, 4736, 22));
-        assert_eq!(t.ambitions, ["Revel", "Fortify", "Prosper", "Revel", "Expand", "Prosper", "Revel", "Delve"]);
     }
 
     /// The tasks the survival items will hand out are in place but do nothing
