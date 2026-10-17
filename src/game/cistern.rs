@@ -840,6 +840,48 @@ mod tests {
         assert!(g.buildings.values().any(|b| b.kind == BuildingKind::Lever && b.pull), "no pull asked for with enemies about");
     }
 
+    #[test]
+    fn sheltering_dwarves_drink_from_the_well() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        // Every barrel gone.
+        g.items.retain(|_, it| it.kind != ItemKind::Drink);
+        // A well by the wagon over a pocket of water (as water.rs's tests dig one).
+        let e = g.embark;
+        let spot = (2..20)
+            .flat_map(|r| (-r..=r).map(move |dx| e.offset(dx, r, 0)))
+            .find(|&p| {
+                let floor_ok = g.world.walkable(p) && g.world.t(p).building == 0 && !g.items.values().any(|it| it.pos == p);
+                floor_ok && g.world.solid(p.down()) && g.world.solid(p.down().down()) && g.world.walkable(p.offset(-1, 0, 0))
+            })
+            .expect("somewhere to sink a well");
+        g.world.t_mut(spot).kind = TileKind::Open;
+        g.world.t_mut(spot.down()).kind = TileKind::Open;
+        g.world.t_mut(spot.down()).water = 7;
+        g.water_cells = None;
+        assert!(g.place_building(BuildingKind::Well, spot));
+        let id = g.world.t(spot).building;
+        g.buildings.get_mut(&id).unwrap().built = true;
+        assert_eq!(g.working_wells(), vec![spot]);
+        // The shelter takes in the wagon and the well, and everyone is sent in.
+        let i = g.new_burrow().unwrap();
+        g.paint_burrow(i, e.offset(-10, -10, -1), e.offset(10, 10, 1), true);
+        g.paint_burrow(i, spot.offset(-3, -3, 0), spot.offset(3, 3, 0), true);
+        g.set_alert_burrow(i);
+        assert_eq!(g.toggle_civ_alert(), Ok(true));
+        for d in g.dwarves.iter_mut() {
+            d.thirst = THIRSTY;
+        }
+        let mut worst = 0;
+        for _ in 0..2 * DAY {
+            g.step();
+            worst = worst.max(g.dwarves.iter().filter(|d| d.alive).map(|d| d.thirst).max().unwrap_or(0));
+        }
+        assert!(g.civ_alert);
+        assert!(worst <= THIRSTY + 2000, "a sheltering dwarf went thirsty: {}", worst);
+        assert!(g.annals.counters.get("well_drinks").copied().unwrap_or(0) >= g.dwarves.len() as u32 / 2, "they didn't drink at the well: {:?}", g.annals.counters);
+    }
+
     /// Watch one fort's waterworks go up (SEED, STYLE, DAYS).
     #[test]
     #[ignore]
