@@ -66,6 +66,7 @@ pub mod personality;
 mod miasma;
 pub mod knobs;
 mod schedule;
+mod finders;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -1734,44 +1735,11 @@ impl Game {
             self.choose_military(d);
             return;
         }
-        if self.find_punishment(d) {
-            return;
-        }
-        if self.find_lever_pull(d) {
-            return;
-        }
-        if d.has(Labor::Medicine) && self.find_patient(d) {
-            return;
-        }
-        if d.has(Labor::Butchery) && self.find_slaughter(d) {
-            return;
-        }
-        if d.has(Labor::Hauling) && self.find_burial(d) {
-            return;
-        }
-        if d.has(Labor::Building) && (self.find_construct(d) || self.find_build_tile(d)) {
-            return;
-        }
-        if self.find_craft(d) {
-            return;
-        }
-        if d.has(Labor::Engraving) && self.find_detail(d) {
-            return;
-        }
-        if d.has(Labor::Mining) && self.find_dig(d, false) {
-            return;
-        }
-        if d.has(Labor::Woodcutting) && self.find_dig(d, true) {
-            return;
-        }
-        if d.has(Labor::Farming) && (self.find_farm(d) || self.find_gather(d)) {
-            return;
-        }
-        if d.has(Labor::Fishing) && self.find_fishing(d) {
-            return;
-        }
-        if d.has(Labor::Hauling) && !d.specialist && !self.find_depot_haul(d) && !self.find_dump_haul(d) {
-            self.find_haul(d);
+        // Then work, from the finder table (finders.rs), most urgent first.
+        for (_, find) in finders::FINDERS {
+            if find(self, d) {
+                return;
+            }
         }
     }
 
