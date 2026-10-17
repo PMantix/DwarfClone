@@ -691,6 +691,9 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
     if g.tick < d.jailed_until && matches!(d.task, Task::Idle | Task::Wander { .. }) {
         return format!("In jail ({} days left)", (d.jailed_until - g.tick) / crate::game::DAY + 1);
     }
+    if let Some(c) = d.carried_by {
+        return format!("Being carried by {}", who(c));
+    }
     match &d.task {
         Task::Wander { .. } | Task::Idle if g.tick < d.break_until => match g.zone_kind_at(d.pos) {
             Some(ZoneKind::Temple) => "Praying".into(),

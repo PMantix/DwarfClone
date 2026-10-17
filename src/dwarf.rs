@@ -591,6 +591,12 @@ pub struct Dwarf {
     /// When they last threw a tantrum.
     #[serde(default)]
     pub last_tantrum: u64,
+    /// Being carried to bed by this dwarf (rescue.rs).
+    #[serde(default)]
+    pub carried_by: Option<u32>,
+    /// The dwarf this one is carrying.
+    #[serde(default)]
+    pub carrying_dwarf: Option<u32>,
 }
 
 impl Dwarf {

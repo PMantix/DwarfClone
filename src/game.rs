@@ -1309,7 +1309,7 @@ impl Game {
         }
         // What the body does before the mind has a say (schedule.rs).
         self.body_phase(d);
-        if !d.alive {
+        if !d.alive || d.carried_by.is_some() {
             return;
         }
         if self.tick % 200 == 0 {
@@ -2310,8 +2310,7 @@ impl Game {
             Task::Bury { item, coffin } => self.do_bury(d, item, coffin),
             Task::Slaughter { creature } => self.do_slaughter(d, creature),
             Task::Punish { culprit } => self.do_punish(d, culprit),
-            // Not given out yet: the items that use them add their own arms.
-            Task::Rescue { .. } => self.release_task(d),
+            Task::Rescue { patient, bed } => self.do_rescue(d, patient, bed),
             Task::FirstAid { patient, item } => self.do_first_aid(d, patient, item),
             Task::Press => self.do_press(d),
             Task::Berserk => self.do_berserk(d),
