@@ -3,6 +3,7 @@
 //! when the drawbridge went up. When the siege ends it turns the watch into
 //! lessons, and acts on them.
 
+use super::ambitions::{Ambition, Sense};
 use super::overseer::{Overseer, Style};
 use super::*;
 use crate::buildings::Recipe;
@@ -286,6 +287,33 @@ impl Game {
         }
     }
 
+    /// The Lesson sense: fresh for a season after a siege taught something,
+    /// pulling toward Fortify (and Muster, when the soldiers were beaten).
+    pub(super) fn lesson_sense(&self, o: &Overseer) -> Option<(Sense, f64, Vec<(Ambition, f64)>)> {
+        let &(t, _) = o.lessons.last()?;
+        if self.tick >= t + SEASON {
+            return None;
+        }
+        let level = 1.0 - (self.tick - t) as f64 / SEASON as f64;
+        let mut pulls = vec![(Ambition::Fortify, 1.0)];
+        if o.lessons.iter().any(|l| l.0 == t && matches!(l.1, Lesson::ArmBetter | Lesson::SecondSquad)) {
+            pulls.push((Ambition::Muster, 0.8));
+        }
+        Some((Sense::Lesson, level, pulls))
+    }
+
+    /// For the brain screen: a blank line, a heading, and the latest
+    /// lessons ("day 230: trap the way in"); nothing before the first.
+    pub fn lesson_lines(&self) -> Vec<String> {
+        let Some(o) = self.overseer.as_ref().filter(|o| !o.lessons.is_empty()) else { return Vec::new() };
+        let mut v = vec![String::new(), " Lessons from sieges:".to_string()];
+        let n = o.lessons.len();
+        for (t, l) in &o.lessons[n.saturating_sub(5)..] {
+            v.push(format!("  day {}: {}", t / DAY, l.name()));
+        }
+        v
+    }
+
     /// `patience` (ticks before the bridge goes up regardless), less what
     /// sieges have taught: 60 ticks a lesson, never under 30.
     pub(super) fn bar_sooner(&self, o: &Overseer, patience: u64) -> u64 {
@@ -374,5 +402,26 @@ mod tests {
         let mut r = Overseer::new(Style::Reckless);
         r.base = Some(base);
         assert!(g.learn(&mut r, &w).is_empty());
+    }
+
+    #[test]
+    fn a_fresh_lesson_turns_the_mind_to_the_walls() {
+        use super::super::ambitions::Brain;
+        let mut g = super::super::overseer::trial_game(5001, Style::Steady, 20);
+        let before = g.overseer_brain().unwrap();
+        let sense = |b: &Brain| b.senses.iter().find(|s| s.0 == Sense::Lesson).map_or(0.0, |s| s.1);
+        assert_eq!(sense(&before), 0.0);
+        assert!(g.lesson_lines().is_empty());
+        let tick = g.tick;
+        g.overseer.as_mut().unwrap().lessons.push((tick, Lesson::ArmBetter));
+        let after = g.overseer_brain().unwrap();
+        assert!(sense(&after) > 0.9, "the lesson is fresh");
+        assert!(after.odds_of(Ambition::Fortify) > before.odds_of(Ambition::Fortify), "Fortify odds {} -> {}", before.odds_of(Ambition::Fortify), after.odds_of(Ambition::Fortify));
+        assert!(after.links_of(Ambition::Muster).iter().any(|l| l.0 == Sense::Lesson), "beaten soldiers pull toward Muster too");
+        assert!(g.lesson_lines().iter().any(|l| l.contains("arm the soldiers better")));
+        // A season on, it has faded.
+        g.tick += SEASON;
+        let later = g.overseer_brain().unwrap();
+        assert_eq!(sense(&later), 0.0);
     }
 }

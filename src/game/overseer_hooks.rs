@@ -38,6 +38,7 @@ impl Game {
         senses.extend(self.prowler_sense(o));
         senses.push((Sense::Wounded, self.wounded_sense(), vec![(Ambition::Provision, 0.6), (Ambition::Venture, -1.5)]));
         senses.extend(self.unarmed_sense(o));
+        senses.extend(self.lesson_sense(o));
         let _ = o;
         senses
     }
