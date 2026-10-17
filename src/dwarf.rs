@@ -582,6 +582,12 @@ pub struct Dwarf {
     /// When they last fought a duel (no new challenge for a season).
     #[serde(default)]
     pub last_duel: u64,
+    /// A berserk rage or catatonia on top of any madness (breakdowns.rs).
+    #[serde(default)]
+    pub fit: crate::game::breakdowns::Fit,
+    /// When they last threw a tantrum.
+    #[serde(default)]
+    pub last_tantrum: u64,
 }
 
 impl Dwarf {
@@ -702,8 +708,8 @@ impl Dwarf {
     }
 
     pub fn mood(&self) -> (&'static str, (u8, u8, u8)) {
-        if self.insane {
-            ("Stricken by melancholy", (150, 150, 255))
+        if let Some(m) = crate::game::breakdowns::breakdown_mood(self) {
+            m
         } else if self.mood.is_some() {
             ("Possessed by a strange mood", (255, 120, 255))
         } else if self.body.unconscious() {

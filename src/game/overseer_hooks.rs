@@ -12,13 +12,14 @@ impl Game {
     pub(super) fn ov_daily_hooks(&mut self, o: &mut Overseer) {
         // M1 (survival):
         self.ov_captives(o);
+        self.ov_coax(o);
     }
 
     /// Every ten ticks, at the end of the alert check (`ov_alert`): one line
     /// per item, and cheap.
     pub(super) fn ov_alert_hooks(&mut self, o: &mut Overseer) {
         // M1 (survival):
-        let _ = o;
+        self.ov_berserk(o);
     }
 
     /// Senses beyond the brain's own: each is (sense, how strongly it fires

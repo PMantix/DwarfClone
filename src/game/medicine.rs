@@ -148,7 +148,7 @@ impl Game {
         let mut patients: HashMap<Pos, (u32, Treatment)> = HashMap::new();
         let wells = !self.working_wells().is_empty();
         for p in self.dwarves.iter().filter(|p| p.alive && p.id != d.id && !self.treating.contains(&p.id)) {
-            let lying = (p.asleep && matches!(p.task, Task::Rest { .. })) || p.body.unconscious();
+            let lying = (p.asleep && matches!(p.task, Task::Rest { .. })) || p.body.unconscious() || p.task == Task::Catatonic;
             if !lying {
                 continue;
             }

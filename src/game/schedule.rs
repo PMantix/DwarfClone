@@ -53,6 +53,7 @@ impl Game {
             self.titles_daily();
             self.check_mandate();
             // M1 (survival), daily:
+            self.shift_daily();
         }
         if tick % SEASON == 0 { self.season_turns(); }
     }
@@ -88,7 +89,7 @@ impl Game {
     /// before the mind has a say. One line per item.
     pub(super) fn body_phase(&mut self, d: &mut Dwarf) {
         // M1 (survival): pressing a wound, being carried, a berserk fit.
-        let _ = d;
+        self.fit_body(d);
     }
 }
 

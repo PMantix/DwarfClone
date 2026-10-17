@@ -70,6 +70,7 @@ mod finders;
 mod overseer_hooks;
 mod wildlife;
 pub mod captives;
+pub mod breakdowns;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -1344,10 +1345,12 @@ impl Game {
         }
 
         self.psyche_tick(d);
-        // A melancholic dwarf still sips and picks at food when it's that
-        // bad (or they'd never live to come back out of it).
+        if self.in_a_fit(d) {
+            return;
+        }
+        // A mad dwarf still sips and picks at food when it's that bad (or
+        // they'd never live to come back out of it).
         let sipping = d.insane
-            && d.melancholy
             && (matches!(d.task, Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Eat { .. })
                 || (matches!(d.task, Task::Idle | Task::Wander { .. }) && (d.thirst > THIRSTY + 6000 || d.hunger > HUNGRY + 12000)));
         if sipping && matches!(d.task, Task::Wander { .. }) {
@@ -1366,7 +1369,10 @@ impl Game {
         }
         if d.tantrum > 0 {
             d.tantrum -= 1;
-        } else if d.stress >= d.tantrum_threshold() {
+        } else if !d.insane && d.stress >= d.tantrum_threshold() {
+            if self.goes_berserk(d) {
+                return;
+            }
             self.release_task(d);
             d.tantrum = 1500;
             // Venting helps a little; a truly miserable dwarf keeps sliding.
@@ -2293,7 +2299,15 @@ impl Game {
             Task::Slaughter { creature } => self.do_slaughter(d, creature),
             Task::Punish { culprit } => self.do_punish(d, culprit),
             // Not given out yet: the items that use them add their own arms.
-            Task::FirstAid { .. } | Task::Rescue { .. } | Task::Press | Task::Catatonic | Task::Berserk | Task::Coax { .. } => self.release_task(d),
+            Task::FirstAid { .. } | Task::Rescue { .. } | Task::Press => self.release_task(d),
+            Task::Berserk => self.do_berserk(d),
+            // (They lie where they are: breakdowns.rs.)
+            Task::Catatonic => {
+                if d.fit == breakdowns::Fit::None {
+                    self.release_task(d);
+                }
+            }
+            Task::Coax { patient } => self.do_coax(d, patient),
             Task::Wander { target } => match self.travel(d, target) {
                 Travel::Moving => {}
                 Travel::Arrived => d.task = Task::Idle,
