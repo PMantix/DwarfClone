@@ -108,10 +108,11 @@ impl Game {
             }
             return;
         };
-        // It goes for one that's close and alone, or weak enough for its
-        // pack (but once hurt, only the lone ones).
-        let bold = c.wary_until == 0 && odds * pack >= nerve;
-        if near(pos, c.pos, info.aggro * 2) && (escorts == 0.0 || bold) {
+        // It goes for one weak enough for its pack: within its reach, or
+        // from twice as far when they're alone (once hurt, only the lone).
+        let alone = escorts == 0.0;
+        let bold = odds * pack >= nerve && (alone || c.wary_until == 0);
+        if bold && near(pos, c.pos, if alone { info.aggro * 2 } else { info.aggro }) {
             c.target = Some(id);
             c.stalk = None;
             c.path.clear();
@@ -398,7 +399,9 @@ mod tests {
     fn a_wounded_wolf_breaks_off() {
         let (mut g, a, _, woodcutter) = meadow(1);
         let wolf = g.spawn_creature(Species::Wolf, a.offset(11, 0, 0), u64::MAX);
-        // Alone, the woodcutter is fair game.
+        // At dusk a lone wolf dares a lone dwarf, empty handed.
+        g.tick = DAY - DAY / 5;
+        g.dwarves[3].held = None;
         let mut went = false;
         hold(&mut g, 40, |g| went |= g.creatures[&wolf].target == Some(woodcutter));
         assert!(went, "the wolf should go for the lone woodcutter");
@@ -447,7 +450,8 @@ mod tests {
     #[test]
     fn a_stalker_waits_for_its_prey_to_be_alone() {
         let (mut g, a, squad, woodcutter) = meadow(4);
-        // A friend works beside the woodcutter, empty handed.
+        // A friend works beside the woodcutter, both empty handed.
+        g.dwarves[3].held = None;
         let friend = squad[0];
         if let Some(d) = g.dwarves.iter_mut().find(|d| d.id == friend) {
             d.soldier = false;
