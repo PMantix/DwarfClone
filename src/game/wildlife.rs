@@ -247,6 +247,49 @@ impl Game {
         }
         1 + self.creatures.values().filter(|o| o.pack == c.pack && o.id != c.id && o.alive && !o.leaving && near(o.pos, c.pos, 8)).count() as u32
     }
+
+    /// Wild hostiles near the fort (not sieges, not legends), nearest first,
+    /// stalkers included: (creature id, pos, pack id). A beast on its own is
+    /// its own pack.
+    pub fn prowlers(&self, near: Pos, r: i32) -> Vec<(u32, Pos, u32)> {
+        let mut v: Vec<(u32, Pos, u32)> = self
+            .creatures
+            .values()
+            .filter(|c| c.hostile() && !c.siege && !c.legendary() && !c.leaving && self.creature_active(c))
+            .filter(|c| (c.pos.x - near.x).abs() <= r && (c.pos.y - near.y).abs() <= r && (c.pos.z - near.z).abs() <= 6)
+            .map(|c| (c.id, c.pos, if c.pack != 0 { c.pack } else { c.id }))
+            .collect();
+        v.sort_by_key(|&(id, p, _)| (dist2(p, near), id));
+        v
+    }
+
+    /// The overseer's sense of prowlers: beasts within 30 of the fort and
+    /// too few soldiers to see them off (about 4 strength each). It pulls
+    /// towards Muster and a little towards Fortify.
+    pub(super) fn prowler_sense(&self, o: &Overseer) -> Option<(Sense, f64, Vec<(Ambition, f64)>)> {
+        let at = o.base.or(o.top).unwrap_or(self.embark);
+        let n = self.prowlers(at, 30).len();
+        if n == 0 {
+            return None;
+        }
+        let strength: i32 = self.squads.iter().map(|s| self.squad_strength(&s.members)).sum();
+        let need = self.knob("wild.prowler_strength", 4.0) * n as f64;
+        let level = ((need - strength as f64) / need).clamp(0.0, 1.0);
+        (level > 0.0).then(|| (Sense::Prowlers, level, vec![(Ambition::Muster, 0.8), (Ambition::Fortify, 0.4)]))
+    }
+
+    /// What a wild beast is up to, for its card: shadowing someone, or
+    /// keeping off with a wound.
+    pub fn wild_mood(&self, c: &Creature) -> Option<String> {
+        if c.leaving || !c.alive {
+            return None;
+        }
+        if c.wary_until > self.tick {
+            return Some("Wounded and wary: keeping its distance".into());
+        }
+        let d = self.dwarves.iter().find(|d| Some(d.id) == c.stalk)?;
+        Some(format!("Shadowing {}", d.name))
+    }
 }
 
 /// Beasts of the land, which weigh their chances: not the dead, the
@@ -428,5 +471,38 @@ mod tests {
         let mut went = false;
         hold(&mut g, 150, |g| went |= wolves.iter().any(|w| g.creatures[w].target == Some(woodcutter)));
         assert!(went, "they strike once the woodcutter is alone");
+    }
+
+    #[test]
+    fn prowlers_are_the_wild_hostiles_about_the_fort() {
+        let (mut g, a, _, woodcutter) = meadow(1);
+        let near_wolf = g.spawn_creature(Species::Wolf, a.offset(3, 0, 0), u64::MAX);
+        let far_wolf = g.spawn_creature(Species::Wolf, a.offset(9, 0, 0), u64::MAX);
+        for w in [near_wolf, far_wolf] {
+            g.creatures.get_mut(&w).unwrap().pack = near_wolf;
+        }
+        let bear = g.spawn_creature(Species::Bear, a.offset(6, 1, 0), u64::MAX);
+        g.spawn_creature(Species::Deer, a.offset(2, 0, 0), u64::MAX);
+        let gob = g.spawn_creature(Species::Goblin, a.offset(1, 0, 0), u64::MAX);
+        g.creatures.get_mut(&gob).unwrap().siege = true;
+        let gone = g.spawn_creature(Species::Wolf, a.offset(4, 0, 0), u64::MAX);
+        g.creatures.get_mut(&gone).unwrap().leaving = true;
+        let p = g.prowlers(a, 30);
+        let ids: Vec<u32> = p.iter().map(|x| x.0).collect();
+        assert_eq!(ids, vec![near_wolf, bear, far_wolf], "nearest first; no deer, besiegers or leavers");
+        assert_eq!((p[0].2, p[1].2, p[2].2), (near_wolf, bear, near_wolf), "a beast alone is its own pack");
+        assert!(g.prowlers(a, 2).is_empty());
+        // The overseer feels them while its soldiers are few.
+        g.set_overseer(Some(Style::Steady));
+        let b = g.overseer_brain().unwrap();
+        let level = b.senses.iter().find(|x| x.0 == Sense::Prowlers).unwrap().1;
+        assert!(level > 0.5, "prowlers sensed at {}", level);
+        assert!(b.links_of(Ambition::Muster).iter().any(|l| l.0 == Sense::Prowlers));
+        // And the card says what a beast is about.
+        let mut c = g.creatures[&far_wolf].clone();
+        c.stalk = Some(woodcutter);
+        assert_eq!(g.wild_mood(&c), Some(format!("Shadowing {}", dwarf(&g, woodcutter).name)));
+        c.wary_until = g.tick + 10;
+        assert!(g.wild_mood(&c).unwrap().contains("wary"));
     }
 }
