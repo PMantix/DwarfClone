@@ -1,7 +1,7 @@
 //! Doctors, hospitals and treatment: sutures, cleaning, splints and crutches.
 
 use super::{Game, Travel, ZoneKind, HUNGRY, SEARCH_LIMIT, THIRSTY};
-use crate::body::{BleedParams, Part, PARTS};
+use crate::body::{BleedParams, Body, Part, PARTS};
 use crate::dwarf::{Dwarf, Labor, Task};
 use crate::geom::Pos;
 use crate::items::{Item, ItemKind};
@@ -65,6 +65,34 @@ impl Treatment {
 /// Whether `it` would do for a patient abed who is `thirsty` and/or `hungry`.
 fn feeds(thirsty: bool, hungry: bool, it: &Item) -> bool {
     thirsty && it.kind == ItemKind::Drink || hungry && it.is_food()
+}
+
+/// How many lines of a dwarf's medical history are kept.
+const MED_LINES: usize = 20;
+
+/// Write a line in a dwarf's medical history.
+pub(crate) fn chart(d: &mut Dwarf, tick: u64, text: String) {
+    d.med.push((tick, text));
+    if d.med.len() > MED_LINES {
+        d.med.remove(0);
+    }
+}
+
+/// What a blow did to a body, for the history: "gashed in the left leg",
+/// "lost the right arm". None if it did no harm.
+pub fn wound_words(before: &Body, after: &Body) -> Option<String> {
+    let i = (0..PARTS.len()).filter(|&i| after.hp[i] < before.hp[i]).max_by_key(|&i| before.hp[i] - after.hp[i])?;
+    let part = PARTS[i].name();
+    let opened = after.bleeds[i] > before.bleeds[i];
+    Some(if after.lost[i] && !before.lost[i] {
+        format!("lost the {}", part)
+    } else if after.hp[i] <= 0 && before.hp[i] > 0 {
+        format!("had the {} mangled", part)
+    } else if (before.hp[i] - after.hp[i]) * 3 >= after.max[i] {
+        format!("{} in the {}", if opened { "gashed" } else { "badly bruised" }, part)
+    } else {
+        format!("{} on the {}", if opened { "cut" } else { "bruised" }, part)
+    })
 }
 
 fn leg(p: Part) -> bool {
@@ -319,6 +347,16 @@ impl Game {
             Treatment::Water => p.thirst = 0,
             Treatment::Feed => {}
         }
+        let done = match what {
+            Treatment::Suture => "wounds sutured",
+            Treatment::Clean => "wounds cleaned",
+            Treatment::Splint => "a bone set",
+            Treatment::Crutch => "fitted with a crutch",
+            Treatment::Water | Treatment::Feed => "",
+        };
+        if !done.is_empty() {
+            chart(p, tick, format!("{} by {}", done, doctor));
+        }
         let pname = p.name.clone();
         p.think(&format!("was cared for by {}", doctor), -6 - skill as i32, tick);
         self.msg(&format!("{} finished {} for {}.", doctor, what.name(), pname), (150, 220, 200));
@@ -406,6 +444,49 @@ mod tests {
         assert!(d.thoughts.iter().any(|t| t.text.contains("brought a drink while abed")));
         assert!(g.log.iter().any(|m| m.text.contains("in bed")));
         assert_eq!(g.annals.counters.get("abed.drinks"), Some(&1));
+    }
+
+    #[test]
+    fn history_records_care() {
+        // A wolf's bite and the doctor's thread both go in the history.
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        let e = g.embark;
+        for d in g.dwarves.iter_mut() {
+            d.labors[Labor::Medicine.idx()] = false;
+        }
+        g.dwarves[1].labors[Labor::Medicine.idx()] = true;
+        g.dwarves[1].pos = e;
+        g.spawn_item(ItemKind::Thread, Mat::Stoutcap, e);
+        let doctor = g.dwarves[1].name.clone();
+        let wolf = crate::creature::Creature::new(9999, crate::creature::Species::Wolf, e, 0);
+        let id = g.dwarves[0].id;
+        let mut d = std::mem::take(&mut g.dwarves[0]);
+        d.pos = e.offset(1, 0, 0);
+        let before = d.body.clone();
+        d.body.wound(Part::LeftLeg, 9, true);
+        g.note_wound(&mut d, &wolf, &before);
+        // (Lying still, as the wounded do once helped to bed.)
+        d.task = Task::Rest { bed: None, stand: d.pos };
+        d.asleep = true;
+        g.dwarves[0] = d;
+        assert_eq!(g.dwarves[0].med.last().map(|m| m.1.as_str()), Some("gashed in the left leg by a wolf"));
+        for _ in 0..DAY / 2 {
+            g.step();
+            if g.dwarves.iter().find(|d| d.id == id).unwrap().body.bleed_rate() == 0 {
+                break;
+            }
+        }
+        let p = g.dwarves.iter().find(|d| d.id == id).unwrap();
+        let lines: Vec<&str> = p.med.iter().map(|m| m.1.as_str()).collect();
+        assert!(lines.contains(&format!("wounds sutured by {}", doctor).as_str()), "history: {:?}", lines);
+        // The history keeps only the last few lines.
+        let mut p = p.clone();
+        for i in 0..30 {
+            chart(&mut p, i, format!("line {}", i));
+        }
+        assert_eq!(p.med.len(), MED_LINES);
+        assert_eq!(p.med.last().unwrap().1, "line 29");
     }
 
     #[test]
