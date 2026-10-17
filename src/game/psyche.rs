@@ -615,6 +615,10 @@ impl Game {
         };
         let tick = self.tick;
         if m.work_left == 0 && tick > m.started + 2 * MONTH {
+            // What they never got is talked of, and the talk gets around.
+            if let Some(&need) = m.needs.get(m.items.len()) {
+                self.word_of_want(super::word::Want::from_need(need));
+            }
             d.mood = Some(m);
             self.go_insane(d, "has gone stark raving mad, unable to finish their work");
             return;

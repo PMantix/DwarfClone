@@ -63,6 +63,13 @@ ruin; that's the fun of it.
 Use Windows Terminal (or any truecolor + Unicode terminal) at 130x40 or larger.
 Press `?` in game for keys.
 
+**Word gets around.** A dwarf who goes mad because the fortress never had what their fey mood
+demanded (gems, metal, good stone, wood, bone) is talked of. The merchants carry the talk home
+when they pack up; failing that, the tappers of the deep roads, who knock news from hold to hold
+through the rock, get it to the mountainhome within the season. Then dwarves there who love
+that thing stay away, and the migrants say so ("word that there are no gems here kept 2 at
+home"). When the fortress finally has some, better word goes out and they come again.
+
 **Big moments.** A siege at the gates, a dragon or a beast of legend, something from the
 caverns, the dead rising, traders at the depot, a hero struck down, a cave-in, a ghost, an
 artifact, a new noble, a siege broken or its leader slain: the game pauses, turns the camera to

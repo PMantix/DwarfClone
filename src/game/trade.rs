@@ -173,6 +173,7 @@ impl Game {
             if self.caravan.as_ref().unwrap().arrived {
                 self.caravan.as_mut().unwrap().arrived = false;
                 self.msg("The merchants are packing up to leave.", (240, 240, 160));
+                self.word_with_caravan();
             }
         }
     }

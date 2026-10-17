@@ -61,6 +61,7 @@ mod blueprint;
 pub mod annals;
 pub mod spotlight;
 pub mod troubles;
+pub mod word;
 mod miasma;
 pub use ambitions::{Ambition, Sense};
 
@@ -305,6 +306,9 @@ pub struct Game {
     /// The summer rains of the warm wet lands.
     #[serde(default)]
     pub monsoon: bool,
+    /// What's said of the fortress elsewhere (see `word`).
+    #[serde(default)]
+    pub word: Vec<word::Word>,
     /// How each dwarf died and how each siege went.
     #[serde(default)]
     pub annals: annals::Annals,
@@ -489,6 +493,7 @@ impl Game {
             weather: Weather::Clear,
             drought: false,
             monsoon: false,
+            word: Vec::new(),
             annals: Default::default(),
             spotlights: Vec::new(),
             fallen: false,
@@ -1105,6 +1110,7 @@ impl Game {
             self.caravan_season(season);
             self.issue_mandate();
             self.maybe_strange_mood();
+            self.word_season();
         }
     }
 
@@ -1272,6 +1278,7 @@ impl Game {
             Labor::Fishing,
             Labor::Engraving,
         ];
+        let mut came = Vec::new();
         for _ in 0..n {
             let id = self.new_id();
             let spec = *self.rng.pick(&pool);
@@ -1279,9 +1286,27 @@ impl Game {
             let pos = self.random_spot_near(entry, 2);
             let mut d = dwarf::new_dwarf(id, pos, &mut self.rng, &specs);
             self.dress(&mut d, 250);
-            self.dwarves.push(d);
+            came.push(d);
         }
-        self.msg(&format!("Some migrants have arrived. ({} dwarves)", n), (120, 255, 120));
+        // Those who heard the fortress has none of what they love stay home.
+        let likes: Vec<Mat> = came.iter().map(|d| d.likes_mat).collect();
+        let (stay, why) = self.word_keeps_away(&likes);
+        let kept = stay.iter().filter(|s| **s).count();
+        let mut came: Vec<Dwarf> = came.into_iter().zip(stay).filter(|(_, s)| !*s).map(|(d, _)| d).collect();
+        let n = came.len();
+        self.dwarves.append(&mut came);
+        let because = why.iter().map(|w| w.name()).collect::<Vec<_>>().join(" or ");
+        if n == 0 {
+            if kept > 0 {
+                self.msg(&format!("No migrants came: word that there are no {} here kept them at home.", because), (200, 180, 140));
+            }
+            return;
+        }
+        if kept > 0 {
+            self.msg(&format!("Some migrants have arrived. ({} dwarves; word that there are no {} here kept {} at home.)", n, because, kept), (120, 255, 120));
+        } else {
+            self.msg(&format!("Some migrants have arrived. ({} dwarves)", n), (120, 255, 120));
+        }
         self.year_log.arrivals += n as u32;
         self.pause_request = true;
     }
