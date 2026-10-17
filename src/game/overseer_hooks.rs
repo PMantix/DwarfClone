@@ -11,6 +11,7 @@ impl Game {
     /// Daily, at the end of the overseer's round (`ov_daily`): one line per item.
     pub(super) fn ov_daily_hooks(&mut self, o: &mut Overseer) {
         // M1 (survival):
+        self.ov_readiness(o);
         let _ = o;
     }
 
@@ -26,8 +27,9 @@ impl Game {
     /// ambition with weight × strength, so a weight of 1.3 is as strong a pull
     /// as `Besieged` has on Fortify. A sense not listed fires at 0.
     pub(super) fn extra_senses(&self, o: &Overseer) -> Vec<(Sense, f64, Vec<(Ambition, f64)>)> {
-        let senses = Vec::new();
+        let mut senses = Vec::new();
         // M1 (survival): Lesson, Prowlers, Unarmed, Wounded.
+        senses.extend(self.unarmed_sense(o));
         let _ = o;
         senses
     }

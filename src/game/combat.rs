@@ -435,6 +435,8 @@ impl Game {
                 if let Some(it) = self.items.get_mut(&item) {
                     it.carried_by = Some(d.id);
                     it.claimed_by = None;
+                    // (Taken out of its bin.)
+                    it.container = None;
                 }
                 d.task = Task::Idle;
             }
@@ -861,6 +863,8 @@ impl Game {
         self.msg(&text, (255, 120, 80));
         self.spotlight(if raid { "Raiders sighted" } else { "An army on the march" }, &text, None, (255, 120, 80));
         self.incoming = Some((arrive, foe, n, leader));
+        // At the warning, soldiers put on whatever kit is in the stores.
+        self.kit_up();
     }
 
     /// How many come: a raiding party first, then armies that grow with the

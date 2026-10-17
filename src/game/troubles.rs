@@ -36,6 +36,8 @@ pub enum Lack {
     MoodShop(BuildingKind),
     Gem,
     Bone,
+    /// Soldiers with nothing in the stores for this piece of their kit.
+    Kit(super::readiness::KitPart),
 }
 
 impl Lack {
@@ -102,6 +104,7 @@ impl Lack {
             Lack::MoodShop(k) => format!("a {} for a dwarf in a fey mood", k.name().to_lowercase()),
             Lack::Gem => "gems".into(),
             Lack::Bone => "bone".into(),
+            Lack::Kit(p) => format!("{} for the soldiers", p.plural()),
         }
     }
 }
@@ -300,6 +303,14 @@ impl Game {
                 self.hunt = true;
                 self.hands_for(Labor::Butchery, 1);
                 Some("sent hunters out for bone.".into())
+            }
+            Lack::Kit(p) => {
+                let (recipe, keep) = self.kit_order(p)?;
+                Self::boost(o, recipe, keep, tick);
+                if recipe == Recipe::LeatherArmor || recipe == Recipe::LeatherHelm {
+                    Self::boost(o, Recipe::Tan, keep, tick);
+                }
+                Some(format!("ordered {} for the soldiers ({}).", p.plural(), recipe.name().to_lowercase()))
             }
             Lack::Workshop(_) => {
                 if !o.wants.contains(&RoomUse::Workshops) {

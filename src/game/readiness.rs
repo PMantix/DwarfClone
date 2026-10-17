@@ -1,7 +1,87 @@
-//! Arms and kit: what a bolt of each metal does, and whether a soldier is
-//! ready for a fight.
+//! Arms and kit: what a bolt of each metal does, whether a soldier is ready
+//! for a fight, and the overseer seeing that they are before the first siege.
 
+use super::ambitions::{Ambition, Sense};
+use super::military::UniformWeapon;
+use super::overseer::Overseer;
+use super::troubles::Lack;
 use super::*;
+use crate::items::Slot;
+use serde::{Deserialize, Serialize};
+
+/// One piece of a soldier's kit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Slot3 {
+    /// Worn or held.
+    Worn,
+    /// Not worn, but a free fitting item (or a better weapon) is in the stores.
+    InStock,
+    None,
+}
+
+/// What a soldier has of the four pieces their uniform asks for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Kit {
+    pub weapon: Slot3,
+    pub helm: Slot3,
+    pub mail: Slot3,
+    pub shield: Slot3,
+}
+
+/// A piece of kit, for a shortfall (`Lack::Kit`) and the squads screen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KitPart {
+    Weapon,
+    Helm,
+    Mail,
+    Shield,
+}
+
+impl KitPart {
+    pub const ALL: [KitPart; 4] = [KitPart::Weapon, KitPart::Helm, KitPart::Mail, KitPart::Shield];
+
+    pub fn plural(self) -> &'static str {
+        match self {
+            KitPart::Weapon => "weapons",
+            KitPart::Helm => "helms",
+            KitPart::Mail => "mail",
+            KitPart::Shield => "shields",
+        }
+    }
+
+    /// The squads screen's column letter.
+    pub fn letter(self) -> char {
+        match self {
+            KitPart::Weapon => 'W',
+            KitPart::Helm => 'H',
+            KitPart::Mail => 'M',
+            KitPart::Shield => 'S',
+        }
+    }
+}
+
+impl Kit {
+    pub fn get(&self, p: KitPart) -> Slot3 {
+        match p {
+            KitPart::Weapon => self.weapon,
+            KitPart::Helm => self.helm,
+            KitPart::Mail => self.mail,
+            KitPart::Shield => self.shield,
+        }
+    }
+}
+
+/// How much a uniform wants a weapon (0: not at all), as `equip_soldier` scores it.
+fn weapon_score(uniform: UniformWeapon, it: &Item) -> f32 {
+    if !uniform.accepts(it.kind) {
+        return 0.0;
+    }
+    it.kind.weapon_damage().map_or(0.0, |w| w * it.mat.weapon_mult()) + 0.1
+}
+
+fn metal(m: Mat) -> bool {
+    matches!(m, Mat::Copper | Mat::Bronze | Mat::Iron | Mat::Steel | Mat::Gold)
+}
 
 impl Game {
     /// What one bolt does before skill and armour: wooden bolts (or none
@@ -26,5 +106,234 @@ impl Game {
         let held: HashSet<u32> = self.dwarves.iter().filter(|d| d.alive).filter_map(|d| d.held).collect();
         let wooden = self.items.values().filter(|it| it.kind == kind && it.mat == Mat::Wood && !held.contains(&it.id)).count() as u32;
         (recipe, metal + wooden)
+    }
+
+    /// A soldier's kit: each piece worn, waiting in the stores, or missing.
+    /// (`InStock` is what `equip_soldier` would go and fetch.)
+    pub fn kit(&self, dwarf: u32) -> Kit {
+        let none = Kit { weapon: Slot3::None, helm: Slot3::None, mail: Slot3::None, shield: Slot3::None };
+        let Some(d) = self.dwarves.iter().find(|d| d.id == dwarf && d.alive) else { return none };
+        let (uniform, armor) = self.uniform_of(dwarf);
+        let current = d.held.and_then(|id| self.items.get(&id)).map_or(0.0, |it| weapon_score(uniform, it));
+        let worn: Vec<Slot> = d.armor.iter().filter_map(|id| self.items.get(id).and_then(|it| it.kind.armor_slot())).collect();
+        let mut best = 0.0f32;
+        let mut stocked: Vec<Slot> = Vec::new();
+        for it in self.items.values().filter(|it| it.free()) {
+            best = best.max(weapon_score(uniform, it));
+            if let Some(s) = it.kind.armor_slot() {
+                if !stocked.contains(&s) {
+                    stocked.push(s);
+                }
+            }
+        }
+        let weapon = if current > 0.0 {
+            if best > current + 0.5 { Slot3::InStock } else { Slot3::Worn }
+        } else if best > 0.0 {
+            Slot3::InStock
+        } else {
+            Slot3::None
+        };
+        let piece = |s: Slot| {
+            if worn.contains(&s) {
+                Slot3::Worn
+            } else if armor && stocked.contains(&s) {
+                Slot3::InStock
+            } else {
+                Slot3::None
+            }
+        };
+        Kit { weapon, helm: piece(Slot::Head), mail: piece(Slot::Body), shield: piece(Slot::Shield) }
+    }
+
+    /// Fit to fight: a metal weapon in hand and at least one piece of armour on.
+    pub fn kit_ready(&self, dwarf: u32) -> bool {
+        let Some(d) = self.dwarves.iter().find(|d| d.id == dwarf && d.alive) else { return false };
+        let armed = d.held.and_then(|id| self.items.get(&id)).map_or(false, |it| it.kind.weapon_damage().is_some() && it.kind != ItemKind::Pick && metal(it.mat));
+        let armoured = d.armor.iter().any(|id| self.items.get(id).map_or(false, |it| it.kind.armor_slot().is_some()));
+        armed && armoured
+    }
+
+    /// Every soldier with kit waiting in the stores drops what they're doing
+    /// (short of a need or a fight) and goes to put it on. How many went.
+    pub(super) fn kit_up(&mut self) -> usize {
+        let mut sent = 0;
+        for i in 0..self.dwarves.len() {
+            let d = &self.dwarves[i];
+            if !d.alive || !d.soldier || d.task.is_need() || matches!(d.task, Task::Equip { .. } | Task::Attack { .. } | Task::Flee) || d.body.unconscious() {
+                continue;
+            }
+            let k = self.kit(d.id);
+            if !KitPart::ALL.iter().any(|&p| k.get(p) == Slot3::InStock) {
+                continue;
+            }
+            let mut d = std::mem::take(&mut self.dwarves[i]);
+            self.release_task(&mut d);
+            d.task = Task::Idle;
+            if self.equip_soldier(&mut d) {
+                sent += 1;
+            }
+            self.dwarves[i] = d;
+        }
+        sent
+    }
+
+    /// Now and then while drilling or holding a station (which otherwise go
+    /// on for a long while): fetch any better kit. True if they went for it.
+    pub(super) fn kit_check(&mut self, d: &mut Dwarf) -> bool {
+        if self.tick % 300 != d.id as u64 % 300 || !d.soldier {
+            return false;
+        }
+        if self.equip_soldier(d) {
+            d.working = false;
+            return true;
+        }
+        false
+    }
+
+    /// The overseer's daily look at the squads (overseer_hooks.rs): kit in
+    /// the stores is put on, and kit nobody has is a shortfall to see to.
+    pub(super) fn ov_readiness(&mut self, o: &mut Overseer) {
+        let sent = self.kit_up();
+        if sent > 0 {
+            let text = o.voiced(&format!("Had {} soldier{} fetch their kit from the stores.", sent, if sent == 1 { "" } else { "s" }));
+            Self::note_ov(o, self.tick, text);
+        }
+        for p in KitPart::ALL {
+            if self.kit_short(p) > 0 {
+                // (Counted once per shortfall, not every day it lasts.)
+                if !self.troubles.iter().any(|t| t.0 == Lack::Kit(p)) {
+                    self.count("kit_shortfalls", 1);
+                }
+                self.trouble(Lack::Kit(p));
+            }
+        }
+    }
+
+    /// Soldiers with nothing in the stores for this piece (armour only when
+    /// their uniform asks for it).
+    pub(super) fn kit_short(&self, p: KitPart) -> u32 {
+        let ids: Vec<u32> = self.dwarves.iter().filter(|d| d.alive && d.soldier).map(|d| d.id).collect();
+        ids.into_iter().filter(|&id| self.kit(id).get(p) == Slot3::None && (p == KitPart::Weapon || self.uniform_of(id).1)).count() as u32
+    }
+
+    /// What to order for a kit shortfall, and how many: from the forge when
+    /// there is one, else leather (or wooden crossbows) from the workshops.
+    /// Nothing for shields without a forge.
+    pub(super) fn kit_order(&self, p: KitPart) -> Option<(Recipe, u32)> {
+        let forge = self.buildings.values().any(|b| b.built && matches!(b.kind, BuildingKind::Forge | BuildingKind::MagmaForge));
+        let recipe = match (p, forge) {
+            (KitPart::Weapon, true) => Recipe::ForgeAxe,
+            (KitPart::Weapon, false) => Recipe::WoodCrossbow,
+            (KitPart::Helm, true) => Recipe::ForgeHelm,
+            (KitPart::Helm, false) => Recipe::LeatherHelm,
+            (KitPart::Mail, true) => Recipe::ForgeBreastplate,
+            (KitPart::Mail, false) => Recipe::LeatherArmor,
+            (KitPart::Shield, true) => Recipe::ForgeShield,
+            (KitPart::Shield, false) => return None,
+        };
+        Some((recipe, self.kit_short(p).max(1)))
+    }
+
+    /// The `Unarmed` sense: the share of soldiers not fit to fight. It pulls
+    /// towards Muster and holds the squad back from expeditions.
+    pub(super) fn unarmed_sense(&self, o: &Overseer) -> Option<(Sense, f64, Vec<(Ambition, f64)>)> {
+        let _ = o;
+        let soldiers: Vec<u32> = self.dwarves.iter().filter(|d| d.alive && d.soldier).map(|d| d.id).collect();
+        if soldiers.is_empty() {
+            return None;
+        }
+        let share = soldiers.iter().filter(|&&id| !self.kit_ready(id)).count() as f64 / soldiers.len() as f64;
+        Some((Sense::Unarmed, share, vec![(Ambition::Muster, self.knob("unarmed.muster", 1.2)), (Ambition::Venture, -4.0)]))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A squad of three holds a station with nothing to wear; iron axes,
+    /// helms and breastplates then turn up in a bin in a stockpile. When the
+    /// scouts' warning comes, all three are in them well before the army.
+    #[test]
+    fn kit_is_on_before_the_first_siege() {
+        let mut g = Game::new(21);
+        g.creatures.retain(|_, c| c.tame);
+        let e = g.embark;
+        let ids: Vec<u32> = g.dwarves.iter().filter(|d| !d.is_child()).take(3).map(|d| d.id).collect();
+        // (Nothing to pick up yet: no weapons or armour anywhere.)
+        g.items.retain(|_, it| !it.kind.is_equipment() || it.carried_by.is_some());
+        let s = g.new_squad();
+        for &id in &ids {
+            g.set_squad_member(s, id, true);
+        }
+        g.order_station(s, e);
+        for _ in 0..DAY / 2 {
+            g.step();
+        }
+        for &id in &ids {
+            assert!(!g.kit_ready(id));
+        }
+        // The kit arrives, boxed.
+        let a = g.flat_patch(3, 3, 6);
+        assert!(g.add_zone(a, a.offset(2, 2, 0), ZoneKind::Stockpile(StockFilter::Equipment)) > 0);
+        let bin = g.spawn_item(ItemKind::Bin, Mat::Wood, a);
+        let at = g.items[&bin].pos;
+        for kind in [ItemKind::Axe, ItemKind::Helm, ItemKind::Breastplate] {
+            for _ in 0..3 {
+                let it = g.spawn_item(kind, Mat::Iron, at);
+                g.items.get_mut(&it).unwrap().container = Some(bin);
+            }
+        }
+        let k = g.kit(ids[0]);
+        assert_eq!((k.helm, k.mail, k.shield), (Slot3::InStock, Slot3::InStock, Slot3::None));
+        // The scouts' warning.
+        g.tick = g.tick.max(SEASON * 2 + 1);
+        for _ in 0..100 {
+            g.maybe_siege();
+            if g.incoming.is_some() {
+                break;
+            }
+        }
+        let arrive = g.incoming.as_ref().expect("no warning came").0;
+        // At once, they all go for it.
+        for &id in &ids {
+            let d = g.dwarves.iter().find(|d| d.id == id).unwrap();
+            assert!(matches!(d.task, Task::Equip { .. }), "{} is still {:?}", d.name, d.task);
+        }
+        for _ in 0..300 {
+            g.step();
+        }
+        assert!(g.tick < arrive, "the army came first");
+        for &id in &ids {
+            let d = g.dwarves.iter().find(|d| d.id == id).unwrap();
+            let held = d.held.and_then(|i| g.items.get(&i)).map(|it| (it.kind, it.mat));
+            let k = g.kit(id);
+            assert_eq!(held, Some((ItemKind::Axe, Mat::Iron)), "{} holds {:?} ({:?})", d.name, held, d.task);
+            assert_eq!((k.weapon, k.helm, k.mail), (Slot3::Worn, Slot3::Worn, Slot3::Worn), "{}: {:?} ({:?})", d.name, k, d.task);
+            assert!(g.kit_ready(id));
+        }
+        assert!(g.items.values().filter(|it| it.carried_by.is_some()).all(|it| it.container.is_none()), "worn kit is out of its bin");
+    }
+
+    /// Kit nobody has is a trouble the overseer sees to: no forge, so leather.
+    #[test]
+    fn a_kit_shortfall_is_a_trouble() {
+        let mut g = Game::new(5);
+        g.set_overseer(Some(super::super::overseer::Style::Steady));
+        g.items.retain(|_, it| it.kind.armor_slot().is_none());
+        let id = g.dwarves[0].id;
+        let s = g.new_squad();
+        g.set_squad_member(s, id, true);
+        let mut o = g.overseer.take().unwrap();
+        g.ov_readiness(&mut o);
+        assert!(g.troubles.iter().any(|t| t.0 == Lack::Kit(KitPart::Helm)));
+        assert!(g.annals.counters.get("kit_shortfalls").copied().unwrap_or(0) >= 2);
+        assert_eq!(g.kit_order(KitPart::Mail), Some((Recipe::LeatherArmor, 1)));
+        assert_eq!(g.kit_order(KitPart::Shield), None);
+        // The unarmed soldier weighs on the brain.
+        let (sense, share, pulls) = g.unarmed_sense(&o).unwrap();
+        assert_eq!((sense, share), (Sense::Unarmed, 1.0));
+        assert!(pulls.iter().any(|p| p.0 == Ambition::Muster && p.1 > 0.0));
+        g.overseer = Some(o);
     }
 }
