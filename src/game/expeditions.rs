@@ -543,7 +543,7 @@ mod tests {
 
     #[test]
     fn an_expedition_goes_away_and_comes_home_with_loot() {
-        let mut g = Game::new(81);
+        let mut g = Game::new(3);
         g.creatures.retain(|_, c| c.tame);
         let sq = g.new_squad();
         let ids: Vec<u32> = g.dwarves.iter().filter(|d| !d.is_child()).take(3).map(|d| d.id).collect();

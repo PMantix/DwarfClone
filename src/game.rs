@@ -28,6 +28,8 @@ mod traps;
 mod military;
 mod medicine;
 mod animals;
+pub mod loadout;
+pub use loadout::Loadout;
 mod needs;
 mod family;
 pub use family::ADULT_AGE;
@@ -468,14 +470,19 @@ impl Game {
     }
 
     pub fn embark_with(seed: u64, ow: Overworld, sx: i32, sy: i32, size: world::MapSize, report: &dyn Fn(&str, f32)) -> Game {
+        Self::embark_prepared(seed, ow, sx, sy, size, &Loadout::standard(), report)
+    }
+
+    /// Embark with a chosen party and wagon (see `loadout`).
+    pub fn embark_prepared(seed: u64, ow: Overworld, sx: i32, sy: i32, size: world::MapSize, loadout: &Loadout, report: &dyn Fn(&str, f32)) -> Game {
         report("Surveying the site", 0.05);
         let params = ow.embark_params(seed, sx, sy, size);
         let world = world::generate(seed ^ ((sx as u64) << 20) ^ ((sy as u64) << 40), &params);
         report("Loading the wagon", 0.8);
         let embark = find_embark(&world);
         let mut g = Game::from_world(world, seed, ow, (sx, sy), embark);
-        g.settle_expedition(embark);
-        g.bring_animals(embark);
+        g.settle_expedition(embark, loadout);
+        g.bring_animals(embark, &loadout.animal_list());
         g.place_vault();
         g.place_necromancer();
         report("Strike the earth!", 1.0);
@@ -590,21 +597,21 @@ impl Game {
     }
 
     /// The seven founders, their tools and the wagon's supplies.
-    fn settle_expedition(&mut self, embark: Pos) {
+    fn settle_expedition(&mut self, embark: Pos, loadout: &Loadout) {
         let g = self;
-        let crews: [&[Labor]; 7] = [
-            &[Labor::Mining, Labor::Crafting],
-            &[Labor::Mining, Labor::Smelting],
-            &[Labor::Woodcutting, Labor::Carpentry],
-            &[Labor::Carpentry, Labor::Butchery],
-            &[Labor::Masonry, Labor::Smithing],
-            &[Labor::Farming, Labor::Cooking],
-            &[Labor::Brewing, Labor::Farming],
-        ];
-        for crew in crews {
+        for f in &loadout.founders {
+            let crew = &f.labors[..];
             let pos = g.random_spot_near(embark, 3);
             let id = g.new_id();
             let mut d = dwarf::new_dwarf(id, pos, &mut g.rng, crew);
+            // Skills chosen while preparing replace the rolled ones.
+            if let Some(levels) = f.levels {
+                for (l, lv) in f.labors.iter().zip(levels) {
+                    if d.labors[l.idx()] {
+                        d.skills[l.idx()] = if lv == 0 { 0 } else { lv * 400 + 200 };
+                    }
+                }
+            }
             // Miners start with a pick, woodcutters with an axe.
             let tool = match crew[0] {
                 Labor::Mining => Some(ItemKind::Pick),
@@ -621,20 +628,7 @@ impl Game {
         }
         g.populate_caverns();
         g.appoint_leader();
-        let supplies = [
-            (ItemKind::Plant, Mat::Stoutcap, 30),
-            (ItemKind::Drink, Mat::Stoutcap, 40),
-            (ItemKind::Log, Mat::Wood, 6),
-            (ItemKind::Axe, Mat::Copper, 1),
-            (ItemKind::Pick, Mat::Copper, 1),
-            (ItemKind::Seed, Mat::Stoutcap, 15),
-            (ItemKind::Seed, Mat::Hollowgrain, 5),
-            (ItemKind::Seed, Mat::Threadreed, 5),
-            (ItemKind::Seed, Mat::Sunberry, 5),
-            (ItemKind::Seed, Mat::Goldoat, 5),
-            (ItemKind::Barrel, Mat::Wood, 2),
-        ];
-        for (kind, mat, n) in supplies {
+        for (kind, mat, n) in loadout.supply_list() {
             for _ in 0..n {
                 let pos = g.random_spot_near(embark, 2);
                 g.spawn_item(kind, mat, pos);

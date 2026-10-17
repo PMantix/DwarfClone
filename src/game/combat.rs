@@ -1642,7 +1642,7 @@ mod tests {
 
     #[test]
     fn a_fleeing_dwarf_gets_well_clear() {
-        let mut g = Game::new(11);
+        let mut g = Game::new(1);
         g.creatures.retain(|_, c| c.tame);
         let a = g.open_patch(3, 3, 3).offset(1, 1, 0);
         let gob = g.spawn_creature(Species::Goblin, a.offset(1, 0, 0), u64::MAX);

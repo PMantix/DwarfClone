@@ -127,11 +127,23 @@ your embark site; the biome shapes the map (relief, forest, lakes, savage wildli
 nearby goblins, and any civilization at war with yours in the world's history, decide how
 often sieges come.
 
-**The world map.** One character a cell, like an atlas: mountain ranges run in long ridges
-(snow on the high peaks), rivers drawn as lines wind from the wet heights to the sea or pool
-into lakes, a few volcanoes smoulder, and the climate runs from ice caps at both poles through
-taiga and tundra to jungle, savanna, desert and badlands in the warm middle. A river on the
-world map flows through the fortress map embarked there, and a volcano brings its crater.
+**The world map.** One character a cell, tight like the old game's atlas: each region is a
+solid texture of one glyph family in two or three shades of its colour (green `∩` `n` hills,
+`♣` forests, `"` grass, grey and white `▲` `^` mountains with snow on the high peaks, `↑`
+taiga, `♠` jungle, `%` swamp, sandy `~` desert, icy `░` `▒` glacier, rust `∩` badlands), the
+sea a uniform blue `≈`, and no blank-looking dots or commas anywhere on land. Rivers are thin
+light-blue lines (`─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼`) from cell to cell; sites stand out as small bright
+marks (`Ω` dwarves, `#` towns, `+` hamlets, `♠` elves, `Ψ` goblins, `&` lairs, `×` ruins) and
+a few red `▲` volcanoes smoulder. A key in each mark's own colour runs under the map. The
+climate runs from ice caps at both poles through taiga and tundra to jungle, savanna, desert
+and badlands in the warm middle.
+
+Rivers respect the land: each springs where the water leaves the mountains (or on high
+hills) and only ever runs downhill, to the sea, into another river, or into a hollow where it
+pools as a lake; none climbs or crosses a ridge. A river on the world map flows through the
+fortress map embarked there, running the same way (east-west or north-south), and only there:
+a site has a river exactly when the map draws one through its cell. A volcano brings its
+crater.
 
 **The land you embark on.** The local map follows the world map. Each biome has its own
 ground and growth: sand dunes and cacti in the desert, red clay and scrub in the badlands, bare
@@ -160,6 +172,26 @@ for Small, Medium or Large, `[` `]` for width and `{` `}` for height (16 at a ti
 depth. In the fortress, `M` grows the map north, east, south or west (16 tiles a press): the
 new land continues the old, the fortress and everything in it stays where it was, and the
 status screen shows the land's features and size.
+
+**Embarking.** Enter on a site doesn't embark straight away: a card sums the site up (biome
+and region, features, aquifer, wildlife, nearby beasts, the nearest neighbours and which of
+them are hostile) and offers three choices, so a slipped key can't commit you:
+
+- **Play now** (`p`): the usual seven (two miners, a woodcutter, a carpenter, a mason, a
+  farmer and a brewer, each with a second labor) and the usual wagon: 30 food, 40 drink, 6
+  logs, a spare axe and pick, 35 seeds of five crops, 2 barrels, 2 dogs, 2 goats and a cat.
+- **Prepare carefully** (`c`): spend a budget of 400 points on the expedition. Each
+  founder's main and second labor can be changed (Space) and their skill raised or lowered
+  (←→, Tab for main or second): a skill costs 5, 15, 30, 50 or 75 points in all at Novice,
+  Adequate, Competent, Skilled or Proficient. The wagon's food, drink, seeds and granite
+  blocks come 5 at a time for 5 points; logs and barrels cost 3 each, axes and picks 10,
+  threadreed cloth 3 and thread 2; dogs 10, goats 12 and cats 8 each. The standard party
+  costs 341, leaving 59 to spend; going over the budget won't embark. `r` starts over, Enter
+  embarks with that loadout, Esc goes back to the card.
+- **Back** (Esc): to the map.
+
+The default site (and the overseer's own embarks, which always take the standard party)
+prefers open land near your kin, with a river and without an aquifer.
 
 **Fortress.** A small (64×48), medium (96×64) or large (144×96, 48 levels deep) region, picked
 with `s` on the world map: soil over sedimentary and igneous rock, ore veins, gems,

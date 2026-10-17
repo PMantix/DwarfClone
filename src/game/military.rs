@@ -398,7 +398,7 @@ mod tests {
 
     #[test]
     fn marksdwarves_shoot_from_range() {
-        let mut g = Game::new(72);
+        let mut g = Game::new(1);
         let e = g.embark;
         g.alert = false;
         g.spawn_item(ItemKind::Crossbow, Mat::Wood, e);

@@ -704,7 +704,7 @@ mod tests {
 
     #[test]
     fn the_overseer_sinks_a_well_over_water() {
-        let (mut g, top) = fort_over_water(5020);
+        let (mut g, top) = fort_over_water(5004);
         let e = g.embark;
         g.spawn_item(ItemKind::Bucket, Mat::Wood, e);
         g.spawn_item(ItemKind::Block, Mat::Granite, e);

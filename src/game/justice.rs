@@ -209,7 +209,7 @@ mod tests {
 
     #[test]
     fn with_a_jail_the_culprit_serves_time_inside() {
-        let mut g = Game::new(81);
+        let mut g = Game::new(1);
         g.creatures.retain(|_, c| c.tame);
         let e = g.embark;
         let jail_tiles = g.add_zone(e.offset(-8, -8, -1), e.offset(-5, -5, 1), ZoneKind::Jail);
