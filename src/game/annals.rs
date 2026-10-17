@@ -20,6 +20,9 @@ pub struct DeathNote {
     /// Inside the alert burrow while the alert was on.
     pub sheltered: bool,
     pub soldier: bool,
+    /// Mad when they died (melancholy or a failed mood).
+    #[serde(default)]
+    pub mad: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -132,6 +135,7 @@ impl Game {
             outside: self.world.get(d.pos).map_or(false, |_| self.world.outside(d.pos)),
             sheltered,
             soldier: d.soldier,
+            mad: d.insane,
         });
         self.annals.wounded_by.retain(|w| w.0 != d.id);
     }

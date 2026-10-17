@@ -94,12 +94,17 @@ style survive three years, and every style still loses forts in memorable ways.
   raids first, then grows them with the fort's wealth.
 - **Note:** sieges arrive on the first day of a season (days 168, 252, 336), the same day as
   migrants, and reach the gate within about 140 ticks.
-- **Steps:** [ ] the first contact is a scout or a small raid, seen coming (a warning a day
-  ahead, from the edge of the map); sieges grow with wealth, population and past defeats ·
-  [ ] goblins take captives and loot and leave, rather than always fighting to the last ·
-  [ ] a siege leader can be challenged: kill the leader and the rest flee (it's there; make it
-  visible and announced) · [ ] the second siege remembers how the first one ended (bigger if they
-  lost, a taunt in the announcements)
+- **Steps:** [x] scouts see every army coming about a day ahead (named leader, size; a card),
+  and the overseer shelters everyone and raises the bridge before it arrives; the first is a
+  raiding party of two or three, later ones grow with population, wealth and every siege broken
+  (this commit) · [x] besiegers shut out make off with valuables lying outside (this commit) ·
+  [x] the leader is named in the warning and killing them routs the rest (already so) · [x]
+  they remember: a broken siege brings a bigger one, and they say so (this commit) · [ ]
+  captives
+- **Result** (batches/s03.json against s04d): forts standing after years 1/2/3 went from
+  17/7/7 to 22/15/12; the first siege kills 2.2 dwarves on average (was 9.2) and took one
+  fort (was 12); later sieges of ~8 still took five. Steady and Warlord: 3 of 5 each standing
+  after three years.
 - **Done when:** the batch shows first sieges killing fewer than three dwarves on average and
   later sieges still killing whole forts sometimes.
 

@@ -140,3 +140,31 @@ fn mandates_resolve_and_misery_breaks_dwarves() {
     run(&mut g, 3 * DAY);
     assert!(g.dwarves[i].insane, "misery didn't break the dwarf");
 }
+
+#[test]
+fn melancholy_can_lift_with_a_friend_alive() {
+    let mut g = Game::new(11);
+    g.creatures.retain(|_, c| c.tame);
+    let friend = g.dwarves[1].id;
+    let mut d = std::mem::take(&mut g.dwarves[0]);
+    g.go_insane(&mut d, "has been stricken by melancholy");
+    assert!(d.insane && d.melancholy);
+    d.relations.push((friend, 60));
+    d.stress = 0;
+    let mut days = 0;
+    while d.insane && days < 120 {
+        for _ in 0..DAY {
+            g.tick += 1;
+            g.psyche_tick(&mut d);
+            d.stress = d.stress.min(50);
+        }
+        days += 1;
+    }
+    assert!(!d.insane, "still melancholic after {} days", days);
+    g.dwarves[0] = d;
+    assert!(g.log.iter().any(|l| l.text.contains("come back out of melancholy")));
+    // A failed mood's madness doesn't lift.
+    let mut e = std::mem::take(&mut g.dwarves[2]);
+    g.go_insane(&mut e, "has gone stark raving mad, unable to finish their work");
+    assert!(e.insane && !e.melancholy);
+}

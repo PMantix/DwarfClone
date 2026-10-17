@@ -284,6 +284,23 @@ impl Game {
                 self.go_insane(d, "has been stricken by melancholy");
                 return;
             }
+        }
+        // Melancholy can lift, once the grief has eased, for a dwarf with
+        // someone who cares for them still alive.
+        if d.insane && d.melancholy && tick % DAY == d.id as u64 % DAY && d.stress < 200 {
+            let loved = d.spouse.map_or(false, |s| self.dwarves.iter().any(|o| o.id == s && o.alive))
+                || d.relations.iter().any(|&(o, r)| r >= 30 && self.dwarves.iter().any(|x| x.id == o && x.alive));
+            if loved && self.rng.chance(0.12) {
+                d.insane = false;
+                d.melancholy = false;
+                d.misery = 0;
+                d.think("came back out of the dark", -40, tick);
+                let name = d.name.clone();
+                self.msg(&format!("{} has come back out of melancholy.", name), (170, 200, 255));
+                self.spotlight("Out of the dark", &format!("{} has come back out of melancholy, and knows their friends again.", name), Some(d.pos), (170, 200, 255));
+            }
+        }
+        if tick % 50 == (d.id as u64 % 50) {
             self.needs_tick(d);
             self.socialize(d);
         }
@@ -385,6 +402,7 @@ impl Game {
         self.end_mood(d);
         self.release_task(d);
         d.insane = true;
+        d.melancholy = how.contains("melancholy");
         d.soldier = false;
         d.noble = None;
         if let Some(id) = d.held.take() {

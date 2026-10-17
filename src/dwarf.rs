@@ -497,6 +497,9 @@ pub struct Dwarf {
     pub last_chat: u64,
     #[serde(default)]
     pub insane: bool,
+    /// The madness is melancholy (which can lift), not a failed mood's.
+    #[serde(default)]
+    pub melancholy: bool,
     /// Ticks spent miserable; sustained misery breaks a dwarf.
     #[serde(default)]
     pub misery: u32,

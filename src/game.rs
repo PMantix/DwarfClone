@@ -313,6 +313,10 @@ pub struct Game {
     /// Where digging broke into a cavern, waiting for a door.
     #[serde(default)]
     pub breaches: Vec<Pos>,
+    /// An army on the march, seen by scouts: when it arrives, whose it is,
+    /// how many, and who leads it.
+    #[serde(default)]
+    pub incoming: Option<(u64, Neighbor, u32, String)>,
     /// Some tile has snow on it (so a thaw knows to look).
     #[serde(default)]
     snow_lying: bool,
@@ -481,6 +485,7 @@ impl Game {
             spotlights: Vec::new(),
             fallen: false,
             breaches: Vec::new(),
+            incoming: None,
             snow_lying: false,
             fire_cells: None,
             miasma_cells: None,
@@ -1003,6 +1008,9 @@ impl Game {
         if self.tick % 50 == 10 {
             self.annals_tick();
         }
+        if self.tick % 25 == 20 {
+            self.army_arrives();
+        }
         if self.orders_due(self.tick) {
             self.manage_orders();
         }
@@ -1363,11 +1371,14 @@ impl Game {
             self.msg(&format!("{} is throwing a tantrum!", name), (255, 90, 90));
         }
 
-        // Pressing needs interrupt ordinary work.
+        // Pressing needs interrupt ordinary work; desperate thirst
+        // interrupts a meal or a nap too.
         if !d.task.is_need() && d.task != Task::Idle {
             if d.thirst > THIRSTY + 2000 || d.hunger > HUNGRY + 4000 || d.fatigue > TIRED + 1500 {
                 self.release_task(d);
             }
+        } else if d.thirst > THIRSTY + 5000 && !matches!(d.task, Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Flee | Task::Idle) {
+            self.release_task(d);
         }
 
         if d.task == Task::Idle {

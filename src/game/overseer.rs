@@ -743,9 +743,12 @@ impl Game {
         };
         // An army on the map is danger wherever it is; a lone monster only
         // when it comes near.
-        let danger = self.creatures.values().any(|c| {
-            c.alive && c.hostile() && !c.sneaking && ((c.siege && !c.legendary()) || ((c.siege || c.legendary()) && near_fort(c.pos)))
-        });
+        // (An army the scouts saw coming counts once it's near.)
+        let coming = self.incoming.as_ref().map_or(false, |i| self.tick + 400 >= i.0);
+        let danger = coming
+            || self.creatures.values().any(|c| {
+                c.alive && c.hostile() && !c.sneaking && ((c.siege && !c.legendary()) || ((c.siege || c.legendary()) && near_fort(c.pos)))
+            });
         if danger != self.alert {
             self.alert = danger;
         }
@@ -787,7 +790,7 @@ impl Game {
                     c.alive && c.siege && !c.legendary() && c.hostile() && (!near || ((c.pos.x - top.x).abs() <= 40 && (c.pos.y - top.y).abs() <= 40))
                 })
             };
-            let (any, at_gate) = (army(false), army(true));
+            let (any, at_gate) = (army(false) || coming, army(true));
             // How long the army has been on the map: a little while for those
             // outside to run in, then the bridge goes up regardless.
             if any && o.army_since == 0 {
@@ -1493,6 +1496,51 @@ mod tests {
             g.step();
         }
         assert!(door_at(&g, base.offset(1, 1, 0)).is_some(), "the broken door wasn't replaced");
+    }
+
+    #[test]
+    #[ignore]
+    fn watch_a_thirsty_dwarf() {
+        let env = |k: &str, d: &str| std::env::var(k).unwrap_or(d.into());
+        let seed: u64 = env("SEED", "5012").parse().unwrap();
+        let style = Style::parse(&env("STYLE", "delver")).unwrap();
+        let mut g = Game::new(seed);
+        g.set_overseer(Some(style));
+        let limit: u32 = env("THIRST", "11000").parse().unwrap();
+        while g.tick < 3 * YEAR && g.alive_count() > 0 && !g.dwarves.iter().any(|d| d.alive && d.thirst > limit) {
+            g.step();
+        }
+        let Some(i) = g.dwarves.iter().position(|d| d.alive && d.thirst > limit) else { eprintln!("nobody got that thirsty"); return };
+        let id = g.dwarves[i].id;
+        eprintln!("day {}: drinks {} wells {} alert {} civ {} burrows {:?}", g.tick / DAY, g.stock_of(ItemKind::Drink), g.working_wells().len(), g.alert, g.civ_alert, g.burrows.iter().map(|b| (b.name.clone(), b.members.len())).collect::<Vec<_>>());
+        for _ in 0..40 {
+            let d = g.dwarves.iter().find(|d| d.id == id).unwrap();
+            if !d.alive {
+                eprintln!("  dead: {:?}", g.log.iter().rev().find(|l| l.color == (255, 60, 60)).map(|l| &l.text));
+                break;
+            }
+            let w = &g.world;
+            let wet = |q: Pos| crate::geom::DIRS8.iter().any(|&(dx, dy)| w.get(q.offset(dx, dy, 0)).map_or(false, |t| t.water > 0));
+            let water = path::search(w, d.pos, 40_000, Mover::Dwarf, |q| wet(q)).map(|(p, path)| (p, path.len()));
+            eprintln!("  t{} {} insane {} stress {} at {:?} thirst {} hunger {} fatigue {} task {:?} idle_cd {} path {} | water {:?} | burrowed {:?}", g.tick, d.name, d.insane, d.stress, d.pos, d.thirst, d.hunger, d.fatigue, d.task, d.idle_cd, d.path.len(), water, g.burrows.iter().filter(|b| b.members.contains(&id)).map(|b| b.name.clone()).collect::<Vec<_>>());
+            for _ in 0..60 {
+                g.step();
+            }
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn water_at_the_batch_sites() {
+        for seed in 5000..5025u64 {
+            let g = Game::new(seed);
+            let e = g.embark;
+            let w = &g.world;
+            let wet = |q: Pos| crate::geom::DIRS8.iter().any(|&(dx, dy)| w.get(q.offset(dx, dy, 0)).map_or(false, |t| t.water >= 3));
+            let found = path::search(w, e, 40_000, Mover::Dwarf, |q| wet(q));
+            let water_tiles = w.tiles.iter().filter(|t| t.water >= 3).count();
+            eprintln!("seed {} {:?} features {:?} water tiles {} reachable {}", seed, g.biome, crate::terrain::feature_names(w.features), water_tiles, found.map_or("no".to_string(), |(_, p)| format!("{} steps", p.len())));
+        }
     }
 
     #[test]
