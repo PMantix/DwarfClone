@@ -113,21 +113,22 @@ impl Biome {
         matches!(self, Biome::Tundra | Biome::Mountain | Biome::Taiga | Biome::Glacier)
     }
 
+    /// The biome's typical mark on the world map (the map itself varies it).
     pub fn glyph(self) -> (char, Color) {
         match self {
             Biome::Ocean => ('≈', Color::Rgb(40, 90, 200)),
             Biome::Mountain => ('▲', Color::Rgb(170, 170, 180)),
-            Biome::Hills => ('∩', Color::Rgb(150, 120, 80)),
+            Biome::Hills => ('∩', Color::Rgb(80, 170, 70)),
             Biome::Forest => ('♣', Color::Rgb(40, 160, 60)),
-            Biome::Grassland => ('"', Color::Rgb(120, 200, 90)),
-            Biome::Desert => ('~', Color::Rgb(220, 200, 110)),
-            Biome::Tundra => ('·', Color::Rgb(220, 230, 240)),
-            Biome::Swamp => ('%', Color::Rgb(70, 150, 130)),
-            Biome::Jungle => ('♠', Color::Rgb(30, 200, 70)),
-            Biome::Taiga => ('↑', Color::Rgb(60, 130, 100)),
-            Biome::Savanna => ('"', Color::Rgb(190, 190, 80)),
-            Biome::Badlands => ('∩', Color::Rgb(200, 110, 60)),
-            Biome::Glacier => ('░', Color::Rgb(200, 230, 255)),
+            Biome::Grassland => ('"', Color::Rgb(110, 200, 85)),
+            Biome::Desert => ('~', Color::Rgb(230, 205, 120)),
+            Biome::Tundra => ('"', Color::Rgb(190, 210, 215)),
+            Biome::Swamp => ('%', Color::Rgb(70, 150, 125)),
+            Biome::Jungle => ('♠', Color::Rgb(30, 200, 90)),
+            Biome::Taiga => ('↑', Color::Rgb(60, 140, 110)),
+            Biome::Savanna => ('"', Color::Rgb(205, 195, 90)),
+            Biome::Badlands => ('∩', Color::Rgb(205, 115, 65)),
+            Biome::Glacier => ('░', Color::Rgb(210, 235, 255)),
         }
     }
 
@@ -1042,6 +1043,23 @@ fn place_name(rng: &mut Rng, r: Race) -> String {
 
 // ---------------------------------------------------------------- generation
 
+/// A river cell's thin line, from its links (1 north, 2 east, 4 south, 8 west).
+pub fn river_glyph(links: u8) -> char {
+    match links & 15 {
+        1 | 4 | 5 => '│',
+        2 | 8 | 10 => '─',
+        3 => '└',
+        9 => '┘',
+        6 => '┌',
+        12 => '┐',
+        7 => '├',
+        13 => '┤',
+        11 => '┴',
+        14 => '┬',
+        _ => '┼',
+    }
+}
+
 impl Overworld {
     pub fn cell(&self, x: i32, y: i32) -> &Cell {
         &self.cells[(y * self.w + x) as usize]
@@ -1115,8 +1133,10 @@ impl Overworld {
         bits
     }
 
-    /// How a cell looks on the world map: biome, height and a little
-    /// variety from cell to cell, with rivers and volcanoes drawn in.
+    /// How a cell looks on the world map, in the manner of an old atlas:
+    /// each biome a dense texture of one glyph family in two or three shades
+    /// (picked by a hash of the cell, so it never changes), rivers as thin
+    /// lines from cell to cell, and smoking peaks in red.
     pub fn look(&self, x: i32, y: i32) -> (char, Color) {
         let c = self.cell(x, y);
         let mut hsh = (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
@@ -1124,77 +1144,66 @@ impl Overworld {
         hsh = hsh.wrapping_mul(0xBF58_476D_1CE4_E5B9);
         hsh ^= hsh >> 29;
         let roll = (hsh % 1000) as u32;
+        // One of a few glyphs and, independently, one of a few shades.
         let pick = |opts: &[char]| opts[(hsh >> 12) as usize % opts.len()];
-        let e = c.elev as i32;
-        let shade = |(r, g, b): (u8, u8, u8), k: i32| {
-            // k in percent; plus a flicker from cell to cell.
-            let k = k + (roll % 13) as i32 - 6;
-            let f = |v: u8| (v as i32 * k / 100).clamp(0, 255) as u8;
-            Color::Rgb(f(r), f(g), f(b))
+        let tone = |opts: &[(u8, u8, u8)]| {
+            let (r, g, b) = opts[(hsh >> 24) as usize % opts.len()];
+            Color::Rgb(r, g, b)
         };
+        let e = c.elev as i32;
         if c.volcano {
-            return ('▲', shade((240, 80, 40), 100));
+            return ('▲', Color::Rgb(240, 80, 40));
         }
         if c.river != 0 {
-            let ch = match c.river {
-                1 | 4 | 5 => '║',
-                2 | 8 | 10 => '═',
-                3 => '╚',
-                9 => '╝',
-                6 => '╔',
-                12 => '╗',
-                7 => '╠',
-                13 => '╣',
-                11 => '╩',
-                14 => '╦',
-                _ => '╬',
-            };
-            return (ch, shade((80, 140, 240), 100));
+            return (river_glyph(c.river), tone(&[(90, 200, 240), (120, 215, 250)]));
         }
-        let near = |pred: &dyn Fn(&Cell) -> bool| {
-            [(0, -1), (1, 0), (0, 1), (-1, 0)].iter().any(|&(dx, dy)| {
-                let (nx, ny) = (x + dx, y + dy);
-                // While the world is being made, rows below aren't there yet.
-                nx >= 0 && ny >= 0 && nx < self.w && ((ny * self.w + nx) as usize) < self.cells.len() && pred(self.cell(nx, ny))
-            })
-        };
         match c.biome {
-            Biome::Ocean => {
-                if near(&|n: &Cell| n.biome != Biome::Ocean) {
-                    (pick(&['≈', '~']), shade((70, 130, 220), 100))
-                } else if e > 75 {
-                    (pick(&['≈', '~', '≈']), shade((40, 85, 190), 100))
-                } else {
-                    (pick(&['≈', '~', '≈']), shade((25, 55, 150), 100))
-                }
-            }
+            // Deep water darker, the shallows by the coast lighter.
+            Biome::Ocean => ('≈', if e > 75 { Color::Rgb(50, 100, 210) } else { Color::Rgb(30, 70, 180) }),
             Biome::Mountain => {
                 if e > 205 {
-                    ('▲', shade((235, 235, 245), 100))
+                    ('▲', tone(&[(240, 240, 250), (215, 215, 225)]))
                 } else if e > 185 {
-                    (pick(&['▲', '▲', '^']), shade((175, 175, 185), 100))
+                    (pick(&['▲', '▲', '^']), tone(&[(180, 180, 190), (160, 160, 170)]))
                 } else {
-                    (pick(&['▲', '^', '^']), shade((140, 130, 120), 100))
+                    (pick(&['▲', '^', '^']), tone(&[(140, 135, 130), (120, 115, 110)]))
                 }
             }
-            Biome::Hills => (pick(&['∩', 'n', '∩']), shade((150, 125, 80), 85 + (e - 150) / 2)),
-            Biome::Forest => (pick(&['♣', '♣', '♠', '♣', '"']), shade((40, 160, 60), 95 - (roll % 3) as i32 * 10)),
-            Biome::Grassland => (pick(&['"', ',', '\'', '"', '.', '`']), shade((110, 195, 85), 100)),
-            Biome::Desert => (pick(&['~', '≈', '.', '~', ',']), shade((225, 200, 115), 100)),
-            Biome::Tundra => (pick(&['·', '.', ',', '·', '"']), shade((200, 215, 220), 100)),
-            Biome::Swamp => (pick(&['%', '"', '%', '≈', '♣']), shade((70, 150, 125), 100)),
-            Biome::Jungle => (pick(&['♠', '♣', '♠', '¶', '♠']), shade((30, 190, 70), 100)),
-            Biome::Taiga => (pick(&['↑', '↑', '♠', '↑']), shade((60, 140, 105), 100)),
+            Biome::Hills => (pick(&['∩', 'n', '∩']), tone(&[(80, 170, 70), (50, 130, 50)])),
+            Biome::Forest => (pick(&['♣', '♣', '♣', '♠']), tone(&[(40, 160, 60), (30, 120, 45), (60, 185, 75)])),
+            Biome::Grassland => ('"', tone(&[(110, 200, 85), (80, 170, 60)])),
+            Biome::Desert => ('~', tone(&[(230, 205, 120), (210, 180, 95), (240, 220, 150)])),
+            Biome::Tundra => ('"', tone(&[(190, 210, 215), (160, 185, 190)])),
+            Biome::Swamp => (pick(&['%', '%', '"']), tone(&[(70, 150, 125), (50, 120, 100)])),
+            Biome::Jungle => (pick(&['♠', '♠', '♣']), tone(&[(30, 200, 90), (20, 160, 70), (70, 220, 110)])),
+            Biome::Taiga => (pick(&['↑', '↑', '↑', '♠']), tone(&[(60, 140, 110), (40, 110, 90)])),
             Biome::Savanna => {
-                if roll % 9 == 0 {
-                    ('♣', shade((150, 160, 60), 100))
+                if roll % 11 == 0 {
+                    ('♣', Color::Rgb(160, 165, 60))
                 } else {
-                    (pick(&['"', ',', '"', '.']), shade((200, 190, 85), 100))
+                    ('"', tone(&[(205, 195, 90), (180, 170, 70)]))
                 }
             }
-            Biome::Badlands => (pick(&['∩', 'n', '.', '∩', '¬']), shade((205, 115, 65), 100)),
-            Biome::Glacier => (pick(&['░', '▒', '░', '·']), shade((205, 230, 250), 100)),
+            Biome::Badlands => (pick(&['∩', 'n', '∩']), tone(&[(205, 115, 65), (175, 90, 50)])),
+            Biome::Glacier => (pick(&['░', '▒', '░']), tone(&[(210, 235, 255), (180, 210, 240)])),
         }
+    }
+
+    /// A site's mark on the world map: small and bright, so it stands out
+    /// of the land round it.
+    pub fn site_look(&self, s: &Site) -> (char, Color) {
+        if s.ruined {
+            return ('×', Color::Rgb(170, 170, 170));
+        }
+        let ch = s.kind.glyph();
+        let col = match (s.kind, s.civ) {
+            (SiteKind::Lair, _) => Color::Rgb(255, 110, 230),
+            (SiteKind::Town, _) => Color::Rgb(255, 255, 255),
+            (SiteKind::Hamlet, _) => Color::Rgb(255, 240, 120),
+            (_, Some(civ)) => self.civs[civ as usize].race.color(),
+            _ => Color::Rgb(200, 200, 200),
+        };
+        (ch, col)
     }
 
     fn cell_mut(&mut self, x: i32, y: i32) -> &mut Cell {
@@ -1678,6 +1687,37 @@ mod tests {
         assert_eq!(a.year, 200);
     }
 
+    #[test]
+    fn world_map_reads_as_solid_texture() {
+        let thin = ['·', '.', ',', '`', '\'', ' ', '∙'];
+        let heavy = ['═', '║', '╔', '╗', '╚', '╝', '╠', '╣', '╦', '╩', '╬'];
+        let lines = ['─', '│', '┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼'];
+        for seed in [1u64, 42, 777] {
+            let ow = Overworld::generate(seed);
+            let mut ocean = None;
+            for y in 0..ow.h {
+                for x in 0..ow.w {
+                    let c = ow.cell(x, y);
+                    let (ch, _) = ow.look(x, y);
+                    assert!(!heavy.contains(&ch), "seed {}: heavy line {} at {:?}", seed, ch, (x, y));
+                    if c.biome == Biome::Ocean {
+                        assert_eq!(*ocean.get_or_insert(ch), ch, "seed {}: ocean glyphs differ at {:?}", seed, (x, y));
+                        continue;
+                    }
+                    assert!(!thin.contains(&ch), "seed {}: near-empty {:?} on {} at {:?}", seed, ch, c.biome.name(), (x, y));
+                    if c.river != 0 && !c.volcano {
+                        assert!(lines.contains(&ch), "seed {}: river drawn as {:?} at {:?}", seed, ch, (x, y));
+                    }
+                }
+            }
+            assert_eq!(ocean, Some('≈'));
+            // Every site stands out from the land under it.
+            for s in &ow.sites {
+                let (ch, _) = ow.site_look(s);
+                assert!(!thin.contains(&ch) && ch != ow.look(s.x, s.y).0 || s.kind == SiteKind::Retreat);
+            }
+        }
+    }
     #[test]
     fn world_has_history() {
         for seed in 1..4 {

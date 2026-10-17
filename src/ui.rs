@@ -1924,12 +1924,20 @@ fn draw_world(f: &mut Frame, app: &mut App, cx: i32, cy: i32) {
         .style(Style::default().bg(Color::Rgb(20, 20, 30))),
         rows[0],
     );
+    // The key in a strip under the map.
+    let legend = world_legend();
+    let key_h = (legend.width() as u16 / cols[0].width.max(1) + 1).min(6);
+    let left = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(5), Constraint::Length(key_h)])
+        .split(cols[0]);
+    f.render_widget(Paragraph::new(legend).wrap(Wrap { trim: true }), left[1]);
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(MUTED))
         .title(Span::styled(" World map ", Style::default().fg(KEY)));
-    let inner = block.inner(cols[0]);
-    f.render_widget(block, cols[0]);
+    let inner = block.inner(left[0]);
+    f.render_widget(block, left[0]);
     let view = paint_world(f, inner, ow, ow.h, Some((cx, cy)));
     // Outline the land the fortress map will cover, east and south of the cursor.
     let size = app.embark_size;
@@ -2056,12 +2064,7 @@ fn paint_world(f: &mut Frame, inner: Rect, ow: &Overworld, rows: i32, cursor: Op
             let (mut ch, mut fg) = ow.look(pick.0, pick.1);
             let mut bg = if c.evil { Color::Rgb(45, 10, 55) } else { BLACK };
             if c.site > 0 {
-                let st = &ow.sites[(c.site - 1) as usize];
-                ch = if st.ruined { '×' } else { st.kind.glyph() };
-                fg = match st.civ {
-                    Some(civ) if !st.ruined => ow.civs[civ as usize].race.color(),
-                    _ => Color::Rgb(150, 150, 150),
-                };
+                (ch, fg) = ow.site_look(&ow.sites[(c.site - 1) as usize]);
             }
             if let Some((cx, cy)) = cursor {
                 if cx >= x && cx < x + view.scale && cy >= y && cy < y + view.scale {
@@ -2331,14 +2334,54 @@ fn world_info(ow: &Overworld, x: i32, y: i32, flash: &Option<String>) -> Vec<Lin
     v.push(key_line("Enter", "embark here", false));
     v.push(key_line("l", "legends of this world", false));
     v.push(key_line("Q", "quit", false));
-    v.push(Line::default());
-    v.push(plain("Ω dwarves  # + humans  ♠ elves".into(), MUTED));
-    v.push(plain("Ψ goblins  & beast lair  × ruins".into(), MUTED));
     if let Some(f) = flash {
         v.push(Line::default());
         v.push(plain(f.clone(), Color::Rgb(255, 150, 90)));
     }
     v
+}
+
+/// The world map's key, sites first and then the land, each in its own
+/// colours: one line of spans for a strip under the map (it wraps).
+fn world_legend() -> Line<'static> {
+    use crate::overworld::{Biome, Race};
+    let mut v: Vec<Span<'static>> = Vec::new();
+    let mut item = |g: String, col: Color, what: &str| {
+        v.push(Span::styled(g, Style::default().fg(col).add_modifier(Modifier::BOLD)));
+        v.push(Span::styled(format!(" {}  ", what), Style::default().fg(MUTED)));
+    };
+    for (g, col, what) in [
+        ("Ω", Race::Dwarf.color(), "dwarves"),
+        ("#", Color::Rgb(255, 255, 255), "town"),
+        ("+", Color::Rgb(255, 240, 120), "hamlet"),
+        ("♠", Race::Elf.color(), "elves"),
+        ("Ψ", Race::Goblin.color(), "goblins"),
+        ("&", Color::Rgb(255, 110, 230), "lair"),
+        ("×", Color::Rgb(170, 170, 170), "ruins"),
+        ("▲", Color::Rgb(240, 80, 40), "volcano"),
+        ("─┐", Color::Rgb(90, 200, 240), "river"),
+    ] {
+        item(g.to_string(), col, what);
+    }
+    for b in [
+        Biome::Mountain,
+        Biome::Hills,
+        Biome::Forest,
+        Biome::Grassland,
+        Biome::Ocean,
+        Biome::Swamp,
+        Biome::Desert,
+        Biome::Savanna,
+        Biome::Taiga,
+        Biome::Jungle,
+        Biome::Tundra,
+        Biome::Glacier,
+        Biome::Badlands,
+    ] {
+        let (g, col) = b.glyph();
+        item(g.to_string(), col, if b == Biome::Ocean { "water" } else { b.name() });
+    }
+    Line::from(v)
 }
 
 fn cap_first(s: &str) -> String {
