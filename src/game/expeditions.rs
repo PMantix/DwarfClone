@@ -54,6 +54,9 @@ pub struct Expedition {
     /// Who leads them (the best tactician).
     #[serde(default)]
     pub leader: Option<u32>,
+    /// Drink and food taken from the stores for the road.
+    #[serde(default)]
+    pub rations: u32,
 }
 
 impl Expedition {
@@ -79,6 +82,16 @@ impl Expedition {
     fn standing(&self) -> Vec<&Dwarf> {
         self.members.iter().filter(|d| !self.fallen.contains(&d.id)).collect()
     }
+
+    /// Enough on their backs for a meal and a drink each, at the least.
+    fn fed(&self) -> bool {
+        self.rations as usize >= self.members.len()
+    }
+
+    /// The leader's fighting skill, while the leader still stands.
+    fn leader_level(&self) -> u32 {
+        self.standing().iter().find(|d| Some(d.id) == self.leader).map_or(0, |d| crate::dwarf::skill_level(d.fight_xp))
+    }
 }
 
 /// One dwarf's fighting strength away from home.
@@ -86,9 +99,10 @@ fn strength_of(d: &Dwarf) -> i32 {
     crate::dwarf::skill_level(d.fight_xp) as i32 + 1 + d.held.is_some() as i32 + d.armor.len() as i32 / 2
 }
 
-/// The chance a squad of `strength` beats a place of `danger`.
+/// The chance a squad of `strength` beats a place of `danger`, before
+/// rations and leadership.
 fn win_chance(strength: i32, danger: i32) -> f64 {
-    (strength as f64 / (strength as f64 + danger as f64 * 3.0)).clamp(0.1, 0.95)
+    strength as f64 / (strength as f64 + danger as f64 * 3.0)
 }
 
 /// The chance of winning two fights of three, each won with chance `p`,
@@ -198,7 +212,43 @@ impl Game {
 
     /// The chance that squad `ids` wins one fight at `dest`.
     pub fn round_odds(&self, ids: &[u32], dest: &Destination) -> f64 {
-        win_chance(self.squad_strength(ids), dest.danger)
+        let squad: Vec<&Dwarf> = self.dwarves.iter().filter(|d| ids.contains(&d.id) && d.alive && !d.is_child()).collect();
+        let lead = tactician(&squad).and_then(|l| squad.iter().find(|d| d.id == l)).map_or(0, |d| crate::dwarf::skill_level(d.fight_xp));
+        let (drink, food) = self.ration_stock();
+        let fed = drink.min(squad.len()) + food.min(squad.len()) >= squad.len();
+        self.fight_chance(self.squad_strength(ids), dest.danger, fed, lead)
+    }
+
+    /// One fight's odds: strength against danger, worse on an empty stomach
+    /// (knob exp.hungry), better with a good tactician (knob exp.lead per
+    /// level of the leader's fighting skill).
+    fn fight_chance(&self, strength: i32, danger: i32, fed: bool, leader_level: u32) -> f64 {
+        let mut p = win_chance(strength, danger);
+        if !fed {
+            p *= self.knob("exp.hungry", 0.85);
+        }
+        p += self.knob("exp.lead", 0.03) * leader_level as f64;
+        p.clamp(0.1, 0.95)
+    }
+
+    /// Free drink and food in the stores (meals first): what rations could be had.
+    fn ration_stock(&self) -> (usize, usize) {
+        let drink = self.items.values().filter(|it| it.kind == ItemKind::Drink && it.free()).count();
+        let food = self.items.values().filter(|it| it.is_food() && it.free()).count();
+        (drink, food)
+    }
+
+    /// Take rations for `n` dwarves from the stores: a drink and a meal each
+    /// where there are meals, other food where there aren't.
+    fn take_rations(&mut self, n: usize) -> u32 {
+        let mut take: Vec<u32> = self.items.values().filter(|it| it.kind == ItemKind::Drink && it.free()).map(|it| it.id).take(n).collect();
+        let mut food: Vec<(bool, u32)> = self.items.values().filter(|it| it.is_food() && it.free()).map(|it| (it.kind != ItemKind::Meal, it.id)).collect();
+        food.sort();
+        take.extend(food.into_iter().take(n).map(|f| f.1));
+        for id in &take {
+            self.items.remove(id);
+        }
+        take.len() as u32
     }
 
     /// Armed for a fight away from home: (a metal weapon in hand, some armour on).
@@ -268,14 +318,16 @@ impl Game {
             return Err(format!("{} has nobody to send.", name));
         }
         let days = dest.days();
-        let text = format!("{} set out for {}. They should be back in about {} days.", name, dest.name, days);
+        let rations = self.take_rations(members.len());
+        let packs = if rations == 0 { "They go without rations.".to_string() } else { format!("They carry {} rations.", rations) };
+        let text = format!("{} set out for {}. They should be back in about {} days. {}", name, dest.name, days, packs);
         self.msg(&text, (200, 220, 255));
         let fort = self.fortress_name.clone();
         self.legend(format!("{} of {} set out for {}.", name, fort, dest.name));
         let leader = tactician(&members.iter().collect::<Vec<_>>());
         let arrive = self.tick + (days - 1) / 2 * DAY;
         self.count("exp_sent", 1);
-        self.expedition = Some(Expedition { squad: name, members, dest, back: self.tick + days * DAY, arrive, rounds: Vec::new(), fallen: Vec::new(), turned_back: false, leader });
+        self.expedition = Some(Expedition { squad: name, members, dest, back: self.tick + days * DAY, arrive, rounds: Vec::new(), fallen: Vec::new(), turned_back: false, leader, rations });
         Ok(text)
     }
 
@@ -302,7 +354,7 @@ impl Game {
             return;
         }
         let strength: i32 = standing.iter().map(|&i| strength_of(&ex.members[i])).sum();
-        let won = self.rng.chance(win_chance(strength, ex.dest.danger));
+        let won = self.rng.chance(self.fight_chance(strength, ex.dest.danger, ex.fed(), ex.leader_level()));
         ex.rounds.push(won);
         if won {
             return;
@@ -338,6 +390,7 @@ impl Game {
 
     fn expedition_returns(&mut self, ex: Expedition) {
         let won = ex.won() >= 2 && !ex.turned_back;
+        let fed = ex.fed();
         let Expedition { squad, members, dest, fallen, turned_back, leader, .. } = ex;
         let entry = self.edge_entry().unwrap_or(self.embark);
         let fort = self.fortress_name.clone();
@@ -358,6 +411,12 @@ impl Game {
                 d.body.wound(part, 3, false);
             }
             d.fight_xp += 150 + dest.danger as u32 * 40;
+            if Some(d.id) == leader {
+                d.fight_xp += 100;
+            }
+            if !fed {
+                d.hunger = d.hunger.max(HUNGRY);
+            }
             d.satisfy(crate::dwarf::NeedKind::Fight, 1000);
             if won {
                 d.think(&format!("came home in triumph from {}", dest.name), -40, tick);
@@ -388,7 +447,8 @@ impl Game {
         }
         if !won {
             self.count("exp_beaten", 1);
-            self.msg(&format!("{} have returned from {}, beaten.{}", squad, dest.name, gone), (255, 150, 90));
+            let led = leader.and_then(|l| home.iter().find(|d| d.id == l)).map_or(String::new(), |d| format!(" Led by {}.", d.called()));
+            self.msg(&format!("{} have returned from {}, beaten.{}{}", squad, dest.name, gone, led), (255, 150, 90));
             self.legend(format!("{} of {} were driven back from {}.", squad, fort, dest.name));
             self.dwarves.extend(home);
             return;
@@ -439,9 +499,10 @@ impl Game {
         home.push(leader);
         self.milestone("expedition", &format!("The first expedition home in triumph, from {}", dest.name));
         self.dwarves.extend(home);
-        self.msg(&format!("{} have returned in triumph from {}, led by {}, with {} treasures!{}", squad, dest.name, leader_name, n, gone), (255, 215, 60));
+        let text = format!("{} have returned in triumph from {} with {} treasures!{} Led by {}, who read the ground well.", squad, dest.name, n, gone, leader_name);
+        self.msg(&text, (255, 215, 60));
         self.legend(format!("{} of {}, led by {}, {} {}.", squad, fort, leader_name, what, dest.name));
-        self.spotlight("Home in triumph", &format!("{} have returned from {}, led by {}, with {} treasures!{}", squad, dest.name, leader_name, n, gone), None, (255, 215, 60));
+        self.spotlight("Home in triumph", &text, None, (255, 215, 60));
     }
 }
 
@@ -620,6 +681,56 @@ mod tests {
         }
         assert!(seen >= 10, "the first fight is mostly lost at these odds ({})", seen);
         assert!(bleeding * 2 > seen, "mostly they bring their wounded home ({} of {})", bleeding, seen);
+    }
+
+    #[test]
+    fn rations_go_with_them_and_the_tactician_leads() {
+        let dest = Destination { goal: Goal::Ruin, site: 0, name: "the ruins of Testhold".into(), dist: 4, danger: 1 };
+        let setup = |stores: bool| {
+            let (mut g, squad) = fort_with_squad(3, 12, true);
+            g.items.retain(|_, it| it.kind != ItemKind::Drink && !it.is_food());
+            if stores {
+                let at = g.embark;
+                for kind in [ItemKind::Drink, ItemKind::Drink, ItemKind::Drink, ItemKind::Drink, ItemKind::Meal, ItemKind::Meal, ItemKind::Meat, ItemKind::Meat] {
+                    g.spawn_item(kind, if kind == ItemKind::Drink { Mat::Stoutcap } else { Mat::Flesh }, at);
+                }
+            }
+            // Equals with the sword; the most diligent reads the ground best.
+            for (d, diligence) in g.dwarves.iter_mut().filter(|d| squad.contains(&d.id)).zip([0, 45, -20]) {
+                d.personality.diligence = diligence;
+                d.personality.anxiety = -50;
+                d.fight_xp = 2000;
+            }
+            g.knobs.set.insert("exp.nerve".into(), -2.0);
+            (g, squad)
+        };
+        let (hungry, squad) = setup(false);
+        let (mut g, _) = setup(true);
+        assert!(g.round_odds(&squad, &dest) > hungry.round_odds(&squad, &dest), "rations make better odds");
+        let leader = squad[1];
+        assert!(g.send_expedition(0, dest.clone()).is_ok());
+        let ex = g.expedition.as_ref().unwrap();
+        assert_eq!(ex.leader, Some(leader));
+        assert_eq!(ex.rations, 6, "a drink and a meal each");
+        let left: Vec<ItemKind> = g.items.values().filter(|it| it.kind == ItemKind::Drink || it.is_food()).map(|it| it.kind).collect();
+        assert_eq!(left, vec![ItemKind::Drink, ItemKind::Meat], "meals are packed before raw meat");
+        assert!(g.log.iter().any(|l| l.text.contains("They carry 6 rations.")));
+        let name = ex.members.iter().find(|d| d.id == leader).unwrap().name.split(' ').next().unwrap().to_string();
+        g.tick = ex.back;
+        g.expedition_tick();
+        let text: Vec<&str> = g.log.iter().map(|l| l.text.as_str()).collect();
+        let led = format!("Led by {}", name);
+        assert!(text.iter().any(|t| t.contains("in triumph") && t.contains(&led) && t.ends_with("who read the ground well.")), "{:?}", text);
+        let xp = |id: u32| g.dwarves.iter().find(|d| d.id == id).unwrap().fight_xp;
+        assert_eq!(xp(leader), xp(squad[0]) + 100, "the leader learns the most");
+        assert!(g.dwarves.iter().filter(|d| squad.contains(&d.id)).all(|d| d.hunger < HUNGRY), "they ate on the road");
+        // Without rations they come home hungry.
+        let (mut g, _) = setup(false);
+        g.send_expedition(0, dest).unwrap();
+        assert!(g.log.iter().any(|l| l.text.contains("They go without rations.")));
+        g.tick = g.expedition.as_ref().unwrap().back;
+        g.expedition_tick();
+        assert!(g.dwarves.iter().filter(|d| squad.contains(&d.id)).all(|d| d.hunger >= HUNGRY));
     }
 
     #[test]
