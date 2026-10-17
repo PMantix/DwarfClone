@@ -154,27 +154,55 @@ impl Game {
     }
 
     /// Every soldier with kit waiting in the stores drops what they're doing
-    /// (short of a need or a fight) and goes to put it on. How many went.
+    /// and goes to put it on. Only idling, drill, a station or ordinary work
+    /// gives way: never a need, a fight, a rescue or treatment, a lever, a
+    /// mood or a breakdown, nor a soldier in jail. How many went.
     pub(super) fn kit_up(&mut self) -> usize {
         let mut sent = 0;
         for i in 0..self.dwarves.len() {
             let d = &self.dwarves[i];
-            if !d.alive || !d.soldier || d.task.is_need() || matches!(d.task, Task::Equip { .. } | Task::Attack { .. } | Task::Flee) || d.body.unconscious() {
+            let busy = d.mood.is_some() || d.insane || d.tantrum > 0 || d.jailed_until > 0 || d.body.unconscious();
+            if !d.alive || !d.soldier || busy || !Self::kit_interruptible(&d.task) {
                 continue;
             }
             let k = self.kit(d.id);
             if !KitPart::ALL.iter().any(|&p| k.get(p) == Slot3::InStock) {
                 continue;
             }
+            // Only let go of the old task once there is kit they can reach.
             let mut d = std::mem::take(&mut self.dwarves[i]);
-            self.release_task(&mut d);
-            d.task = Task::Idle;
+            let (old_task, old_path) = (d.task.clone(), d.path.clone());
             if self.equip_soldier(&mut d) {
+                let fetch = std::mem::replace(&mut d.task, old_task);
+                let path = std::mem::replace(&mut d.path, old_path);
+                self.release_task(&mut d);
+                d.task = fetch;
+                d.path = path;
                 sent += 1;
             }
             self.dwarves[i] = d;
         }
         sent
+    }
+
+    /// The tasks `kit_up` may cut short.
+    fn kit_interruptible(t: &Task) -> bool {
+        matches!(
+            t,
+            Task::Idle
+                | Task::Wander { .. }
+                | Task::Station { .. }
+                | Task::Train
+                | Task::Dig { .. }
+                | Task::Haul { .. }
+                | Task::Construct { .. }
+                | Task::Craft { .. }
+                | Task::Plant { .. }
+                | Task::Harvest { .. }
+                | Task::Gather { .. }
+                | Task::Fish { .. }
+                | Task::BuildTile { .. }
+        )
     }
 
     /// Now and then while drilling or holding a station (which otherwise go
@@ -216,12 +244,21 @@ impl Game {
         ids.into_iter().filter(|&id| self.kit(id).get(p) == Slot3::None && (p == KitPart::Weapon || self.uniform_of(id).1)).count() as u32
     }
 
+    /// Most of the soldiers with no weapon to fetch are marksdwarves.
+    fn short_marksdwarves(&self) -> bool {
+        let ids: Vec<u32> = self.dwarves.iter().filter(|d| d.alive && d.soldier).map(|d| d.id).collect();
+        let short: Vec<u32> = ids.into_iter().filter(|&id| self.kit(id).weapon == Slot3::None).collect();
+        let bows = short.iter().filter(|&&id| self.uniform_of(id).0 == UniformWeapon::Crossbow).count();
+        bows > 0 && bows * 2 >= short.len()
+    }
+
     /// What to order for a kit shortfall, and how many: from the forge when
     /// there is one, else leather (or wooden crossbows) from the workshops.
     /// Nothing for shields without a forge.
     pub(super) fn kit_order(&self, p: KitPart) -> Option<(Recipe, u32)> {
         let forge = self.buildings.values().any(|b| b.built && matches!(b.kind, BuildingKind::Forge | BuildingKind::MagmaForge));
         let recipe = match (p, forge) {
+            (KitPart::Weapon, true) if self.short_marksdwarves() => Recipe::ForgeCrossbow,
             (KitPart::Weapon, true) => Recipe::ForgeAxe,
             (KitPart::Weapon, false) => Recipe::WoodCrossbow,
             (KitPart::Helm, true) => Recipe::ForgeHelm,
@@ -243,7 +280,7 @@ impl Game {
             return None;
         }
         let share = soldiers.iter().filter(|&&id| !self.kit_ready(id)).count() as f64 / soldiers.len() as f64;
-        Some((Sense::Unarmed, share, vec![(Ambition::Muster, self.knob("unarmed.muster", 1.2)), (Ambition::Venture, -4.0)]))
+        Some((Sense::Unarmed, share, vec![(Ambition::Muster, self.knob("unarmed.muster", 1.2)), (Ambition::Venture, -self.knob("unarmed.venture", 4.0))]))
     }
 }
 
@@ -335,5 +372,113 @@ mod tests {
         assert_eq!((sense, share), (Sense::Unarmed, 1.0));
         assert!(pulls.iter().any(|p| p.0 == Ambition::Muster && p.1 > 0.0));
         g.overseer = Some(o);
+    }
+
+    /// Kit in the stores never pulls a soldier off a rescue, a mood, a
+    /// lever or out of jail; a hauler at ordinary work does go.
+    #[test]
+    fn kit_up_spares_what_matters() {
+        let mut g = Game::new(21);
+        g.creatures.retain(|_, c| c.tame);
+        let e = g.embark;
+        let ids: Vec<u32> = g.dwarves.iter().filter(|d| !d.is_child()).take(4).map(|d| d.id).collect();
+        g.items.retain(|_, it| !it.kind.is_equipment() || it.carried_by.is_some());
+        let s = g.new_squad();
+        for &id in &ids {
+            g.set_squad_member(s, id, true);
+        }
+        let at = g.flat_patch(2, 2, 6);
+        for _ in 0..4 {
+            g.spawn_item(ItemKind::Helm, Mat::Iron, at);
+        }
+        let patient = g.dwarves.iter().find(|d| !ids.contains(&d.id)).unwrap().id;
+        let set = |g: &mut Game, id: u32, t: Task| g.dwarves.iter_mut().find(|d| d.id == id).unwrap().task = t;
+        set(&mut g, ids[0], Task::Rescue { patient, bed: None });
+        set(&mut g, ids[1], Task::PullLever { bld: 0 });
+        set(&mut g, ids[2], Task::Wander { target: e });
+        g.dwarves.iter_mut().find(|d| d.id == ids[2]).unwrap().jailed_until = g.tick + DAY;
+        set(&mut g, ids[3], Task::Wander { target: e });
+        assert_eq!(g.kit(ids[3]).helm, Slot3::InStock);
+        assert_eq!(g.kit_up(), 1);
+        let task = |g: &Game, id: u32| g.dwarves.iter().find(|d| d.id == id).unwrap().task.clone();
+        assert!(matches!(task(&g, ids[0]), Task::Rescue { .. }), "the rescuer put the patient down");
+        assert!(matches!(task(&g, ids[1]), Task::PullLever { .. }));
+        assert!(matches!(task(&g, ids[2]), Task::Wander { .. }), "walked out of jail");
+        assert!(matches!(task(&g, ids[3]), Task::Equip { .. }));
+    }
+
+    /// No kit within reach: the soldier keeps doing what they were doing.
+    #[test]
+    fn kit_up_keeps_the_task_when_nothing_can_be_fetched() {
+        let mut g = Game::new(21);
+        g.items.retain(|_, it| !it.kind.is_equipment() || it.carried_by.is_some());
+        let id = g.dwarves.iter().find(|d| !d.is_child()).unwrap().id;
+        let s = g.new_squad();
+        g.set_squad_member(s, id, true);
+        // A helm that's free but nowhere anyone can walk to.
+        let it = g.spawn_item(ItemKind::Helm, Mat::Iron, g.embark);
+        let buried = (3..20)
+            .map(|k| g.embark.offset(0, 0, -k))
+            .find(|&p| g.world.in_bounds(p) && [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)].iter().all(|&(x, y)| g.world.solid(p.offset(x, y, 0)) && g.world.solid(p.offset(x, y, 1))))
+            .expect("no solid rock below the embark");
+        g.items.get_mut(&it).unwrap().pos = buried;
+        let target = g.embark;
+        g.dwarves.iter_mut().find(|d| d.id == id).unwrap().task = Task::Wander { target };
+        assert_eq!(g.kit(id).helm, Slot3::InStock);
+        assert_eq!(g.kit_up(), 0);
+        assert!(matches!(g.dwarves.iter().find(|d| d.id == id).unwrap().task, Task::Wander { .. }));
+    }
+
+    /// A stationed squad with no warning still puts on kit that turns up:
+    /// the check while holding a station.
+    #[test]
+    fn a_stationed_squad_picks_up_new_kit() {
+        let mut g = Game::new(21);
+        g.creatures.retain(|_, c| c.tame);
+        let e = g.embark;
+        let ids: Vec<u32> = g.dwarves.iter().filter(|d| !d.is_child()).take(2).map(|d| d.id).collect();
+        g.items.retain(|_, it| !it.kind.is_equipment() || it.carried_by.is_some());
+        let s = g.new_squad();
+        for &id in &ids {
+            g.set_squad_member(s, id, true);
+        }
+        g.order_station(s, e);
+        for _ in 0..DAY / 4 {
+            g.step();
+        }
+        let at = g.flat_patch(2, 2, 6);
+        for _ in 0..2 {
+            g.spawn_item(ItemKind::Helm, Mat::Iron, at);
+        }
+        for _ in 0..300 + 200 {
+            g.step();
+        }
+        assert!(g.incoming.is_none());
+        for &id in &ids {
+            assert_eq!(g.kit(id).helm, Slot3::Worn, "{:?}", g.dwarves.iter().find(|d| d.id == id).unwrap().task);
+        }
+    }
+
+    /// A crossbow squad short of weapons gets crossbows from the forge, not axes.
+    #[test]
+    fn a_crossbow_shortfall_orders_crossbows() {
+        let mut g = Game::new(5);
+        g.items.retain(|_, it| it.kind.weapon_damage().is_none() || it.carried_by.is_some());
+        let id = g.dwarves.iter().find(|d| !d.is_child()).unwrap().id;
+        let s = g.new_squad();
+        g.set_squad_member(s, id, true);
+        g.squads[s].weapon = UniformWeapon::Crossbow;
+        assert_eq!(g.kit_order(KitPart::Weapon).map(|o| o.0), Some(Recipe::WoodCrossbow));
+        let e = g.embark;
+        let spot = (2..25)
+            .flat_map(|r| (-r..=r).flat_map(move |dy| (-r..=r).flat_map(move |dx| (-1..=1).map(move |dz| e.offset(dx, dy, dz)))))
+            .find(|&p| g.can_place(BuildingKind::Forge, p))
+            .expect("no room for a forge");
+        assert!(g.place_building(BuildingKind::Forge, spot));
+        let f = g.world.t(spot).building;
+        g.buildings.get_mut(&f).unwrap().built = true;
+        assert_eq!(g.kit_order(KitPart::Weapon).map(|o| o.0), Some(Recipe::ForgeCrossbow));
+        g.squads[s].weapon = UniformWeapon::Axe;
+        assert_eq!(g.kit_order(KitPart::Weapon).map(|o| o.0), Some(Recipe::ForgeAxe));
     }
 }
