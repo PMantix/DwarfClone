@@ -5173,6 +5173,15 @@ mod tests {
         assert_eq!(app.game.overseer.as_ref().unwrap().ambition, Some(crate::game::Ambition::Muster));
     }
 
+    /// Make a tile solid, revealed granite (for tests that need rock to dig).
+    fn rock(app: &mut App, p: Pos) {
+        let t = app.game.world.t_mut(p);
+        t.kind = crate::world::TileKind::Wall;
+        t.mat = crate::material::Mat::Granite;
+        t.revealed = true;
+        t.building = 0;
+    }
+
     #[test]
     fn a_click_marks_one_tile_a_drag_marks_a_box_and_ctrl_z_undoes() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -5194,7 +5203,13 @@ mod tests {
         app.on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), r.x + 15, r.y + 12));
         app.on_mouse(mouse(MouseEventKind::Up(MouseButton::Left), r.x + 15, r.y + 12));
         assert!(app.game.designations.len() - one <= 1, "two clicks are two tiles, not a box");
-        // A drag fills a box.
+        // A drag fills a box (of rock, so there is something to dig).
+        for y in 5..=12 {
+            for x in 20..=30 {
+                let p = Pos::new(app.view_x + x, app.view_y + y, app.cursor.z);
+                rock(&mut app, p);
+            }
+        }
         let before = app.game.designations.len();
         app.on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), r.x + 20, r.y + 5));
         app.on_mouse(mouse(MouseEventKind::Drag(MouseButton::Left), r.x + 30, r.y + 12));
@@ -5211,8 +5226,9 @@ mod tests {
         let mut app = App::generated(42);
         app.mode = Mode::Normal;
         let c = app.cursor;
-        // A revealed wall two tiles from the cursor, designated for digging.
-        let p = (1..20).map(|dx| Pos::new(c.x + dx, c.y, c.z)).find(|&p| app.game.world.t(p).kind == crate::world::TileKind::Wall && app.game.world.t(p).revealed).expect("a wall near the wagon");
+        // A revealed wall of granite three tiles from the cursor, designated for digging.
+        let p = Pos::new(c.x + 3, c.y, c.z);
+        rock(&mut app, p);
         let before = dump(&mut app, 130, 45);
         app.game.world.t_mut(p).desig = Desig::Dig;
         app.game.designations.insert(p);
