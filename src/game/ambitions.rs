@@ -643,6 +643,12 @@ impl Game {
         if members.len() < 3 || strength < 8 || self.tick < YEAR / 2 {
             return false;
         }
+        // Someone must hold the gate while they're away: another squad at
+        // home, or the fort goes without an expedition.
+        let at_home: usize = self.squads.iter().skip(1).map(|s| s.members.len()).sum();
+        if at_home < 2 {
+            return false;
+        }
         let pick = self.destinations().into_iter().filter(|d| strength as f64 / (strength as f64 + d.danger as f64 * 3.0) >= bold).max_by_key(|d| {
             let worth = match d.goal {
                 Goal::Beast(_) => 3,

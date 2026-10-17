@@ -264,6 +264,27 @@ impl Game {
             d.task = Task::Idle;
             return;
         }
+        // Run for somewhere well away from them (down the stairs counts for a
+        // lot), not just a step back into a corner; look again now and then.
+        let far = |p: Pos| threats.iter().map(|(_, t)| (t.x - p.x).pow(2) + (t.y - p.y).pow(2) + 36 * (t.z - p.z).pow(2)).min().unwrap_or(0);
+        if d.path.is_empty() || self.tick % 60 < 3 {
+            let w = &self.world;
+            if let Some((_, path)) = path::search(w, d.pos, 4000, Mover::Dwarf, |q| far(q) >= 16 * 16) {
+                Self::set_path(d, path);
+            }
+        }
+        if let Some(&next) = d.path.last() {
+            let mut nb = Vec::new();
+            self.world.neighbors(d.pos, &mut nb, Mover::Dwarf);
+            // (Never towards them.)
+            if nb.iter().any(|(q, _)| *q == next) && far(next) + 2 >= far(d.pos) {
+                d.path.pop();
+                d.pos = next;
+                d.move_cd = MOVE_DELAY + d.body.limp();
+                return;
+            }
+            d.path.clear();
+        }
         let score = |p: Pos| threats.iter().map(|(_, t)| dist2(*t, p)).min().unwrap_or(0);
         let mut nb = Vec::new();
         self.world.neighbors(d.pos, &mut nb, Mover::Dwarf);
@@ -1473,6 +1494,32 @@ mod tests {
         fn df_clone(f: &Fighter) -> Fighter {
             Fighter { name: f.name.clone(), skill: f.skill, dmg: f.dmg, verb: f.verb, edged: f.edged, helm: f.helm, mail: f.mail, shield: f.shield }
         }
+    }
+
+    #[test]
+    fn a_fleeing_dwarf_gets_well_clear() {
+        let mut g = Game::new(11);
+        g.creatures.retain(|_, c| c.tame);
+        let a = g.open_patch(3, 3, 3).offset(1, 1, 0);
+        let gob = g.spawn_creature(Species::Goblin, a.offset(1, 0, 0), u64::MAX);
+        g.dwarves[0].pos = a;
+        g.dwarves[0].task = Task::Flee;
+        let near = |g: &Game| {
+            let (d, c) = (g.dwarves[0].pos, g.creatures[&gob].pos);
+            (d.x - c.x).abs().max((d.y - c.y).abs()) + 3 * (d.z - c.z).abs()
+        };
+        for _ in 0..300 {
+            // The goblin stands where it is; the dwarf runs.
+            g.creatures.get_mut(&gob).unwrap().pos = a.offset(1, 0, 0);
+            g.creatures.get_mut(&gob).unwrap().target = None;
+            let mut d = std::mem::take(&mut g.dwarves[0]);
+            if d.task == Task::Flee {
+                g.do_flee(&mut d);
+            }
+            g.dwarves[0] = d;
+            g.tick += 1;
+        }
+        assert!(near(&g) >= 10, "only {} tiles away", near(&g));
     }
 
     #[test]

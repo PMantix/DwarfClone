@@ -218,9 +218,10 @@ fn plan(style: Style) -> Vec<RoomUse> {
 const WORKSHOPS: [BuildingKind; 12] = [
     BuildingKind::Carpenter,
     BuildingKind::Mason,
+    // Mechanisms early: the gate's drawbridge and traps need them before the first siege.
+    BuildingKind::Mechanic,
     BuildingKind::Still,
     BuildingKind::Kitchen,
-    BuildingKind::Mechanic,
     BuildingKind::Craftsdwarf,
     BuildingKind::Butcher,
     BuildingKind::WoodFurnace,
@@ -700,13 +701,16 @@ impl Game {
             let name = self.squads[0].name.clone();
             Self::note(o, self.tick, format!("Raised a squad, {}.", name));
         }
-        // Crossbows from the carpenter arm a squad soonest; metal comes later.
+        // Crossbows from the carpenter arm a squad soonest; once there are
+        // axes, spears and hammers enough for the squad, it fights with those.
+        use super::military::UniformWeapon;
         let bows = self.stock_of(ItemKind::Crossbow) + self.dwarves.iter().filter(|d| d.alive && d.soldier && self.holds_crossbow(d)).count();
-        let weapon = if bows >= 2 && o.style != Style::Warlord { super::military::UniformWeapon::Crossbow } else { super::military::UniformWeapon::Best };
-        self.squads[0].weapon = weapon;
-        for s in 1..self.squads.len() {
-            self.squads[s].weapon = super::military::UniformWeapon::Best;
+        let melee = self.items.values().filter(|it| UniformWeapon::Best.accepts(it.kind) && (it.carried_by.is_none() || self.dwarves.iter().any(|d| d.soldier && d.held == Some(it.id)))).count();
+        for s in 0..self.squads.len() {
+            let n = self.squads[s].members.len().max(2);
+            self.squads[s].weapon = if melee >= n || bows < 2 { UniformWeapon::Best } else { UniformWeapon::Crossbow };
         }
+        let _ = o.style;
         let have: usize = self.squads.iter().map(|s| s.members.len()).sum();
         if have >= want {
             return;
@@ -813,6 +817,14 @@ impl Game {
         }
     }
 
+    /// What building stands on `p` (planned or built), if any.
+    fn building_at(&self, p: Pos) -> Option<BuildingKind> {
+        match self.world.get(p).map_or(0, |t| t.building) {
+            0 => None,
+            id => self.buildings.get(&id).map(|b| b.kind),
+        }
+    }
+
     fn gate_lever(&self, base: Pos) -> Option<u32> {
         self.buildings.values().find(|b| b.kind == BuildingKind::Lever && b.built && b.pos == base.offset(3, 1, 0)).map(|b| b.id)
     }
@@ -828,31 +840,43 @@ impl Game {
             return;
         }
         let base = o.base.unwrap();
-        if !o.did("gate") && self.dug_share(base.offset(1, 0, 0), base.offset(6, 1, 0)) >= 1.0 {
-            let a = self.place_building(BuildingKind::Door, base.offset(1, 0, 0));
-            let b = self.place_building(BuildingKind::Door, base.offset(1, 1, 0));
-            if a || b {
+        // The gate: a door on each row of the two-wide corridor. It isn't a
+        // gate until both are there, and a door broken down is hung again.
+        if self.dug_share(base.offset(1, 0, 0), base.offset(6, 1, 0)) >= 1.0 {
+            let mut hung = 0;
+            for dy in 0..2 {
+                let p = base.offset(1, dy, 0);
+                if self.building_at(p) == Some(BuildingKind::Door) || self.place_building(BuildingKind::Door, p) {
+                    hung += 1;
+                }
+            }
+            if hung == 2 && !o.did("gate") {
                 o.done.push("gate".into());
                 Self::note(o, self.tick, "Hung a gate at the foot of the stair, to bar when enemies come.".into());
             }
         }
         // A drawbridge behind the doors, on a lever: raised, nothing gets in.
-        if o.did("gate") && !o.did("bridge") && self.stock_of(ItemKind::Mechanism) >= 3 {
-            let a = self.place_building(BuildingKind::Bridge, base.offset(2, 0, 0));
-            let b = self.place_building(BuildingKind::Bridge, base.offset(2, 1, 0));
-            let l = self.place_building(BuildingKind::Lever, base.offset(3, 1, 0));
-            if a || b || l {
+        // Both halves and the lever, each put back if it's lost.
+        let parts = [(BuildingKind::Bridge, base.offset(2, 0, 0)), (BuildingKind::Bridge, base.offset(2, 1, 0)), (BuildingKind::Lever, base.offset(3, 1, 0))];
+        let missing = parts.iter().filter(|&&(k, p)| self.building_at(p) != Some(k)).count();
+        if o.did("gate") && missing > 0 && self.stock_of(ItemKind::Mechanism) >= missing {
+            let placed = parts.iter().filter(|&&(k, p)| self.building_at(p) == Some(k) || self.place_building(k, p)).count();
+            if placed == parts.len() && !o.did("bridge") {
                 o.done.push("bridge".into());
                 Self::note(o, self.tick, "Began a drawbridge at the gate, worked by a lever inside.".into());
             }
         }
-        if o.did("bridge") && !o.did("linked") {
+        // The lever works every half of the bridge (again, after a rebuild).
+        if o.did("bridge") {
             let lever = self.gate_lever(base);
             let bridges = self.gate_bridges(base);
-            let built = bridges.iter().all(|id| self.buildings.get(id).map_or(false, |b| b.built));
-            if let (Some(lever), true, false) = (lever, built, bridges.is_empty()) {
-                let linked = bridges.iter().filter(|&&id| self.link_lever(lever, id).is_ok()).count();
-                if linked == bridges.len() {
+            let built = bridges.len() == 2 && bridges.iter().all(|id| self.buildings.get(id).map_or(false, |b| b.built));
+            if let (Some(lever), true) = (lever, built) {
+                let unlinked: Vec<u32> = bridges.iter().copied().filter(|id| !self.buildings[&lever].links.contains(id)).collect();
+                for id in &unlinked {
+                    let _ = self.link_lever(lever, *id);
+                }
+                if !unlinked.is_empty() && !o.did("linked") {
                     o.done.push("linked".into());
                     Self::note(o, self.tick, "Linked the lever to the drawbridge. The gate can be shut fast.".into());
                 }
@@ -964,13 +988,26 @@ impl Game {
         // A safe burrow over the main level for when enemies come.
         if o.style != Style::Reckless && !o.did("burrow") && o.rooms.len() >= 4 {
             if let Some(i) = self.new_burrow() {
-                self.paint_burrow(i, base.offset(1, 0, 0), base.offset(14, 1, 0), true);
+                let mut tiles: Vec<Pos> = box_iter(base.offset(1, 0, 0), base.offset(14, 1, 0)).collect();
                 for r in &o.rooms {
-                    self.paint_burrow(i, r.a.offset(-1, -1, 0), r.b.offset(1, 1, 0), true);
+                    tiles.extend(box_iter(r.a, r.b));
                 }
-                for a in o.anchors.clone() {
-                    self.paint_burrow(i, a, a, true);
-                }
+                tiles.extend(o.anchors.iter().copied());
+                // The inner stair down to every level opened.
+                let deepest = Self::level_z(o, o.level);
+                tiles.extend((deepest..=base.z).map(|z| Pos::new(base.x + 9, base.y + 1, z)));
+                self.burrow_add(i, &tiles);
+                // Every hall dug underground so far, so the sheltering can
+                // still reach every room (and its barrels).
+                let dug: Vec<Pos> = (0..self.world.tiles.len())
+                    .filter(|&k| {
+                        let t = &self.world.tiles[k];
+                        t.dug && !t.kind.solid() || matches!(t.desig, Desig::Dig | Desig::StairUD)
+                    })
+                    .map(|k| self.world.pos_of(k))
+                    .filter(|&p| !self.world.outside(p) && p.z <= base.z)
+                    .collect();
+                self.burrow_add(i, &dug);
                 self.set_alert_burrow(i);
                 o.done.push("burrow".into());
                 Self::note(o, tick, "Marked out a burrow to shelter in when enemies come.".into());
@@ -1106,7 +1143,7 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
                 let kit = |d: &Dwarf| {
                     let w = d.held.and_then(|id| g.items.get(&id)).map_or("none".to_string(), |it| format!("{:?} {:?}", it.mat, it.kind));
                     let a: Vec<String> = d.armor.iter().filter_map(|id| g.items.get(id)).map(|it| format!("{:?}", it.kind)).collect();
-                    format!("{} [{}] skill {}", w, a.join(","), d.fight_level())
+                    format!("{} [{}] skill {} bolts {}", w, a.join(","), d.fight_level(), d.ammo)
                 };
                 let soldiers: Vec<String> = g.dwarves.iter().filter(|d| d.alive && d.soldier).map(kit).collect();
                 let s = g.annals.sieges.last().unwrap();
@@ -1337,6 +1374,66 @@ mod tests {
                 seen = g.log.len();
             }
         }
+    }
+
+    #[test]
+    fn the_shelter_reaches_every_room() {
+        let mut g = Game::new(5);
+        g.set_overseer(Some(Style::Steady));
+        let mut days = 0;
+        while days < 80 && !(g.overseer.as_ref().unwrap().did("burrow") && g.overseer.as_ref().unwrap().rooms.iter().filter(|r| r.stage == 1).count() >= 5) {
+            for _ in 0..DAY {
+                g.step();
+            }
+            days += 1;
+        }
+        let o = g.overseer.clone().unwrap();
+        assert!(o.did("burrow"), "no shelter after {} days", days);
+        let mask = g.burrows.iter().find(|b| Some(b.bit) == g.alert_burrow).unwrap().mask();
+        let inside = |p: Pos| g.world.get(p).map_or(false, |t| t.burrows & mask != 0);
+        // Walk the shelter from the foot of the stair.
+        let base = o.base.unwrap();
+        let mut seen = std::collections::HashSet::new();
+        let mut todo = vec![base.offset(4, 0, 0)];
+        let mut nb = Vec::new();
+        while let Some(p) = todo.pop() {
+            if !seen.insert(p) {
+                continue;
+            }
+            g.world.neighbors(p, &mut nb, Mover::Dwarf);
+            for &(q, _) in nb.iter() {
+                if inside(q) && !seen.contains(&q) {
+                    todo.push(q);
+                }
+            }
+        }
+        for r in o.rooms.iter().filter(|r| r.stage == 1) {
+            let tiles = if r.tiles.is_empty() { box_iter(r.a, r.b).collect() } else { r.tiles.clone() };
+            assert!(tiles.iter().any(|p| seen.contains(p)), "the shelter doesn't reach the {:?} at {:?} (day {})", r.kind, r.a, days);
+        }
+    }
+
+    #[test]
+    fn the_gate_is_whole_and_mended() {
+        let mut g = Game::new(5);
+        g.set_overseer(Some(Style::Steady));
+        let mut days = 0;
+        while !g.overseer.as_ref().unwrap().did("gate") && days < 30 {
+            for _ in 0..DAY {
+                g.step();
+            }
+            days += 1;
+        }
+        let base = g.overseer.as_ref().unwrap().base.unwrap();
+        let door_at = |g: &Game, p: Pos| g.buildings.values().find(|b| b.kind == BuildingKind::Door && b.pos == p).map(|b| b.id);
+        let (a, b) = (door_at(&g, base.offset(1, 0, 0)), door_at(&g, base.offset(1, 1, 0)));
+        assert!(a.is_some() && b.is_some(), "the gate needs a door on both rows of the corridor (after {} days)", days);
+        // A door broken down is hung again.
+        g.remove_building(b.unwrap());
+        for _ in 0..DAY {
+            g.step();
+        }
+        assert!(door_at(&g, base.offset(1, 1, 0)).is_some(), "the broken door wasn't replaced");
     }
 
     #[test]

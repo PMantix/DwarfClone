@@ -351,8 +351,9 @@ impl Game {
             }
             // The plan's next room, if the layout has a plan and room left in it.
             if o.layout.planned() {
-                if let Some(room) = self.plan_slot(o, kind, level) {
-                    let halls: Vec<Pos> = room.doors.clone();
+                if let Some((room, halls)) = self.plan_slot(o, kind, level) {
+                    // The halls to it join the shelter with it (or those
+                    // sheltering couldn't get there).
                     let door = room.doors.first().copied().unwrap_or(room.a);
                     self.open_room(o, level, room.a, room.b, &halls, door);
                     return Some(room);
@@ -424,12 +425,14 @@ impl Game {
             o.done.push(format!("level{}", level));
             Self::note_ov(o, self.tick, format!("Opened a new level of halls, at depth {}.", base.z - z));
         }
-        // The shelter reaches it.
+        // The shelter reaches it, and the way there (down the inner stair too).
         if let Some(i) = self.burrows.iter().position(|bw| Some(bw.bit) == self.alert_burrow) {
-            self.paint_burrow(i, a.offset(-1, -1, 0), b.offset(1, 1, 0), true);
-            for &p in path {
-                self.paint_burrow(i, p, p, true);
+            let mut tiles: Vec<Pos> = box_iter(a, b).collect();
+            tiles.extend_from_slice(path);
+            if level > 0 {
+                tiles.extend((z..=base.z).map(|zz| Pos::new(base.x + 9, base.y + 1, zz)));
             }
+            self.burrow_add(i, &tiles);
         }
         o.anchors.push(door);
         o.anchors.push(Pos::new((a.x + b.x) / 2, (a.y + b.y) / 2, a.z));

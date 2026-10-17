@@ -55,6 +55,22 @@ impl Game {
     }
 
     /// Add (or with `add == false`, remove) every walkable-ish tile in the box.
+    /// Add tiles to a burrow whether or not they're dug yet (the overseer
+    /// takes a room into the shelter as it lays it out).
+    pub(super) fn burrow_add(&mut self, idx: usize, tiles: &[Pos]) {
+        let Some(mask) = self.burrows.get(idx).map(|x| x.mask()) else { return };
+        let mut added = 0;
+        for &p in tiles {
+            if let Some(t) = self.world.get(p) {
+                if t.burrows & mask == 0 {
+                    self.world.t_mut(p).burrows |= mask;
+                    added += 1;
+                }
+            }
+        }
+        self.burrows[idx].tiles += added;
+    }
+
     pub fn paint_burrow(&mut self, idx: usize, a: Pos, b: Pos, add: bool) -> usize {
         let Some(mask) = self.burrows.get(idx).map(|x| x.mask()) else { return 0 };
         let mut n = 0;

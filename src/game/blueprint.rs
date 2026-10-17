@@ -421,7 +421,8 @@ impl Game {
     }
 
     /// Take the plan's next free slot that suits `kind` on level `k`.
-    pub(super) fn plan_slot(&mut self, o: &mut Overseer, kind: RoomUse, k: i32) -> Option<Room> {
+    /// Also returns the halls from the stair to it (for the shelter).
+    pub(super) fn plan_slot(&mut self, o: &mut Overseer, kind: RoomUse, k: i32) -> Option<(Room, Vec<Pos>)> {
         let (start, skip) = Self::plan_start(o, k);
         // How far east the plan runs, fixed when first drawn up (so it stays
         // the same plan if the map grows).
@@ -454,17 +455,22 @@ impl Game {
                 }
                 let (w, h) = s.shape.size();
                 let kind = if kind == RoomUse::Bedrooms && s.beds.is_empty() { RoomUse::Dormitory } else { kind };
-                return Some(Room {
-                    kind,
-                    a: s.a,
-                    b: s.a.offset(w - 1, h - 1, 0),
-                    stage: 0,
-                    tiles: s.tiles.clone(),
-                    shape: Some(s.shape),
-                    since: self.tick,
-                    doors: s.doors.clone(),
-                    beds: s.beds.clone(),
-                });
+                let mut way = halls;
+                way.extend(s.doors.iter().copied());
+                return Some((
+                    Room {
+                        kind,
+                        a: s.a,
+                        b: s.a.offset(w - 1, h - 1, 0),
+                        stage: 0,
+                        tiles: s.tiles.clone(),
+                        shape: Some(s.shape),
+                        since: self.tick,
+                        doors: s.doors.clone(),
+                        beds: s.beds.clone(),
+                    },
+                    way,
+                ));
             }
         }
         None

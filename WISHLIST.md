@@ -106,16 +106,18 @@ style survive three years, and every style still loses forts in memorable ways.
 #### S04 An overseer that defends (M)
 - **Why:** the overseer has a drawbridge, cage traps and a shelter burrow, but forts still die in
   a day. It should defend like a nervous player.
-- **Steps:** [ ] a whole gate: both doors of the two-wide gatehouse, checked daily and replaced
-  if missing, and the same for the drawbridge's two halves and lever (today one door counts as
-  a gate) · [ ] mechanisms early, so the bridge is up before the first siege · [ ] squads fight
-  with axes, spears and hammers and wear the armour in stock; crossbows for a third at most,
-  with bolts, shooting from behind the gate · [ ] the only squad never all goes on an
-  expedition; soldiers kept home before a siege season · [ ] soldiers hold the gatehouse instead
-  of charging · [ ] when foes get into the shelter, civilians flee deeper (down the inner stair)
-  rather than standing cornered · [ ] after a siege it learns: more traps where the enemy came
-  in, a second squad, walls · [ ] cavern breaches get walled off or doored the moment they're
-  dug into (troglodytes kill 5–7%)
+- **Steps:** [x] a whole gate: both doors of the two-wide gatehouse and both halves of the
+  drawbridge and its lever, checked and replaced if missing (this commit) · [x] mechanisms early:
+  the mechanic's shop is the third workshop (this commit) · [x] squads fight with crossbows
+  until there are melee weapons for all, and anyone holding a crossbow keeps a quiver of bolts
+  (this commit) · [x] the only squad never goes on an expedition: another must hold the gate
+  (this commit) · [x] the shelter covers every hall, room and stair the overseer digs (it used
+  to skip rooms not yet dug, and the halls of planned layouts, so sheltering dwarves died of
+  thirst beside full barrels) (this commit) · [x] fleeing dwarves run somewhere well away,
+  deeper into the fort, rather than into a corner (this commit) · [ ] soldiers hold the
+  gatehouse instead of charging (they're stationed there; check they stay) · [ ] after a siege
+  it learns: more traps where the enemy came in, a second squad, walls · [ ] cavern breaches
+  get walled off or doored the moment they're dug into
 - **Done when:** a scripted siege against a fort with shelter, bridge and squad kills fewer than
   half the goblins' worth of dwarves; the batch meets the milestone goal.
 

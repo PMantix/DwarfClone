@@ -315,7 +315,7 @@ impl Game {
 
     /// A bundle of bolts to pick up, if a marksdwarf is running low.
     pub(super) fn wants_bolts(&self, d: &Dwarf) -> bool {
-        self.uniform_of(d.id).0 == UniformWeapon::Crossbow && d.ammo + 10 <= MAX_AMMO
+        (self.uniform_of(d.id).0 == UniformWeapon::Crossbow || self.holds_crossbow(d)) && d.ammo + 10 <= MAX_AMMO
     }
 }
 
