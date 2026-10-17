@@ -281,7 +281,8 @@ impl Game {
         d.fight_xp += 6;
         d.satisfy(crate::dwarf::NeedKind::Fight, 40);
         // Metal bolts bite deeper, and a metal crossbow draws harder.
-        let metal = |m: Option<Mat>| matches!(m, Some(Mat::Copper | Mat::Bronze | Mat::Iron | Mat::Steel | Mat::Gold));
+        // (Gold is too soft to count: no harder draw, and its bolts score below copper.)
+        let metal = |m: Option<Mat>| matches!(m, Some(Mat::Copper | Mat::Bronze | Mat::Iron | Mat::Steel));
         let bow = d.held.and_then(|id| self.items.get(&id)).map(|it| it.mat);
         let draw = if metal(bow) { self.knob("bolt.draw", 1.0) as u32 } else { 0 };
         let dmg = Self::bolt_damage(d.ammo_mat) * self.knob("bolt.mult", 1.0) as f32;
