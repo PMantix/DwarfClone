@@ -547,7 +547,8 @@ impl Game {
     // ------------------------------------------------------------------
 
     pub(super) fn maybe_strange_mood(&mut self) {
-        if self.alive_count() < 7 || self.dwarves.iter().any(|d| d.mood.is_some()) || !self.rng.chance(0.5) {
+        // Rare: a season in five, in a fortress of some size.
+        if self.alive_count() < 10 || self.dwarves.iter().any(|d| d.mood.is_some()) || !self.rng.chance(0.2) {
             return;
         }
         let cands: Vec<usize> = (0..self.dwarves.len())

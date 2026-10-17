@@ -302,6 +302,9 @@ pub struct Game {
     /// A summer without rain.
     #[serde(default)]
     pub drought: bool,
+    /// The summer rains of the warm wet lands.
+    #[serde(default)]
+    pub monsoon: bool,
     /// How each dwarf died and how each siege went.
     #[serde(default)]
     pub annals: annals::Annals,
@@ -485,6 +488,7 @@ impl Game {
             crimes: Vec::new(),
             weather: Weather::Clear,
             drought: false,
+            monsoon: false,
             annals: Default::default(),
             spotlights: Vec::new(),
             fallen: false,

@@ -103,8 +103,30 @@ impl Game {
         if season != 1 {
             self.drought = false;
         }
+        // The monsoon: the warm wet lands get weeks of rain each summer.
+        let monsoon_land = matches!(self.biome, Biome::Jungle | Biome::Swamp | Biome::Savanna);
+        if season == 1 && self.tick % SEASON < DAY && monsoon_land && !self.drought {
+            self.monsoon = true;
+            self.msg("The monsoon has come. The rains will fall for weeks.", (130, 170, 230));
+        }
+        if season != 1 {
+            self.monsoon = false;
+        }
+        // Weather comes in spells: today is most likely what yesterday was.
         let before = self.weather;
-        self.weather = if self.drought || !self.rng.chance(wet) {
+        let keep = match before {
+            Weather::Clear => 1.0 - wet * 0.4,
+            Weather::Storm | Weather::Blizzard => 0.35,
+            Weather::BloodRain => 0.5,
+            _ => 0.65,
+        };
+        let keep = if self.monsoon { if before == Weather::Clear { 0.2 } else { 0.9 } } else { keep };
+        let kept = !self.drought && self.rng.chance(keep);
+        if kept && self.weather.snowy() && !cold {
+            self.weather = Weather::Rain;
+        }
+        if !kept {
+        self.weather = if self.drought || (!self.monsoon && before != Weather::Clear) || (!self.monsoon && !self.rng.chance(wet)) {
             Weather::Clear
         } else if cold {
             if self.rng.chance(0.25) {
@@ -119,6 +141,7 @@ impl Game {
         } else {
             Weather::Rain
         };
+        }
         if self.weather != before {
             let (text, color) = match self.weather {
                 Weather::Rain => ("It has started to rain.", (170, 190, 220)),
@@ -234,6 +257,39 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn weather_comes_in_spells_and_the_monsoon_brings_weeks_of_rain() {
+        let mut g = Game::new(81);
+        g.biome = Biome::Forest;
+        g.evil = false;
+        let mut changes = 0;
+        let mut last = g.weather;
+        for day in 0..336u64 {
+            g.tick = day * DAY;
+            g.weather_daily();
+            if g.weather != last {
+                changes += 1;
+                last = g.weather;
+            }
+        }
+        assert!(changes < 70, "the weather changed {} times in a year", changes);
+        let mut g = Game::new(81);
+        g.biome = Biome::Jungle;
+        g.evil = false;
+        g.drought = false;
+        let mut wet = 0;
+        for day in 84..168u64 {
+            g.tick = day * DAY;
+            g.weather_daily();
+            if g.weather != Weather::Clear {
+                wet += 1;
+            }
+        }
+        assert!(g.monsoon || wet > 0);
+        assert!(wet > 50, "the monsoon brought only {} wet days of 84", wet);
+    }
+
 
     #[test]
     fn winter_ice_can_be_walked_on_and_spring_thaws_it() {
