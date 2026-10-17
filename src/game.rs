@@ -73,6 +73,7 @@ pub mod captives;
 pub mod breakdowns;
 pub mod readiness;
 mod cistern;
+mod hunts;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -422,6 +423,9 @@ pub struct Game {
     /// Wells being sunk and cisterns being filled (`cistern.rs`).
     #[serde(default)]
     pub waterworks: cistern::Waterworks,
+    /// The overseer's hunt for prowling beasts (`hunts.rs`).
+    #[serde(default)]
+    pub hunts: hunts::Hunts,
     /// A new page has been written and should be shown.
     #[serde(skip)]
     pub chronicle_ready: bool,
@@ -557,6 +561,7 @@ impl Game {
             knobs: Default::default(),
             bleed_params: Default::default(),
             waterworks: Default::default(),
+            hunts: Default::default(),
             chronicle_ready: false,
             creatures: BTreeMap::new(),
             station: None,

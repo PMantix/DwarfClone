@@ -24,6 +24,7 @@ impl Game {
         // M1 (survival):
         self.ov_berserk(o);
         self.ov_cistern_gate(o);
+        self.ov_hunts(o);
         let _ = o;
     }
 
