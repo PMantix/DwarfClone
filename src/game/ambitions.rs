@@ -693,7 +693,9 @@ impl Game {
         if at_home < 2 {
             return false;
         }
-        let pick = self.destinations().into_iter().filter(|d| strength as f64 / (strength as f64 + d.danger as f64 * 3.0) >= bold).max_by_key(|d| {
+        // The cautious leave the beasts in their lairs.
+        let cautious = o.has(super::personality::Trait::Cautious);
+        let pick = self.destinations().into_iter().filter(|d| !(cautious && matches!(d.goal, Goal::Beast(_))) && self.round_odds(&members, d) >= bold).max_by_key(|d| {
             let worth = match d.goal {
                 Goal::Beast(_) => 3,
                 Goal::Raid => 2,
@@ -703,6 +705,14 @@ impl Game {
         });
         let Some(d) = pick else { return false };
         if !certain && !self.rng.chance(0.2) {
+            return false;
+        }
+        // It could win; but is the squad fit to go, and can the fort spare it?
+        if let Some(why) = self.venture_veto(o, &members) {
+            let text = format!("Kept the squad home: {}.", why);
+            if !o.notes.iter().rev().any(|(t, n)| *n == text && self.tick < t + SEASON) {
+                Self::note_ov(o, self.tick, text);
+            }
             return false;
         }
         let name = d.name.clone();
