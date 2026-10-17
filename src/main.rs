@@ -84,23 +84,67 @@ fn main() -> Result<()> {
 }
 
 /// `--autoplay [--runs N] [--years Y] [--style NAME] [--seed S] [--story]
-/// [--out FILE]`: play many fortresses with the overseer, side by side, tell
-/// how each ended and why forts fell; `--story` adds each fort's timeline,
-/// `--out` saves the batch for `--compare`.
+/// [--out FILE] [--knob name=v]... [--knobs FILE] [--list-knobs]`: play many
+/// fortresses with the overseer, side by side, tell how each ended and why
+/// forts fell; `--story` adds each fort's timeline, `--out` saves the batch
+/// for `--compare`. `--knob` (any number of them) and `--knobs` (a flat JSON
+/// map) change tunable numbers from their defaults; `--list-knobs` plays one
+/// fort for 30 days and lists every knob it read.
 fn autoplay_batch(args: &[String]) {
-    use game::{run_trial, Style};
+    use game::{run_trial, Knobs, Style};
     let opt = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
+    let mut knobs = Knobs::default();
+    if let Some(path) = opt("--knobs") {
+        match std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|s| game::knobs::parse_knobs_file(&s)) {
+            Ok(m) => knobs.set.extend(m),
+            Err(e) => {
+                eprintln!("Couldn't read the knobs in {}: {}", path, e);
+                return;
+            }
+        }
+    }
+    for (i, a) in args.iter().enumerate() {
+        if a == "--knob" {
+            match args.get(i + 1).map(|s| game::knobs::parse_knob(s)) {
+                Some(Ok((k, v))) => {
+                    knobs.set.insert(k, v);
+                }
+                Some(Err(e)) => {
+                    eprintln!("--knob: {}", e);
+                    return;
+                }
+                None => {
+                    eprintln!("--knob needs name=value");
+                    return;
+                }
+            }
+        }
+    }
+    if args.iter().any(|a| a == "--list-knobs") {
+        let mut g = game::Game::new(opt("--seed").and_then(|s| s.parse().ok()).unwrap_or(1));
+        g.knobs = knobs;
+        g.set_overseer(Some(Style::Steady));
+        while g.tick < game::DAY * 30 && g.alive_count() > 0 {
+            g.step();
+        }
+        println!("Knobs read in 30 days of a Steady fort (name, default):");
+        for (k, v) in game::knobs::seen() {
+            println!("  {:<28} {}", k, v);
+        }
+        return;
+    }
     let runs: u64 = opt("--runs").and_then(|s| s.parse().ok()).unwrap_or(10);
     let years: u64 = opt("--years").and_then(|s| s.parse().ok()).unwrap_or(5);
     let style = opt("--style").and_then(|s| Style::parse(&s));
     let base: u64 = opt("--seed").and_then(|s| s.parse().ok()).unwrap_or_else(|| SystemTime::now().duration_since(UNIX_EPOCH).map_or(1, |d| d.as_secs() % 100_000));
     let threads = opt("--threads").and_then(|s| s.parse().ok()).unwrap_or_else(|| std::thread::available_parallelism().map_or(4, |n| n.get())).max(1);
     println!(
-        "Autoplay: {} fortresses, up to {} years each, {} at a time{}",
+        "Autoplay: {} fortresses, up to {} years each, {} at a time{}{}",
         runs,
         years,
         threads,
-        style.map_or(String::new(), |s| format!(", all {}", s.name()))
+        style.map_or(String::new(), |s| format!(", all {}", s.name())),
+        if knobs.set.is_empty() { String::new() } else { format!("; knobs: {}", knobs.describe()) }
     );
     let jobs: Vec<(u64, Style)> = (0..runs).map(|i| (base + i, style.unwrap_or(Style::ALL[(i % Style::ALL.len() as u64) as usize]))).collect();
     let queue = std::sync::Arc::new(std::sync::Mutex::new(jobs.into_iter()));
@@ -109,10 +153,15 @@ fn autoplay_batch(args: &[String]) {
     for _ in 0..threads.min(runs as usize) {
         let queue = queue.clone();
         let tx = tx.clone();
-        handles.push(std::thread::spawn(move || loop {
-            let next = queue.lock().unwrap().next();
-            let Some((seed, style)) = next else { break };
-            let _ = tx.send(run_trial(seed, style, years));
+        let knobs = knobs.clone();
+        handles.push(std::thread::spawn(move || {
+            loop {
+                let next = queue.lock().unwrap().next();
+                let Some((seed, style)) = next else { break };
+                let _ = tx.send(run_trial(seed, style, years, &knobs));
+            }
+            // The knobs this thread's forts read, to catch a misspelt --knob.
+            game::knobs::seen()
         }));
     }
     drop(tx);
@@ -147,8 +196,14 @@ fn autoplay_batch(args: &[String]) {
             let _ = serde_json::to_string(&all).map(|s| std::fs::write(&path, s));
         }
     }
+    let mut read = std::collections::BTreeSet::new();
     for h in handles {
-        let _ = h.join();
+        if let Ok(seen) = h.join() {
+            read.extend(seen.into_keys());
+        }
+    }
+    for k in knobs.set.keys().filter(|k| !read.contains(k.as_str())) {
+        println!("  Warning: no fort ever read the knob {} (misspelt? see --list-knobs).", k);
     }
     all.sort_by_key(|t| t.seed);
     print!("{}", report::report(&all, years as usize));

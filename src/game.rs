@@ -64,8 +64,10 @@ pub mod troubles;
 pub mod word;
 pub mod personality;
 mod miasma;
+pub mod knobs;
 pub use ambitions::{Ambition, Sense};
 
+pub use knobs::Knobs;
 pub use overseer::{run_trial, Overseer, Style, Trial};
 pub use mysteries::{Mystery, MysteryKind};
 pub use necromancy::Necromancer;
@@ -398,6 +400,9 @@ pub struct Game {
     /// One page per year gone by.
     #[serde(default)]
     pub chronicles: Vec<Chronicle>,
+    /// Tunable numbers the batch changed from their defaults (`--knob`).
+    #[serde(default)]
+    pub knobs: knobs::Knobs,
     /// A new page has been written and should be shown.
     #[serde(skip)]
     pub chronicle_ready: bool,
@@ -529,6 +534,7 @@ impl Game {
             necro_rolled: false,
             duels: Vec::new(),
             chronicles: Vec::new(),
+            knobs: Default::default(),
             chronicle_ready: false,
             creatures: BTreeMap::new(),
             station: None,

@@ -1223,11 +1223,19 @@ pub struct Trial {
     /// What happened, in order: (day, what).
     #[serde(default)]
     pub story: Vec<(u64, String)>,
+    /// The fort's counters at the end (`Game::count`).
+    #[serde(default)]
+    pub counters: BTreeMap<String, u32>,
+    /// The knobs the batch set (`--knob`); empty for the defaults.
+    #[serde(default)]
+    pub knobs: BTreeMap<String, f64>,
 }
 
-/// Play one fortress with `style` for up to `years`, from a fresh world.
-pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
+/// Play one fortress with `style` for up to `years`, from a fresh world,
+/// with `knobs` changed from their defaults.
+pub fn run_trial(seed: u64, style: Style, years: u64, knobs: &Knobs) -> Trial {
     let mut g = Game::new(seed);
+    g.knobs = knobs.clone();
     g.set_overseer(Some(style));
     let mut last_death = String::new();
     let end = years * YEAR;
@@ -1455,6 +1463,8 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
         sieges: g.annals.sieges.clone(),
         alive_by_year,
         story,
+        counters: g.annals.counters.clone(),
+        knobs: g.knobs.set.clone(),
     }
 }
 
@@ -1777,7 +1787,7 @@ mod tests {
             .iter()
             .enumerate()
             .filter(|(_, s)| std::env::var("ONLY").map_or(true, |o| o.eq_ignore_ascii_case(s.name())))
-            .map(|(i, &s)| std::thread::spawn(move || run_trial(100 + i as u64, s, years)))
+            .map(|(i, &s)| std::thread::spawn(move || run_trial(100 + i as u64, s, years, &Knobs::default())))
             .collect();
         for h in handles {
             let t = h.join().unwrap();
@@ -1884,7 +1894,7 @@ mod tests {
         let seed: u64 = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
         let style = std::env::var("STYLE").ok().and_then(|s| Style::parse(&s)).unwrap_or(Style::Steady);
         let years: u64 = std::env::var("YEARS").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
-        let t = run_trial(seed, style, years);
+        let t = run_trial(seed, style, years, &Knobs::default());
         eprintln!("{} {} {:.1}y {} | {}", t.style.name(), t.seed, t.years, t.verdict, t.epitaph);
     }
 
@@ -1892,7 +1902,7 @@ mod tests {
     fn styles_parse_and_trials_report() {
         assert_eq!(Style::parse("warlord"), Some(Style::Warlord));
         assert_eq!(Style::parse("nope"), None);
-        let t = run_trial(7, Style::Reckless, 0);
+        let t = run_trial(7, Style::Reckless, 0, &Knobs::default());
         assert_eq!(t.verdict, "Endured");
         assert!(t.alive > 0);
     }
