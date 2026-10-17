@@ -176,6 +176,9 @@ pub struct Overseer {
     pub traits: Vec<super::personality::Trait>,
     /// What it decided, newest last.
     pub notes: Vec<(u64, String)>,
+    /// What sieges have taught it, and when (`lessons.rs`).
+    #[serde(default)]
+    pub lessons: Vec<(u64, super::lessons::Lesson)>,
 }
 
 impl Overseer {
@@ -209,6 +212,7 @@ impl Overseer {
             name: String::new(),
             traits: Vec::new(),
             notes: Vec::new(),
+            lessons: Vec::new(),
         }
     }
 
@@ -912,15 +916,16 @@ impl Game {
 
     /// How long an army may be on the map before the drawbridge goes up
     /// regardless, in ticks. (A cautious overseer bars the gate sooner, a
-    /// bold one later.)
+    /// bold one later, and one a siege has taught sooner still.)
     pub(super) fn bar_patience(&self, o: &Overseer) -> u64 {
-        if o.has(super::personality::Trait::Cautious) {
+        let patience = if o.has(super::personality::Trait::Cautious) {
             60
         } else if o.has(super::personality::Trait::Bold) {
             260
         } else {
             150
-        }
+        };
+        self.bar_sooner(o, patience)
     }
 
     /// What building stands on `p` (planned or built), if any.
@@ -1017,11 +1022,12 @@ impl Game {
 
     /// Plain stone for the gate's mechanisms. A fort whose halls are cut in
     /// soil, ore or coal has none to make them from, and its drawbridge never
-    /// comes: until the lever is linked, keep a few boulders of it in hand,
+    /// comes: until the lever is linked (or while a lesson wants traps and
+    /// none are set), keep a few boulders of it in hand,
     /// quarried where it shows beside the halls, or else down the inner stair
     /// at the first layer of stone.
     fn ov_quarry(&mut self, o: &mut Overseer) {
-        if o.did("linked") {
+        if o.did("linked") && !self.traps_wanted(o) {
             return;
         }
         let base = o.base.unwrap();

@@ -15,6 +15,7 @@ impl Game {
         self.ov_coax(o);
         self.ov_readiness(o);
         self.ov_water(o);
+        self.ov_lessons(o);
         let _ = o;
     }
 
@@ -45,5 +46,6 @@ impl Game {
     pub(super) fn on_siege_end(&mut self, i: usize) {
         // M1 (survival):
         self.captives_after_siege(i);
+        self.learn_from_siege(i);
     }
 }
