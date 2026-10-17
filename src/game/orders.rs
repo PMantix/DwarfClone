@@ -67,6 +67,7 @@ impl Game {
             return;
         }
         if !self.has_post(super::Position::Manager) {
+            self.trouble(super::troubles::Lack::Manager);
             self.warn("nomanager", "Work orders wait for a manager (n to appoint one).", (230, 200, 90));
             return;
         }
@@ -86,6 +87,9 @@ impl Game {
                     .min_by_key(|b| (b.orders.len(), b.id))
                     .map(|b| b.id);
                 let Some(shop) = shop else {
+                    if let Some(k) = BuildingKind::ALL.iter().find(|k| k.recipes().contains(&recipe)) {
+                        self.trouble(super::troubles::Lack::Workshop(*k));
+                    }
                     self.warn(
                         &format!("order{:?}", recipe),
                         &format!("Work order \"{}\": no workshop can do it.", recipe.name()),

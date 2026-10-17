@@ -500,6 +500,9 @@ pub struct Dwarf {
     /// The madness is melancholy (which can lift), not a failed mood's.
     #[serde(default)]
     pub melancholy: bool,
+    /// When the madness took them.
+    #[serde(default)]
+    pub mad_since: u64,
     /// Ticks spent miserable; sustained misery breaks a dwarf.
     #[serde(default)]
     pub misery: u32,

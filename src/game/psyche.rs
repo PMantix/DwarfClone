@@ -287,7 +287,9 @@ impl Game {
         }
         // Melancholy can lift, once the grief has eased, for a dwarf with
         // someone who cares for them still alive.
-        if d.insane && d.melancholy && tick % DAY == d.id as u64 % DAY && d.stress < 200 {
+        // (Time heals, not the stress gauge: a dwarf starving in the dark
+        // stays stressed whatever else.)
+        if d.insane && d.melancholy && tick % DAY == d.id as u64 % DAY && tick > d.mad_since + 5 * DAY {
             let loved = d.spouse.map_or(false, |s| self.dwarves.iter().any(|o| o.id == s && o.alive))
                 || d.relations.iter().any(|&(o, r)| r >= 30 && self.dwarves.iter().any(|x| x.id == o && x.alive));
             if loved && self.rng.chance(0.12) {
@@ -403,6 +405,7 @@ impl Game {
         self.release_task(d);
         d.insane = true;
         d.melancholy = how.contains("melancholy");
+        d.mad_since = self.tick;
         d.soldier = false;
         d.noble = None;
         if let Some(id) = d.held.take() {

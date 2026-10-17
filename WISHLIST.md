@@ -147,12 +147,22 @@ style survive three years, and every style still loses forts in memorable ways.
 - **Done when:** expedition deaths fall below 5% of all deaths in the batch.
 
 #### S05 Food and water a fort can rely on (S)
-- **Why:** 44 dwarves starved or died of thirst; a fort that runs dry is a sad, quiet ending.
-- **Steps:** [ ] the overseer digs a well or a cistern when the fort has no water within reach
-  of the halls · [ ] food stocks are watched: more farms, fishing and hunting when meals per
-  dwarf fall low · [ ] a dwarf too far gone to work fetches a drink first, wherever it is
-- **Done when:** no thirst or starvation deaths in the batch where food or water existed on the
-  map.
+- **Why:** dwarves died of thirst and hunger in peacetime, often beside full stores.
+- **What the traces found:** most were mad (melancholy after a massacre's grief; a mad dwarf
+  only wanders); sane ones were trapped by water: a stair dug through a heavy aquifer, or a hall
+  opened into a lake's bed, flooded the fort's main level and cut the halls off from the food.
+- **Steps:** [x] melancholy can lift, given time and someone who cares still alive, and a
+  melancholic dwarf still sips and picks at food when it's that bad (this commit) · [x] desperate
+  thirst interrupts a meal or a nap (this commit) · [x] the stair is dug where water can't pour
+  in, under rock, and stops above a heavy aquifer; no hall is cut beside or under water; no
+  level below a heavy aquifer (this commit) · [x] the overseer reads the announcements: what's
+  short (stone, wood, blocks, mechanisms, drink, food, a workshop, a manager…) is remembered
+  as a trouble, and it sees to it (miners to quarry, woodcutters out, orders raised, hands to
+  farming), sooner or later by its style and with a manager's help (this commit) · [x] only a
+  delver digs levels down toward the caverns (a spider came up one fort's stair) (this commit)
+  · [ ] wells and cisterns inside the fort
+- **So far** (batches/s05b.json against s03, 24 forts): thirst and starvation deaths 93 → 66, of
+  them sane 38 → 21; first siege 1.4 dead on average.
 
 ### Milestone 2: the overseer as a character (v0.4)
 

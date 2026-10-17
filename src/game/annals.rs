@@ -23,6 +23,9 @@ pub struct DeathNote {
     /// Mad when they died (melancholy or a failed mood).
     #[serde(default)]
     pub mad: bool,
+    /// The madness was melancholy (which can lift).
+    #[serde(default)]
+    pub melancholy: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -136,6 +139,7 @@ impl Game {
             sheltered,
             soldier: d.soldier,
             mad: d.insane,
+            melancholy: d.insane && d.melancholy,
         });
         self.annals.wounded_by.retain(|w| w.0 != d.id);
     }

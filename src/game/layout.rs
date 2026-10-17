@@ -330,6 +330,12 @@ impl Game {
         if t.water > 0 || t.magma > 0 || t.aquifer {
             return false;
         }
+        // Never beside or under water: a hall dug into a lake's bed drains
+        // the lake into the fortress.
+        let wet = |q: Pos| self.world.get(q).map_or(false, |n| n.water > 0 || n.magma > 0);
+        if t.kind.solid() && (crate::geom::DIRS4.iter().any(|&(dx, dy)| wet(p.offset(dx, dy, 0))) || wet(p.up())) {
+            return false;
+        }
         if t.kind.solid() {
             t.kind == TileKind::Wall && t.mat.diggable() && t.built_from.is_none() && t.mat != Mat::Bedrock
         } else {
@@ -348,6 +354,21 @@ impl Game {
             let z = Self::level_z(o, level);
             if z < 3 {
                 return None;
+            }
+            // Only a delver digs halls down into the caverns' reach: the stair
+            // would open into them, and what lives there would come up it.
+            if level > 0 && o.style != super::overseer::Style::Delver {
+                let roof = self.world.caverns.iter().map(|c| c.1).max().unwrap_or(0);
+                if z <= roof + 2 {
+                    return None;
+                }
+            }
+            // No level below a heavy aquifer: the inner stair would flood.
+            if level > 0 && self.world.aquifer >= 2 {
+                let (sx, sy) = (b.x + 9, b.y + 1);
+                if (z..b.z).any(|zz| (-1..=1).any(|dx| (-1..=1).any(|dy| self.world.get(Pos::new(sx + dx, sy + dy, zz)).map_or(false, |t| t.aquifer)))) {
+                    return None;
+                }
             }
             // The plan's next room, if the layout has a plan and room left in it.
             if o.layout.planned() {
@@ -509,7 +530,8 @@ mod tests {
     fn each_layout_places_rooms_that_fit_behind_the_gate() {
         for (i, &layout) in Layout::ALL.iter().enumerate() {
             let mut g = Game::new(5);
-            g.set_overseer(Some(Style::Steady));
+            // (A delver, who may open levels down toward the caverns when the first is full.)
+            g.set_overseer(Some(Style::Delver));
             for _ in 0..300 {
                 g.step();
             }
@@ -518,16 +540,16 @@ mod tests {
             o.rooms.clear();
             o.anchors.clear();
             let base = o.base.expect("dug in");
-            let mut boxes: Vec<(Pos, Pos)> = Vec::new();
+            // (Tiles, not boxes: a room may sit in the empty corner of a round hall's box.)
+            let mut taken: std::collections::HashSet<Pos> = std::collections::HashSet::new();
             for k in [RoomUse::Dining, RoomUse::Dormitory, RoomUse::Stockpile, RoomUse::Grand, RoomUse::Tavern, RoomUse::Workshops] {
                 let r = g.plan_room(&mut o, k).unwrap_or_else(|| panic!("{:?}: no room for {:?}", layout, k));
                 assert!(r.a.x >= base.x + 15, "{:?}: room in front of the gate", layout);
                 assert!(r.b.x < g.world.w && r.b.y < g.world.h && r.a.y > 0, "{:?}: off the map", layout);
-                for (a, b) in &boxes {
-                    let apart = r.b.x < a.x || r.a.x > b.x || r.b.y < a.y || r.a.y > b.y || r.a.z != a.z;
-                    assert!(apart, "{:?}: rooms overlap", layout);
+                let tiles: Vec<Pos> = if r.tiles.is_empty() { box_iter(r.a, r.b).collect() } else { r.tiles.clone() };
+                for p in &tiles {
+                    assert!(taken.insert(*p), "{:?}: rooms overlap at {:?}", layout, p);
                 }
-                boxes.push((r.a, r.b));
                 o.rooms.push(r);
             }
             let _ = i;

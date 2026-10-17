@@ -163,6 +163,12 @@ pub struct Overseer {
     /// When the army now on the map first came (0: none).
     #[serde(default)]
     pub army_since: u64,
+    /// Troubles it has seen to lately (so it doesn't fuss over them daily).
+    #[serde(default)]
+    pub fixes: Vec<(super::troubles::Lack, u64)>,
+    /// Work orders it raised to meet a shortage: (recipe, keep, until).
+    #[serde(default)]
+    pub boosts: Vec<(Recipe, u32, u64)>,
     /// What it decided, newest last.
     pub notes: Vec<(u64, String)>,
 }
@@ -193,6 +199,8 @@ impl Overseer {
             plan_taken: Vec::new(),
             plan_len: 0,
             army_since: 0,
+            fixes: Vec::new(),
+            boosts: Vec::new(),
             notes: Vec::new(),
         }
     }
@@ -337,15 +345,55 @@ impl Game {
         if let Some(m) = self.candidates(Position::Manager).first().copied() {
             self.appoint(Position::Manager, Some(m));
         }
-        let s = (1..12).flat_map(|i| [e.offset(i, 0, 0), e.offset(0, i, 0), e.offset(-i, 0, 0)]).find(|&p| {
-            let Some(t) = self.world.get(p) else { return false };
-            t.kind == TileKind::Floor && t.building == 0 && t.zone == 0
-        });
+        let depth = if o.style == Style::Delver { 4 } else { 3 };
+        let open = |g: &Game, p: Pos| g.world.get(p).map_or(false, |t| t.kind == TileKind::Floor && t.building == 0 && t.zone == 0 && t.water == 0);
+        // Somewhere water can't pour in: as far from any as can be (a river
+        // beside the stair floods the whole fort), high above the waterline,
+        // with dry rock where the gatehouse will run.
+        // A heavy aquifer floods whatever is dug through it: the stair stops
+        // short of it (the halls above it), or the site won't do.
+        let reach = |g: &Game, p: Pos| -> i32 {
+            if g.world.aquifer < 2 {
+                return depth;
+            }
+            (1..=depth).take_while(|&k| g.world.get(p.offset(0, 0, -k)).map_or(false, |t| !t.aquifer) && (-1..=1).all(|dx| (-1..=1).all(|dy| g.world.get(p.offset(dx, dy, -k)).map_or(true, |t| !t.aquifer)))).last().unwrap_or(0)
+        };
+        let score = |g: &Game, p: Pos| -> Option<i32> {
+            let w = &g.world;
+            let depth = reach(g, p);
+            if depth < 1 {
+                return None;
+            }
+            let base = p.offset(0, 0, -depth);
+            let gate_dry = (0..=14).all(|dx| (0..=1).all(|dy| w.get(base.offset(dx, dy, 0)).map_or(false, |t| t.water == 0 && !t.aquifer)));
+            // Under rock all the way: a gatehouse that comes out under the sky is no gate.
+            let roofed = (0..=20).all(|dx| (-1..=2).all(|dy| {
+                let q = base.offset(dx, dy, 0);
+                !w.in_bounds(q) || w.surface_z(q.x, q.y) >= base.z + 2
+            }));
+            if !gate_dry || !roofed || base.z < 2 {
+                return None;
+            }
+            let far = (1..=8)
+                .find(|&r| (-r..=r).any(|dy| (-r..=r).any(|dx| (dx as i32).abs().max((dy as i32).abs()) == r && (-1..=1).any(|dz| w.get(p.offset(dx, dy, dz)).map_or(false, |t| t.water > 0)))))
+                .unwrap_or(9);
+            let dist = (p.x - e.x).abs().max((p.y - e.y).abs());
+            Some(far * 20 + (p.z - w.water_level).clamp(-5, 6) * 6 - dist)
+        };
+        let s = (1..22)
+            .flat_map(|r| (-r..=r).flat_map(move |k| [e.offset(k, -r, 0), e.offset(k, r, 0), e.offset(-r, k, 0), e.offset(r, k, 0)]))
+            .filter(|p| self.world.in_bounds(Pos::new(p.x, p.y, 0)))
+            .map(|p| Pos::new(p.x, p.y, self.world.surface_z(p.x, p.y)))
+            .filter(|&p| open(self, p))
+            .filter_map(|p| score(self, p).map(|s| (s, p)))
+            .max_by_key(|&(s, p)| (s, -(p.x - e.x).abs() - (p.y - e.y).abs()))
+            .map(|(_, p)| p)
+            .or_else(|| (1..12).flat_map(|i| [e.offset(i, 0, 0), e.offset(0, i, 0), e.offset(-i, 0, 0)]).find(|&p| open(self, p)));
         let Some(s) = s else {
             self.overseer = None;
             return;
         };
-        let depth = if o.style == Style::Delver { 4 } else { 3 };
+        let depth = reach(self, s).max(1);
         let base = s.offset(0, 0, -depth);
         if base.z < 2 {
             return;
@@ -654,6 +702,13 @@ impl Game {
             orders.push((Recipe::ForgeShield, 1));
         }
         self.ambition_orders(o, &mut orders);
+        // What it raised to meet a shortage, on top.
+        for &(r, keep, _) in &o.boosts {
+            match orders.iter_mut().find(|x| x.0 == r) {
+                Some(x) => x.1 = x.1.max(keep),
+                None => orders.push((r, keep)),
+            }
+        }
         // Only what some workshop can make (the rest would just complain).
         for (r, keep) in orders {
             if keep > 0 && self.buildings.values().any(|b| b.built && b.kind.recipes().contains(&r)) {
@@ -988,6 +1043,8 @@ impl Game {
         let base = o.base.unwrap();
         let e = self.embark;
         self.ov_labors(o);
+        // What the announcements say the fortress is short of.
+        self.ov_troubles(o);
         // Keep the wood coming: chop further out when it runs low.
         if self.stock_of(ItemKind::Log) < 6 {
             let chopping = self.designations.iter().filter(|p| self.world.t(**p).desig == Desig::Chop).count();
@@ -1433,7 +1490,8 @@ mod tests {
         for _ in 0..DAY {
             g.step();
         }
-        assert!(g.breaches.is_empty());
+        // (The miners may have broken in somewhere else meanwhile.)
+        assert!(!g.breaches.contains(&q), "the breach was never seen to");
         let near = |p: Pos| (p.x - q.x).abs() + (p.y - q.y).abs() <= 1 && p.z == q.z;
         assert!(g.buildings.values().any(|b| b.kind == BuildingKind::Door && near(b.pos)), "no door at the breach");
     }
@@ -1471,6 +1529,13 @@ mod tests {
         }
         for r in o.rooms.iter().filter(|r| r.stage == 1) {
             let tiles = if r.tiles.is_empty() { box_iter(r.a, r.b).collect() } else { r.tiles.clone() };
+            if !tiles.iter().any(|p| seen.contains(p)) {
+                eprintln!("base {:?}; room tiles in shelter {}/{}", base, tiles.iter().filter(|p| inside(**p)).count(), tiles.len());
+                if let Some(path) = path::astar(&g.world, base, tiles[tiles.len() / 2], 20000, Mover::Dwarf) {
+                    let out: Vec<(Pos, bool)> = path.iter().copied().filter(|p| !inside(*p)).take(8).map(|p| (p, g.world.outside(p))).collect();
+                    eprintln!("  path tiles outside the shelter: {:?}", out);
+                }
+            }
             assert!(tiles.iter().any(|p| seen.contains(p)), "the shelter doesn't reach the {:?} at {:?} (day {})", r.kind, r.a, days);
         }
     }
@@ -1500,6 +1565,41 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn where_the_flood_comes_from() {
+        let mut g = Game::new(5023);
+        g.set_overseer(Some(Style::Warlord));
+        let mut first = None;
+        while g.tick < 30 * DAY {
+            g.step();
+            if let Some(base) = g.overseer.as_ref().and_then(|o| o.base) {
+                let wet = (base.x..base.x + 30).any(|x| (base.y - 2..base.y + 4).any(|y| g.world.t(Pos::new(x, y, base.z)).water > 0));
+                if wet && first.is_none() {
+                    first = Some(g.tick);
+                    break;
+                }
+            }
+        }
+        let o = g.overseer.clone().unwrap();
+        let base = o.base.unwrap();
+        eprintln!("first water in the halls at day {:?}; base {:?} water level {}", first.map(|t| t / DAY), base, g.world.water_level);
+        let wet: Vec<(Pos, u8, bool)> = (base.x..base.x + 30).flat_map(|x| (base.y - 2..base.y + 4).map(move |y| Pos::new(x, y, base.z))).filter(|p| g.world.t(*p).water > 0).map(|p| (p, g.world.t(p).water, g.world.outside(p))).take(10).collect();
+        eprintln!("wet tiles: {:?} surface there {:?}", wet, wet.first().map(|w| g.world.surface_z(w.0.x, w.0.y)));
+        for z in [base.z + 2, base.z + 1, base.z] {
+            eprintln!(" z{}", z);
+            for y in base.y - 8..base.y + 9 {
+                let row: String = (base.x - 4..base.x + 50)
+                    .map(|x| {
+                        let t = g.world.t(Pos::new(x, y, z));
+                        if (x, y) == (base.x, base.y) { 'X' } else if t.water > 0 { char::from_digit(t.water as u32, 10).unwrap() } else if t.desig != Desig::None { '+' } else if t.kind.solid() { '#' } else { '.' }
+                    })
+                    .collect();
+                eprintln!("   {}", row);
+            }
+        }
+    }
+
+    #[test]
+    #[ignore]
     fn watch_a_thirsty_dwarf() {
         let env = |k: &str, d: &str| std::env::var(k).unwrap_or(d.into());
         let seed: u64 = env("SEED", "5012").parse().unwrap();
@@ -1507,10 +1607,47 @@ mod tests {
         let mut g = Game::new(seed);
         g.set_overseer(Some(style));
         let limit: u32 = env("THIRST", "11000").parse().unwrap();
-        while g.tick < 3 * YEAR && g.alive_count() > 0 && !g.dwarves.iter().any(|d| d.alive && d.thirst > limit) {
+        let hungry = env("WHAT", "thirst") == "hunger";
+        let over = |d: &Dwarf| d.alive && if hungry { d.hunger > limit } else { d.thirst > limit };
+        while g.tick < 3 * YEAR && g.alive_count() > 0 && !g.dwarves.iter().any(|d| over(d)) {
             g.step();
         }
-        let Some(i) = g.dwarves.iter().position(|d| d.alive && d.thirst > limit) else { eprintln!("nobody got that thirsty"); return };
+        let Some(i) = g.dwarves.iter().position(|d| over(d)) else { eprintln!("nobody got that thirsty"); return };
+        {
+            let d = &g.dwarves[i];
+            for it in g.items.values().filter(|it| it.is_food()).take(8) {
+                let reach = path::astar(&g.world, d.pos, it.pos, 40_000, Mover::Dwarf).map(|p| p.len());
+                eprintln!("  food {:?} {:?} at {:?} claimed {:?} forbidden {} carried {:?} container {:?} reach {:?}", it.kind, it.mat, it.pos, it.claimed_by, it.forbidden, it.carried_by, it.container, reach);
+            }
+            let o = g.overseer.as_ref().unwrap();
+            let r = |q: Pos| path::astar(&g.world, d.pos, q, 60_000, Mover::Dwarf).map(|p| p.len());
+            eprintln!("  wagon {:?} reach {:?} | top {:?} reach {:?} | base {:?} reach {:?} | outside {} | surface here {}", g.embark, r(g.embark), o.top, o.top.and_then(r), o.base, o.base.and_then(r), g.world.outside(d.pos), g.world.surface_z(d.pos.x, d.pos.y));
+            let mut nb = Vec::new();
+            g.world.neighbors(d.pos, &mut nb, Mover::Dwarf);
+            let reach_n = path::search(&g.world, d.pos, 100_000, Mover::Dwarf, |_| false);
+            let _ = reach_n;
+            let mut seen = std::collections::HashSet::new();
+            let mut todo = vec![d.pos];
+            while let Some(p) = todo.pop() { if seen.len() > 20000 || !seen.insert(p) { continue; } g.world.neighbors(p, &mut nb, Mover::Dwarf); for &(q, _) in nb.iter() { if !seen.contains(&q) { todo.push(q); } } }
+            let zs: std::collections::BTreeSet<i32> = seen.iter().map(|p| p.z).collect();
+            for y in 25..30 {
+                let row: Vec<String> = (36..60).map(|x| {
+                    let t = g.world.t(Pos::new(x, y, 15));
+                    let b = g.buildings.get(&t.building).map_or(String::new(), |b| format!("{:?}{}", b.kind, if b.locked { "L" } else { "" }).chars().take(3).collect());
+                    if t.kind.solid() { "#".to_string() } else if t.water > 0 { format!("~{}", t.water) } else if !b.is_empty() { b } else if t.door != 0 { format!("d{}", t.door) } else { format!("{:?}", t.kind).chars().take(1).collect() }
+                }).collect();
+                eprintln!("  y{} {}", y, row.join(" "));
+            }
+            let top = o.top.unwrap();
+            for z in (top.z - 4)..=(top.z + 1) {
+                let tt = g.world.t(Pos::new(top.x, top.y, z));
+                let around: Vec<i32> = (-3..=3).map(|dx| g.world.t(Pos::new(top.x + dx, top.y, z)).water as i32).collect();
+                eprintln!("    stair z{} {:?} water {} row water {:?}", z, tt.kind, tt.water, around);
+            }
+            eprintln!("    water level {} | surface at top {}", g.world.water_level, g.world.surface_z(top.x, top.y));
+            eprintln!("  his region: {} tiles, levels {:?}, x {}..{}, y {}..{}", seen.len(), zs, seen.iter().map(|p| p.x).min().unwrap(), seen.iter().map(|p| p.x).max().unwrap(), seen.iter().map(|p| p.y).min().unwrap(), seen.iter().map(|p| p.y).max().unwrap());
+            eprintln!("{} child {} age? noble {:?} soldier {} labors {:?} body rest {} food {} meals {}", d.name, d.is_child(), d.noble, d.soldier, crate::dwarf::LABORS.iter().filter(|l| d.has(**l)).map(|l| l.short()).collect::<Vec<_>>(), d.body.needs_rest(), g.items.values().filter(|it| it.is_food()).count(), g.stock_of(ItemKind::Meal));
+        }
         let id = g.dwarves[i].id;
         eprintln!("day {}: drinks {} wells {} alert {} civ {} burrows {:?}", g.tick / DAY, g.stock_of(ItemKind::Drink), g.working_wells().len(), g.alert, g.civ_alert, g.burrows.iter().map(|b| (b.name.clone(), b.members.len())).collect::<Vec<_>>());
         for _ in 0..40 {

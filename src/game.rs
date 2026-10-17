@@ -60,6 +60,7 @@ mod layout;
 mod blueprint;
 pub mod annals;
 pub mod spotlight;
+pub mod troubles;
 mod miasma;
 pub use ambitions::{Ambition, Sense};
 
@@ -313,6 +314,9 @@ pub struct Game {
     /// Where digging broke into a cavern, waiting for a door.
     #[serde(default)]
     pub breaches: Vec<Pos>,
+    /// What the fortress has been short of lately (from the announcements).
+    #[serde(default)]
+    pub troubles: Vec<(troubles::Lack, u64)>,
     /// An army on the march, seen by scouts: when it arrives, whose it is,
     /// how many, and who leads it.
     #[serde(default)]
@@ -485,6 +489,7 @@ impl Game {
             spotlights: Vec::new(),
             fallen: false,
             breaches: Vec::new(),
+            troubles: Vec::new(),
             incoming: None,
             snow_lying: false,
             fire_cells: None,
@@ -1349,7 +1354,16 @@ impl Game {
         }
 
         self.psyche_tick(d);
-        if d.insane || !d.alive {
+        // A melancholic dwarf still sips and picks at food when it's that
+        // bad (or they'd never live to come back out of it).
+        let sipping = d.insane
+            && d.melancholy
+            && (matches!(d.task, Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Eat { .. })
+                || (matches!(d.task, Task::Idle | Task::Wander { .. }) && (d.thirst > THIRSTY + 6000 || d.hunger > HUNGRY + 12000)));
+        if sipping && matches!(d.task, Task::Wander { .. }) {
+            d.task = Task::Idle;
+        }
+        if (d.insane && !sipping) || !d.alive {
             if d.task == Task::Idle && self.rng.chance(0.02) {
                 self.start_wander(d);
             }
@@ -1844,6 +1858,7 @@ impl Game {
             Self::set_path(d, path);
             return true;
         }
+        self.trouble(troubles::Lack::Drink);
         self.warn("nodrink", "Your dwarves have nothing to drink!", (255, 120, 60));
         false
     }
@@ -1873,6 +1888,7 @@ impl Game {
             Self::set_path(d, path);
             return true;
         }
+        self.trouble(troubles::Lack::Food);
         self.warn("nofood", "Your dwarves have nothing to eat!", (255, 120, 60));
         false
     }
@@ -1987,6 +2003,9 @@ impl Game {
             self.buildings.get_mut(&bid).unwrap().retry_tick = self.tick + 300;
             // One warning per kind of building, not one per building.
             let waiting = self.buildings.values().filter(|b| b.kind == kind && !b.built).count();
+            if let Some(l) = troubles::Lack::from_desc(kind.part_desc(part)) {
+                self.trouble(l);
+            }
             self.warn(
                 &format!("need{}", kind.name()),
                 &format!("{} {} waiting to be built: it needs {}.", waiting, kind.name().to_lowercase(), kind.part_desc(part)),
@@ -2031,6 +2050,9 @@ impl Game {
             }
             let shop_name = self.buildings[&bid].kind.name();
             self.buildings.get_mut(&bid).unwrap().retry_tick = self.tick + 300;
+            if let Some(l) = inputs.get(chosen.len()).and_then(|i| troubles::Lack::from_input(*i)) {
+                self.trouble(l);
+            }
             self.warn(
                 &format!("craft{}", bid),
                 &format!("{}: \"{}\" needs {}.", shop_name, recipe.name(), recipe.input_desc_at(shop)),
@@ -2138,6 +2160,7 @@ impl Game {
         }
         if plots.is_empty() {
             if fallow {
+                self.trouble(troubles::Lack::Seeds);
                 self.warn("noseed", "Farmers have no seed that grows on your farms this season.", (230, 200, 90));
             }
             return false;

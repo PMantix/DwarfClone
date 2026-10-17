@@ -242,6 +242,9 @@ impl Game {
                 None => {
                     missing.insert(c.mat);
                     self.constructions.get_mut(&cid).unwrap().retry_tick = tick + 300;
+                    if let Some(l) = super::troubles::Lack::from_desc(&c.mat.name().to_lowercase()) {
+                        self.trouble(l);
+                    }
                     self.warn(
                         &format!("conmat{:?}", c.mat),
                         &format!("Constructions are waiting for {}.", c.mat.name()),

@@ -376,6 +376,7 @@ impl Game {
             return Some(true);
         }
         let what = if tool == ItemKind::Pick { "pick" } else { "axe" };
+        self.trouble(if tool == ItemKind::Pick { super::troubles::Lack::Pick } else { super::troubles::Lack::Axe });
         self.warn(&format!("tool{}", what), &format!("A dwarf needs a {} but none is available.", what), (230, 200, 90));
         Some(false)
     }

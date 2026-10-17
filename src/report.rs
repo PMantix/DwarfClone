@@ -66,7 +66,8 @@ pub fn report(trials: &[Trial], years: usize) -> String {
     let _ = writeln!(s, "\n  Deaths by cause ({} dwarves):", nd);
     for (c, k) in causes(trials) {
         let mad = deaths.iter().filter(|d| d.cause == c && d.mad).count();
-        let note = if mad > 0 { format!("  ({} of them mad)", mad) } else { String::new() };
+        let sad = deaths.iter().filter(|d| d.cause == c && d.melancholy).count();
+        let note = if mad > 0 { format!("  ({} of them mad, {} of those melancholic)", mad, sad) } else { String::new() };
         let _ = writeln!(s, "    {:<22} {:>5}  {:>4}{}", c, k, pct(k, nd), note);
     }
     let ks = killers(trials);
