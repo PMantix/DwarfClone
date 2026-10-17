@@ -1287,6 +1287,11 @@ impl Game {
                 return;
             }
         }
+        // What the body does before the mind has a say (schedule.rs).
+        self.body_phase(d);
+        if !d.alive {
+            return;
+        }
         if self.tick % 200 == 0 {
             let in_bed = d.asleep
                 && matches!(d.task, Task::Rest { bed: Some(_), .. } | Task::Sleep { bed: Some(_), .. });
@@ -2275,6 +2280,8 @@ impl Game {
             Task::Bury { item, coffin } => self.do_bury(d, item, coffin),
             Task::Slaughter { creature } => self.do_slaughter(d, creature),
             Task::Punish { culprit } => self.do_punish(d, culprit),
+            // Not given out yet: the items that use them add their own arms.
+            Task::FirstAid { .. } | Task::Rescue { .. } | Task::Press | Task::Catatonic | Task::Berserk | Task::Coax { .. } => self.release_task(d),
             Task::Wander { target } => match self.travel(d, target) {
                 Travel::Moving => {}
                 Travel::Arrived => d.task = Task::Idle,

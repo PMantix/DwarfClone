@@ -216,6 +216,18 @@ pub enum Task {
     Fish { stand: Pos },
     /// The sheriff goes to punish a dwarf for their crimes.
     Punish { culprit: u32 },
+    /// Bind a wounded dwarf's bleeding where they lie, with a bandage if one was found.
+    FirstAid { patient: u32, item: Option<u32> },
+    /// Carry a fallen dwarf to a bed (or to safety).
+    Rescue { patient: u32, bed: Option<u32> },
+    /// Press on one's own bleeding wound.
+    Press,
+    /// Broken by stress: sits and stares.
+    Catatonic,
+    /// Broken by stress: lashes out at whoever is near.
+    Berserk,
+    /// Talk a broken dwarf back to their senses.
+    Coax { patient: u32 },
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -430,6 +442,8 @@ impl Task {
                 | Task::Sleep { .. }
                 | Task::Rest { .. }
                 | Task::Flee
+                | Task::Press
+                | Task::Catatonic
         )
     }
 }

@@ -668,6 +668,7 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
         return "Tantrum!".into();
     }
     let iname = |id: u32| g.items.get(&id).map_or("something".to_string(), |it| it.name());
+    let who = |id: u32| g.dwarves.iter().find(|o| o.id == id).map_or("someone".to_string(), |o| o.name.clone());
     if g.tick < d.jailed_until && matches!(d.task, Task::Idle | Task::Wander { .. }) {
         return format!("In jail ({} days left)", (d.jailed_until - g.tick) / crate::game::DAY + 1);
     }
@@ -737,6 +738,12 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
             Some(k) => format!("Constructing {}", k.name().to_lowercase()),
             None => "Constructing".into(),
         },
+        Task::FirstAid { patient, .. } => format!("Giving first aid to {}", who(*patient)),
+        Task::Rescue { patient, .. } => format!("Carrying {} to safety", who(*patient)),
+        Task::Press => "Pressing a wound".into(),
+        Task::Catatonic => "Catatonic".into(),
+        Task::Berserk => "Berserk!".into(),
+        Task::Coax { patient } => format!("Talking {} round", who(*patient)),
     }
 }
 

@@ -82,6 +82,14 @@ impl Game {
         self.word_season();
         // M1 (survival), seasonal:
     }
+
+    /// Each living dwarf, every tick, just after their wounds have bled (and
+    /// before `update_dwarf` returns for the unconscious): what the body does
+    /// before the mind has a say. One line per item.
+    pub(super) fn body_phase(&mut self, d: &mut Dwarf) {
+        // M1 (survival): pressing a wound, being carried, a berserk fit.
+        let _ = d;
+    }
 }
 
 #[cfg(test)]
@@ -110,5 +118,31 @@ mod tests {
         assert_eq!(sieges, vec![]);
         assert_eq!((t.alive, t.peak_wealth, t.story.len()), (13, 5816, 22));
         assert_eq!(t.ambitions, ["Revel", "Fortify", "Provision", "Expand", "Fortify", "Expand", "Fortify", "Delve"]);
+    }
+
+    /// The tasks the survival items will hand out are in place but do nothing
+    /// yet: a dwarf given one drops it, and they save and load by name.
+    #[test]
+    fn the_new_tasks_are_inert() {
+        let mut g = Game::new(5);
+        let id = g.dwarves[1].id;
+        let tasks = [
+            Task::FirstAid { patient: id, item: None },
+            Task::Rescue { patient: id, bed: Some(7) },
+            Task::Press,
+            Task::Catatonic,
+            Task::Berserk,
+            Task::Coax { patient: id },
+        ];
+        for t in tasks {
+            let back: Task = serde_json::from_str(&serde_json::to_string(&t).unwrap()).unwrap();
+            assert_eq!(back, t);
+            assert_eq!(t.is_need(), matches!(t, Task::Press | Task::Catatonic));
+            let mut d = std::mem::take(&mut g.dwarves[0]);
+            d.task = t;
+            g.do_task(&mut d);
+            assert_eq!(d.task, Task::Idle);
+            g.dwarves[0] = d;
+        }
     }
 }
