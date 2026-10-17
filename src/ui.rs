@@ -4044,9 +4044,9 @@ fn draw_expedition(f: &mut Frame, area: Rect, g: &Game, squad: usize, sel: usize
             crate::game::expeditions_goal::Beast(_) => "hunt",
         };
         let odds = g.odds(&s.members, d);
-        let (word, col) = if odds >= 0.65 {
+        let (word, col) = if odds >= 0.55 {
             ("likely", Color::Rgb(110, 220, 110))
-        } else if odds >= 0.4 {
+        } else if odds >= 0.25 {
             ("risky", Color::Rgb(230, 200, 90))
         } else {
             ("deadly", Color::Rgb(230, 110, 90))

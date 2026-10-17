@@ -708,9 +708,10 @@ impl Game {
             return false;
         }
         // It could win; but is the squad fit to go, and can the fort spare it?
-        if let Some(why) = self.venture_veto(o, &members) {
+        if let Some((kind, why)) = self.venture_veto(o, &members) {
+            // Once a season for each kind of reason, whatever the numbers say.
             let text = format!("Kept the squad home: {}.", why);
-            if !o.notes.iter().rev().any(|(t, n)| *n == text && self.tick < t + SEASON) {
+            if !o.notes.iter().rev().any(|(t, n)| n.starts_with("Kept the squad home:") && n.contains(kind) && self.tick < t + SEASON) {
                 Self::note_ov(o, self.tick, text);
             }
             return false;

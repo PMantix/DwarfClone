@@ -57,6 +57,9 @@ pub struct Expedition {
     /// Drink and food taken from the stores for the road.
     #[serde(default)]
     pub rations: u32,
+    /// The rations held both drink and food, a ration a head at the least.
+    #[serde(default)]
+    pub provisioned: bool,
 }
 
 impl Expedition {
@@ -83,15 +86,23 @@ impl Expedition {
         self.members.iter().filter(|d| !self.fallen.contains(&d.id)).collect()
     }
 
-    /// Enough on their backs for a meal and a drink each, at the least.
+    /// Enough on their backs to keep them fed: some drink, some food, and a
+    /// ration a head at the least. An expedition from an old save, sent
+    /// before rations were packed, counts as fed.
     fn fed(&self) -> bool {
-        self.rations as usize >= self.members.len()
+        self.arrive == 0 || self.provisioned
     }
 
     /// The leader's fighting skill, while the leader still stands.
     fn leader_level(&self) -> u32 {
         self.standing().iter().find(|d| Some(d.id) == self.leader).map_or(0, |d| crate::dwarf::skill_level(d.fight_xp))
     }
+}
+
+/// Whether `drink` and `food` rations feed `n` dwarves on the road: some of
+/// each, and one a head at the least.
+fn provisioned(drink: usize, food: usize, n: usize) -> bool {
+    drink > 0 && food > 0 && drink + food >= n
 }
 
 /// One dwarf's fighting strength away from home.
@@ -215,7 +226,7 @@ impl Game {
         let squad: Vec<&Dwarf> = self.dwarves.iter().filter(|d| ids.contains(&d.id) && d.alive && !d.is_child()).collect();
         let lead = tactician(&squad).and_then(|l| squad.iter().find(|d| d.id == l)).map_or(0, |d| crate::dwarf::skill_level(d.fight_xp));
         let (drink, food) = self.ration_stock();
-        let fed = drink.min(squad.len()) + food.min(squad.len()) >= squad.len();
+        let fed = provisioned(drink.min(squad.len()), food.min(squad.len()), squad.len());
         self.fight_chance(self.squad_strength(ids), dest.danger, fed, lead)
     }
 
@@ -240,15 +251,16 @@ impl Game {
 
     /// Take rations for `n` dwarves from the stores: a drink and a meal each
     /// where there are meals, other food where there aren't.
-    fn take_rations(&mut self, n: usize) -> u32 {
+    fn take_rations(&mut self, n: usize) -> (usize, usize) {
         let mut take: Vec<u32> = self.items.values().filter(|it| it.kind == ItemKind::Drink && it.free()).map(|it| it.id).take(n).collect();
+        let drink = take.len();
         let mut food: Vec<(bool, u32)> = self.items.values().filter(|it| it.is_food() && it.free()).map(|it| (it.kind != ItemKind::Meal, it.id)).collect();
         food.sort();
         take.extend(food.into_iter().take(n).map(|f| f.1));
         for id in &take {
             self.items.remove(id);
         }
-        take.len() as u32
+        (drink, take.len() - drink)
     }
 
     /// Armed for a fight away from home: (a metal weapon in hand, some armour on).
@@ -264,28 +276,32 @@ impl Game {
     /// (None: nothing stops it). The squad must be armed and armoured, the
     /// fort big enough to spare them, the last siege a season gone and the
     /// wounded few.
-    pub(super) fn venture_veto(&self, o: &super::overseer::Overseer, ids: &[u32]) -> Option<String> {
+    ///
+    /// The first of the pair is a fixed phrase found in the text, the kind of
+    /// veto: the overseer says each kind once a season, though the numbers
+    /// in the text change from day to day.
+    pub(super) fn venture_veto(&self, o: &super::overseer::Overseer, ids: &[u32]) -> Option<(&'static str, String)> {
         let squad: Vec<&Dwarf> = self.dwarves.iter().filter(|d| ids.contains(&d.id) && d.alive).collect();
         let n = squad.len();
         let unarmed = squad.iter().filter(|d| !self.kitted(d).0).count();
         let bare = squad.iter().filter(|d| !self.kitted(d).1).count();
         if unarmed > 0 || bare > 0 {
             return Some(if bare >= unarmed {
-                format!("{} no armour", share(bare, n))
+                ("no armour", format!("{} no armour", share(bare, n)))
             } else {
-                format!("{} no metal weapon", share(unarmed, n))
+                ("no metal weapon", format!("{} no metal weapon", share(unarmed, n)))
             });
         }
         let adults = self.dwarves.iter().filter(|d| d.alive && !d.is_child()).count();
         if (adults as f64) < self.knob("exp.min_adults", 12.0) {
-            return Some(format!("the fort is only {} grown dwarves strong", adults));
+            return Some(("grown dwarves strong", format!("the fort is only {} grown dwarves strong", adults)));
         }
         if o.last_siege > 0 && self.tick < o.last_siege + SEASON {
-            return Some(format!("the goblins were at the gate only {} days ago", (self.tick - o.last_siege) / DAY));
+            return Some(("goblins were at the gate", format!("the goblins were at the gate only {} days ago", (self.tick - o.last_siege) / DAY)));
         }
         let wounded = self.dwarves.iter().filter(|d| d.alive && d.body.needs_rest()).count();
         if wounded >= 2 {
-            return Some(format!("{} dwarves lie wounded", wounded));
+            return Some(("lie wounded", format!("{} dwarves lie wounded", wounded)));
         }
         None
     }
@@ -318,7 +334,9 @@ impl Game {
             return Err(format!("{} has nobody to send.", name));
         }
         let days = dest.days();
-        let rations = self.take_rations(members.len());
+        let (drink, food) = self.take_rations(members.len());
+        let rations = (drink + food) as u32;
+        let provisioned = provisioned(drink, food, members.len());
         let packs = if rations == 0 { "They go without rations.".to_string() } else { format!("They carry {} rations.", rations) };
         let text = format!("{} set out for {}. They should be back in about {} days. {}", name, dest.name, days, packs);
         self.msg(&text, (200, 220, 255));
@@ -327,7 +345,7 @@ impl Game {
         let leader = tactician(&members.iter().collect::<Vec<_>>());
         let arrive = self.tick + (days - 1) / 2 * DAY;
         self.count("exp_sent", 1);
-        self.expedition = Some(Expedition { squad: name, members, dest, back: self.tick + days * DAY, arrive, rounds: Vec::new(), fallen: Vec::new(), turned_back: false, leader, rations });
+        self.expedition = Some(Expedition { squad: name, members, dest, back: self.tick + days * DAY, arrive, rounds: Vec::new(), fallen: Vec::new(), turned_back: false, leader, rations, provisioned });
         Ok(text)
     }
 
@@ -367,8 +385,21 @@ impl Game {
                 crate::body::Part::Head => crate::body::Part::UpperBody,
                 p => p,
             };
-            body.wound(part, dmg, true);
+            if body.wound(part, dmg, true) == crate::body::Wound::Fatal || body.dead {
+                // Dead where they fell: counted among the fallen, past any cap.
+                let id = ex.members[i].id;
+                if !ex.fallen.contains(&id) {
+                    ex.fallen.push(id);
+                    self.count("exp_fallen", 1);
+                }
+                continue;
+            }
             field_dressing(body);
+        }
+        let standing: Vec<usize> = standing.into_iter().filter(|&i| !ex.fallen.contains(&ex.members[i].id)).collect();
+        if standing.is_empty() {
+            ex.turned_back = true;
+            return;
         }
         // Never more than half of them fall, except to a beast in its lair.
         let cap = if matches!(ex.dest.goal, Goal::Beast(_)) { ex.members.len() } else { ex.members.len() / 2 };
@@ -610,6 +641,11 @@ mod tests {
         o.last_siege = g.tick - 7 * DAY;
         assert!(!venture(&mut g, &mut o));
         assert!(said(&o).contains("the goblins were at the gate only 7 days ago"), "{}", said(&o));
+        // Said once a season, though the days since change.
+        let notes = o.notes.len();
+        g.tick += DAY;
+        assert!(!venture(&mut g, &mut o));
+        assert_eq!(o.notes.len(), notes, "{}", said(&o));
         // Two dwarves resting with wounds.
         o.last_siege = g.tick - SEASON - DAY;
         for d in g.dwarves.iter_mut().filter(|d| !d.soldier).take(2) {
@@ -726,11 +762,54 @@ mod tests {
         assert!(g.dwarves.iter().filter(|d| squad.contains(&d.id)).all(|d| d.hunger < HUNGRY), "they ate on the road");
         // Without rations they come home hungry.
         let (mut g, _) = setup(false);
-        g.send_expedition(0, dest).unwrap();
+        g.send_expedition(0, dest.clone()).unwrap();
         assert!(g.log.iter().any(|l| l.text.contains("They go without rations.")));
         g.tick = g.expedition.as_ref().unwrap().back;
         g.expedition_tick();
         assert!(g.dwarves.iter().filter(|d| squad.contains(&d.id)).all(|d| d.hunger >= HUNGRY));
+        // Drink alone, however much, does not feed them.
+        let (mut g, _) = setup(false);
+        let at = g.embark;
+        for _ in 0..6 {
+            g.spawn_item(ItemKind::Drink, Mat::Stoutcap, at);
+        }
+        assert_eq!(g.round_odds(&squad, &dest), hungry.round_odds(&squad, &dest), "drink alone is no meal");
+        g.send_expedition(0, dest.clone()).unwrap();
+        assert!(g.log.iter().any(|l| l.text.contains("They carry 3 rations.")));
+        assert!(!g.expedition.as_ref().unwrap().fed());
+        // An expedition from an old save, sent before rations were packed, is fed.
+        let ex = g.expedition.as_mut().unwrap();
+        ex.arrive = 0;
+        assert!(ex.fed());
+        g.tick = ex.back;
+        g.expedition_tick();
+        assert!(g.dwarves.iter().filter(|d| squad.contains(&d.id)).all(|d| d.hunger < HUNGRY));
+    }
+
+    #[test]
+    fn one_killed_in_the_fight_falls_there() {
+        let dest = Destination { goal: Goal::Raid, site: 0, name: "Testgrot".into(), dist: 8, danger: 8 };
+        let up = crate::body::Part::UpperBody.idx();
+        let mut killed = 0;
+        for seed in 0..40 {
+            let (mut g, _) = weak_squad_away(seed, &dest, -2.0);
+            // All of them already near death: the next wound to the body kills.
+            let ex = g.expedition.as_mut().unwrap();
+            for d in ex.members.iter_mut() {
+                d.body.hp[up] = -d.body.max[up] / 2 + 1;
+            }
+            g.tick = g.expedition.as_ref().unwrap().next_fight();
+            g.expedition_tick();
+            let ex = g.expedition.as_ref().unwrap();
+            let dead: Vec<u32> = ex.members.iter().filter(|d| d.body.dead).map(|d| d.id).collect();
+            if dead.is_empty() {
+                continue;
+            }
+            killed += 1;
+            assert!(dead.iter().all(|id| ex.fallen.contains(id)), "seed {}: the dead are among the fallen", seed);
+            assert_eq!(g.annals.counters.get("exp_fallen").copied(), Some(ex.fallen.len() as u32));
+        }
+        assert!(killed > 0, "a wound to the near-dead kills now and then");
     }
 
     #[test]
