@@ -50,6 +50,8 @@ temper"), sway its layout, and colour its notes; `A` shows who it is and `r` the
 It also reads the announcements: whatever the fortress is short of (stone, wood, blocks,
 mechanisms, drink, food, a workshop, a manager, what a dwarf in a fey mood demands), it notices
 sooner or later by its style and traits and sees to it, and says so in its notes.
+While it plays, the announcements share the bottom of the screen with what the overseer has
+been doing: each note it made and how many days ago.
 
 Each overseer has a taste in halls, and its fortress follows a plan of halls first: a great
 hall with rooms opening off both sides and a cross hall at its end; mirrored wings on cross
@@ -89,6 +91,12 @@ unpauses). When the overseer plays, the card goes by on its own after a few seco
 **Side panes.** The status (`z`), brain (`B`), reports (`r`), chronicle (`c`) and legends (`L`)
 screens open beside the map, which stays live in a narrower view; `\` switches between the side
 pane and full screen.
+
+**Performance.** `F3` shows frames per second, how long each frame spends simulating and
+drawing, ticks and path searches a second, the slowest tick, and how the simulation's time
+splits between water, the overseer, dwarves and creatures. For batches, `TRIAL_PROF=1` prints
+the same every ten days of each fort, `SPIKE_MS=n` reports any tick slower than that, and
+`--threads n` sets how many forts play at once.
 
 **Game over.** When the last dwarf dies, the fortress has fallen: a page tells how long it
 stood, who lived there, its sieges, heroes and monument, how they died and who fell last, with

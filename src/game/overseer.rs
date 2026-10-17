@@ -1235,6 +1235,7 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
     let mut story: Vec<(u64, String)> = Vec::new();
     let mut alive_by_year = Vec::new();
     let mut ambitions_told = 0;
+    let mut prof_nodes = 0u64;
     let mut sieges_seen = 0;
     while g.tick < end && g.alive_count() > 0 {
         g.step();
@@ -1307,6 +1308,32 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
                 }
                 ambitions_told = o.ambitions.len();
             }
+        }
+        // TRIAL_PROF=1: every ten days, where the simulation's time went.
+        if g.tick == 1 && std::env::var("TRIAL_PROF").is_ok() {
+            g.prof = Some([0.0; 6]);
+        }
+        if g.tick % (DAY * 10) == 0 && g.prof.is_some() {
+            use std::sync::atomic::Ordering::Relaxed;
+            let p = g.prof.replace([0.0; 6]).unwrap();
+            let n = crate::path::SEARCH_NODES.load(Relaxed) + crate::path::ASTAR_NODES.load(Relaxed);
+            let per = (DAY * 10) as f64;
+            eprintln!(
+                "  day {:>4}: {:.3} ms/tick (worst {:.1})  water {:.3} overseer {:.3} dwarves {:.3} creatures {:.3} rest {:.3}  nodes/tick {:.0}  pop {} creatures {} items {}",
+                g.tick / DAY,
+                p[4] / per,
+                p[5],
+                p[0] / per,
+                p[1] / per,
+                p[2] / per,
+                p[3] / per,
+                (p[4] - p[0] - p[1] - p[2] - p[3]) / per,
+                (n - prof_nodes) as f64 / per,
+                g.dwarves.iter().filter(|d| d.alive).count(),
+                g.creatures.values().filter(|c| c.alive).count(),
+                g.items.len()
+            );
+            prof_nodes = n;
         }
         if g.tick % DAY == 0 && std::env::var("TRIAL_PACE").is_ok() {
             eprintln!("  day {} at {:?}: {} rooms, {} designations, {} creatures", g.tick / DAY, std::time::Instant::now(), g.overseer.as_ref().map_or(0, |o| o.rooms.len()), g.designations.len(), g.creatures.len());

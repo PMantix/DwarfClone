@@ -1836,6 +1836,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("n", "nobles, mandates, bedrooms, wealth"),
         k("c", "the chronicle: each year told as a story"),
         k("r", "reports: every past announcement, filtered"),
+        k("F3", "performance: frames per second, and where the time goes"),
         k("\\", "status, brain, reports, chronicle, legends: side pane or full screen"),
         k("M", "grow the map north, east, south or west"),
         k("A", "autoplay: the overseer plays (pick a style)"),
@@ -2586,8 +2587,47 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     f.render_widget(side, mid[1]);
     }
 
-    // Announcements.
+    // Announcements, and beside them what the overseer has been doing.
     let g = &app.game;
+    let (news, deeds) = match &g.overseer {
+        Some(_) => {
+            let halves = Layout::default().direction(Direction::Horizontal).constraints([Constraint::Percentage(55), Constraint::Percentage(45)]).split(rows[2]);
+            (halves[0], Some(halves[1]))
+        }
+        None => (rows[2], None),
+    };
+    if let (Some(r), Some(o)) = (deeds, &g.overseer) {
+        // Newest at the bottom, each wrapped under its age in days.
+        let n = r.height.saturating_sub(2) as usize;
+        let w = (r.width as usize).saturating_sub(6).max(10);
+        let mut lines: Vec<Line> = Vec::new();
+        for (t, text) in o.notes.iter().rev() {
+            let mut these: Vec<Line> = wrap_words(text, w)
+                .into_iter()
+                .enumerate()
+                .map(|(i, s)| {
+                    let age = if i == 0 { format!("{:>3} ", g.tick.saturating_sub(*t) / crate::game::DAY) } else { "    ".to_string() };
+                    Line::from(vec![Span::styled(age, Style::default().fg(MUTED)), Span::styled(s, Style::default().fg(Color::Rgb(150, 210, 255)))])
+                })
+                .collect();
+            these.append(&mut lines);
+            lines = these;
+            if lines.len() >= n {
+                break;
+            }
+        }
+        let lines: Vec<Line> = lines.split_off(lines.len().saturating_sub(n));
+        f.render_widget(
+            Paragraph::new(lines).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(MUTED))
+                    .title(Span::styled(format!(" The overseer, {} (days ago) ", o.title()), Style::default().fg(Color::Rgb(150, 210, 255)))),
+            ),
+            r,
+        );
+    }
+    let rows = [rows[0], rows[1], news];
     let n = rows[2].height.saturating_sub(2) as usize;
     let log: Vec<Line> = g
         .log
@@ -2668,6 +2708,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         let w = hint.chars().count() as u16;
         f.render_widget(Paragraph::new(Span::styled(hint, Style::default().fg(MUTED))), Rect::new(full.x + full.width.saturating_sub(w + 1), full.y + full.height - 1, w, 1));
     }
+    if let Some(p) = app.perf.and_then(|p| p.shown) {
+        draw_perf(f, full, &p);
+    }
     draw_tooltip(f, app);
     if app.in_fortress() && matches!(app.mode, Mode::Normal) {
         let over = if app.map_rect.width > 0 { app.map_rect } else { area };
@@ -2676,6 +2719,29 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             draw_spotlight(f, over, s, app.game.overseer.is_some());
         }
     }
+}
+
+/// The performance overlay (F3): frames per second and where the time goes.
+fn draw_perf(f: &mut Frame, area: Rect, p: &crate::app::PerfShown) {
+    let names = ["water", "overseer", "dwarves", "creatures", "the rest"];
+    let mut parts: Vec<(usize, f64)> = p.parts.iter().copied().enumerate().take(5).collect();
+    parts.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    let fps_col = if p.fps >= 25.0 { Color::Rgb(120, 220, 120) } else if p.fps >= 12.0 { Color::Rgb(240, 200, 80) } else { Color::Rgb(240, 90, 80) };
+    let lines = vec![
+        Line::from(vec![
+            Span::styled(format!(" {:>5.1} fps ", p.fps), Style::default().fg(fps_col).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("frame: sim {:.1} ms, draw {:.1} ms", p.sim, p.draw), Style::default().fg(TEXT)),
+        ]),
+        plain(format!(" {:.0} ticks/s · slowest tick {:.1} ms · {:.0} path searches/s ({:.0}k nodes)", p.tps, p.parts[5], p.paths, p.nodes / 1000.0), MUTED),
+        plain(format!(" sim: {}", parts.iter().map(|(i, v)| format!("{} {:.1}", names[*i], v)).collect::<Vec<_>>().join(" · ")), MUTED),
+    ];
+    let w = 80.min(area.width);
+    let r = Rect::new(area.x + area.width - w, area.y + 1, w, 5);
+    f.render_widget(Clear, r);
+    f.render_widget(
+        Paragraph::new(lines).style(Style::default().bg(Color::Rgb(10, 10, 16))).block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(MUTED)).title(Span::styled(" Performance (F3) ", Style::default().fg(KEY)))),
+        r,
+    );
 }
 
 /// A big moment, told in a card over the top of the map (the camera is on it).
@@ -4238,6 +4304,49 @@ mod tests {
         }
     }
 
+    /// Where a saved fort's simulation spends its time, day by day:
+    /// FORT=saves/X.json [DAYS=n].
+    #[test]
+    #[ignore]
+    fn profile_a_save() {
+        use std::sync::atomic::Ordering::Relaxed;
+        let path = std::env::var("FORT").unwrap();
+        let days: u64 = std::env::var("DAYS").ok().and_then(|s| s.parse().ok()).unwrap_or(10);
+        let mut g: Game = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        g.after_load();
+        println!("{} dwarves, {} creatures, {} items, overseer {:?}", g.dwarves.iter().filter(|d| d.alive).count(), g.creatures.len(), g.items.len(), g.overseer.as_ref().map(|o| o.title()));
+        let mut nodes0 = crate::path::SEARCH_NODES.load(Relaxed) + crate::path::ASTAR_NODES.load(Relaxed);
+        for day in 0..days {
+            g.prof = Some([0.0; 6]);
+            let mut worst = (0.0, 0u64);
+            for _ in 0..crate::game::DAY {
+                let t = std::time::Instant::now();
+                g.step();
+                let ms = t.elapsed().as_secs_f64() * 1000.0;
+                if ms > worst.0 {
+                    worst = (ms, g.tick % crate::game::DAY);
+                }
+            }
+            let p = g.prof.unwrap();
+            let per = crate::game::DAY as f64;
+            let n = crate::path::SEARCH_NODES.load(Relaxed) + crate::path::ASTAR_NODES.load(Relaxed);
+            println!(
+                "day {:>2}: {:.3} ms/tick (worst {:.1} at {})  water {:.3} overseer {:.3} dwarves {:.3} creatures {:.3} rest {:.3}  nodes/tick {:.0}",
+                day,
+                p[4] / per,
+                worst.0,
+                worst.1,
+                p[0] / per,
+                p[1] / per,
+                p[2] / per,
+                p[3] / per,
+                (p[4] - p[0] - p[1] - p[2] - p[3]) / per,
+                (n - nodes0) as f64 / per
+            );
+            nodes0 = n;
+        }
+    }
+
     /// What changing level costs the terminal: bytes written for the frame.
     #[test]
     #[ignore]
@@ -4772,6 +4881,37 @@ mod tests {
         }
         app.frame();
         println!("{}", dump(&mut app, 150, 46));
+    }
+
+    #[test]
+    fn the_overseers_doings_sit_beside_the_news_and_f3_shows_the_timings() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::generated(42);
+        app.mode = Mode::Normal;
+        let s = dump(&mut app, 150, 46);
+        assert!(!s.contains("The overseer,"), "no overseer, no panel");
+        app.game.set_overseer(Some(crate::game::Style::Steady));
+        for _ in 0..crate::game::DAY * 3 {
+            app.game.step();
+        }
+        assert!(!app.game.overseer.as_ref().unwrap().notes.is_empty());
+        let s = dump(&mut app, 150, 46);
+        assert!(s.contains("The overseer,"), "{}", s);
+        // F3: the overlay comes up once a second's timings are in.
+        app.on_key(KeyEvent::new(KeyCode::F(3), KeyModifiers::NONE));
+        assert!(app.perf.is_some() && app.game.prof.is_some());
+        app.paused = false;
+        let start = std::time::Instant::now();
+        while start.elapsed().as_secs_f64() < 1.1 {
+            let t = std::time::Instant::now();
+            app.frame();
+            app.perf_frame(0.5, t.elapsed().as_secs_f64() * 1000.0, 1);
+        }
+        let s = dump(&mut app, 150, 46);
+        assert!(s.contains("Performance (F3)") && s.contains("fps"), "{}", s);
+        println!("{}", s);
+        app.on_key(KeyEvent::new(KeyCode::F(3), KeyModifiers::NONE));
+        assert!(app.perf.is_none() && app.game.prof.is_none());
     }
 
     #[test]

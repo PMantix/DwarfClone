@@ -281,6 +281,35 @@ pub enum Mode {
     GameOver,
 }
 
+/// Timings gathered for the performance overlay, and the last second's summary.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Perf {
+    pub since: Option<std::time::Instant>,
+    pub frames: u32,
+    pub draw: f64,
+    pub sim: f64,
+    pub ticks: u32,
+    pub searches: u64,
+    pub nodes: u64,
+    pub shown: Option<PerfShown>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PerfShown {
+    pub fps: f64,
+    /// Milliseconds a frame spends drawing and simulating.
+    pub draw: f64,
+    pub sim: f64,
+    /// Simulation ticks a second.
+    pub tps: f64,
+    /// Path searches and nodes searched a second.
+    pub paths: f64,
+    pub nodes: f64,
+    /// Milliseconds a frame in water, overseer, dwarves, creatures, the rest;
+    /// and the slowest single tick.
+    pub parts: [f64; 6],
+}
+
 /// A mouse drag under way: where it last was, whether it's drawing a box
 /// (true) or panning the map, and whether it has moved.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -329,6 +358,8 @@ pub struct App {
     /// The view was panned with the mouse: it stays where it was put and the
     /// cursor is hidden until a click or an arrow key brings it back.
     pub free_view: bool,
+    /// The performance overlay (F3).
+    pub perf: Option<Perf>,
     /// The big moment being shown, and for how many frames.
     pub spot: Option<(crate::game::spotlight::Spotlight, u32)>,
     /// Status, brain, reports, chronicle and legends open as a side pane
@@ -390,6 +421,7 @@ impl App {
             free_view: false,
             spot: None,
             docked: true,
+            perf: None,
             pan_from: (0, 0),
         }
     }
@@ -775,6 +807,46 @@ impl App {
         self.cursor.z = self.cursor.z.clamp(0, w.d - 1);
     }
 
+    /// One frame's timings from the main loop: drawing, the simulation, and
+    /// how many ticks it ran.
+    pub fn perf_frame(&mut self, draw: f64, sim: f64, ticks: u32) {
+        let Some(p) = self.perf.as_mut() else { return };
+        p.frames += 1;
+        p.draw += draw;
+        p.sim += sim;
+        p.ticks += ticks;
+        let now = std::time::Instant::now();
+        let since = p.since.get_or_insert(now);
+        let secs = now.duration_since(*since).as_secs_f64();
+        if secs >= 1.0 {
+            use std::sync::atomic::Ordering::Relaxed;
+            let (s, n) = (crate::path::SEARCHES.load(Relaxed) + crate::path::ASTARS.load(Relaxed), crate::path::SEARCH_NODES.load(Relaxed) + crate::path::ASTAR_NODES.load(Relaxed));
+            let f = p.frames.max(1) as f64;
+            let parts = self.game.prof.replace([0.0; 6]).unwrap_or([0.0; 6]);
+            p.shown = Some(PerfShown {
+                fps: p.frames as f64 / secs,
+                draw: p.draw / f,
+                sim: p.sim / f,
+                tps: p.ticks as f64 / secs,
+                paths: (s - p.searches) as f64 / secs,
+                nodes: (n - p.nodes) as f64 / secs,
+                parts: {
+                    let mut x = parts.map(|v| v / f);
+                    x[4] = (x[4] - x[0] - x[1] - x[2] - x[3]).max(0.0);
+                    x[5] = parts[5];
+                    x
+                },
+            });
+            p.searches = s;
+            p.nodes = n;
+            p.frames = 0;
+            p.draw = 0.0;
+            p.sim = 0.0;
+            p.ticks = 0;
+            p.since = Some(now);
+        }
+    }
+
     /// Screens that can sit beside the map as a side pane.
     pub fn dockable(&self) -> bool {
         matches!(self.mode, Mode::Status { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Chronicle { .. } | Mode::Legends { from_world: false, .. })
@@ -966,6 +1038,20 @@ impl App {
         self.flash = None;
         if k.code == KeyCode::Char('c') && k.modifiers.contains(KeyModifiers::CONTROL) {
             self.quit = true;
+            return;
+        }
+        // F3: frames per second and where the time goes.
+        if k.code == KeyCode::F(3) {
+            self.perf = match self.perf {
+                Some(_) => {
+                    self.game.prof = None;
+                    None
+                }
+                None => {
+                    self.game.prof = Some([0.0; 6]);
+                    Some(Perf::default())
+                }
+            };
             return;
         }
         // A big moment on screen: any key goes on (Space unpauses too).

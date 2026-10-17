@@ -94,7 +94,7 @@ fn autoplay_batch(args: &[String]) {
     let years: u64 = opt("--years").and_then(|s| s.parse().ok()).unwrap_or(5);
     let style = opt("--style").and_then(|s| Style::parse(&s));
     let base: u64 = opt("--seed").and_then(|s| s.parse().ok()).unwrap_or_else(|| SystemTime::now().duration_since(UNIX_EPOCH).map_or(1, |d| d.as_secs() % 100_000));
-    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).max(1);
+    let threads = opt("--threads").and_then(|s| s.parse().ok()).unwrap_or_else(|| std::thread::available_parallelism().map_or(4, |n| n.get())).max(1);
     println!(
         "Autoplay: {} fortresses, up to {} years each, {} at a time{}",
         runs,
@@ -164,6 +164,7 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::BufWriter<io::Stdout>>>, app
     while !app.quit {
         let start = Instant::now();
         terminal.draw(|f| ui::draw(f, app))?;
+        let draw = start.elapsed().as_secs_f64() * 1000.0;
         loop {
             let left = FRAME.saturating_sub(start.elapsed());
             if !event::poll(left)? {
@@ -179,7 +180,9 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::BufWriter<io::Stdout>>>, app
                 return Ok(());
             }
         }
+        let (t, ticks0) = (Instant::now(), app.game.tick);
         app.frame();
+        app.perf_frame(draw, t.elapsed().as_secs_f64() * 1000.0, (app.game.tick - ticks0) as u32);
     }
     Ok(())
 }

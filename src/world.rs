@@ -499,8 +499,9 @@ impl World {
         found
     }
 
-    /// Reveal a connected non-solid region plus the walls bounding it.
-    pub fn flood_reveal(&mut self, start: Pos) {
+    /// Reveal a connected non-solid region plus the walls bounding it; how
+    /// many open tiles it walked.
+    pub fn flood_reveal(&mut self, start: Pos) -> usize {
         let mut stack = vec![start];
         let mut seen = std::collections::HashSet::new();
         seen.insert(start);
@@ -517,13 +518,16 @@ impl World {
                             if dz == 0 {
                                 self.t_mut(q).revealed = true;
                             }
-                        } else if seen.insert(q) && seen.len() < 60_000 {
+                        } else if !self.t(q).revealed && seen.insert(q) && seen.len() < 60_000 {
+                            // (What's known already isn't walked again: beside the
+                            // open air, that was the whole sky on every dig.)
                             stack.push(q);
                         }
                     }
                 }
             }
         }
+        seen.len()
     }
 }
 

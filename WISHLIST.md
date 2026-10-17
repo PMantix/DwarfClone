@@ -178,10 +178,10 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 - **Steps:** [x] each overseer gets a name and two traits (cautious, bold, vain, pious, greedy,
   sentimental, stubborn, cheerful) that lean its ambitions (a new sense in its brain, "Its
   temper"), sway its layout, sharpen or blunt its eye for what the fortress lacks, and change
-  how soon it bars the gate and how many it keeps under arms (this commit) · [x] the brain and
-  the autoplay screen show who it is (this commit) · [x] `A` then `r` rolls another of the same
-  style (this commit) · [x] its notes on what it saw to speak in its voice ("Uneasy, it saw the
-  fortress short of stone…") (this commit) · [ ] pick the traits by hand · [ ] more of its
+  how soon it bars the gate and how many it keeps under arms (7579248) · [x] the brain and
+  the autoplay screen show who it is (7579248) · [x] `A` then `r` rolls another of the same
+  style (7579248) · [x] its notes on what it saw to speak in its voice ("Uneasy, it saw the
+  fortress short of stone…") (7579248) · [ ] pick the traits by hand · [ ] more of its
   notes in its voice
 - **Done when:** two overseers with the same style but different traits build visibly different
   forts from the same seed.
@@ -324,6 +324,7 @@ Ideas not ranked yet, with a line on why.
 
 ## Done
 
+- **Performance overlay and the overseer's doings** (this commit): `F3` shows frames per second and where the time goes (simulation by part, drawing, path searches, the slowest tick); the announcements split in two while the overseer plays, its notes on the right. Found with it: a dig that uncovered a tile of open air flooded through the whole known sky (up to 60,000 tiles) to reveal it, a 70–300 ms freeze many times a year while a fort dug in near the surface; the flood now stops at what's already known. Pathfinding keeps what it has reached in flat arrays reused between searches instead of a hash map (about 14% off a batch).
 - **The local map follows the world map** (16ad7d2; wildlife this commit): ground, plants and rock by biome (dunes and cacti, red clay, bare peaks, lasting snow, conifers, acacias, palms, reeds, evil-tainted growth); the neighbouring world cells reach onto the map with their biomes and heights (coasts, rising mountains, blended borders, carried on when the map grows); wildlife by biome (camels, scorpions, vipers, elk, ibex, antelope, lions, jaguars, alligators, polar bears) and walking husks on evil land.
 - **Big moments, side panes, game over** (7002196): dramatic and rare events pause the game, turn the camera to them and tell them in a card (the overseer's cards go by on their own); status, brain, reports, chronicle and legends open as a side pane beside a live map (`\` for full screen); when the last dwarf dies, a game-over page tells the fortress's story. S01 (cause reports, `--story`, `--out`, `--compare`; 2e3a9c5) and the fight analysis (arena, blow counts, siege replay; c7b07f9) came before.
 - **Planned fortresses and burials** (8c1e195): five layouts drawn up as halls first (great hall, mirrored wings, pillared atrium, grid of lanes, hub and spokes) with rooms opening off them through doors and rows of one-dwarf bedrooms; each overseer style prefers its own; the dead now get a tomb and coffins; hostiles with nobody to chase prowl (cave beasts in the caves, the rest in the open) instead of standing at the stairs; a warren tunnel bending into the gatehouse no longer hangs the game.

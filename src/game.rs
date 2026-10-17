@@ -310,6 +310,10 @@ pub struct Game {
     /// What's said of the fortress elsewhere (see `word`).
     #[serde(default)]
     pub word: Vec<word::Word>,
+    /// While the performance overlay is on: milliseconds spent in water,
+    /// the overseer, dwarves, creatures and everything else.
+    #[serde(skip)]
+    pub prof: Option<[f64; 6]>,
     /// How each dwarf died and how each siege went.
     #[serde(default)]
     pub annals: annals::Annals,
@@ -495,6 +499,7 @@ impl Game {
             drought: false,
             monsoon: false,
             word: Vec::new(),
+            prof: None,
             annals: Default::default(),
             spotlights: Vec::new(),
             fallen: false,
@@ -629,6 +634,13 @@ impl Game {
         // Keep the last few thousand for the reports screen.
         if self.log.len() > 3500 {
             self.log.drain(..500);
+        }
+    }
+
+    /// Add the time since `t` to part `k` of the performance tally.
+    fn prof_add(&mut self, k: usize, t: Option<std::time::Instant>) {
+        if let (Some(t), Some(p)) = (t, self.prof.as_mut()) {
+            p[k] += t.elapsed().as_secs_f64() * 1000.0;
         }
     }
 
@@ -1000,7 +1012,10 @@ impl Game {
     }
 
     pub fn step(&mut self) {
+        let whole = self.prof.is_some().then(std::time::Instant::now);
+        let before = self.prof.unwrap_or_default();
         self.tick += 1;
+        let t = self.prof.is_some().then(std::time::Instant::now);
         if self.tick % 3 == 0 {
             self.fluids();
         }
@@ -1010,6 +1025,7 @@ impl Game {
         if self.tick % 25 == 0 {
             self.aquifers();
         }
+        self.prof_add(0, t);
         if self.tick % 300 == 75 {
             self.weather_thoughts();
             self.lightning();
@@ -1035,12 +1051,14 @@ impl Game {
         if self.tick % 50 == 25 {
             self.festival_tick();
         }
+        let t = self.prof.is_some().then(std::time::Instant::now);
         if self.tick % 150 == 7 && self.overseer.is_some() {
             self.oversee();
         }
         if self.tick % 10 == 3 && self.overseer.is_some() {
             self.oversee_alert();
         }
+        self.prof_add(1, t);
         if self.tick % 300 == 290 {
             self.prune_designations();
         }
@@ -1061,6 +1079,7 @@ impl Game {
         if self.tick % 10 == 0 {
             self.grow_farms();
         }
+        let t = self.prof.is_some().then(std::time::Instant::now);
         for i in 0..self.dwarves.len() {
             if self.dwarves[i].alive {
                 let mut d = std::mem::take(&mut self.dwarves[i]);
@@ -1070,8 +1089,11 @@ impl Game {
                 self.dwarves[i] = d;
             }
         }
+        self.prof_add(2, t);
         self.ghosts_tick();
+        let t = self.prof.is_some().then(std::time::Instant::now);
         self.update_creatures();
+        self.prof_add(3, t);
         self.traps_tick();
         self.update_caravan();
         if self.tick % DAY == DAY / 2 {
@@ -1112,6 +1134,18 @@ impl Game {
             self.issue_mandate();
             self.maybe_strange_mood();
             self.word_season();
+        }
+        if let (Some(w), Some(p)) = (whole, self.prof.as_mut()) {
+            let ms = w.elapsed().as_secs_f64() * 1000.0;
+            p[4] += ms;
+            p[5] = p[5].max(ms);
+            // SPIKE_MS=n: tell of any tick slower than that, part by part.
+            if let Some(lim) = std::env::var("SPIKE_MS").ok().and_then(|s| s.parse::<f64>().ok()) {
+                if ms > lim {
+                    let d: Vec<String> = (0..4).map(|k| format!("{:.1}", p[k] - before[k])).collect();
+                    eprintln!("    spike {:.1} ms at tick {} (day {}, +{}): water/overseer/dwarves/creatures {}", ms, self.tick, self.tick / DAY, self.tick % DAY, d.join("/"));
+                }
+            }
         }
     }
 
