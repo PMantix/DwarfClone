@@ -32,7 +32,7 @@ impl Game {
         }
     }
 
-    fn spring_trap(&mut self, tid: u32, cid: u32) {
+    pub(super) fn spring_trap(&mut self, tid: u32, cid: u32) {
         let Some(b) = self.buildings.get(&tid) else { return };
         let (kind, pos, quality) = (b.kind, b.pos, b.quality);
         let load = b.load.unwrap_or((ItemKind::Boulder, Mat::Granite, 0));
@@ -48,6 +48,9 @@ impl Game {
                     it.label = Some(name.clone());
                 }
                 self.msg(&format!("A {} has been caught in a cage trap!", name), (160, 230, 160));
+                if c.siege || c.species.person() {
+                    self.take_captive(&c, cage);
+                }
                 self.rearm(tid);
             }
             BuildingKind::WeaponTrap | BuildingKind::StoneTrap => {

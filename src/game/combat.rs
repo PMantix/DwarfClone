@@ -981,6 +981,7 @@ impl Game {
         self.siege_size = n as u32;
         self.siege_routed = false;
         self.note_siege(species.info().plural, n as u32, &general_name);
+        self.annals.sieges.last_mut().unwrap().civ = Some(foe.civ);
         self.siege_race = Some(foe.race);
         self.year_log.siege = Some(civ_name.clone());
         let plural = species.info().plural;
@@ -996,7 +997,7 @@ impl Game {
     }
 
     /// The attackers lose heart and run for the edge of the map.
-    fn rout(&mut self) {
+    pub(super) fn rout(&mut self) {
         self.siege_routed = true;
         self.milestone("siege", "The first siege broken");
         for o in self.creatures.values_mut().filter(|o| o.siege && !o.legendary()) {
@@ -1118,11 +1119,21 @@ impl Game {
         } else if c.hostile() {
             self.msg(&format!("The {} has been slain.", info.name), (160, 230, 160));
         }
-        if c.siege && !c.legendary() && !self.siege_routed {
-            let left = self.creatures.values().filter(|o| o.siege && !o.legendary() && o.alive).count() as u32;
-            if left * 2 < self.siege_size {
-                self.rout();
-            }
+        if c.siege && !c.legendary() {
+            self.check_rout();
+        }
+    }
+
+    /// Fewer than half the besiegers left standing (half, once some of them
+    /// are in cages): the rest lose heart.
+    pub(super) fn check_rout(&mut self) {
+        if self.siege_routed {
+            return;
+        }
+        let left = self.creatures.values().filter(|o| o.siege && !o.legendary() && o.alive).count() as u32;
+        let caught = self.annals.sieges.iter().rev().find(|s| s.ended.is_none()).map_or(0, |s| s.foes_caught);
+        if left * 2 < self.siege_size || (caught > 0 && left * 2 <= self.siege_size) {
+            self.rout();
         }
     }
 

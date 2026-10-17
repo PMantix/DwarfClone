@@ -49,6 +49,12 @@ pub struct SiegeNote {
     /// (swung, wounded).
     #[serde(default)]
     pub blows: [(u32, u32); 5],
+    /// Besiegers taken alive in cage traps.
+    #[serde(default)]
+    pub foes_caught: u32,
+    /// The civilization that sent them (index into the world's civs).
+    #[serde(default)]
+    pub civ: Option<u32>,
 }
 
 /// Indices into `SiegeNote::blows`.

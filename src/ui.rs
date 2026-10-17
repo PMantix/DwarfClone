@@ -1606,6 +1606,9 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                     v.push(plain("Add them to a squad with u.".into(), MUTED));
                 }
             }
+            for (i, l) in g.cage_lines().into_iter().enumerate() {
+                v.push(if i == 0 { Line::default() } else { plain(l, Color::Rgb(220, 200, 150)) });
+            }
             let hostiles = g.hostile_count();
             if hostiles > 0 {
                 v.push(Line::default());
