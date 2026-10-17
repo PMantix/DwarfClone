@@ -19,6 +19,9 @@ pub struct Hunts {
     /// Nobody starts work outdoors (chopping, gathering, fishing) before this tick.
     #[serde(default)]
     pub outdoor_ban_until: u64,
+    /// After a hunt that came to nothing, no new one before this tick.
+    #[serde(default)]
+    pub rest_until: u64,
     /// The hunt under way.
     #[serde(default)]
     pub on: Option<Hunt>,
@@ -38,9 +41,10 @@ pub struct Hunt {
     pub plural: String,
     pub kills: u32,
     pub since: u64,
-    /// The pack members still about the fort, last we looked.
+    /// The pack members still alive, where they were last we looked, and
+    /// whether they were making off.
     #[serde(default)]
-    pub quarry: Vec<u32>,
+    pub quarry: Vec<(u32, Pos, bool)>,
     /// A legendary beast: `name` is its title.
     #[serde(default)]
     pub legend: bool,
@@ -48,6 +52,8 @@ pub struct Hunt {
 
 /// How far from the stair (or its foot) a beast is near enough to hunt.
 const NEAR: i32 = 30;
+/// How hard to look for a beast's way to the stair.
+const REACH: usize = 8000;
 
 fn number(n: u32) -> String {
     match n {
@@ -77,11 +83,18 @@ impl Game {
         let prowlers = self.prowlers_about(top, base);
         self.keep_indoors(top, &prowlers);
         if self.hunts.on.is_some() {
-            self.hunt_goes_on(o, top, base, war);
-        } else if let Some(beast) = self.legend_about(top, base).filter(|_| !war) {
-            self.hunt_legend(o, beast);
-        } else if !war && !prowlers.is_empty() {
-            self.start_hunt(o, &prowlers);
+            return self.hunt_goes_on(o, top, base, war);
+        }
+        if war || self.tick < self.hunts.rest_until {
+            return;
+        }
+        if let Some(beast) = self.legend_about(top, base) {
+            return self.hunt_legend(o, beast);
+        }
+        // Only beasts with a way to the stair: not those shut in the caverns.
+        let open: Vec<(u32, Pos, u32)> = prowlers.into_iter().filter(|p| self.creatures.get(&p.0).map_or(false, |c| self.can_reach(c, top, REACH))).collect();
+        if !open.is_empty() {
+            self.start_hunt(o, &open);
         }
     }
 
@@ -105,7 +118,7 @@ impl Game {
             return;
         }
         let r = self.knob("hunt.ban_range", 20.0) as i32;
-        let near = |p: Pos| prowlers.iter().any(|&(_, q, _)| (q.x - p.x).abs() <= r && (q.y - p.y).abs() <= r && (q.z - p.z).abs() <= 6);
+        let near = |p: Pos| prowlers.iter().any(|&(_, q, _)| self.world.outside(q) && (q.x - p.x).abs() <= r && (q.y - p.y).abs() <= r && (q.z - p.z).abs() <= 6);
         let outdoor = |g: &Game, t: &Task| match *t {
             Task::Dig { target, .. } => g.world.outside(target),
             Task::Gather { .. } | Task::Fish { .. } => true,
@@ -156,7 +169,7 @@ impl Game {
         };
         self.creatures
             .values()
-            .filter(|c| c.legendary() && c.hostile() && !c.siege && !c.leaving && self.creature_active(c) && near(c.pos))
+            .filter(|c| c.legendary() && c.hostile() && !c.siege && !c.leaving && self.creature_active(c) && near(c.pos) && self.can_reach(c, top, REACH))
             .min_by_key(|c| (crate::game::combat::dist2(c.pos, top), c.id))
             .map(|c| c.id)
     }
@@ -193,7 +206,7 @@ impl Game {
         let squad = self.squads[s].name.clone();
         self.squads[s].order = SquadOrder::Kill(beast);
         self.call_out(&ids);
-        self.hunts.on = Some(Hunt { squad: self.squads[s].id, target: beast, pack: beast, name: title.clone(), plural: title.clone(), kills: 0, since: self.tick, quarry: vec![beast], legend: true });
+        self.hunts.on = Some(Hunt { squad: self.squads[s].id, target: beast, pack: beast, name: title.clone(), plural: title.clone(), kills: 0, since: self.tick, quarry: vec![(beast, at, false)], legend: true });
         self.count("hunts", 1);
         self.count("hunts.legend", 1);
         let text = format!("{} march out to slay {}!", squad, title);
@@ -227,7 +240,8 @@ impl Game {
         let Some((s, ids, ready, strength)) = self.best_hunters() else { return };
         let fit = ids.len();
         let (target, _, pack) = prowlers[0];
-        let pack_ids: Vec<u32> = prowlers.iter().filter(|p| p.2 == pack).map(|p| p.0).collect();
+        // The whole pack, not only those already in sight.
+        let pack_ids: Vec<u32> = self.creatures.values().filter(|c| c.alive && !c.leaving && (c.pack == pack || c.id == pack)).map(|c| c.id).collect();
         let (bold, cautious) = (o.has(Trait::Bold), o.has(Trait::Cautious));
         let (enough, odds) = if cautious {
             (ready >= 3, self.knob("hunt.cautious", 1.5))
@@ -246,7 +260,7 @@ impl Game {
         let squad = self.squads[s].name.clone();
         self.squads[s].order = SquadOrder::Kill(target);
         self.call_out(&ids);
-        self.hunts.on = Some(Hunt { squad: self.squads[s].id, target, pack, name, plural, kills: 0, since: self.tick, quarry: pack_ids, legend: false });
+        self.hunts.on = Some(Hunt { squad: self.squads[s].id, target, pack, name, plural, kills: 0, since: self.tick, quarry: pack_ids.iter().filter_map(|id| self.creatures.get(id)).map(|c| (c.id, c.pos, c.leaving)).collect(), legend: false });
         self.count("hunts", 1);
         self.msg(&format!("{} set out after the {}.", squad, what), (240, 200, 120));
         Self::note_ov(o, self.tick, format!("Sent {} after the {}.", squad, what));
@@ -283,22 +297,24 @@ impl Game {
         if war {
             return self.end_hunt(o, s, h, "an army is coming");
         }
-        // (Further than they're first sought: a chase runs on, knob hunt.chase.)
-        let r = self.knob("hunt.chase", 60.0) as i32;
-        let near = |p: Pos| {
-            let by = |q: Pos| (p.x - q.x).abs() <= r && (p.y - q.y).abs() <= r && (p.z - q.z).abs() <= 8;
+        // A chase runs on further than beasts are first sought (knob
+        // hunt.chase), but those fleeing are let go once past NEAR + 10.
+        let (chase, flee) = (self.knob("hunt.chase", 60.0) as i32, NEAR + 10);
+        let near = |c: &Creature| {
+            let r = if c.leaving { flee } else { chase };
+            let by = |q: Pos| (c.pos.x - q.x).abs() <= r && (c.pos.y - q.y).abs() <= r && (c.pos.z - q.z).abs() <= 8;
             by(top) || by(base)
         };
-        // Those of the pack slain (or caged) since the last look; those gone
-        // off from the fort have got away. Mates that turn up join the quarry.
+        // Those of the pack slain (or caged) since the last look, wherever
+        // they fell; those that made off over the edge of the map got away.
+        // Mates that turn up join the quarry. Only those near the fort are
+        // hunted.
+        let (w, hh) = (self.world.w, self.world.h);
         let mut quarry = Vec::new();
-        for id in std::mem::take(&mut h.quarry) {
+        for (id, last, fled) in std::mem::take(&mut h.quarry) {
             match self.creatures.get(&id) {
-                Some(c) if c.alive => {
-                    if near(c.pos) {
-                        quarry.push(id);
-                    }
-                }
+                Some(c) if c.alive => quarry.push((id, c.pos, c.leaving)),
+                _ if fled && (last.x <= 6 || last.y <= 6 || last.x >= w - 7 || last.y >= hh - 7) => {}
                 _ => {
                     h.kills += 1;
                     self.count("hunt_kills", 1);
@@ -306,13 +322,14 @@ impl Game {
             }
         }
         for c in self.creatures.values() {
-            if c.alive && !c.siege && (c.pack == h.pack || c.id == h.pack) && near(c.pos) && !quarry.contains(&c.id) {
-                quarry.push(c.id);
+            if c.alive && !c.siege && (c.pack == h.pack || c.id == h.pack) && near(c) && !quarry.iter().any(|q| q.0 == c.id) {
+                quarry.push((c.id, c.pos, c.leaving));
             }
         }
         h.quarry = quarry;
+        let hunted: Vec<u32> = h.quarry.iter().filter(|q| self.creatures.get(&q.0).map_or(false, |c| near(c))).map(|q| q.0).collect();
         let (fit, _) = self.hunters(s);
-        if h.quarry.contains(&h.target) {
+        if hunted.contains(&h.target) {
             // Someone else gave the squad its orders: their hunt now.
             if !mine {
                 return self.end_hunt(o, s, h, "");
@@ -327,7 +344,7 @@ impl Game {
             return;
         }
         // The next of the pack, even as it scatters, while it's near the fort.
-        let next = h.quarry.iter().filter_map(|id| self.creatures.get(id)).min_by_key(|c| (crate::game::combat::dist2(c.pos, top), c.id)).map(|c| c.id);
+        let next = hunted.iter().filter_map(|id| self.creatures.get(id)).min_by_key(|c| (crate::game::combat::dist2(c.pos, top), c.id)).map(|c| c.id);
         match next {
             Some(t) if !fit.is_empty() && matches!(self.squads[s].order, SquadOrder::Kill(_) | SquadOrder::Train) => {
                 h.target = t;
@@ -359,6 +376,8 @@ impl Game {
             self.legend(text);
             Self::note_ov(o, self.tick, format!("{} came home from the hunt: {} slain.", squad, what));
         } else if !why.is_empty() {
+            // Not again straight away (knob hunt.rest).
+            self.hunts.rest_until = self.tick + self.knob("hunt.rest", 600.0) as u64;
             self.msg(&format!("{} come home from the hunt: {}.", squad, why), (200, 200, 160));
             Self::note_ov(o, self.tick, format!("Called {} home from the hunt: {}.", squad, why));
         }
@@ -451,7 +470,7 @@ mod tests {
         assert!(g.overworld.events.iter().any(|e| e.text.contains("killed two wolves")), "no chronicle line");
     }
 
-    /// A woodcutter at work with a wolf 12 tiles off stops, and nobody
+    /// A woodcutter at work with a wolf 10-14 tiles off stops, and nobody
     /// takes up chopping until the ban runs out.
     #[test]
     fn work_outdoors_waits_while_wolves_prowl() {
@@ -465,7 +484,12 @@ mod tests {
             d.labors[Labor::Woodcutting.idx()] = true;
         }
         assert!(!g.outdoors_banned());
-        let wolf = g.spawn_creature(Species::Wolf, at.offset(12, 0, 0), u64::MAX);
+        let spot = (-14..=14)
+            .flat_map(|dx| (-14..=14).flat_map(move |dy| (-3..=3).map(move |dz| at.offset(dx, dy, dz))))
+            .filter(|p| (p.x - at.x).abs().max((p.y - at.y).abs()) >= 10)
+            .find(|&p| g.world.in_bounds(p) && g.world.walkable(p) && g.world.outside(p))
+            .expect("no open ground for the wolf");
+        let wolf = g.spawn_creature(Species::Wolf, spot, u64::MAX);
         let mut o = g.overseer.take().unwrap();
         g.ov_hunts(&mut o);
         assert!(g.outdoors_banned());
@@ -586,5 +610,35 @@ mod tests {
         }
         assert!(g.hunts.on.is_none());
         assert!(!matches!(g.squads[s].order, SquadOrder::Kill(_)));
+        // The army turns back; the wolf is still there, but the hunters rest a while first.
+        g.incoming = None;
+        let mut o = g.overseer.take().unwrap();
+        g.ov_hunts(&mut o);
+        assert!(g.hunts.on.is_none(), "straight back out after the wolf");
+        g.tick = g.hunts.rest_until;
+        g.ov_hunts(&mut o);
+        assert!(g.hunts.on.is_some());
+        g.overseer = Some(o);
+    }
+
+    /// A beast shut in the rock by the halls is no quarry, and no reason to
+    /// keep anyone indoors.
+    #[test]
+    fn a_beast_shut_in_the_rock_is_left_alone() {
+        let (mut g, _, _) = fort(21, Style::Steady);
+        let base = g.overseer.as_ref().unwrap().base.unwrap();
+        let pocket = (-12..=12)
+            .flat_map(|dx| (-12..=12).map(move |dy| base.offset(dx, dy, 0)))
+            .find(|&p| (-1..=1).all(|x| (-1..=1).all(|y| (-1..=1).all(|z| g.world.in_bounds(p.offset(x, y, z)) && g.world.solid(p.offset(x, y, z))))))
+            .expect("no solid rock by the halls");
+        g.world.t_mut(pocket).kind = TileKind::Floor;
+        g.spawn_creature(Species::Wolf, pocket, u64::MAX);
+        let o = g.overseer.as_ref().unwrap();
+        assert_eq!(g.prowlers_about(o.top.unwrap(), o.base.unwrap()).len(), 1, "the wolf prowls");
+        for _ in 0..100 {
+            g.step();
+        }
+        assert!(g.hunts.on.is_none());
+        assert!(!g.outdoors_banned());
     }
 }
