@@ -112,6 +112,23 @@ pub fn report(trials: &[Trial], years: usize) -> String {
         );
     }
 
+    // Blows in sieges: who struck, how often it drew blood.
+    let mut blows = [(0u32, 0u32); 5];
+    for t in trials {
+        for sg in &t.sieges {
+            for i in 0..5 {
+                blows[i].0 += sg.blows[i].0;
+                blows[i].1 += sg.blows[i].1;
+            }
+        }
+    }
+    if blows.iter().any(|b| b.0 > 0) {
+        let _ = writeln!(s, "\n  Blows in sieges (struck, drew blood):");
+        for (i, what) in ["soldiers' melee", "civilians' melee", "bolts shot", "foes on soldiers", "foes on civilians"].iter().enumerate() {
+            let _ = writeln!(s, "    {:<22} {:>6} {:>6}  {:>4}", what, blows[i].0, blows[i].1, pct(blows[i].1 as usize, blows[i].0 as usize));
+        }
+    }
+
     let _ = writeln!(s, "\n  {:<9} {:>5} {:>6} {:>6} {:>8} {:>8} {:>10}", "style", "runs", "glory", "ruin", "standing", "avg yrs", "avg ☼peak");
     for st in Style::ALL {
         let mine: Vec<&Trial> = trials.iter().filter(|t| t.style == st).collect();

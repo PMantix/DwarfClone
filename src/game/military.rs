@@ -291,8 +291,13 @@ impl Game {
         };
         let def = self.creature_fighter(c);
         let mut body = c.body.clone();
+        let (hp0, siege): (i32, bool) = (body.hp.iter().sum(), c.siege);
         if let Some(m) = self.strike(&att, &def, &mut body) {
             self.msg(&m, (235, 225, 130));
+        }
+        if siege {
+            let hurt = body.hp.iter().sum::<i32>() < hp0;
+            self.note_blow(super::annals::BY_BOLT, hurt);
         }
         let dead = body.dead;
         if let Some(c) = self.creatures.get_mut(&target) {

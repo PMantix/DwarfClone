@@ -35,6 +35,25 @@ S01's report on the same batch (saved as `batches/baseline-v0.2.0.json`):
 - **Sieges:** about five goblins each. The first kills 5.5 dwarves on average and the second
   8.5, while dwarves kill fewer than one goblin per siege.
 
+**The fights up close** (the arena, `cargo test arena -- --ignored --nocapture`; the blow counts
+in the batch report; and a tick-by-tick replay, `SEED=5005 STYLE=steady SIEGE=2 cargo test
+siege_replay -- --ignored --nocapture`):
+
+- A one-on-one fight is over in 70–100 ticks. Bare-handed, with a pick or with a copper axe a
+  dwarf loses to a goblin 76–100% of the time; an iron axe with helm, mail and shield wins
+  75–88%, a trained veteran 81–99%. 85–100% of the losers bleed out, within a hundred ticks.
+- In real sieges goblins struck civilians 2,130 times (65% drew blood) and soldiers 1,362 times
+  (22%: armour works). Soldiers drew blood with 68% of 474 blows but killed fewer than one goblin
+  a siege: they swing **wooden crossbows** (1.8 damage, blunt, barely bleeds), and fired only 92
+  bolts in 31 sieges.
+- When the first siege came, most squads held wooden crossbows and no armour while 10–32 pieces
+  of armour lay in stock; three Warlord forts had **no soldiers at all**, lost on expeditions.
+- The replay of a typical massacre: the alert sends every civilian into the shelter within 100
+  ticks, but **the gate has only one door on a two-tile corridor** (the overseer marks the gate
+  done when either door is placed) and no drawbridge (never built for want of mechanisms), so
+  all five goblins walk in by tick 200 and kill the cornered civilians one at a time, four or
+  five to a dwarf.
+
 So the order is clear: the shelter and the bridge (S04), dwarves who fight back (S04), the
 bleeding (S02), and expeditions that cost a tenth of all deaths (a new item below, S06).
 
@@ -59,6 +78,9 @@ style survive three years, and every style still loses forts in memorable ways.
 
 #### S02 Battlefield medicine (M)
 - **Why:** half of all deaths are bleeding. In DF the wounded are carried to bed and sutured.
+- **Note:** bleeding adds a third of an edged blow's damage and slows by one a turn, so the
+  blood lost grows with the square of the wounds: three cuts kill a dwarf in about a hundred
+  ticks, long before anyone could help. The curve needs reshaping, not just faster doctors.
 - **Steps:** [ ] dwarves who are bleeding stop work and press their wounds (slower bleeding),
   and friends bandage them with cloth or thread where they lie · [ ] the unconscious and the
   crippled are carried to a hospital bed by a doctor or any hauler, even during an alert, once
@@ -70,6 +92,8 @@ style survive three years, and every style still loses forts in memorable ways.
 #### S03 Sieges that build up (M)
 - **Why:** a first siege that wipes out a young fort is no story. DF sends ambushes and small
   raids first, then grows them with the fort's wealth.
+- **Note:** sieges arrive on the first day of a season (days 168, 252, 336), the same day as
+  migrants, and reach the gate within about 140 ticks.
 - **Steps:** [ ] the first contact is a scout or a small raid, seen coming (a warning a day
   ahead, from the edge of the map); sieges grow with wealth, population and past defeats ·
   [ ] goblins take captives and loot and leave, rather than always fighting to the last ·
@@ -82,13 +106,16 @@ style survive three years, and every style still loses forts in memorable ways.
 #### S04 An overseer that defends (M)
 - **Why:** the overseer has a drawbridge, cage traps and a shelter burrow, but forts still die in
   a day. It should defend like a nervous player.
-- **Steps:** [ ] check that the alert really shelters everyone (civilians caught outside run
-  for the gate, the bridge goes up behind the last one, nobody wanders out to haul) · [ ] soldiers
-  hold the gatehouse instead of charging, with marksdwarves behind fortifications · [ ] a
-  Steady or Warlord overseer drafts and arms a squad before the first siege; a Reckless one may
-  not · [ ] after a siege it learns: more traps where the enemy came in, a second squad, walls
-  · [ ] cavern breaches get walled off or doored the moment they're dug into (troglodytes are the
-  fourth biggest killer)
+- **Steps:** [ ] a whole gate: both doors of the two-wide gatehouse, checked daily and replaced
+  if missing, and the same for the drawbridge's two halves and lever (today one door counts as
+  a gate) · [ ] mechanisms early, so the bridge is up before the first siege · [ ] squads fight
+  with axes, spears and hammers and wear the armour in stock; crossbows for a third at most,
+  with bolts, shooting from behind the gate · [ ] the only squad never all goes on an
+  expedition; soldiers kept home before a siege season · [ ] soldiers hold the gatehouse instead
+  of charging · [ ] when foes get into the shelter, civilians flee deeper (down the inner stair)
+  rather than standing cornered · [ ] after a siege it learns: more traps where the enemy came
+  in, a second squad, walls · [ ] cavern breaches get walled off or doored the moment they're
+  dug into (troglodytes kill 5–7%)
 - **Done when:** a scripted siege against a fort with shelter, bridge and squad kills fewer than
   half the goblins' worth of dwarves; the batch meets the milestone goal.
 

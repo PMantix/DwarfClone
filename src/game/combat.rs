@@ -187,7 +187,12 @@ impl Game {
         let att = self.dwarf_fighter(d);
         let def = self.creature_fighter(c);
         let mut body = c.body.clone();
+        let (hp0, siege): (i32, bool) = (body.hp.iter().sum(), c.siege);
         let msg = self.strike(&att, &def, &mut body);
+        if siege {
+            let hurt = body.hp.iter().sum::<i32>() < hp0;
+            self.note_blow(if d.soldier { super::annals::BY_SOLDIER } else { super::annals::BY_CIVILIAN }, hurt);
+        }
         d.attack_cd = 9 + d.body.limp();
         d.fight_xp += 8;
         d.satisfy(crate::dwarf::NeedKind::Fight, 60);
@@ -1267,9 +1272,14 @@ impl Game {
         let mut d = std::mem::take(&mut self.dwarves[di]);
         let att = self.creature_fighter(c);
         let def = self.dwarf_fighter(&d);
+        let hp0: i32 = d.body.hp.iter().sum();
         let msg = self.strike(&att, &def, &mut d.body);
         d.attacker = Some((c.id, self.tick));
         self.note_wound(d.id, c);
+        if c.siege {
+            let hurt = d.body.hp.iter().sum::<i32>() < hp0;
+            self.note_blow(if d.soldier { super::annals::ON_SOLDIER } else { super::annals::ON_CIVILIAN }, hurt);
+        }
         if let Some(m) = msg {
             self.msg(&m, (255, 120, 100));
         }
@@ -1305,6 +1315,133 @@ mod tests {
     fn run(g: &mut Game, ticks: u64) {
         for _ in 0..ticks {
             g.step();
+        }
+    }
+
+    /// The arena: one dwarf against one goblin, many times over, with the
+    /// blows tallied. Prints a table (cargo test arena -- --ignored --nocapture).
+    #[test]
+    #[ignore]
+    fn arena() {
+        struct Side {
+            fighter: Fighter,
+            body: Body,
+            cd: u32,
+            delay: u32,
+        }
+        let mut g = Game::new(5);
+        let e = g.embark;
+        let mut gear = |g: &mut Game, kinds: &[(ItemKind, Mat)]| -> (Option<u32>, Vec<u32>) {
+            let mut held = None;
+            let mut armor = Vec::new();
+            for &(k, m) in kinds {
+                let id = g.spawn_item(k, m, e);
+                if k.weapon_damage().is_some() {
+                    held = Some(id);
+                } else {
+                    armor.push(id);
+                }
+            }
+            (held, armor)
+        };
+        // Goblins as sieges arm them: a copper-to-iron weapon, a helm half the time,
+        // a breastplate a third, a shield a quarter. The typical one:
+        let gob_kits: Vec<Vec<(ItemKind, Mat)>> = vec![
+            vec![(ItemKind::Spear, Mat::Copper)],
+            vec![(ItemKind::Sword, Mat::Bronze), (ItemKind::Helm, Mat::Bronze)],
+            vec![(ItemKind::Axe, Mat::Iron), (ItemKind::Helm, Mat::Iron), (ItemKind::Breastplate, Mat::Iron), (ItemKind::Shield, Mat::Iron)],
+        ];
+        let dwarf_kits: Vec<(&str, u32, Vec<(ItemKind, Mat)>)> = vec![
+            ("civilian, bare-handed", 0, vec![]),
+            ("miner with a pick", 0, vec![(ItemKind::Pick, Mat::Iron)]),
+            ("recruit, copper axe", 0, vec![(ItemKind::Axe, Mat::Copper)]),
+            ("soldier, iron axe+helm+mail+shield", 0, vec![(ItemKind::Axe, Mat::Iron), (ItemKind::Helm, Mat::Iron), (ItemKind::Breastplate, Mat::Iron), (ItemKind::Shield, Mat::Iron)]),
+            ("veteran (skill 4), same kit", 1600, vec![(ItemKind::Axe, Mat::Iron), (ItemKind::Helm, Mat::Iron), (ItemKind::Breastplate, Mat::Iron), (ItemKind::Shield, Mat::Iron)]),
+        ];
+        let gid = g.spawn_creature(Species::Goblin, e, u64::MAX);
+        eprintln!("{:<36} {:<22} {:>5} {:>6} {:>7} {:>7} {:>8} {:>8} {:>9}", "dwarf", "goblin", "wins", "ticks", "d hit%", "g hit%", "d dmg", "g dmg", "d bled%");
+        for (dname, xp, dkit) in &dwarf_kits {
+            for (gi, gkit) in gob_kits.iter().enumerate() {
+                let (dh, da) = gear(&mut g, dkit);
+                let (gh, ga) = gear(&mut g, gkit);
+                let mut d = g.dwarves[0].clone();
+                d.held = dh;
+                d.armor = da;
+                d.fight_xp = *xp;
+                d.body = Body::new(1.0);
+                let df = g.dwarf_fighter(&d);
+                let mut c = g.creatures[&gid].clone();
+                c.weapon = gh;
+                c.armor = ga;
+                let gf = g.creature_fighter(&c);
+                let (mut wins, mut ticks, mut bled) = (0, 0u64, 0);
+                let (mut dsw, mut dhit, mut ddmg, mut gsw, mut ghit, mut gdmg) = (0, 0, 0i64, 0, 0, 0i64);
+                let n = 400;
+                for _ in 0..n {
+                    let mut a = Side { fighter: Fighter { ..df_clone(&df) }, body: Body::new(1.0), cd: 0, delay: 9 };
+                    let mut b = Side { fighter: df_clone(&gf), body: Body::new(Species::Goblin.info().scale), cd: 4, delay: 9 };
+                    let mut t = 0;
+                    loop {
+                        t += 1;
+                        for (att, def, sw, hit, dmg) in [(&mut a as *mut Side, &mut b as *mut Side, &mut dsw, &mut dhit, &mut ddmg), (&mut b as *mut Side, &mut a as *mut Side, &mut gsw, &mut ghit, &mut gdmg)] {
+                            // (Two sides of one fight, each borrowed in turn.)
+                            let (att, def) = unsafe { (&mut *att, &mut *def) };
+                            if att.body.dead || att.body.unconscious() {
+                                continue;
+                            }
+                            if att.cd > 0 {
+                                att.cd -= 1;
+                                continue;
+                            }
+                            att.cd = att.delay + att.body.limp();
+                            *sw += 1;
+                            let before: i32 = def.body.hp.iter().sum();
+                            let bleed_before = def.body.bleeding;
+                            let fa = df_clone(&att.fighter);
+                            let fd = df_clone(&def.fighter);
+                            g.strike(&fa, &fd, &mut def.body);
+                            let after: i32 = def.body.hp.iter().sum();
+                            if after < before || def.body.bleeding > bleed_before {
+                                *hit += 1;
+                                *dmg += (before - after) as i64;
+                            }
+                        }
+                        if t % 10 == 0 {
+                            a.body.tick();
+                            b.body.tick();
+                        }
+                        let a_down = a.body.dead || a.body.unconscious();
+                        let b_down = b.body.dead || b.body.unconscious();
+                        if a_down || b_down || t > 3000 {
+                            if b_down && !a_down {
+                                wins += 1;
+                            }
+                            if a_down && a.body.blood <= a.body.max_blood / 3 && a.body.hp[crate::body::Part::Head.idx()] > 0 {
+                                bled += 1;
+                            }
+                            ticks += t;
+                            break;
+                        }
+                    }
+                }
+                let gname = ["copper spear", "bronze sword+helm", "iron axe, full kit"][gi];
+                eprintln!(
+                    "{:<36} {:<22} {:>4}% {:>6} {:>6}% {:>6}% {:>8.1} {:>8.1} {:>8}%",
+                    dname,
+                    gname,
+                    wins * 100 / n,
+                    ticks / n as u64,
+                    dhit * 100 / dsw.max(1),
+                    ghit * 100 / gsw.max(1),
+                    ddmg as f64 / dhit.max(1) as f64,
+                    gdmg as f64 / ghit.max(1) as f64,
+                    bled * 100 / (n - wins).max(1)
+                );
+            }
+        }
+
+        fn df_clone(f: &Fighter) -> Fighter {
+            Fighter { name: f.name.clone(), skill: f.skill, dmg: f.dmg, verb: f.verb, edged: f.edged, helm: f.helm, mail: f.mail, shield: f.shield }
         }
     }
 

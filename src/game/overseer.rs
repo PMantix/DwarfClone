@@ -1093,10 +1093,41 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
     let mut story: Vec<(u64, String)> = Vec::new();
     let mut alive_by_year = Vec::new();
     let mut ambitions_told = 0;
+    let mut sieges_seen = 0;
     while g.tick < end && g.alive_count() > 0 {
         g.step();
         if g.tick % YEAR == 0 {
             alive_by_year.push(g.alive_count());
+        }
+        // TRIAL_SIEGE: what the fort has when each siege arrives.
+        if g.annals.sieges.len() > sieges_seen {
+            sieges_seen = g.annals.sieges.len();
+            if std::env::var("TRIAL_SIEGE").is_ok() {
+                let kit = |d: &Dwarf| {
+                    let w = d.held.and_then(|id| g.items.get(&id)).map_or("none".to_string(), |it| format!("{:?} {:?}", it.mat, it.kind));
+                    let a: Vec<String> = d.armor.iter().filter_map(|id| g.items.get(id)).map(|it| format!("{:?}", it.kind)).collect();
+                    format!("{} [{}] skill {}", w, a.join(","), d.fight_level())
+                };
+                let soldiers: Vec<String> = g.dwarves.iter().filter(|d| d.alive && d.soldier).map(kit).collect();
+                let s = g.annals.sieges.last().unwrap();
+                eprintln!(
+                    "SIEGE {} {} #{} day {}: {} {} | pop {} soldiers {} | weapons in stock {} armor {} | bridge {} traps {} burrow {} | soldiers: {:?}",
+                    style.name(),
+                    seed,
+                    sieges_seen,
+                    g.tick / DAY,
+                    s.size,
+                    s.foe,
+                    g.alive_count(),
+                    soldiers.len(),
+                    g.items.values().filter(|it| it.kind.weapon_damage().is_some() && it.kind != ItemKind::Pick && it.carried_by.is_none()).count(),
+                    g.items.values().filter(|it| it.kind.armor_slot().is_some() && it.carried_by.is_none()).count(),
+                    g.buildings.values().any(|b| b.kind == BuildingKind::Bridge && b.built),
+                    g.buildings.values().filter(|b| b.kind.is_trap() && b.built).count(),
+                    g.alert_burrow.is_some(),
+                    soldiers
+                );
+            }
         }
         // The fort's story: arrivals, sieges and monsters, deaths, milestones, ambitions.
         if g.tick % 50 == 0 {
@@ -1194,6 +1225,12 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
     }
     // Close the books on a siege the fort fell to.
     g.annals_tick();
+    // Deaths in the story say what did it.
+    for (_, text) in story.iter_mut() {
+        if let Some(d) = g.annals.deaths.iter().find(|d| d.killer.is_some() && text.starts_with(&d.name)) {
+            text.push_str(&format!(" ({})", d.killer.as_deref().unwrap_or("")));
+        }
+    }
     if std::env::var("TRIAL_TAIL").is_ok() {
         for l in g.log.iter().rev().take(60).collect::<Vec<_>>().into_iter().rev() {
             eprintln!("    t{:>6} {}", l.tick, l.text);
@@ -1244,6 +1281,63 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Replay a batch fort through one of its sieges, a few lines a tick:
+    /// SEED, STYLE, SIEGE (which one, from 1) in the environment.
+    #[test]
+    #[ignore]
+    fn siege_replay() {
+        let env = |k: &str, d: &str| std::env::var(k).unwrap_or(d.into());
+        let seed: u64 = env("SEED", "5005").parse().unwrap();
+        let style = Style::parse(&env("STYLE", "steady")).unwrap();
+        let nth: usize = env("SIEGE", "2").parse().unwrap();
+        let mut g = Game::new(seed);
+        g.set_overseer(Some(style));
+        while g.annals.sieges.len() < nth && g.alive_count() > 0 && g.tick < 3 * YEAR {
+            g.step();
+        }
+        let start = g.tick;
+        let o = g.overseer.clone().unwrap();
+        let (top, base) = (o.top.unwrap(), o.base.unwrap());
+        eprintln!("siege {} at day {}: top {:?} base {:?} pop {}", nth, start / DAY, top, base, g.alive_count());
+        let doors: Vec<(Pos, bool, bool)> = g.buildings.values().filter(|b| b.kind == BuildingKind::Door && (b.pos.x - base.x).abs() <= 3 && (b.pos.y - base.y).abs() <= 3).map(|b| (b.pos, b.built, b.locked)).collect();
+        eprintln!("gate doors near the base: {:?}; done {:?}", doors, o.done);
+        for y in base.y - 2..=base.y + 3 {
+            let row: String = (base.x - 2..base.x + 8).map(|x| {
+                let t = g.world.t(Pos::new(x, y, base.z));
+                if (x, y) == (base.x, base.y) { 'X' } else if t.building != 0 { 'b' } else if t.kind.solid() { '#' } else { '.' }
+            }).collect();
+            eprintln!("    {}", row);
+        }
+        let shelter = g.burrows.iter().find(|b| Some(b.bit) == g.alert_burrow).map(|b| b.mask());
+        let mut seen = g.log.len();
+        while g.tick < start + DAY && g.alive_count() > 0 {
+            g.step();
+            if g.tick % 20 == 0 {
+                let in_shelter = |p: Pos| shelter.map_or(false, |m| g.world.get(p).map_or(false, |t| t.burrows & m != 0));
+                let civ: Vec<&Dwarf> = g.dwarves.iter().filter(|d| d.alive && !d.soldier).collect();
+                let out = civ.iter().filter(|d| !in_shelter(d.pos)).count();
+                let outside = civ.iter().filter(|d| g.world.outside(d.pos)).count();
+                let gobs: Vec<Pos> = g.creatures.values().filter(|c| c.alive && c.siege && !c.legendary()).map(|c| c.pos).collect();
+                let near_gate = gobs.iter().filter(|p| (p.x - top.x).abs() <= 12 && (p.y - top.y).abs() <= 12).count();
+                let inside = gobs.iter().filter(|p| in_shelter(**p)).count();
+                let bridge = g.buildings.values().filter(|b| b.kind == BuildingKind::Door && (b.pos.x - base.x).abs() <= 3 && (b.pos.y - base.y).abs() <= 3).map(|b| (b.built, b.locked, g.world.t(b.pos).door)).collect::<Vec<_>>();
+                eprintln!(
+                    "t+{:>4} alert {} civ {} bridge {:?} | civilians {} (out of shelter {}, under sky {}) | foes {} near gate {} in shelter {}",
+                    g.tick - start, g.alert as u8, g.civ_alert as u8, bridge, civ.len(), out, outside, gobs.len(), near_gate, inside
+                );
+                for l in &g.log[seen.min(g.log.len())..] {
+                    if l.text.contains(" in the ") && !l.text.contains("deflects") || l.color == (255, 60, 60) {
+                        // Where the struck dwarf stands.
+                        let who = g.dwarves.iter().find(|d| l.text.contains(&format!(" {} in the", d.name)) || l.text.starts_with(&d.name));
+                        let wh = who.map_or(String::new(), |d| format!(" [{}{} at {:?}]", if d.soldier { "soldier" } else { "civilian" }, if in_shelter(d.pos) { ", sheltered" } else { "" }, d.pos));
+                        eprintln!("        {}{}", l.text, wh);
+                    }
+                }
+                seen = g.log.len();
+            }
+        }
+    }
 
     #[test]
     fn the_overseer_buries_its_dead() {

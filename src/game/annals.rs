@@ -38,7 +38,19 @@ pub struct SiegeNote {
     pub ended: Option<u64>,
     /// "routed", "withdrew" or "the fortress fell".
     pub outcome: String,
+    /// Blows struck while it lasted: [soldiers' melee, civilians' melee,
+    /// bolts shot, foes' blows on soldiers, foes' blows on civilians], each
+    /// (swung, wounded).
+    #[serde(default)]
+    pub blows: [(u32, u32); 5],
 }
+
+/// Indices into `SiegeNote::blows`.
+pub const BY_SOLDIER: usize = 0;
+pub const BY_CIVILIAN: usize = 1;
+pub const BY_BOLT: usize = 2;
+pub const ON_SOLDIER: usize = 3;
+pub const ON_CIVILIAN: usize = 4;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Annals {
@@ -126,6 +138,16 @@ impl Game {
 
     pub(super) fn note_siege(&mut self, foe: &str, size: u32, leader: &str) {
         self.annals.sieges.push(SiegeNote { tick: self.tick, foe: foe.into(), size, leader: leader.into(), ..Default::default() });
+    }
+
+    /// A blow in a siege: which kind, and whether it drew blood.
+    pub(super) fn note_blow(&mut self, kind: usize, wounded: bool) {
+        if let Some(s) = self.annals.sieges.iter_mut().rev().find(|s| s.ended.is_none()) {
+            s.blows[kind].0 += 1;
+            if wounded {
+                s.blows[kind].1 += 1;
+            }
+        }
     }
 
     /// One of the besiegers died.
