@@ -1403,6 +1403,13 @@ impl App {
                         self.mode = Mode::Normal;
                     }
                     KeyCode::Char('b') if self.game.overseer.is_some() => self.mode = Mode::Brain { sel: 0 },
+                    // Another overseer of the same style: a new name and traits.
+                    KeyCode::Char('r') if self.game.overseer.is_some() => {
+                        let mut o = self.game.overseer.take().unwrap();
+                        self.game.roll_personality(&mut o);
+                        self.flash = Some(format!("The overseer is now {}.", o.title()));
+                        self.game.overseer = Some(o);
+                    }
                     _ => self.mode = Mode::Normal,
                 }
             }

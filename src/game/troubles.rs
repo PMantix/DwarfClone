@@ -142,7 +142,10 @@ impl Game {
             _ => 1.0,
         };
         let manager = if self.has_post(super::positions::Position::Manager) { 0.1 } else { 0.0 };
-        ((base + manager) * care).min(0.98)
+        use super::personality::Trait;
+        let temper = if o.has(Trait::Stubborn) { 0.7 } else if o.has(Trait::Cautious) { 1.1 } else { 1.0 };
+        let care = if o.has(Trait::Sentimental) && matches!(lack, Lack::MoodShop(_)) { care * 1.2 } else { care };
+        ((base + manager) * care * temper).min(0.98)
     }
 
     /// Once a day: notice what's short and do something about it.
@@ -157,7 +160,8 @@ impl Game {
             }
             if let Some(what) = self.fix(o, lack) {
                 o.fixes.push((lack, tick));
-                Self::note_ov(o, tick, format!("Saw the fortress short of {}: {}", lack.what(), what));
+                let text = o.voiced(&format!("Saw the fortress short of {}: {}", lack.what(), what));
+                Self::note_ov(o, tick, text);
             }
         }
         // Standing orders it raised itself, kept up until they run out.

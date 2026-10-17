@@ -62,6 +62,7 @@ pub mod annals;
 pub mod spotlight;
 pub mod troubles;
 pub mod word;
+pub mod personality;
 mod miasma;
 pub use ambitions::{Ambition, Sense};
 

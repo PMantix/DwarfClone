@@ -126,10 +126,13 @@ pub enum Sense {
     Weary,
     /// Your nudges.
     Nudge,
+    /// Its traits (cautious, vain, pious…).
+    Temper,
 }
 
 impl Sense {
-    pub const ALL: [Sense; 12] = [
+    pub const ALL: [Sense; 13] = [
+        Sense::Temper,
         Sense::Leaning,
         Sense::Hunger,
         Sense::Thirst,
@@ -158,6 +161,7 @@ impl Sense {
             Sense::Unready => "Unready",
             Sense::Weary => "Weary",
             Sense::Nudge => "Your nudge",
+            Sense::Temper => "Its temper",
         }
     }
 }
@@ -217,6 +221,7 @@ impl Game {
         let wanderlust = if self.expedition.is_none() && !self.alert { ((strength - 8.0) / 12.0).clamp(0.0, 1.0) } else { 0.0 };
         let unready = if self.squads.is_empty() || tick < YEAR / 2 || o.style == Style::Reckless && strength < 1.0 { 1.0 } else { 0.0 };
         let senses = vec![
+            (Sense::Temper, if o.traits.is_empty() { 0.0 } else { 1.0 }),
             (Sense::Leaning, 1.0),
             (Sense::Hunger, hunger),
             (Sense::Thirst, thirst),
@@ -286,8 +291,10 @@ impl Game {
                 }
             }
             if o.ambition == Some(a) {
-                add(Sense::Weary, -1.6);
+                // (A stubborn one tires of it more slowly.)
+                add(Sense::Weary, if o.has(super::personality::Trait::Stubborn) { -0.8 } else { -1.6 });
             }
+            add(Sense::Temper, o.temper(a));
             add(Sense::Nudge, 0.8 * o.nudge(a) as f64);
             links.push((a, l));
         }

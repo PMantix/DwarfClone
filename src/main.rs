@@ -139,7 +139,7 @@ fn autoplay_batch(args: &[String]) {
             }
             println!();
         } else if !t.ambitions.is_empty() {
-            println!("           its ambitions: {}", t.ambitions.join(" → "));
+            println!("           {}: {}", t.overseer, t.ambitions.join(" → "));
         }
         all.push(t);
         // Saved as it goes, so a batch cut short keeps what it has.

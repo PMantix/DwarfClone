@@ -41,6 +41,16 @@ nine ambitions, green links pulling and red pushing, each ambition sized by its 
 next. Pick one and nudge it with ←→ (−3..+3) to provoke the overseer into battle or coax it
 into building, or press `f` to make it take that ambition up now.
 
+Each overseer is someone: a name and two traits on top of its style. Cautious ones fortify,
+keep more under arms and bar the gate early; bold ones send expeditions and bar it late; vain
+ones raise grand halls and monuments; pious and cheerful ones dig temples and taverns; greedy
+ones chase riches and delve; sentimental ones keep their dwarves close; stubborn ones stick to
+what they set out to do and are slow to take a hint. The traits are a sense in its brain ("Its
+temper"), sway its layout, and colour its notes; `A` shows who it is and `r` there rolls another.
+It also reads the announcements: whatever the fortress is short of (stone, wood, blocks,
+mechanisms, drink, food, a workshop, a manager, what a dwarf in a fey mood demands), it notices
+sooner or later by its style and traits and sees to it, and says so in its notes.
+
 Each overseer has a taste in halls, and its fortress follows a plan of halls first: a great
 hall with rooms opening off both sides and a cross hall at its end; mirrored wings on cross
 halls, every room with its twin; rooms round a pillared atrium; a grid of lanes with rooms back

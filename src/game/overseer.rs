@@ -169,6 +169,11 @@ pub struct Overseer {
     /// Work orders it raised to meet a shortage: (recipe, keep, until).
     #[serde(default)]
     pub boosts: Vec<(Recipe, u32, u64)>,
+    /// Who it is: a name and two traits (see `personality`).
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub traits: Vec<super::personality::Trait>,
     /// What it decided, newest last.
     pub notes: Vec<(u64, String)>,
 }
@@ -201,6 +206,8 @@ impl Overseer {
             army_since: 0,
             fixes: Vec::new(),
             boosts: Vec::new(),
+            name: String::new(),
+            traits: Vec::new(),
             notes: Vec::new(),
         }
     }
@@ -250,8 +257,12 @@ impl Game {
             Some(s) => {
                 let mut o = self.overseer.take().unwrap_or_else(|| Overseer::new(s));
                 o.style = s;
+                if o.name.is_empty() {
+                    self.roll_personality(&mut o);
+                }
+                let who = o.title();
                 self.overseer = Some(o);
-                self.msg(&format!("The overseer takes charge ({}: {}).", s.name(), s.blurb()), (150, 220, 255));
+                self.msg(&format!("The overseer {} takes charge ({}: {}).", who, s.name(), s.blurb()), (150, 220, 255));
             }
             None => {
                 if self.overseer.take().is_some() {
@@ -404,7 +415,7 @@ impl Game {
         o.top = Some(s);
         o.base = Some(base);
         o.slots = 0;
-        o.layout = Layout::pick(o.style, self.rng.range(0, 1000) as u32);
+        o.layout = self.pick_layout(o);
         Self::note(o, tick, format!("It means to lay the fortress out as {}.", o.layout.name()));
         if let Some(m) = self.candidates(Position::Manager).first().copied() {
             self.appoint(Position::Manager, Some(m));
@@ -743,6 +754,7 @@ impl Game {
     /// Keep a share of the adults under arms, the best fighters first.
     fn ov_army(&mut self, o: &mut Overseer) {
         let (share, from) = o.style.army();
+        let share = if o.has(super::personality::Trait::Cautious) { share + 0.08 } else { share };
         let adults = self.dwarves.iter().filter(|d| d.alive && !d.is_child()).count();
         let mut want = if adults >= from { ((adults as f64 * share).ceil() as usize).max(3) } else { 0 };
         if o.ambition == Some(Ambition::Muster) {
@@ -853,7 +865,9 @@ impl Game {
             } else if !any {
                 o.army_since = 0;
             }
-            let waited = any && self.tick > o.army_since + 150;
+            // (A cautious overseer bars the gate sooner, a bold one later.)
+            let patience = if o.has(super::personality::Trait::Cautious) { 60 } else if o.has(super::personality::Trait::Bold) { 260 } else { 150 };
+            let waited = any && self.tick > o.army_since + patience;
             let long = self.tick > o.raised_at + DAY * 4;
             let want = any && (at_gate || inside || waited) && !(long && !at_gate && o.raised_at > 0);
             let bridges = self.gate_bridges(base);
@@ -1193,6 +1207,9 @@ pub struct Trial {
     pub chronicles: Vec<String>,
     /// Ruin, Glory or Endured.
     pub verdict: String,
+    /// Who oversaw it ("Urist Gemcutter, cautious and vain").
+    #[serde(default)]
+    pub overseer: String,
     /// The last word on it: what ended it, or its greatest moment.
     pub epitaph: String,
     /// How each dwarf died and each siege went.
@@ -1406,6 +1423,7 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
         chronicles: g.chronicles.iter().map(|c| c.title.clone()).collect(),
         verdict,
         epitaph,
+        overseer: o.title(),
         deaths: g.annals.deaths.clone(),
         sieges: g.annals.sieges.clone(),
         alive_by_year,

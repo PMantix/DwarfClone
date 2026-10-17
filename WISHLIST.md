@@ -175,11 +175,14 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 #### O01 Overseer personalities (S)
 - **Why:** the layouts made each fort look different; the overseer itself should feel like
   someone. Today a style picks ambitions and a layout.
-- **Steps:** [ ] each overseer gets a name and two traits (cautious, bold, vain, pious, greedy,
-  sentimental...) that nudge its ambitions, layout, and how it reacts to deaths and sieges ·
-  [ ] the Brain screen shows them, its layout and its plan's progress · [ ] `A` lets you pick the
-  style, layout and traits, or roll them · [ ] its notes speak in its voice ("Grumbled that the
-  dining hall is too plain.")
+- **Steps:** [x] each overseer gets a name and two traits (cautious, bold, vain, pious, greedy,
+  sentimental, stubborn, cheerful) that lean its ambitions (a new sense in its brain, "Its
+  temper"), sway its layout, sharpen or blunt its eye for what the fortress lacks, and change
+  how soon it bars the gate and how many it keeps under arms (this commit) · [x] the brain and
+  the autoplay screen show who it is (this commit) · [x] `A` then `r` rolls another of the same
+  style (this commit) · [x] its notes on what it saw to speak in its voice ("Uneasy, it saw the
+  fortress short of stone…") (this commit) · [ ] pick the traits by hand · [ ] more of its
+  notes in its voice
 - **Done when:** two overseers with the same style but different traits build visibly different
   forts from the same seed.
 

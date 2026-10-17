@@ -49,8 +49,15 @@ impl Layout {
     }
 
     /// What a style tends to dig.
+    #[allow(dead_code)]
     pub fn pick(style: Style, roll: u32) -> Layout {
-        let options: &[Layout] = match style {
+        let options = Self::options(style);
+        options[roll as usize % options.len()]
+    }
+
+    /// The layouts a style leans to (repeats weigh more).
+    pub fn options(style: Style) -> &'static [Layout] {
+        match style {
             // A tidy mind likes halls; a builder likes a show; a delver digs
             // where the rock leads; a warlord wants barracks lanes.
             Style::Steady => &[Layout::Orderly, Layout::Grid, Layout::Symmetric, Layout::Radial, Layout::Spokes],
@@ -58,8 +65,7 @@ impl Layout {
             Style::Delver => &[Layout::Warren, Layout::Spokes, Layout::Sprawling, Layout::Grid],
             Style::Warlord => &[Layout::Grid, Layout::Orderly, Layout::Spokes, Layout::Symmetric],
             Style::Reckless => &[Layout::Sprawling, Layout::Warren, Layout::Orderly],
-        };
-        options[roll as usize % options.len()]
+        }
     }
 }
 

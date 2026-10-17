@@ -216,6 +216,7 @@ mod tests {
             ambitions: vec![],
             chronicles: vec![],
             verdict: if alive.last().map_or(true, |&a| a == 0) { "Ruin".into() } else { "Endured".into() },
+            overseer: String::new(),
             epitaph: String::new(),
             deaths: deaths
                 .into_iter()

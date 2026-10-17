@@ -3783,7 +3783,7 @@ fn draw_brain(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Rgb(120, 190, 255)))
-        .title(Span::styled(format!(" The overseer's mind ({}) ", o.style.name()), Style::default().fg(Color::Rgb(120, 190, 255))));
+        .title(Span::styled(format!(" The mind of {} ({}) ", o.title(), o.style.name()), Style::default().fg(Color::Rgb(120, 190, 255))));
     let inner = block.inner(r);
     f.render_widget(block, r);
     let cols = Layout::default().direction(Direction::Horizontal).constraints([Constraint::Min(40), Constraint::Length(44)]).split(inner);
@@ -3897,6 +3897,11 @@ fn draw_autoplay(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
         ]));
     }
     if let Some(o) = &g.overseer {
+        v.push(Line::default());
+        v.push(plain(format!(" The overseer: {}  (r: another)", o.title()), Color::Rgb(150, 210, 255)));
+        for t in &o.traits {
+            v.push(plain(format!("   {}: {}", t.name(), t.blurb()), MUTED));
+        }
         if let Some(a) = o.ambition {
             let days = g.tick.saturating_sub(o.ambition_since) / crate::game::DAY;
             v.push(Line::default());
