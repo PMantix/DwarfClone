@@ -89,6 +89,7 @@ impl Game {
     /// before the mind has a say. One line per item.
     pub(super) fn body_phase(&mut self, d: &mut Dwarf) {
         // M1 (survival): pressing a wound, being carried, a berserk fit.
+        self.maybe_press(d);
         self.fit_body(d);
     }
 }

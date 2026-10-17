@@ -73,6 +73,7 @@ pub mod captives;
 pub mod breakdowns;
 pub mod readiness;
 mod cistern;
+mod rescue;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -1586,6 +1587,7 @@ impl Game {
                     c.worker = None;
                 }
             }
+            Task::FirstAid { .. } | Task::Rescue { .. } => self.release_care(d),
             Task::Harvest { pos } | Task::Gather { pos } => {
                 self.claimed.remove(&pos);
             }
@@ -2309,7 +2311,9 @@ impl Game {
             Task::Slaughter { creature } => self.do_slaughter(d, creature),
             Task::Punish { culprit } => self.do_punish(d, culprit),
             // Not given out yet: the items that use them add their own arms.
-            Task::FirstAid { .. } | Task::Rescue { .. } | Task::Press => self.release_task(d),
+            Task::Rescue { .. } => self.release_task(d),
+            Task::FirstAid { patient, item } => self.do_first_aid(d, patient, item),
+            Task::Press => self.do_press(d),
             Task::Berserk => self.do_berserk(d),
             // (They lie where they are: breakdowns.rs.)
             Task::Catatonic => {
