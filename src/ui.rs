@@ -4071,10 +4071,10 @@ fn draw_expedition(f: &mut Frame, area: Rect, g: &Game, squad: usize, sel: usize
             crate::game::expeditions_goal::Raid => "raid",
             crate::game::expeditions_goal::Beast(_) => "hunt",
         };
-        let odds = strength as f64 / (strength as f64 + d.danger as f64 * 3.0);
-        let (word, col) = if odds >= 0.65 {
+        let odds = g.odds(&s.members, d);
+        let (word, col) = if odds >= 0.55 {
             ("likely", Color::Rgb(110, 220, 110))
-        } else if odds >= 0.4 {
+        } else if odds >= 0.25 {
             ("risky", Color::Rgb(230, 200, 90))
         } else {
             ("deadly", Color::Rgb(230, 110, 90))
@@ -4084,7 +4084,7 @@ fn draw_expedition(f: &mut Frame, area: Rect, g: &Game, squad: usize, sel: usize
             Span::styled(format!("{:<44}", d.name.chars().take(43).collect::<String>()), hi.fg(TEXT)),
             Span::styled(format!("{:>3} days  ", d.days()), hi.fg(MUTED)),
             Span::styled(format!("{:<8}", "☠".repeat(d.danger.clamp(1, 8) as usize)), hi.fg(Color::Rgb(230, 110, 90))),
-            Span::styled(word.to_string(), hi.fg(col)),
+            Span::styled(format!("{:<7}{:>3.0}%", word, odds * 100.0), hi.fg(col)),
         ]));
     }
     v.push(Line::default());
