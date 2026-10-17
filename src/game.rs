@@ -74,6 +74,7 @@ pub mod breakdowns;
 pub mod readiness;
 mod cistern;
 mod openings;
+mod archery;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;

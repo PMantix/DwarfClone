@@ -493,4 +493,109 @@ mod tests {
             assert_eq!((d.ammo, d.ammo_mat), (0, None), "an empty quiver forgets its bolts");
         }
     }
+
+    /// A goblin at a marksdwarf's elbow on open ground: they step back and
+    /// shoot between steps, and never swing the crossbow while they can
+    /// still back away.
+    #[test]
+    fn a_marksdwarf_backs_off_and_shoots() {
+        let mut g = Game::new(71);
+        g.creatures.retain(|_, c| c.tame);
+        g.dwarves.truncate(1);
+        let a = g.flat_patch(11, 11, 6).offset(5, 5, 0);
+        let id = g.dwarves[0].id;
+        let s = g.new_squad();
+        g.squads[s].weapon = UniformWeapon::Crossbow;
+        g.squads[s].armor = false;
+        g.set_squad_member(s, id, true);
+        let bow = g.spawn_item(ItemKind::Crossbow, Mat::Iron, a);
+        g.items.get_mut(&bow).unwrap().carried_by = Some(id);
+        // A goblin in iron, so it lasts out the test.
+        let gob = g.spawn_creature(Species::Goblin, a.offset(1, 0, 0), u64::MAX);
+        let helm = g.spawn_item(ItemKind::Helm, Mat::Iron, a);
+        let mail = g.spawn_item(ItemKind::Breastplate, Mat::Iron, a);
+        {
+            let c = g.creatures.get_mut(&gob).unwrap();
+            c.siege = true;
+            c.target = Some(id);
+            c.armor = vec![helm, mail];
+        }
+        g.alert = true;
+        let d = &mut g.dwarves[0];
+        d.pos = a;
+        d.held = Some(bow);
+        d.ammo = 10;
+        d.ammo_mat = Some(Mat::Wood);
+        d.task = Task::Attack { target: gob };
+        g.note_siege("goblins", 1, "nobody");
+        for _ in 0..100 {
+            g.step();
+            if !g.creatures.contains_key(&gob) || !g.dwarves[0].alive {
+                break;
+            }
+        }
+        let d = &g.dwarves[0];
+        let blows = g.annals.sieges[0].blows;
+        let (melee, shots) = (blows[crate::game::annals::BY_SOLDIER].0, blows[crate::game::annals::BY_BOLT].0);
+        let backoffs = g.annals.counters.get("archer.backoff").copied().unwrap_or(0);
+        eprintln!("shots {} melee {} backoffs {} ammo left {}", shots, melee, backoffs, d.ammo);
+        assert!(shots >= 3, "only {} shots in 100 ticks", shots);
+        assert_eq!(10 - d.ammo, shots, "every shot costs a bolt");
+        assert!(backoffs >= 3, "stepped back only {} times", backoffs);
+        assert_eq!(melee, 0, "swung the crossbow with bolts in the quiver");
+        assert!(g.log.iter().any(|l| l.text.contains("backs away from the goblin")), "no word of it");
+    }
+
+    /// Out of bolts with nothing close, a marksdwarf goes back for more; and
+    /// the overseer posts its crossbow squad back from the gate, with a clear
+    /// shot at it.
+    #[test]
+    fn an_empty_quiver_is_filled_and_archers_stand_back() {
+        let mut g = Game::new(71);
+        g.creatures.retain(|_, c| c.tame);
+        let a = g.open_patch(9, 3, 6).offset(0, 1, 0);
+        let id = g.dwarves[0].id;
+        let s = g.new_squad();
+        g.squads[s].weapon = UniformWeapon::Crossbow;
+        g.set_squad_member(s, id, true);
+        let bow = g.spawn_item(ItemKind::Crossbow, Mat::Iron, a);
+        g.items.get_mut(&bow).unwrap().carried_by = Some(id);
+        g.spawn_item(ItemKind::Bolt, Mat::Iron, a.offset(0, 2, 0));
+        let gob = g.spawn_creature(Species::Goblin, a.offset(9, 0, 0), u64::MAX);
+        let mut d = std::mem::take(&mut g.dwarves[0]);
+        d.pos = a;
+        d.held = Some(bow);
+        d.ammo = 0;
+        d.task = Task::Attack { target: gob };
+        g.do_attack(&mut d, gob);
+        assert!(matches!(d.task, Task::Equip { .. }), "should go for bolts, not {:?}", d.task);
+        // With the goblin at their elbow, they fight with what they have.
+        let mut d2 = d.clone();
+        g.release_task(&mut d2);
+        g.creatures.get_mut(&gob).unwrap().pos = a.offset(1, 0, 0);
+        d2.task = Task::Attack { target: gob };
+        g.do_attack(&mut d2, gob);
+        assert!(matches!(d2.task, Task::Attack { .. }));
+        g.dwarves[0] = d;
+
+        // The station: only for a second squad on crossbows, 5-7 tiles in,
+        // in sight of the gate.
+        let base = a;
+        let s2 = g.new_squad();
+        assert_eq!(g.archer_station(s, base), None, "the first squad holds the gate itself");
+        g.squads[s2].weapon = UniformWeapon::Best;
+        assert_eq!(g.archer_station(s2, base), None);
+        g.squads[s2].weapon = UniformWeapon::Crossbow;
+        let st = g.archer_station(s2, base).expect("open ground has a spot");
+        assert!((5..=7).contains(&(st.x - base.x)) && g.clear_shot(st, base.offset(1, 0, 0)));
+
+        // The overseer hands the second squad crossbows once two of metal are about, and says so.
+        let mut o = crate::game::overseer::Overseer::new(crate::game::overseer::Style::Steady);
+        g.squads[s2].weapon = UniformWeapon::Best;
+        assert_eq!(g.archer_uniform(&mut o, s2), None, "one metal crossbow isn't enough");
+        g.spawn_item(ItemKind::Crossbow, Mat::Bronze, a);
+        assert_eq!(g.archer_uniform(&mut o, s2), Some(UniformWeapon::Crossbow));
+        assert_eq!(g.archer_uniform(&mut o, s), None, "the first squad keeps its uniform");
+        assert!(o.notes.iter().any(|(_, n)| n.contains("metal crossbows")), "{:?}", o.notes);
+    }
 }

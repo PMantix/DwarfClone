@@ -232,6 +232,14 @@ impl Game {
                 return;
             }
             if let Some(&(cid, _)) = threats.iter().find(|(_, p)| adjacent(*p, d.pos)) {
+                // A marksdwarf with bolts steps back to shoot rather than swing (archery.rs).
+                if d.soldier && self.keeps_distance(d) {
+                    if !matches!(d.task, Task::Attack { .. }) {
+                        self.release_task(d);
+                        d.task = Task::Attack { target: cid };
+                    }
+                    return;
+                }
                 let struck_recently = d.attacker.map_or(false, |(_, t)| self.tick < t + 40);
                 if d.soldier || struck_recently || d.tantrum > 0 {
                     self.dwarf_attack(d, cid);
@@ -240,6 +248,7 @@ impl Game {
             }
         }
         if d.soldier {
+            self.archer_awareness(d);
             if !threats.is_empty() && !matches!(d.task, Task::Attack { .. }) && self.alert {
                 let nearest = threats.iter().min_by_key(|(_, p)| dist2(*p, d.pos)).unwrap().0;
                 if !d.task.is_need() || d.task == Task::Flee {
@@ -318,6 +327,9 @@ impl Game {
             d.task = Task::Idle;
             return;
         };
+        if self.archer_attack(d, target, cpos) {
+            return;
+        }
         if adjacent(cpos, d.pos) {
             if d.attack_cd == 0 {
                 self.dwarf_attack(d, target);

@@ -730,7 +730,13 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
         Task::Rest { .. } => "Resting injury".into(),
         Task::Equip { item } => format!("Picking up {}", iname(*item)),
         Task::Attack { target } => {
-            format!("Fighting the {}", g.creatures.get(target).map_or("enemy", |c| c.name()))
+            let what = g.creatures.get(target).map_or("enemy", |c| c.name());
+            let bow = d.held.and_then(|id| g.items.get(&id)).map_or(false, |it| it.kind == ItemKind::Crossbow);
+            if bow && d.ammo > 0 {
+                format!("Shooting at the {} ({}, {} bolts)", what, if d.attack_cd > 0 { "reloading" } else { "loaded" }, d.ammo)
+            } else {
+                format!("Fighting the {}", what)
+            }
         }
         Task::Station { .. } => "Going to station".into(),
         Task::Train => "Combat drill".into(),
