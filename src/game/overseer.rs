@@ -1948,7 +1948,7 @@ mod tests {
         let g = trial_game(5003, Style::Steady, 213);
         assert_eq!(g.tick, 213 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
-        assert_eq!(deaths, vec![(254420, "Nothar Alehold"), (254580, "Dorna Stonebeard"), (254700, "Thekla Deepvein"), (255580, "Ragni Granitebrew")]);
+        assert_eq!(deaths, vec![(223300, "Perrin Frostshaper"), (223730, "Dorna Stonebeard"), (224230, "Dorna Copperfist"), (224380, "Sorli Stonebrew")]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
     }
 }

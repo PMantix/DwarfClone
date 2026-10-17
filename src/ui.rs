@@ -2977,6 +2977,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                     "Peaceful"
                 };
                 v.push(plain(state.into(), if c.hostile() { Color::Rgb(255, 100, 90) } else { detail_col }));
+                if let Some(mood) = g.wild_mood(c) {
+                    v.push(plain(mood, Color::Rgb(255, 190, 110)));
+                }
                 if let Some(w) = c.weapon.and_then(|id| g.items.get(&id)) {
                     v.push(plain(format!("Wields {}", w.name()), detail_col));
                 }

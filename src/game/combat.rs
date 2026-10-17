@@ -33,7 +33,7 @@ pub(super) fn near(a: Pos, b: Pos, r: i32) -> bool {
     (a.z - b.z).abs() <= 1 && (a.x - b.x).abs() <= r && (a.y - b.y).abs() <= r
 }
 
-fn dist2(a: Pos, b: Pos) -> i32 {
+pub(super) fn dist2(a: Pos, b: Pos) -> i32 {
     (a.x - b.x).pow(2) + (a.y - b.y).pow(2) + 4 * (a.z - b.z).pow(2)
 }
 
@@ -134,7 +134,7 @@ impl Game {
     /// Whether a creature has a way to `p`, remembered for a little while
     /// (asked every few ticks by every dwarf, and a beast sealed off in the
     /// caverns would otherwise be searched for each time).
-    fn can_reach(&self, c: &Creature, p: Pos, limit: usize) -> bool {
+    pub(super) fn can_reach(&self, c: &Creature, p: Pos, limit: usize) -> bool {
         let key = (c.id, c.pos.x / 3, c.pos.y / 3, c.pos.z, p.x / 3, p.y / 3, p.z);
         let mut cache = self.reach_cache.borrow_mut();
         if let Some(&(at, ok, ver)) = cache.get(&key) {
@@ -507,55 +507,6 @@ impl Game {
                 let p = self.spot_near(c, 2);
                 self.spawn_creature(Species::Troglodyte, p, u64::MAX);
             }
-        }
-    }
-
-    /// What lives in this land: something to graze, something that hunts
-    /// in packs, and something rare and dangerous.
-    pub fn fauna(&self) -> (Species, Species, Species) {
-        match self.biome {
-            Biome::Taiga => (Species::Elk, Species::Wolf, Species::Bear),
-            Biome::Tundra | Biome::Glacier => (Species::Elk, Species::Wolf, Species::PolarBear),
-            Biome::Mountain => (Species::Ibex, Species::Wolf, Species::Bear),
-            Biome::Desert => (Species::Camel, Species::Scorpion, Species::Viper),
-            Biome::Badlands => (Species::Ibex, Species::Scorpion, Species::Viper),
-            Biome::Savanna => (Species::Antelope, Species::Lion, Species::Lion),
-            Biome::Jungle => (Species::Deer, Species::Jaguar, Species::Viper),
-            Biome::Swamp => (Species::Deer, Species::Viper, Species::Alligator),
-            _ => (Species::Deer, Species::Wolf, Species::Bear),
-        }
-    }
-
-    pub(super) fn wildlife(&mut self) {
-        if !self.rng.chance(self.knob("wildlife.chance", 0.18)) {
-            return;
-        }
-        let Some(entry) = self.edge_entry() else { return };
-        self.count("wildlife.visits", 1);
-        let roll = self.rng.f64();
-        let tame = 1.0 - self.savagery.clamp(0.05, 0.9) * 0.7;
-        let (calm, pack, rare) = self.fauna();
-        let (mut species, n) = if roll < tame || self.tick < SEASON {
-            (calm, self.rng.range(2, 5))
-        } else if roll < 0.95 || self.tick < YEAR {
-            (pack, self.rng.range(2, 4))
-        } else {
-            (rare, 1)
-        };
-        // Evil land sends its dead.
-        if self.evil && species.info().aggro > 0 && self.rng.chance(0.5) {
-            species = Species::Husk;
-        }
-        let stay = DAY * self.rng.range(2, 5) as u64;
-        for _ in 0..n {
-            let p = self.spot_near(entry, 2);
-            self.spawn_creature(species, p, stay);
-        }
-        let info = species.info();
-        if info.aggro > 0 {
-            let a = if info.name.starts_with(|c: char| "aeiou".contains(c)) { "An" } else { "A" };
-            let what = if n > 1 { format!("A pack of {}", info.plural) } else { format!("{} {}", a, info.name) };
-            self.msg(&format!("{} has been spotted nearby.", what), (255, 170, 80));
         }
     }
 
@@ -1071,6 +1022,7 @@ impl Game {
             self.dragon_hoard(&c);
         }
         self.pet_died(&c);
+        self.pack_breaks(&c);
         if let Some(f) = c.figure {
             let label = c.title();
             let kind = self.overworld.figures.get(f as usize).map_or("beast".to_string(), |x| x.kind.clone());
@@ -1168,6 +1120,7 @@ impl Game {
             c.path.clear();
             self.msg(&format!("The wounded {} flees!", info.name), (160, 230, 160));
         }
+        self.wild_nerve(c);
         c.attack_cd = c.attack_cd.saturating_sub(1);
         c.breath_cd = c.breath_cd.saturating_sub(1);
         c.move_cd = c.move_cd.saturating_sub(1);
@@ -1401,18 +1354,7 @@ impl Game {
             }
             return;
         }
-        if c.target.is_none() {
-            // The nearest dwarf it can actually get to (a beast in a sealed
-            // cavern doesn't wear itself out hunting dwarves through rock).
-            let r = info.aggro;
-            let mut prey: Vec<(u32, Pos)> = dwarves.iter().copied().filter(|(_, p)| near(*p, c.pos, r)).collect();
-            prey.sort_by_key(|(_, p)| dist2(*p, c.pos));
-            let limit = (r * r * 8).clamp(400, 4000) as usize;
-            c.target = prey.iter().find(|(_, p)| self.can_reach(c, *p, limit)).map(|(id, _)| *id);
-            if c.target.is_none() && !prey.is_empty() {
-                c.think_cd = 90;
-            }
-        }
+        self.predator_think(c);
     }
 
     fn creature_attack(&mut self, c: &Creature, di: usize) {
