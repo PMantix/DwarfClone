@@ -879,7 +879,9 @@ impl Game {
     }
 
     /// An army of `foe`'s people arrives at the edge of the map, led by a
-    /// general out of their history.
+    /// general out of their history. (Sieges now come through scouts and
+    /// `incoming`; tests use this to bring one at once.)
+    #[cfg(test)]
     pub(crate) fn lay_siege(&mut self, foe: &Neighbor) {
         let n = (3 + self.alive_count() as u32 / 4).min(if self.siege_size == 0 { 5 } else { 20 });
         self.lay_siege_of(foe, n, None);

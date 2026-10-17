@@ -19,7 +19,11 @@ STARTING THE GAME
 FIRST STEPS
 -----------
 - New world: pick settings (or just press Enter), watch history play out,
-  accept, then choose a site on the world map and embark.
+  accept, then choose a site on the world map and press Enter. A card shows
+  the land and its neighbours: Play now takes the usual party and wagon,
+  Prepare carefully lets you spend points on skills and supplies first.
+- Mouse: drag on the map to mark a box (a click marks one tile);
+  Ctrl+Z undoes the last designation.
 - Press ? at any time for the key list.
 - Space pauses and unpauses. + and - change speed.
 - d digs, b builds, i makes zones (farms, meeting hall, bedrooms...),
