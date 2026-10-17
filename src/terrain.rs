@@ -130,7 +130,17 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
     let mut rng = Rng::new(seed ^ 0x7777);
     let mut frng = Rng::new(seed ^ 0xC3C3);
     let (w0, h0) = base;
-    let river = has(feat::RIVER).then(|| Course::new(seed, 0x1A1A, base, frng.chance(0.5)));
+    // The river runs the way the world map draws it through the cell
+    // (across for east-west, down for north-south; a bend either way).
+    let river = has(feat::RIVER).then(|| {
+        let coin = frng.chance(0.5);
+        let across = match (params.river & 10 != 0, params.river & 5 != 0) {
+            (true, false) => true,
+            (false, true) => false,
+            _ => coin,
+        };
+        Course::new(seed, 0x1A1A, base, across)
+    });
     let chasm = has(feat::CHASM).then(|| Course::new(seed, 0x2B2B, base, frng.chance(0.5)));
     let volcano = has(feat::VOLCANO).then(|| (frng.range(w0 / 4, (3 * w0 / 4).max(w0 / 4 + 1)), frng.range(h0 / 4, (3 * h0 / 4).max(h0 / 4 + 1))));
     let oasis = has(feat::OASIS).then(|| (frng.range(w0 / 5, (4 * w0 / 5).max(w0 / 5 + 1)), frng.range(h0 / 5, (4 * h0 / 5).max(h0 / 5 + 1))));

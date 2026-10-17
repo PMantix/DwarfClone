@@ -331,7 +331,7 @@ mod tests {
 
     #[test]
     fn wild_weather_storms_blizzards_droughts_and_blood_rain() {
-        let mut g = Game::new(81);
+        let mut g = Game::new(1);
         g.biome = Biome::Forest;
         g.evil = true;
         g.tick = SEASON + DAY * 3;

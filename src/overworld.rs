@@ -59,6 +59,9 @@ pub struct EmbarkParams {
     /// everywhere, as before).
     pub home: (i32, i32),
     pub around: Vec<Around>,
+    /// The site cell's river links on the world map (1 north, 2 east,
+    /// 4 south, 8 west), so the river on the fortress map runs the same way.
+    pub river: u8,
 }
 
 impl Biome {
@@ -145,6 +148,7 @@ impl Biome {
             biome: Biome::Grassland,
             home: (0, 0),
             around: Vec::new(),
+            river: 0,
         };
         let mut e = match self {
             Biome::Mountain => p(1.6, 0.3, 0.03, 0.3),
@@ -497,6 +501,8 @@ pub struct WorldGen {
     stage: GenStage,
     /// Raises or lowers the land so about the same share of every world is sea.
     sea_shift: f64,
+    /// Each river's course, spring first (for checking they run downhill).
+    pub rivers: Vec<Vec<(i32, i32)>>,
 }
 
 impl WorldGen {
@@ -533,6 +539,7 @@ impl WorldGen {
             row: 0,
             stage: GenStage::Terrain,
             sea_shift: 0.0,
+            rivers: Vec::new(),
         }
         .with_sea_level()
     }
@@ -680,12 +687,14 @@ impl WorldGen {
         }
     }
 
-    /// Rivers run from the wet heights down to the sea (or pool into lakes),
-    /// and a few mountains smoulder. Its own random stream, so the history
-    /// that follows is the same with or without them.
+    /// Rivers spring in the heights and run only downhill, to the sea, into
+    /// another river, or into a hollow where they pool as a lake; and a few
+    /// mountains smoulder. Its own random stream, so the history that
+    /// follows is the same with or without them.
     fn rivers_and_fire(&mut self) {
         let (w, h) = (self.ow.w, self.ow.h);
         let mut rng = Rng::new(self.params.seed ^ 0x51FE5);
+        // The jitter only breaks ties between cells of the same height.
         let hgt: Vec<f64> = (0..w * h).map(|i| self.ow.cells[i as usize].elev as f64 + rng.range(0, 100) as f64 * 0.01).collect();
         let idx = |x: i32, y: i32| (y * w + x) as usize;
         let dirs = [(0, -1, 1u8, 4u8), (1, 0, 2, 8), (0, 1, 4, 1), (-1, 0, 8, 2)];
@@ -702,7 +711,7 @@ impl WorldGen {
             let mut end = None;
             for _ in 0..300 {
                 let (cx, cy) = *path.last().unwrap();
-                let here = hgt[idx(cx, cy)];
+                let here = self.ow.cells[idx(cx, cy)].elev;
                 // The lowest neighbour not yet on this river.
                 let next = dirs
                     .iter()
@@ -710,18 +719,23 @@ impl WorldGen {
                     .filter(|&(nx, ny)| nx >= 0 && ny >= 0 && nx < w && ny < h && !seen.contains(&(nx, ny)))
                     .min_by(|a, b| hgt[idx(a.0, a.1)].partial_cmp(&hgt[idx(b.0, b.1)]).unwrap());
                 let Some((nx, ny)) = next else { break };
-                if hgt[idx(nx, ny)] > here + 6.0 {
-                    // A hollow with no way out: it fills into a lake.
+                let nc = &self.ow.cells[idx(nx, ny)];
+                if nc.elev > here {
+                    // Every way on climbs: a hollow, which fills into a lake.
                     end = Some(false);
                     break;
                 }
-                let nc = &self.ow.cells[idx(nx, ny)];
                 path.push((nx, ny));
                 seen.insert((nx, ny));
                 if nc.biome == Biome::Ocean || nc.river != 0 {
                     end = Some(true);
                     break;
                 }
+            }
+            // The spring is where the water leaves the mountains: a river
+            // never runs along a range (or over one).
+            if let Some(k) = path.iter().rposition(|&(px, py)| self.ow.cells[idx(px, py)].biome == Biome::Mountain) {
+                path.drain(..k);
             }
             if path.len() < 6 || end.is_none() {
                 continue;
@@ -734,15 +748,20 @@ impl WorldGen {
                     self.ow.cells[idx(bx, by)].river |= inn;
                 }
             }
+            self.rivers.push(path.clone());
             if end == Some(false) {
                 let &(lx, ly) = path.last().unwrap();
+                let low = self.ow.cells[idx(lx, ly)].elev;
                 for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1), (-1, 0)] {
                     let (px, py) = (lx + dx, ly + dy);
                     let inside = px > 0 && py > 0 && px < w - 1 && py < h - 1;
                     if inside && ((dx, dy) == (0, 0) || rng.chance(0.5)) {
                         let c = &mut self.ow.cells[idx(px, py)];
-                        if c.biome != Biome::Mountain {
+                        // The lake spreads over the hollow's floor, not up
+                        // the slopes or over another river.
+                        if (dx, dy) == (0, 0) || (c.biome != Biome::Mountain && c.river == 0 && c.elev <= low.saturating_add(4)) {
                             c.biome = Biome::Ocean;
+                            c.elev = c.elev.min(low);
                             c.river = 0;
                             c.evil = false;
                         }
@@ -1107,6 +1126,7 @@ impl Overworld {
         p.aquifer = self.aquifer(sx, sy);
         p.features = self.site_features(seed, sx, sy);
         p.home = (sx, sy);
+        p.river = self.cell(sx, sy).river;
         for dy in -3..=3 {
             for dx in -3..=3 {
                 let (x, y) = (sx + dx, sy + dy);
@@ -1120,10 +1140,11 @@ impl Overworld {
     }
 
     /// The site's features: its own roll, plus what the world map shows
-    /// (a river through the cell, a volcano on it).
+    /// (a volcano on the cell). A river is there exactly when the map
+    /// draws one through the cell.
     pub fn site_features(&self, seed: u64, x: i32, y: i32) -> u32 {
         let c = self.cell(x, y);
-        let mut bits = crate::terrain::site_features(seed, x, y, c.biome);
+        let mut bits = crate::terrain::site_features(seed, x, y, c.biome) & !crate::terrain::feat::RIVER;
         if c.river != 0 {
             bits |= crate::terrain::feat::RIVER;
         }
@@ -1635,6 +1656,8 @@ impl Overworld {
                 if c.river != 0 {
                     score += 15;
                 }
+                // Water-bearing rock makes a hard first dig.
+                score -= 12 * self.aquifer(x, y) as i32;
                 let lat = (y as f64 / self.h as f64 - 0.5).abs();
                 if lat > 0.32 {
                     score -= 25;
@@ -1718,6 +1741,49 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn rivers_run_downhill_from_the_heights() {
+        for seed in [1u64, 7, 42, 99, 5003] {
+            let mut g = WorldGen::new(WorldParams { seed, ..WorldParams::default() });
+            while g.stage == GenStage::Terrain {
+                g.step(usize::MAX, 0);
+            }
+            let ow = &g.ow;
+            assert!(g.rivers.len() >= 5, "seed {}: only {} rivers", seed, g.rivers.len());
+            let mut on_course = std::collections::HashSet::new();
+            for r in &g.rivers {
+                let spring = ow.cell(r[0].0, r[0].1);
+                assert!(spring.elev >= 150, "seed {}: a river springs low, at {}", seed, spring.elev);
+                for i in 1..r.len() {
+                    let (a, b) = (ow.cell(r[i - 1].0, r[i - 1].1), ow.cell(r[i].0, r[i].1));
+                    assert!(b.elev <= a.elev, "seed {}: river climbs from {} to {} at {:?}", seed, a.elev, b.elev, r[i]);
+                    assert!(b.biome != Biome::Mountain, "seed {}: river crosses mountains at {:?}", seed, r[i]);
+                }
+                on_course.extend(r.iter().copied());
+            }
+            // Every river cell on the map lies on one of those courses.
+            for y in 0..ow.h {
+                for x in 0..ow.w {
+                    if ow.cell(x, y).river != 0 {
+                        assert!(on_course.contains(&(x, y)), "seed {}: stray river at {:?}", seed, (x, y));
+                    }
+                }
+            }
+            // A site has a river exactly where the map draws one, and the
+            // default site still likes one.
+            let ow = g.finish();
+            for y in 0..ow.h {
+                for x in 0..ow.w {
+                    let has = ow.site_features(seed, x, y) & crate::terrain::feat::RIVER != 0;
+                    assert_eq!(has, ow.cell(x, y).river != 0, "seed {}: river feature at {:?}", seed, (x, y));
+                }
+            }
+            let (x, y) = ow.default_site();
+            assert!(ow.cell(x, y).river != 0, "seed {}: default site without a river", seed);
+            assert_eq!(ow.embark_params(seed, x, y, crate::world::MapSize::MEDIUM).river, ow.cell(x, y).river);
+        }
+    }
+
     #[test]
     fn world_has_history() {
         for seed in 1..4 {

@@ -107,18 +107,24 @@ mod tests {
         assert_eq!(
             deaths,
             vec![
-                (158085, "Nothar Alehold", "struck down"),
-                (158570, "Grenda Anvilbrew", "struck down"),
-                (159678, "Dorna Stonebeard", "struck down"),
-                (159880, "Odda Stonefist", "bled to death"),
-                (382530, "Borra Coalhelm", "struck down"),
-                (382680, "Kolvar Silverhold", "struck down"),
+                (152553, "Sigga Embermantle", "starvation"),
+                (188450, "Ingra Goldbrew", "struck down"),
+                (218830, "Borra Coalhold", "starvation"),
+                (241709, "Thekla Copperhold", "struck down"),
+                (242440, "Ulmek Coalcrown", "bled to death"),
+                (242611, "Ingra Alemantle", "struck down"),
+                (242910, "Thekla Stonefist", "bled to death"),
+                (268820, "Morik Flintmantle", "bled to death"),
+                (269580, "Gruni Granitefist", "bled to death"),
             ]
         );
         let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
         assert_eq!(sieges, vec![]);
-        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (11, 4736, 22));
-        assert_eq!(t.ambitions, ["Revel", "Fortify", "Prosper", "Revel", "Expand", "Prosper", "Revel", "Delve"]);
+        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (6, 4805, 31));
+        assert_eq!(
+            t.ambitions,
+            ["Prosper", "Expand", "Provision", "Expand", "Prosper", "Architect", "Fortify", "Provision", "Architect", "Revel", "Expand", "Architect", "Expand", "Revel", "Expand", "Architect", "Expand", "Revel", "Muster"]
+        );
     }
 
     /// The tasks the survival items will hand out are in place but do nothing
