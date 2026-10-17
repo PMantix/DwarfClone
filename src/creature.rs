@@ -631,6 +631,9 @@ pub struct Creature {
     /// Ticks until it can breathe fire again.
     #[serde(default)]
     pub breath_cd: u32,
+    /// The hunting pack it came with (the first of them's id), 0 if none.
+    #[serde(default)]
+    pub pack: u32,
 }
 
 fn yes() -> bool {
@@ -675,6 +678,7 @@ impl Creature {
             visitor: 0,
             breathes_fire: false,
             breath_cd: 0,
+            pack: 0,
         }
     }
 
