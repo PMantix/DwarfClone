@@ -1,7 +1,8 @@
 //! The overseer hunts predators (MIL-03): when wild beasts prowl near the
 //! fort and a squad is fit to face them, it sends the squad out after them,
 //! one pack member at a time, and calls it home when an army comes, when
-//! the beasts get away or when the squad is too hurt to go on.
+//! the beasts get away or when the squad is too hurt to go on. While a
+//! pack prowls near, work outdoors waits.
 
 use super::military::SquadOrder;
 use super::overseer::{Overseer, Style};
@@ -9,9 +10,13 @@ use super::personality::Trait;
 use super::*;
 use serde::{Deserialize, Serialize};
 
-/// The overseer's hunting: the hunt under way, if any.
+/// The overseer's hunting: the hunt under way, if any, and a short ban on
+/// work outdoors while beasts prowl near.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Hunts {
+    /// Nobody starts work outdoors (chopping, gathering, fishing) before this tick.
+    #[serde(default)]
+    pub outdoor_ban_until: u64,
     /// The hunt under way.
     #[serde(default)]
     pub on: Option<Hunt>,
@@ -51,6 +56,11 @@ fn number(n: u32) -> String {
 }
 
 impl Game {
+    /// Work outdoors waits: beasts prowl near (the finder table checks this).
+    pub(super) fn outdoors_banned(&self) -> bool {
+        self.tick < self.hunts.outdoor_ban_until
+    }
+
     /// Every ten ticks (overseer_hooks.rs): keep a hunt going, or start one.
     pub(super) fn ov_hunts(&mut self, o: &mut Overseer) {
         // The reckless pay the beasts no mind.
@@ -60,6 +70,7 @@ impl Game {
         let (Some(top), Some(base)) = (o.top, o.base) else { return };
         let war = self.incoming.is_some() || self.creatures.values().any(|c| c.alive && c.siege && c.hostile());
         let prowlers = self.prowlers_about(top, base);
+        self.keep_indoors(top, &prowlers);
         if self.hunts.on.is_some() {
             self.hunt_goes_on(o, top, base, war);
         } else if !war && !prowlers.is_empty() {
@@ -76,6 +87,46 @@ impl Game {
             }
         }
         v
+    }
+
+    /// Beasts within 20 (knob hunt.ban_range) of the stair or of anyone
+    /// working outdoors: those at outdoor work stop, and nobody starts any for
+    /// a little while (knob hunt.ban, 300 ticks). Those closer still flee as
+    /// ever.
+    fn keep_indoors(&mut self, top: Pos, prowlers: &[(u32, Pos, u32)]) {
+        if prowlers.is_empty() {
+            return;
+        }
+        let r = self.knob("hunt.ban_range", 20.0) as i32;
+        let near = |p: Pos| prowlers.iter().any(|&(_, q, _)| (q.x - p.x).abs() <= r && (q.y - p.y).abs() <= r && (q.z - p.z).abs() <= 6);
+        let outdoor = |g: &Game, t: &Task| match *t {
+            Task::Dig { target, .. } => g.world.outside(target),
+            Task::Gather { .. } | Task::Fish { .. } => true,
+            Task::Plant { pos, .. } | Task::Harvest { pos } => g.world.outside(pos),
+            _ => false,
+        };
+        let workers: Vec<usize> = (0..self.dwarves.len())
+            .filter(|&i| {
+                let d = &self.dwarves[i];
+                d.alive && !d.soldier && self.world.outside(d.pos) && near(d.pos) && outdoor(self, &d.task)
+            })
+            .collect();
+        if workers.is_empty() && !near(top) {
+            return;
+        }
+        if !self.outdoors_banned() {
+            let what = self.creatures.get(&prowlers[0].0).map_or("beasts", |c| c.species.info().plural);
+            self.warn("outdoor_ban", &format!("The {} prowl near the fort: work outdoors waits.", what), (240, 200, 120));
+            self.count("outdoor_bans", 1);
+        }
+        self.hunts.outdoor_ban_until = self.tick + self.knob("hunt.ban", 300.0) as u64;
+        for i in workers {
+            let mut d = std::mem::take(&mut self.dwarves[i]);
+            self.release_task(&mut d);
+            d.task = Task::Idle;
+            d.path.clear();
+            self.dwarves[i] = d;
+        }
     }
 
     /// A soldier fit to go hunting: here, on their feet, unhurt and armed.
@@ -336,6 +387,39 @@ mod tests {
         }
         assert!(g.hunts.on.is_none());
         assert!(g.overworld.events.iter().any(|e| e.text.contains("killed two wolves")), "no chronicle line");
+    }
+
+    /// A woodcutter at work with a wolf 12 tiles off stops, and nobody
+    /// takes up chopping until the ban runs out.
+    #[test]
+    fn work_outdoors_waits_while_wolves_prowl() {
+        let (mut g, _, squad) = fort(21, Style::Steady);
+        let at = out_by(&g, 10);
+        let id = g.dwarves.iter().find(|d| d.alive && !d.is_child() && !squad.contains(&d.id)).unwrap().id;
+        {
+            let d = g.dwarves.iter_mut().find(|d| d.id == id).unwrap();
+            d.pos = at;
+            d.task = Task::Dig { target: at, stand: at };
+            d.labors[Labor::Woodcutting.idx()] = true;
+        }
+        assert!(!g.outdoors_banned());
+        let wolf = g.spawn_creature(Species::Wolf, at.offset(12, 0, 0), u64::MAX);
+        let mut o = g.overseer.take().unwrap();
+        g.ov_hunts(&mut o);
+        assert!(g.outdoors_banned());
+        assert_eq!(g.annals.counters.get("outdoor_bans").copied(), Some(1));
+        let i = g.dwarves.iter().position(|d| d.id == id).unwrap();
+        let mut d = std::mem::take(&mut g.dwarves[i]);
+        assert_eq!(d.task, Task::Idle);
+        let chop = super::super::finders::FINDERS.iter().find(|f| f.0 == "chop").unwrap().1;
+        assert!(!chop(&mut g, &mut d), "chopping while the wolf prowls");
+        // The wolf moves on; the ban runs out.
+        g.creatures.remove(&wolf);
+        g.tick += 301;
+        g.ov_hunts(&mut o);
+        assert!(!g.outdoors_banned());
+        g.dwarves[i] = d;
+        g.overseer = Some(o);
     }
 
     #[test]

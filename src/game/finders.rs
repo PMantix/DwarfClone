@@ -19,9 +19,10 @@ pub(super) const FINDERS: &[(&str, Finder)] = &[
     ("craft", |g, d| g.find_craft(d)),
     ("detail", |g, d| d.has(Labor::Engraving) && g.find_detail(d)),
     ("mine", |g, d| d.has(Labor::Mining) && g.find_dig(d, false)),
-    ("chop", |g, d| d.has(Labor::Woodcutting) && g.find_dig(d, true)),
-    ("farm", |g, d| d.has(Labor::Farming) && (g.find_farm(d) || g.find_gather(d))),
-    ("fish", |g, d| d.has(Labor::Fishing) && g.find_fishing(d)),
+    // Outdoor work waits while beasts prowl near (hunts.rs).
+    ("chop", |g, d| d.has(Labor::Woodcutting) && !g.outdoors_banned() && g.find_dig(d, true)),
+    ("farm", |g, d| d.has(Labor::Farming) && (g.find_farm(d) || !g.outdoors_banned() && g.find_gather(d))),
+    ("fish", |g, d| d.has(Labor::Fishing) && !g.outdoors_banned() && g.find_fishing(d)),
     // Specialists don't haul; the depot and the dump come before the stockpiles.
     ("haul", |g, d| d.has(Labor::Hauling) && !d.specialist && (g.find_depot_haul(d) || g.find_dump_haul(d) || g.find_haul(d))),
 ];
