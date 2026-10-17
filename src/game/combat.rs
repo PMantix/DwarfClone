@@ -997,6 +997,7 @@ impl Game {
             o.target = None;
             o.path.clear();
         }
+        self.parting_swings_on_rout();
         let who = match self.siege_race {
             Some(Race::Human) => "human soldiers",
             Some(Race::Elf) => "elves",
@@ -2006,6 +2007,61 @@ mod tests {
         }
         assert!(!g2.dwarves[0].alive, "alone, the fallen dwarf should be finished");
         assert!(g2.annals.counters.get("finished").copied().unwrap_or(0) >= 1);
+    }
+
+    /// The WISHLIST's "done when" for S07, as far as a raid of four can
+    /// give it: four soldiers in iron (axe, helm, mail, shield) holding a
+    /// station against four goblins break them by killing them. The raid
+    /// routs once fewer than half are left (`check_rout`), so the last one
+    /// (or three, if the general falls first) gets away; "at least one each"
+    /// would need the soldiers to catch goblins as fast as they are. So: the
+    /// raid is routed rather than withdrawing, and in most forts it leaves
+    /// three dead behind. (Before the openings, the same forts saw three
+    /// withdrawals, 2.3 goblins slain a raid and three of ten with three slain;
+    /// with them, ten routs, 2.6 slain and seven of ten.)
+    #[test]
+    fn soldiers_in_metal_kill_their_goblins() {
+        let mut table = Vec::new();
+        for seed in 0..10u64 {
+            let mut g = Game::new(900 + seed);
+            g.creatures.retain(|_, c| c.tame);
+            let e = g.embark;
+            let s = g.new_squad();
+            let ids: Vec<u32> = g.dwarves.iter().filter(|d| !d.is_child()).take(4).map(|d| d.id).collect();
+            for &id in &ids {
+                g.set_squad_member(s, id, true);
+                let kit: Vec<u32> = [ItemKind::Axe, ItemKind::Helm, ItemKind::Breastplate, ItemKind::Shield]
+                    .iter()
+                    .map(|&k| g.spawn_item(k, Mat::Iron, e))
+                    .collect();
+                for &it in &kit {
+                    g.items.get_mut(&it).unwrap().carried_by = Some(id);
+                }
+                let d = g.dwarves.iter_mut().find(|d| d.id == id).unwrap();
+                d.held = Some(kit[0]);
+                d.armor = kit[1..].to_vec();
+            }
+            g.order_station(s, e);
+            run(&mut g, DAY / 4);
+            let civ = g.civ.map_or(0, |c| if c == 0 { 1 } else { 0 });
+            g.overworld.civs[civ as usize].alive = true;
+            let foe = Neighbor { civ, race: Race::Goblin, dist: 5 };
+            g.lay_siege_of(&foe, 4, None);
+            let lost0 = g.dwarves.iter().filter(|d| !d.alive).count();
+            run(&mut g, DAY);
+            let siege = g.annals.sieges.last().unwrap();
+            let lost = g.dwarves.iter().filter(|d| !d.alive).count() - lost0;
+            let kills: Vec<u32> = g.dwarves.iter().filter(|d| ids.contains(&d.id)).map(|d| d.kills).collect();
+            table.push((900 + seed, siege.foes_slain, siege.outcome.clone(), lost, kills));
+        }
+        eprintln!("seed, goblins slain, outcome, dwarves lost, soldiers' kills:");
+        for row in &table {
+            eprintln!("  {:?}", row);
+        }
+        let routed = table.iter().filter(|r| r.2 == "routed").count();
+        let three = table.iter().filter(|r| r.1 >= 3).count();
+        assert!(routed >= 8, "only {} of 10 raids were routed", routed);
+        assert!(three >= 6, "only {} of 10 raids left three dead", three);
     }
 }
 

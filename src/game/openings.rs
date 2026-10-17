@@ -75,12 +75,14 @@ impl Game {
     pub(super) fn siege_quarry(&self, c: &Creature, dwarves: &[(u32, Pos)]) -> Option<(u32, Vec<Pos>)> {
         let mover = c.species.info().mover;
         let downed: HashSet<u32> = self.dwarves.iter().filter(|d| d.alive && d.body.unconscious()).map(|d| d.id).collect();
-        let all: HashMap<Pos, u32> = dwarves.iter().map(|&(id, p)| (p, id)).collect();
         let standing: HashMap<Pos, u32> = dwarves.iter().filter(|(id, _)| !downed.contains(id)).map(|&(id, p)| (p, id)).collect();
+        // (One standing over a fallen dwarf is the one found on that tile.)
+        let mut all: HashMap<Pos, u32> = dwarves.iter().filter(|(id, _)| downed.contains(id)).map(|&(id, p)| (p, id)).collect();
+        all.extend(standing.iter().map(|(&p, &id)| (p, id)));
         let search = |at: &HashMap<Pos, u32>| {
             path::search(&self.world, c.pos, SEARCH_LIMIT, mover, |q| at.contains_key(&q)).map(|(p, path)| (at[&p], path))
         };
-        if standing.len() == all.len() {
+        if !dwarves.iter().any(|(id, _)| downed.contains(id)) {
             return search(&all);
         }
         if standing.keys().any(|&p| near(p, c.pos, LEAVE_FOR)) {
@@ -89,6 +91,18 @@ impl Game {
             }
         }
         search(&all)
+    }
+
+    /// The army breaks: each besieger with a soldier beside it takes a
+    /// parting blow as it turns.
+    pub(super) fn parting_swings_on_rout(&mut self) {
+        let ids: Vec<u32> = self.creatures.values().filter(|c| c.siege && c.leaving && c.alive).map(|c| c.id).collect();
+        for id in ids {
+            let Some(mut c) = self.creatures.remove(&id) else { continue };
+            if self.parting_swing(&mut c) {
+                self.creatures.insert(id, c);
+            }
+        }
     }
 
     /// A besieger that breaks turns its back: a soldier beside it gets one
