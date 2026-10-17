@@ -530,6 +530,9 @@ pub struct Dwarf {
     /// Crossbow bolts in the quiver.
     #[serde(default)]
     pub ammo: u32,
+    /// What the best bolts in the quiver are made of (None: wooden, or empty).
+    #[serde(default)]
+    pub ammo_mat: Option<Mat>,
     /// Personal needs; empty in older saves until first checked.
     #[serde(default)]
     pub needs: Vec<Need>,

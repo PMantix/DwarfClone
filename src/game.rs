@@ -71,6 +71,7 @@ mod overseer_hooks;
 mod wildlife;
 pub mod captives;
 pub mod breakdowns;
+pub mod readiness;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -2711,6 +2712,7 @@ impl Game {
             }
             Task::Attack { target } => self.do_attack(d, target),
             Task::Flee => self.do_flee(d),
+            Task::Station { .. } | Task::Train if self.kit_check(d) => {}
             Task::Station { pos } => match self.travel(d, pos) {
                 Travel::Moving => {}
                 Travel::Failed => {

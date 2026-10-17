@@ -13,6 +13,8 @@ impl Game {
         // M1 (survival):
         self.ov_captives(o);
         self.ov_coax(o);
+        self.ov_readiness(o);
+        let _ = o;
     }
 
     /// Every ten ticks, at the end of the alert check (`ov_alert`): one line
@@ -31,6 +33,7 @@ impl Game {
         // M1 (survival): Lesson, Prowlers, Unarmed, Wounded.
         senses.extend(self.prowler_sense(o));
         senses.push((Sense::Wounded, self.wounded_sense(), vec![(Ambition::Provision, 0.6), (Ambition::Venture, -1.5)]));
+        senses.extend(self.unarmed_sense(o));
         let _ = o;
         senses
     }

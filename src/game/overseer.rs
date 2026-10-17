@@ -702,15 +702,19 @@ impl Game {
         let unburied = self.items.values().filter(|it| it.free() && self.burial_corpse(it)).count() as u32;
         orders.push((Recipe::WoodCoffin, 2 + unburied));
         orders.push((Recipe::WoodDoor, 2 + o.rooms.iter().filter(|r| r.stage == 0).map(|r| r.doors.len() as u32).sum::<u32>()));
+        // Wooden crossbows until there's a forge; then a few for practice.
+        let forge = self.buildings.values().any(|b| b.built && matches!(b.kind, BuildingKind::Forge | BuildingKind::MagmaForge));
         if o.style != Style::Reckless {
-            orders.push((Recipe::WoodCrossbow, 3));
-            orders.push((Recipe::Bolts, 6));
+            orders.push((Recipe::WoodCrossbow, if forge { 1 } else { 3 }));
+            orders.push((Recipe::Bolts, if forge { 2 } else { 6 }));
         }
-        if self.buildings.values().any(|b| b.kind == BuildingKind::Forge && b.built) {
+        if forge {
             orders.push((Recipe::ForgeAxe, 2));
             orders.push((Recipe::ForgeHelm, 2));
             orders.push((Recipe::ForgeBreastplate, 1));
             orders.push((Recipe::ForgeShield, 1));
+            orders.push(self.metal_arms_order(Recipe::ForgeBolts, 6));
+            orders.push(self.metal_arms_order(Recipe::ForgeCrossbow, if o.style == Style::Warlord { 4 } else { 2 }));
         }
         self.ambition_orders(o, &mut orders);
         // What it raised to meet a shortage, on top.

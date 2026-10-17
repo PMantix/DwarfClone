@@ -663,6 +663,25 @@ fn plain<'a>(s: String, c: Color) -> Line<'a> {
     Line::from(Span::styled(s, Style::default().fg(c)))
 }
 
+/// A soldier's kit as a row of the squads screen's grid: W H M S, green
+/// worn, yellow waiting in the stores, red missing.
+fn kit_line<'a>(g: &Game, id: u32) -> Line<'a> {
+    use crate::game::readiness::{KitPart, Slot3};
+    let k = g.kit(id);
+    let mut spans = vec![Span::raw("     ")];
+    for p in KitPart::ALL {
+        let c = match k.get(p) {
+            Slot3::Worn => Color::Rgb(120, 220, 120),
+            Slot3::InStock => Color::Rgb(230, 210, 90),
+            Slot3::None => Color::Rgb(220, 90, 80),
+        };
+        spans.push(Span::styled(format!("{} ", p.letter()), Style::default().fg(c)));
+    }
+    let (word, c) = if g.kit_ready(id) { ("ready", Color::Rgb(120, 220, 120)) } else { ("not ready", MUTED) };
+    spans.push(Span::styled(format!("· {}", word), Style::default().fg(c)));
+    Line::from(spans)
+}
+
 fn task_desc(g: &Game, d: &Dwarf) -> String {
     if d.tantrum > 0 {
         return "Tantrum!".into();
@@ -1572,6 +1591,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                                 Span::styled(d.name.clone(), Style::default().fg(TEXT)),
                             ]));
                             v.push(plain(format!("     {}{} · {}", weapon, ammo, task_desc(g, d)), MUTED));
+                            v.push(kit_line(g, d.id));
                         }
                     }
                 }

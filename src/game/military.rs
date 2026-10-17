@@ -4,6 +4,7 @@ use super::{Game, ZoneKind};
 use crate::dwarf::{Dwarf, Task};
 use crate::geom::Pos;
 use crate::items::{Item, ItemKind};
+use crate::material::Mat;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -279,10 +280,20 @@ impl Game {
         d.attack_cd = 14;
         d.fight_xp += 6;
         d.satisfy(crate::dwarf::NeedKind::Fight, 40);
+        // Metal bolts bite deeper, and a metal crossbow draws harder.
+        // (Gold is too soft to count: no harder draw, and its bolts score below copper.)
+        let metal = |m: Option<Mat>| matches!(m, Some(Mat::Copper | Mat::Bronze | Mat::Iron | Mat::Steel));
+        let bow = d.held.and_then(|id| self.items.get(&id)).map(|it| it.mat);
+        let draw = if metal(bow) { self.knob("bolt.draw", 1.0) as u32 } else { 0 };
+        let dmg = Self::bolt_damage(d.ammo_mat) * self.knob("bolt.mult", 1.0) as f32;
+        let metal_bolt = metal(d.ammo_mat);
+        if d.ammo == 0 {
+            d.ammo_mat = None;
+        }
         let att = super::combat::Fighter {
             name: d.called(),
-            skill: d.fight_level(),
-            dmg: 9.0,
+            skill: d.fight_level() + draw,
+            dmg,
             verb: "shoots",
             edged: true,
             helm: 0,
@@ -298,6 +309,9 @@ impl Game {
         if siege {
             let hurt = body.hp.iter().sum::<i32>() < hp0;
             self.note_blow(super::annals::BY_BOLT, hurt);
+        }
+        if metal_bolt {
+            self.count("bolts_metal", 1);
         }
         let dead = body.dead;
         if let Some(c) = self.creatures.get_mut(&target) {
@@ -419,5 +433,64 @@ mod tests {
         }
         assert!(shots > 0, "never shot");
         assert!(d.ammo < 10);
+    }
+
+    /// Iron bolts hit harder than wooden ones, and the quiver says which it holds.
+    #[test]
+    fn iron_bolts_hit_harder() {
+        let mean = |mat: Mat| {
+            let mut g = Game::new(73);
+            let gob = g.spawn_creature(Species::Goblin, g.embark, u64::MAX);
+            let def = g.creature_fighter(&g.creatures[&gob]);
+            let fresh = g.creatures[&gob].body.clone();
+            let att = crate::game::combat::Fighter {
+                name: "a marksdwarf".into(),
+                skill: 5,
+                dmg: Game::bolt_damage(Some(mat)),
+                verb: "shoots",
+                edged: true,
+                helm: 0,
+                mail: 0,
+                shield: false,
+            };
+            let mut lost = 0;
+            for _ in 0..400 {
+                let mut body = fresh.clone();
+                g.strike(&att, &def, &mut body);
+                lost += fresh.hp.iter().sum::<i32>() - body.hp.iter().sum::<i32>();
+            }
+            lost as f64 / 400.0
+        };
+        let (wood, iron) = (mean(Mat::Wood), mean(Mat::Iron));
+        eprintln!("mean damage: wood {:.2} iron {:.2}", wood, iron);
+        assert!(iron > wood + 2.0, "iron {:.2} vs wood {:.2}", iron, wood);
+        assert!(Game::bolt_damage(Some(Mat::Steel)) > Game::bolt_damage(Some(Mat::Bronze)));
+        assert_eq!(Game::bolt_damage(None), Game::bolt_damage(Some(Mat::Wood)));
+
+        // A quiver topped up with iron shoots iron, and is counted.
+        let mut g = Game::new(72);
+        let e = g.embark;
+        let bow = g.spawn_item(ItemKind::Crossbow, Mat::Iron, e);
+        let wood = g.spawn_item(ItemKind::Bolt, Mat::Wood, e);
+        let iron = g.spawn_item(ItemKind::Bolt, Mat::Iron, e);
+        let mut d = g.dwarves[0].clone();
+        d.pos = e;
+        g.items.get_mut(&bow).unwrap().carried_by = Some(d.id);
+        d.held = Some(bow);
+        for b in [wood, iron] {
+            g.items.get_mut(&b).unwrap().pos = d.pos;
+            g.do_equip(&mut d, b);
+        }
+        assert_eq!((d.ammo, d.ammo_mat), (20, Some(Mat::Iron)));
+        let gob = g.spawn_creature(Species::Goblin, e.offset(1, 0, 0), u64::MAX);
+        d.attack_cd = 0;
+        assert!(g.try_shoot(&mut d, gob));
+        assert_eq!(g.annals.counters.get("bolts_metal"), Some(&1));
+        d.ammo = 1;
+        d.attack_cd = 0;
+        if g.creatures.contains_key(&gob) {
+            assert!(g.try_shoot(&mut d, gob));
+            assert_eq!((d.ammo, d.ammo_mat), (0, None), "an empty quiver forgets its bolts");
+        }
     }
 }
