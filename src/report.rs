@@ -117,7 +117,7 @@ pub fn report(trials: &[Trial], years: usize) -> String {
 
     let all: usize = trials.iter().map(|t| t.sieges.len()).sum();
     let _ = writeln!(s, "\n  Sieges ({}):", all);
-    let _ = writeln!(s, "    {:<8} {:>5} {:>7} {:>6} {:>8} {:>8} {:>7} {:>7}  {}", "", "count", "day", "size", "dwarves", "foes", "shelter", "bridge", "outcomes");
+    let _ = writeln!(s, "    {:<8} {:>5} {:>7} {:>6} {:>8} {:>8} {:>7} {:>7} {:>7}  {}", "", "count", "day", "size", "dwarves", "foes", "caught", "shelter", "bridge", "outcomes");
     for (i, list) in sieges_by_order(trials).iter().enumerate() {
         if list.is_empty() {
             continue;
@@ -130,13 +130,14 @@ pub fn report(trials: &[Trial], years: usize) -> String {
         }
         let _ = writeln!(
             s,
-            "    {:<8} {:>5} {:>7.0} {:>6.1} {:>8.1} {:>8.1} {:>7} {:>7}  {}",
+            "    {:<8} {:>5} {:>7.0} {:>6.1} {:>8.1} {:>8.1} {:>7.1} {:>7} {:>7}  {}",
             ["first", "second", "later"][i],
             list.len(),
             avg(&|x| x.tick as f64 / crate::game::DAY as f64),
             avg(&|x| x.size as f64),
             avg(&|x| x.dwarves_lost as f64),
             avg(&|x| x.foes_slain as f64),
+            avg(&|x| x.foes_caught as f64),
             pct(list.iter().filter(|x| x.shelter).count(), list.len()),
             pct(list.iter().filter(|x| x.bridge).count(), list.len()),
             outcomes.iter().map(|(o, c)| format!("{} {}", o, c)).collect::<Vec<_>>().join(", ")

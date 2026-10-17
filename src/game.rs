@@ -69,6 +69,7 @@ mod schedule;
 mod finders;
 mod overseer_hooks;
 mod wildlife;
+pub mod captives;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -377,6 +378,9 @@ pub struct Game {
     /// A spy has carried word of us home: the next siege comes for certain.
     #[serde(default)]
     siege_warned: bool,
+    /// Who the cage traps have caught, and what became of them.
+    #[serde(default)]
+    pub captives: Vec<captives::Captive>,
     /// Milestones reached: (key, text, tick).
     #[serde(default)]
     pub milestones: Vec<(String, String, u64)>,
@@ -536,6 +540,7 @@ impl Game {
             overseer: None,
             mysteries_done: Vec::new(),
             siege_warned: false,
+            captives: Vec::new(),
             banner: None,
             necro_rolled: false,
             duels: Vec::new(),

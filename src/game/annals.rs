@@ -49,6 +49,12 @@ pub struct SiegeNote {
     /// (swung, wounded).
     #[serde(default)]
     pub blows: [(u32, u32); 5],
+    /// Besiegers taken alive in cage traps.
+    #[serde(default)]
+    pub foes_caught: u32,
+    /// The civilization that sent them (index into the world's civs).
+    #[serde(default)]
+    pub civ: Option<u32>,
 }
 
 /// Indices into `SiegeNote::blows`.
@@ -68,6 +74,13 @@ pub struct Annals {
     /// Tallies for the batch report ("rescues", "wells"...), from `Game::count`.
     #[serde(default)]
     pub counters: BTreeMap<String, u32>,
+    /// Extra besiegers each civilization owes us for captives put to death,
+    /// paid by its next siege (civ index -> size).
+    #[serde(default)]
+    pub grudges: BTreeMap<u32, u32>,
+    /// Fewer it sends next time, for captives set free.
+    #[serde(default)]
+    pub mercies: BTreeMap<u32, u32>,
 }
 
 /// A death's cause, from the words it was announced with.

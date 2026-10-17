@@ -11,7 +11,7 @@ impl Game {
     /// Daily, at the end of the overseer's round (`ov_daily`): one line per item.
     pub(super) fn ov_daily_hooks(&mut self, o: &mut Overseer) {
         // M1 (survival):
-        let _ = o;
+        self.ov_captives(o);
     }
 
     /// Every ten ticks, at the end of the alert check (`ov_alert`): one line
@@ -36,6 +36,6 @@ impl Game {
     /// A siege has just ended (`annals.sieges[i]` now has its outcome).
     pub(super) fn on_siege_end(&mut self, i: usize) {
         // M1 (survival):
-        let _ = i;
+        self.captives_after_siege(i);
     }
 }

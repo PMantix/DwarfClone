@@ -778,7 +778,7 @@ impl Game {
             return;
         }
         // A spy's report brings them for certain.
-        self.siege_warned = false;
+        let warned = std::mem::take(&mut self.siege_warned);
         // The nearer an enemy, the likelier it's them.
         let weights: Vec<i32> = foes.iter().map(|n| (40 - n.dist).max(5)).collect();
         let mut r = self.rng.range(0, weights.iter().sum::<i32>());
@@ -794,7 +794,7 @@ impl Game {
             return;
         }
         // Scouts see them coming: they arrive in about a day.
-        let n = self.siege_strength();
+        let n = self.siege_strength(foe.civ);
         let leader = self.siege_leader(&foe).1;
         let arrive = self.tick + DAY / 2 + self.rng.range(0, DAY as i32) as u64;
         let civ = self.overworld.civ(foe.civ).name.clone();
@@ -806,6 +806,7 @@ impl Game {
         if self.annals.sieges.last().map_or(false, |s| s.outcome == "routed") {
             text.push_str(" They have not forgotten their last defeat, and come in greater numbers.");
         }
+        text.push_str(&self.captive_words(foe.civ, warned));
         self.msg(&text, (255, 120, 80));
         self.spotlight(if raid { "Raiders sighted" } else { "An army on the march" }, &text, None, (255, 120, 80));
         self.incoming = Some((arrive, foe, n, leader));
@@ -813,14 +814,20 @@ impl Game {
 
     /// How many come: a raiding party first, then armies that grow with the
     /// fortress (its people, its riches) and with every siege it has broken.
-    pub(crate) fn siege_strength(&mut self) -> u32 {
+    /// What `civ` holds against us (captives put to death, or spared) adds or
+    /// takes away a few.
+    pub(crate) fn siege_strength(&mut self, civ: u32) -> u32 {
         let past = self.annals.sieges.len() as u32;
-        if past == 0 {
-            return self.rng.range(2, 4) as u32;
-        }
-        let broken = self.annals.sieges.iter().filter(|s| s.outcome == "routed").count() as u32;
-        let n = 3 + self.alive_count() as u32 / 5 + self.wealth() / 25_000 + broken + self.rng.range(0, 3) as u32;
-        n.min(20)
+        let n = if past == 0 {
+            self.rng.range(2, 4) as u32
+        } else {
+            let broken = self.annals.sieges.iter().filter(|s| s.outcome == "routed").count() as u32;
+            let n = 3 + self.alive_count() as u32 / 5 + self.wealth() / 25_000 + broken + self.rng.range(0, 3) as u32;
+            n.min(20)
+        };
+        let grudge = self.annals.grudges.get(&civ).copied().unwrap_or(0);
+        let mercy = self.annals.mercies.get(&civ).copied().unwrap_or(0);
+        (n + grudge).saturating_sub(mercy).max(1)
     }
 
     /// The army that was seen coming reaches the edge of the map.
@@ -932,6 +939,7 @@ impl Game {
         self.siege_size = n as u32;
         self.siege_routed = false;
         self.note_siege(species.info().plural, n as u32, &general_name);
+        self.annals.sieges.last_mut().unwrap().civ = Some(foe.civ);
         self.siege_race = Some(foe.race);
         self.year_log.siege = Some(civ_name.clone());
         let plural = species.info().plural;
@@ -947,7 +955,7 @@ impl Game {
     }
 
     /// The attackers lose heart and run for the edge of the map.
-    fn rout(&mut self) {
+    pub(super) fn rout(&mut self) {
         self.siege_routed = true;
         self.milestone("siege", "The first siege broken");
         for o in self.creatures.values_mut().filter(|o| o.siege && !o.legendary()) {
@@ -1070,11 +1078,21 @@ impl Game {
         } else if c.hostile() {
             self.msg(&format!("The {} has been slain.", info.name), (160, 230, 160));
         }
-        if c.siege && !c.legendary() && !self.siege_routed {
-            let left = self.creatures.values().filter(|o| o.siege && !o.legendary() && o.alive).count() as u32;
-            if left * 2 < self.siege_size {
-                self.rout();
-            }
+        if c.siege && !c.legendary() {
+            self.check_rout();
+        }
+    }
+
+    /// Fewer than half the besiegers left standing (half, once some of them
+    /// are in cages): the rest lose heart.
+    pub(super) fn check_rout(&mut self) {
+        if self.siege_routed {
+            return;
+        }
+        let left = self.creatures.values().filter(|o| o.siege && !o.legendary() && o.alive).count() as u32;
+        let caught = self.annals.sieges.iter().rev().find(|s| s.ended.is_none()).map_or(0, |s| s.foes_caught);
+        if left * 2 < self.siege_size || (caught > 0 && left * 2 <= self.siege_size) {
+            self.rout();
         }
     }
 
@@ -1307,6 +1325,10 @@ impl Game {
                     self.msg(&format!("The {} seizes {} and makes for the edge of the map!", c.species.info().name, name), (255, 140, 90));
                     return;
                 }
+            }
+            // One of theirs in a cage: break them out.
+            if !self.captives.is_empty() && self.rescue_target(c, &dwarves) {
+                return;
             }
             if dwarves.is_empty() {
                 c.think_cd = 200;
