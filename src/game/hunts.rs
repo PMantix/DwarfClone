@@ -2,7 +2,9 @@
 //! fort and a squad is fit to face them, it sends the squad out after them,
 //! one pack member at a time, and calls it home when an army comes, when
 //! the beasts get away or when the squad is too hurt to go on. While a
-//! pack prowls near, work outdoors waits.
+//! pack prowls near, work outdoors waits. Legendary beasts are hunted
+//! only by a bold overseer with a strong squad in full kit; otherwise the
+//! fort shelters from them as ever.
 
 use super::military::SquadOrder;
 use super::overseer::{Overseer, Style};
@@ -39,6 +41,9 @@ pub struct Hunt {
     /// The pack members still about the fort, last we looked.
     #[serde(default)]
     pub quarry: Vec<u32>,
+    /// A legendary beast: `name` is its title.
+    #[serde(default)]
+    pub legend: bool,
 }
 
 /// How far from the stair (or its foot) a beast is near enough to hunt.
@@ -73,6 +78,8 @@ impl Game {
         self.keep_indoors(top, &prowlers);
         if self.hunts.on.is_some() {
             self.hunt_goes_on(o, top, base, war);
+        } else if let Some(beast) = self.legend_about(top, base).filter(|_| !war) {
+            self.hunt_legend(o, beast);
         } else if !war && !prowlers.is_empty() {
             self.start_hunt(o, &prowlers);
         }
@@ -141,6 +148,60 @@ impl Game {
             && d.held.and_then(|id| self.items.get(&id)).map_or(false, |it| it.kind.weapon_damage().is_some() && it.kind != ItemKind::Pick)
     }
 
+    /// A legendary beast near the fort (as the alert check reckons it), the nearest.
+    fn legend_about(&self, top: Pos, base: Pos) -> Option<u32> {
+        let near = |p: Pos| {
+            let by = |q: Pos| (p.x - q.x).abs() <= NEAR && (p.y - q.y).abs() <= NEAR;
+            (by(top) || by(base)) && p.z >= base.z - 2 && p.z <= top.z + 2
+        };
+        self.creatures
+            .values()
+            .filter(|c| c.legendary() && c.hostile() && !c.siege && !c.leaving && self.creature_active(c) && near(c.pos))
+            .min_by_key(|c| (crate::game::combat::dist2(c.pos, top), c.id))
+            .map(|c| c.id)
+    }
+
+    /// The squad most fit to hunt: (index, fit members, how many in full kit,
+    /// strength). Not one away on an expedition.
+    fn best_hunters(&self) -> Option<(usize, Vec<u32>, usize, i32)> {
+        let away = self.expedition.as_ref().map(|e| e.squad.clone());
+        (0..self.squads.len())
+            .filter(|&s| Some(&self.squads[s].name) != away.as_ref())
+            .map(|s| {
+                let (fit, ready) = self.hunters(s);
+                let strength = self.squad_strength(&fit);
+                (s, fit, ready, strength)
+            })
+            .max_by_key(|x| (x.2, x.1.len(), x.3, std::cmp::Reverse(x.0)))
+    }
+
+    /// A legendary beast at the door: only a bold overseer goes out to meet
+    /// it, and only with a strong squad, every one of them armed, armoured
+    /// and unhurt (knobs hunt.legend_squad, 4, and hunt.legend, twice the
+    /// beast's strength). Otherwise everyone shelters, as the alert has it.
+    fn hunt_legend(&mut self, o: &mut Overseer, beast: u32) {
+        if !o.has(Trait::Bold) || o.has(Trait::Cautious) || self.squads.iter().any(|s| matches!(s.order, SquadOrder::Kill(_))) {
+            return;
+        }
+        let Some((s, ids, ready, strength)) = self.best_hunters() else { return };
+        let enough = ids.len() >= self.knob("hunt.legend_squad", 4.0) as usize && ready == ids.len();
+        if !enough || (strength as f64) < self.beasts_threat(&[beast]) * self.knob("hunt.legend", 2.0) {
+            return;
+        }
+        let Some(c) = self.creatures.get(&beast) else { return };
+        let (title, at) = (c.title(), c.pos);
+        let squad = self.squads[s].name.clone();
+        self.squads[s].order = SquadOrder::Kill(beast);
+        self.call_out(&ids);
+        self.hunts.on = Some(Hunt { squad: self.squads[s].id, target: beast, pack: beast, name: title.clone(), plural: title.clone(), kills: 0, since: self.tick, quarry: vec![beast], legend: true });
+        self.count("hunts", 1);
+        self.count("hunts.legend", 1);
+        let text = format!("{} march out to slay {}!", squad, title);
+        self.msg(&text, (255, 200, 90));
+        self.spotlight("The hunt for a legend", &format!("The overseer will not cower from {}. {}", title, text), Some(at), (255, 200, 90));
+        Self::note_ov(o, self.tick, format!("Sent {} to slay {}.", squad, title));
+    }
+
     /// The squad's members fit to hunt, and how many of them are kit-ready.
     fn hunters(&self, s: usize) -> (Vec<u32>, usize) {
         let fit: Vec<u32> = self.squads[s].members.iter().copied().filter(|&id| self.dwarves.iter().any(|d| d.id == id && self.fit_to_hunt(d))).collect();
@@ -163,16 +224,8 @@ impl Game {
         if self.alert || self.squads.iter().any(|s| matches!(s.order, SquadOrder::Kill(_))) {
             return;
         }
-        let away = self.expedition.as_ref().map(|e| e.squad.clone());
-        let best = (0..self.squads.len())
-            .filter(|&s| Some(&self.squads[s].name) != away.as_ref())
-            .map(|s| {
-                let (fit, ready) = self.hunters(s);
-                let strength = self.squad_strength(&fit);
-                (ready, fit.len(), strength, s, fit)
-            })
-            .max_by_key(|x| (x.0, x.1, x.2, std::cmp::Reverse(x.3)));
-        let Some((ready, fit, strength, s, ids)) = best else { return };
+        let Some((s, ids, ready, strength)) = self.best_hunters() else { return };
+        let fit = ids.len();
         let (target, _, pack) = prowlers[0];
         let pack_ids: Vec<u32> = prowlers.iter().filter(|p| p.2 == pack).map(|p| p.0).collect();
         let (bold, cautious) = (o.has(Trait::Bold), o.has(Trait::Cautious));
@@ -193,7 +246,7 @@ impl Game {
         let squad = self.squads[s].name.clone();
         self.squads[s].order = SquadOrder::Kill(target);
         self.call_out(&ids);
-        self.hunts.on = Some(Hunt { squad: self.squads[s].id, target, pack, name, plural, kills: 0, since: self.tick, quarry: pack_ids });
+        self.hunts.on = Some(Hunt { squad: self.squads[s].id, target, pack, name, plural, kills: 0, since: self.tick, quarry: pack_ids, legend: false });
         self.count("hunts", 1);
         self.msg(&format!("{} set out after the {}.", squad, what), (240, 200, 120));
         Self::note_ov(o, self.tick, format!("Sent {} after the {}.", squad, what));
@@ -222,6 +275,10 @@ impl Game {
         let Some(mut h) = self.hunts.on.take() else { return };
         // A squad disbanded mid-hunt: nothing more to say.
         let Some(s) = self.squads.iter().position(|q| q.id == h.squad) else { return };
+        // The alert stations the squads while a legend is near; the hunt goes on.
+        if h.legend && self.squads[s].order == SquadOrder::Station && !war {
+            self.squads[s].order = SquadOrder::Kill(h.target);
+        }
         let mine = self.squads[s].order == SquadOrder::Kill(h.target);
         if war {
             return self.end_hunt(o, s, h, "an army is coming");
@@ -290,7 +347,12 @@ impl Game {
         }
         let squad = self.squads[s].name.clone();
         let fort = self.fortress_name.clone();
-        if h.kills > 0 {
+        if h.kills > 0 && h.legend {
+            let text = format!("{} slew {} at the gates of {}.", squad, h.name, fort);
+            self.msg(&text, (255, 200, 90));
+            self.legend(text);
+            Self::note_ov(o, self.tick, format!("{} came home from the hunt: {} is slain.", squad, h.name));
+        } else if h.kills > 0 {
             let what = if h.kills == 1 { format!("the {}", h.name) } else { format!("{} {}", number(h.kills), h.plural) };
             let text = format!("{} killed {} that had been prowling about {}.", squad, what, fort);
             self.msg(&text, (160, 230, 160));
@@ -420,6 +482,57 @@ mod tests {
         assert!(!g.outdoors_banned());
         g.dwarves[i] = d;
         g.overseer = Some(o);
+    }
+
+    /// A cave horror at the door: no hunt for an overseer who isn't bold,
+    /// nor for a bold one with three soldiers. Four veterans in kit go, and
+    /// the alert doesn't call them back to the gate.
+    #[test]
+    fn only_the_bold_hunt_a_legend() {
+        let (mut g, s, mut ids) = fort(21, Style::Steady);
+        let at = out_by(&g, 15);
+        let horror = g.spawn_creature(Species::CaveHorror, at, u64::MAX);
+        assert!(g.creatures[&horror].legendary());
+        let mut o = g.overseer.take().unwrap();
+        o.traits = vec![Trait::Bold];
+        g.ov_hunts(&mut o);
+        assert!(g.hunts.on.is_none(), "three green soldiers sent after a cave horror");
+        let fourth = g.dwarves.iter().find(|d| d.alive && !d.is_child() && !ids.contains(&d.id)).unwrap().id;
+        g.set_squad_member(s, fourth, true);
+        let pos = g.dwarves.iter().find(|d| d.id == fourth).unwrap().pos;
+        let axe = g.spawn_item(ItemKind::Axe, Mat::Steel, pos);
+        let mail = g.spawn_item(ItemKind::Breastplate, Mat::Steel, pos);
+        for it in [axe, mail] {
+            g.items.get_mut(&it).unwrap().carried_by = Some(fourth);
+        }
+        let d = g.dwarves.iter_mut().find(|d| d.id == fourth).unwrap();
+        d.held = Some(axe);
+        d.armor.push(mail);
+        ids.push(fourth);
+        for d in g.dwarves.iter_mut().filter(|d| ids.contains(&d.id)) {
+            d.fight_xp = 2000;
+        }
+        o.traits = vec![Trait::Greedy];
+        g.ov_hunts(&mut o);
+        assert!(g.hunts.on.is_none(), "an overseer who isn't bold hunted a legend");
+        o.traits = vec![Trait::Bold];
+        g.ov_hunts(&mut o);
+        assert_eq!(g.squads[s].order, SquadOrder::Kill(horror));
+        assert!(g.spotlights.iter().any(|x| x.text.contains("slay")));
+        assert_eq!(g.annals.counters.get("hunts.legend").copied(), Some(1));
+        g.overseer = Some(o);
+        for _ in 0..30 {
+            g.step();
+        }
+        assert!(g.alert);
+        assert_eq!(g.squads[s].order, SquadOrder::Kill(horror), "called back to the gate");
+        // Slain: the chronicle has it.
+        g.creatures.remove(&horror);
+        for _ in 0..20 {
+            g.step();
+        }
+        assert!(g.hunts.on.is_none());
+        assert!(g.overworld.events.iter().any(|e| e.text.contains("slew the cave horror")), "no chronicle line");
     }
 
     #[test]
