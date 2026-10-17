@@ -1335,6 +1335,9 @@ impl Game {
         }
 
         self.psyche_tick(d);
+        if self.in_a_fit(d) {
+            return;
+        }
         // A mad dwarf still sips and picks at food when it's that bad (or
         // they'd never live to come back out of it).
         let sipping = d.insane
@@ -1357,6 +1360,9 @@ impl Game {
         if d.tantrum > 0 {
             d.tantrum -= 1;
         } else if d.stress >= d.tantrum_threshold() {
+            if self.goes_berserk(d) {
+                return;
+            }
             self.release_task(d);
             d.tantrum = 1500;
             // Venting helps a little; a truly miserable dwarf keeps sliding.
@@ -2283,7 +2289,8 @@ impl Game {
             Task::Slaughter { creature } => self.do_slaughter(d, creature),
             Task::Punish { culprit } => self.do_punish(d, culprit),
             // Not given out yet: the items that use them add their own arms.
-            Task::FirstAid { .. } | Task::Rescue { .. } | Task::Press | Task::Catatonic | Task::Berserk | Task::Coax { .. } => self.release_task(d),
+            Task::FirstAid { .. } | Task::Rescue { .. } | Task::Press | Task::Catatonic | Task::Coax { .. } => self.release_task(d),
+            Task::Berserk => self.do_berserk(d),
             Task::Wander { target } => match self.travel(d, target) {
                 Travel::Moving => {}
                 Travel::Arrived => d.task = Task::Idle,

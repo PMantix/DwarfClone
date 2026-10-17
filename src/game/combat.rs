@@ -214,6 +214,9 @@ impl Game {
 
     /// Called every few ticks: soldiers engage, civilians flee or fight back.
     pub(super) fn combat_awareness(&mut self, d: &mut Dwarf) {
+        if self.fit_awareness(d) {
+            return;
+        }
         let threats = self.threats_near(d.pos, 7);
         if d.attack_cd == 0 {
             if let Some(&(cid, _)) = threats.iter().find(|(_, p)| adjacent(*p, d.pos)) {
