@@ -116,8 +116,13 @@ style survive three years, and every style still loses forts in memorable ways.
   thirst beside full barrels) (this commit) · [x] fleeing dwarves run somewhere well away,
   deeper into the fort, rather than into a corner (this commit) · [ ] soldiers hold the
   gatehouse instead of charging (they're stationed there; check they stay) · [ ] after a siege
-  it learns: more traps where the enemy came in, a second squad, walls · [ ] cavern breaches
-  get walled off or doored the moment they're dug into
+  it learns: more traps where the enemy came in, a second squad, walls · [x] cavern breaches
+  get a door the moment they're dug into (beasts can't open doors) (this commit)
+- **So far** (batches/s04c.json against batches/before-S04.json): forts standing after years
+  1/2/3 went from 15/1/0 to 18/9/7; later sieges mostly fail now (the bridge is up in 82–86% of
+  them), but the first siege still kills 9 dwarves on average and takes 13 forts of 25, because
+  the bridge is up for only a third of them. Thirst deaths rose (22 → 58) with forts living
+  longer: S05.
 - **Done when:** a scripted siege against a fort with shelter, bridge and squad kills fewer than
   half the goblins' worth of dwarves; the batch meets the milestone goal.
 

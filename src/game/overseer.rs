@@ -855,6 +855,15 @@ impl Game {
                 Self::note(o, self.tick, "Hung a gate at the foot of the stair, to bar when enemies come.".into());
             }
         }
+        // Where the miners broke into a cavern, a door: beasts can't open one.
+        for q in std::mem::take(&mut self.breaches) {
+            let spots = std::iter::once(q).chain(crate::geom::DIRS4.iter().map(|&(dx, dy)| q.offset(dx, dy, 0)));
+            let fit: Vec<Pos> = spots.filter(|&p| self.world.get(p).map_or(false, |t| t.dug && t.kind == TileKind::Floor && t.building == 0)).collect();
+            let hung = fit.into_iter().any(|p| self.place_building(BuildingKind::Door, p));
+            if hung {
+                Self::note(o, self.tick, "Hung a door where the miners broke into the caverns.".into());
+            }
+        }
         // A drawbridge behind the doors, on a lever: raised, nothing gets in.
         // Both halves and the lever, each put back if it's lost.
         let parts = [(BuildingKind::Bridge, base.offset(2, 0, 0)), (BuildingKind::Bridge, base.offset(2, 1, 0)), (BuildingKind::Lever, base.offset(3, 1, 0))];
@@ -1164,6 +1173,16 @@ pub fn run_trial(seed: u64, style: Style, years: u64) -> Trial {
                     g.alert_burrow.is_some(),
                     soldiers
                 );
+                let o = g.overseer.as_ref().unwrap();
+                let base = o.base.unwrap();
+                let parts: Vec<String> = g.buildings.values().filter(|b| (b.pos.x - base.x).abs() <= 4 && (b.pos.y - base.y).abs() <= 2 && b.pos.z == base.z).map(|b| format!("{:?}{}", b.kind, if b.built { "" } else { "(planned)" })).collect();
+                eprintln!(
+                    "      done {:?} | mechanisms {} | mechanic shop {} | gate parts {:?}",
+                    o.done.iter().filter(|d| ["gate", "bridge", "linked", "traps", "burrow"].contains(&d.as_str())).collect::<Vec<_>>(),
+                    g.stock_of(ItemKind::Mechanism),
+                    g.buildings.values().any(|b| b.kind == BuildingKind::Mechanic && b.built),
+                    parts
+                );
             }
         }
         // The fort's story: arrivals, sieges and monsters, deaths, milestones, ambitions.
@@ -1374,6 +1393,25 @@ mod tests {
                 seen = g.log.len();
             }
         }
+    }
+
+    #[test]
+    fn a_door_goes_where_the_caverns_were_broken_into() {
+        let mut g = Game::new(5);
+        g.set_overseer(Some(Style::Steady));
+        for _ in 0..DAY * 4 {
+            g.step();
+        }
+        let base = g.overseer.as_ref().unwrap().base.unwrap();
+        // A spot in the dug corridor, as if a cavern opened beside it.
+        let q = (5..14).map(|i| base.offset(i, 0, 0)).find(|&p| g.world.t(p).dug && g.world.t(p).kind == TileKind::Floor && g.world.t(p).building == 0).expect("a dug corridor");
+        g.breaches.push(q);
+        for _ in 0..DAY {
+            g.step();
+        }
+        assert!(g.breaches.is_empty());
+        let near = |p: Pos| (p.x - q.x).abs() + (p.y - q.y).abs() <= 1 && p.z == q.z;
+        assert!(g.buildings.values().any(|b| b.kind == BuildingKind::Door && near(b.pos)), "no door at the breach");
     }
 
     #[test]

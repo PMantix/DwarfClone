@@ -142,6 +142,10 @@ fn autoplay_batch(args: &[String]) {
             println!("           its ambitions: {}", t.ambitions.join(" → "));
         }
         all.push(t);
+        // Saved as it goes, so a batch cut short keeps what it has.
+        if let Some(path) = opt("--out") {
+            let _ = serde_json::to_string(&all).map(|s| std::fs::write(&path, s));
+        }
     }
     for h in handles {
         let _ = h.join();

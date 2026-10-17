@@ -310,6 +310,9 @@ pub struct Game {
     /// Every dwarf is dead and the fall has been told.
     #[serde(default)]
     pub fallen: bool,
+    /// Where digging broke into a cavern, waiting for a door.
+    #[serde(default)]
+    pub breaches: Vec<Pos>,
     /// Some tile has snow on it (so a thaw knows to look).
     #[serde(default)]
     snow_lying: bool,
@@ -477,6 +480,7 @@ impl Game {
             annals: Default::default(),
             spotlights: Vec::new(),
             fallen: false,
+            breaches: Vec::new(),
             snow_lying: false,
             fire_cells: None,
             miasma_cells: None,
@@ -2811,6 +2815,7 @@ impl Game {
                 (120, 200, 255),
             );
             self.spotlight("A cavern", "The miners have broken into a vast cavern deep underground. Strange fungus grows there, and strange things live in the dark.", Some(q), (120, 200, 255));
+            self.breaches.push(q);
         }
     }
 
