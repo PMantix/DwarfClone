@@ -297,6 +297,7 @@ impl Game {
                 d.melancholy = false;
                 d.misery = 0;
                 d.think("came back out of the dark", -40, tick);
+                self.count("mended", 1);
                 let name = d.name.clone();
                 self.msg(&format!("{} has come back out of melancholy.", name), (170, 200, 255));
                 self.spotlight("Out of the dark", &format!("{} has come back out of melancholy, and knows their friends again.", name), Some(d.pos), (170, 200, 255));

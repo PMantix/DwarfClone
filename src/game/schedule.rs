@@ -53,6 +53,7 @@ impl Game {
             self.titles_daily();
             self.check_mandate();
             // M1 (survival), daily:
+            self.shift_daily();
         }
         if tick % SEASON == 0 { self.season_turns(); }
     }
