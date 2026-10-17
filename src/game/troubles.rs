@@ -245,6 +245,12 @@ impl Game {
                 self.hands_for(Labor::Woodcutting, 1);
                 Some("ordered charcoal burned.".into())
             }
+            // Water inside the walls, if a well can be sunk (cistern.rs).
+            Lack::Drink if self.start_waterworks(o) => {
+                Self::boost(o, Recipe::Brew, 30 + pop * 3, tick);
+                self.hands_for(Labor::Brewing, 2);
+                Some("had a well sunk inside the fort, and set more hands to brewing.".into())
+            }
             Lack::Drink | Lack::Brewable => {
                 Self::boost(o, Recipe::Brew, 30 + pop * 3, tick);
                 self.hands_for(Labor::Brewing, 2);

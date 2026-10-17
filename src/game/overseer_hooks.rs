@@ -11,6 +11,7 @@ impl Game {
     /// Daily, at the end of the overseer's round (`ov_daily`): one line per item.
     pub(super) fn ov_daily_hooks(&mut self, o: &mut Overseer) {
         // M1 (survival):
+        self.ov_water(o);
         let _ = o;
     }
 

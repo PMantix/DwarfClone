@@ -68,6 +68,7 @@ pub mod knobs;
 mod schedule;
 mod finders;
 mod overseer_hooks;
+mod cistern;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -408,6 +409,9 @@ pub struct Game {
     /// Tunable numbers the batch changed from their defaults (`--knob`).
     #[serde(default)]
     pub knobs: knobs::Knobs,
+    /// Wells being sunk and cisterns being filled (`cistern.rs`).
+    #[serde(default)]
+    pub waterworks: cistern::Waterworks,
     /// A new page has been written and should be shown.
     #[serde(skip)]
     pub chronicle_ready: bool,
@@ -540,6 +544,7 @@ impl Game {
             duels: Vec::new(),
             chronicles: Vec::new(),
             knobs: Default::default(),
+            waterworks: Default::default(),
             chronicle_ready: false,
             creatures: BTreeMap::new(),
             station: None,
@@ -1801,8 +1806,12 @@ impl Game {
             })
         };
         if let Some((stand, path)) = path::search(w, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| water_near(p)) {
+            let at_well = wells.iter().any(|q| q.z == stand.z && (q.x - stand.x).abs() <= 1 && (q.y - stand.y).abs() <= 1);
             d.task = Task::DrinkWater { stand };
             Self::set_path(d, path);
+            if at_well {
+                self.count("well_drinks", 1);
+            }
             return true;
         }
         self.trouble(troubles::Lack::Drink);
