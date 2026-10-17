@@ -107,7 +107,9 @@ keeps the ruin saved.
 (appointments, room owners, expeditions, autoplay, the title menu) to pick them. On the map,
 click to move the cursor (click again to look), drag to pan, scroll to change level, and
 right-click to go back. In digging, zone, stockpile, traffic, burrow and construction modes,
-drag a box (or click both corners). Hovering over the map shows what's there.
+drag a box; a click marks a single tile (with the keys, Enter sets each corner). Ctrl+Z
+undoes the last designation, and designated rock shows the job on the wall (▒ dig, < > X
+stairs, ▼ channel). Hovering over the map shows what's there.
 
 ## Features
 

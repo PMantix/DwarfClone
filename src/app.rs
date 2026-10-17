@@ -360,6 +360,8 @@ pub struct App {
     pub free_view: bool,
     /// The performance overlay (F3).
     pub perf: Option<Perf>,
+    /// Designations as they were before each recent one (Ctrl+Z puts them back).
+    pub undo: Vec<Vec<(Pos, Desig)>>,
     /// The big moment being shown, and for how many frames.
     pub spot: Option<(crate::game::spotlight::Spotlight, u32)>,
     /// Status, brain, reports, chronicle and legends open as a side pane
@@ -422,6 +424,7 @@ impl App {
             spot: None,
             docked: true,
             perf: None,
+            undo: Vec::new(),
             pan_from: (0, 0),
         }
     }
@@ -947,7 +950,7 @@ impl App {
                     return;
                 }
                 if self.boxing() {
-                    // Press to start a box, drag, let go to finish it (or click twice).
+                    // Press to start a box, drag, let go to finish it.
                     self.cursor = tile(self);
                     self.clamp_cursor();
                     let starting = self.box_corner().is_none();
@@ -989,8 +992,11 @@ impl App {
             MouseEventKind::Up(_) => {
                 let Some(d) = self.drag.take() else { return };
                 if d.boxing {
-                    if d.moved && self.box_corner().is_some() {
-                        if in_map {
+                    // Let go after dragging: the box ends here. Let go without
+                    // moving: a click, which marks just that tile (boxes are
+                    // drawn by dragging, or with the keys).
+                    if self.box_corner().is_some() {
+                        if d.moved && in_map {
                             self.cursor = tile(self);
                             self.clamp_cursor();
                         }
@@ -1038,6 +1044,16 @@ impl App {
         self.flash = None;
         if k.code == KeyCode::Char('c') && k.modifiers.contains(KeyModifiers::CONTROL) {
             self.quit = true;
+            return;
+        }
+        // Ctrl+Z: undo the last designation.
+        if k.code == KeyCode::Char('z') && k.modifiers.contains(KeyModifiers::CONTROL) {
+            if self.in_fortress() {
+                self.flash = Some(match self.undo.pop() {
+                    Some(was) => format!("Undone: {} tiles back as they were.", self.game.restore_designations(&was)),
+                    None => "Nothing to undo.".to_string(),
+                });
+            }
             return;
         }
         // F3: frames per second and where the time goes.
@@ -2187,7 +2203,14 @@ impl App {
         match self.mode.clone() {
             Mode::Designate { kind, corner: None } => self.mode = Mode::Designate { kind, corner: Some(c) },
             Mode::Designate { kind, corner: Some(a) } => {
+                let was: Vec<(Pos, Desig)> = crate::geom::box_iter(a, c).filter(|&p| self.game.world.in_bounds(p)).map(|p| (p, self.game.world.t(p).desig)).collect();
                 let n = self.game.designate(a, c, kind);
+                if n > 0 {
+                    self.undo.push(was);
+                    if self.undo.len() > 30 {
+                        self.undo.remove(0);
+                    }
+                }
                 self.flash = Some(format!("{} tiles: {}", n, kind.name()));
                 self.mode = Mode::Designate { kind, corner: None };
             }

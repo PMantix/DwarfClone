@@ -802,6 +802,29 @@ impl Game {
         n
     }
 
+    /// Put designations back as they were (undo). Tiles dug out since keep
+    /// what they are now.
+    pub fn restore_designations(&mut self, was: &[(Pos, Desig)]) -> usize {
+        self.dig_version += 1;
+        let mut n = 0;
+        for &(p, d) in was {
+            if !self.world.in_bounds(p) || self.world.t(p).desig == d {
+                continue;
+            }
+            if d != Desig::None && !(self.desig_valid(p, d) || !self.world.t(p).revealed) {
+                continue;
+            }
+            self.world.t_mut(p).desig = d;
+            if d == Desig::None {
+                self.designations.remove(&p);
+            } else {
+                self.designations.insert(p);
+            }
+            n += 1;
+        }
+        n
+    }
+
     /// Drop designations that can no longer be carried out (a tile dug
     /// blind that turned out to be open already, a tree that burned...), so
     /// nobody keeps looking for them.

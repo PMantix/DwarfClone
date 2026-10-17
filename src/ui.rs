@@ -619,6 +619,10 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                 if !t.revealed {
                     ch = '▒';
                     fg = Color::Rgb(160, 130, 40);
+                } else if ch == '█' {
+                    // A solid wall hides the background: mark the job instead.
+                    ch = desig_mark(t.desig);
+                    fg = Color::Rgb(255, 210, 90);
                 }
             }
             if let Some(b) = sel {
@@ -1855,6 +1859,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("Space", "pause / resume"),
         k("+ / -", "game speed"),
         k("d", "designate: mine, channel, stairs, chop"),
+        k("Ctrl+Z", "undo the last designation"),
         k("p", "stockpiles"),
         k("i", "zones: meeting, bedroom, dining, dump..."),
         k("k", "look: inspect anything at the cursor"),
@@ -2750,6 +2755,20 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         if let Some((s, _)) = &app.spot {
             draw_spotlight(f, over, s, app.game.overseer.is_some());
         }
+    }
+}
+
+/// What a designated wall shows, so the job can be seen on solid rock.
+fn desig_mark(d: Desig) -> char {
+    match d {
+        Desig::Dig => '▒',
+        Desig::Channel => '▼',
+        Desig::StairUp => '<',
+        Desig::StairDown => '>',
+        Desig::StairUD => 'X',
+        Desig::Ramp => '▲',
+        Desig::Smooth | Desig::Engrave => '▓',
+        Desig::Chop | Desig::None => '▒',
     }
 }
 
@@ -4806,6 +4825,54 @@ mod tests {
         assert!(after > before, "nudging should raise the odds ({} -> {})", before, after);
         app.on_key(key(KeyCode::Char('f')));
         assert_eq!(app.game.overseer.as_ref().unwrap().ambition, Some(crate::game::Ambition::Muster));
+    }
+
+    #[test]
+    fn a_click_marks_one_tile_a_drag_marks_a_box_and_ctrl_z_undoes() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        let mut app = App::generated(42);
+        app.mode = Mode::Normal;
+        dump(&mut app, 130, 45);
+        let mouse = |kind, column, row| MouseEvent { kind, column, row, modifiers: KeyModifiers::NONE };
+        app.on_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+        dump(&mut app, 130, 45);
+        let r = app.map_rect;
+        let start = app.game.designations.len();
+        // One click: at most the one tile, and the tool is ready for the next.
+        app.on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), r.x + 5, r.y + 5));
+        app.on_mouse(mouse(MouseEventKind::Up(MouseButton::Left), r.x + 5, r.y + 5));
+        assert!(matches!(app.mode, Mode::Designate { corner: None, .. }), "a click finishes at once");
+        let one = app.game.designations.len();
+        assert!(one - start <= 1);
+        // A second click elsewhere doesn't fill the box between the two.
+        app.on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), r.x + 15, r.y + 12));
+        app.on_mouse(mouse(MouseEventKind::Up(MouseButton::Left), r.x + 15, r.y + 12));
+        assert!(app.game.designations.len() - one <= 1, "two clicks are two tiles, not a box");
+        // A drag fills a box.
+        let before = app.game.designations.len();
+        app.on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), r.x + 20, r.y + 5));
+        app.on_mouse(mouse(MouseEventKind::Drag(MouseButton::Left), r.x + 30, r.y + 12));
+        app.on_mouse(mouse(MouseEventKind::Up(MouseButton::Left), r.x + 30, r.y + 12));
+        let after = app.game.designations.len();
+        assert!(after > before + 10, "the drag should mark a box of rock ({} -> {})", before, after);
+        // Ctrl+Z puts the box back as it was.
+        app.on_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::CONTROL));
+        assert_eq!(app.game.designations.len(), before, "undo takes back the last designation ({} -> {})", before, after);
+    }
+
+    #[test]
+    fn a_wall_marked_for_digging_shows_it() {
+        let mut app = App::generated(42);
+        app.mode = Mode::Normal;
+        let c = app.cursor;
+        // A revealed wall two tiles from the cursor, designated for digging.
+        let p = (1..20).map(|dx| Pos::new(c.x + dx, c.y, c.z)).find(|&p| app.game.world.t(p).kind == crate::world::TileKind::Wall && app.game.world.t(p).revealed).expect("a wall near the wagon");
+        let before = dump(&mut app, 130, 45);
+        app.game.world.t_mut(p).desig = Desig::Dig;
+        app.game.designations.insert(p);
+        let after = dump(&mut app, 130, 45);
+        assert_ne!(before, after, "the designation should change what the wall looks like");
+        assert!(after.contains('▒'));
     }
 
     #[test]
