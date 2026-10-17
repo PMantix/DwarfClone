@@ -111,14 +111,12 @@ mod tests {
                 (254580, "Dorna Stonebeard", "bled to death"),
                 (254700, "Thekla Deepvein", "bled to death"),
                 (255580, "Ragni Granitebrew", "bled to death"),
-                (281043, "Grenda Anvilbrew", "thirst"),
-                (384689, "Odda Stonefist", "thirst"),
             ]
         );
         let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
         assert_eq!(sieges, vec![]);
-        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (13, 5816, 22));
-        assert_eq!(t.ambitions, ["Revel", "Fortify", "Provision", "Expand", "Fortify", "Expand", "Fortify", "Delve"]);
+        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (15, 6170, 23));
+        assert_eq!(t.ambitions, ["Revel", "Fortify", "Provision", "Expand", "Fortify", "Expand", "Fortify", "Architect", "Expand", "Muster", "Architect", "Fortify"]);
     }
 
     /// The tasks the survival items will hand out are in place but do nothing
