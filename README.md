@@ -119,6 +119,12 @@ mountains next door lift the land toward them, and a big embark spanning several
 blends their biomes along ragged borders. Growing the map (`M`) carries on into the
 neighbours the same way.
 
+Wildlife follows the land too: deer, wolves and bears in the forests and hills; elk, wolves
+and bears in the taiga; elk and polar bears on the tundra and glaciers; ibex in the mountains
+and badlands; camels, giant scorpions and vipers in the desert; antelope and lions on the
+savanna; jaguars and vipers in the jungle; vipers and alligators in the swamp. Where evil lies on
+the land, walking husks come in their place half the time.
+
 **Sites and maps.** Every site has its own features, shown on the world map before you
 embark: a river with fords, a chasm crossed by natural bridges, a volcano with a magma
 crater, terraced mesas, sharp peaks, an oasis, a glacier, a bog of shallow pools, a coast, tors

@@ -488,6 +488,22 @@ impl Game {
         }
     }
 
+    /// What lives in this land: something to graze, something that hunts
+    /// in packs, and something rare and dangerous.
+    pub fn fauna(&self) -> (Species, Species, Species) {
+        match self.biome {
+            Biome::Taiga => (Species::Elk, Species::Wolf, Species::Bear),
+            Biome::Tundra | Biome::Glacier => (Species::Elk, Species::Wolf, Species::PolarBear),
+            Biome::Mountain => (Species::Ibex, Species::Wolf, Species::Bear),
+            Biome::Desert => (Species::Camel, Species::Scorpion, Species::Viper),
+            Biome::Badlands => (Species::Ibex, Species::Scorpion, Species::Viper),
+            Biome::Savanna => (Species::Antelope, Species::Lion, Species::Lion),
+            Biome::Jungle => (Species::Deer, Species::Jaguar, Species::Viper),
+            Biome::Swamp => (Species::Deer, Species::Viper, Species::Alligator),
+            _ => (Species::Deer, Species::Wolf, Species::Bear),
+        }
+    }
+
     pub(super) fn wildlife(&mut self) {
         if !self.rng.chance(0.18) {
             return;
@@ -495,13 +511,18 @@ impl Game {
         let Some(entry) = self.edge_entry() else { return };
         let roll = self.rng.f64();
         let tame = 1.0 - self.savagery.clamp(0.05, 0.9) * 0.7;
-        let (species, n) = if roll < tame || self.tick < SEASON {
-            (Species::Deer, self.rng.range(2, 5))
+        let (calm, pack, rare) = self.fauna();
+        let (mut species, n) = if roll < tame || self.tick < SEASON {
+            (calm, self.rng.range(2, 5))
         } else if roll < 0.95 || self.tick < YEAR {
-            (Species::Wolf, self.rng.range(2, 4))
+            (pack, self.rng.range(2, 4))
         } else {
-            (Species::Bear, 1)
+            (rare, 1)
         };
+        // Evil land sends its dead.
+        if self.evil && species.info().aggro > 0 && self.rng.chance(0.5) {
+            species = Species::Husk;
+        }
         let stay = DAY * self.rng.range(2, 5) as u64;
         for _ in 0..n {
             let p = self.spot_near(entry, 2);
@@ -509,7 +530,8 @@ impl Game {
         }
         let info = species.info();
         if info.aggro > 0 {
-            let what = if n > 1 { format!("A pack of {}", info.plural) } else { format!("A {}", info.name) };
+            let a = if info.name.starts_with(|c: char| "aeiou".contains(c)) { "An" } else { "A" };
+            let what = if n > 1 { format!("A pack of {}", info.plural) } else { format!("{} {}", a, info.name) };
             self.msg(&format!("{} has been spotted nearby.", what), (255, 170, 80));
         }
     }
@@ -1451,6 +1473,36 @@ mod tests {
         fn df_clone(f: &Fighter) -> Fighter {
             Fighter { name: f.name.clone(), skill: f.skill, dmg: f.dmg, verb: f.verb, edged: f.edged, helm: f.helm, mail: f.mail, shield: f.shield }
         }
+    }
+
+    #[test]
+    fn each_land_has_its_own_wildlife() {
+        let mut g = Game::new(11);
+        let kinds = |g: &mut Game| {
+            let mut seen = std::collections::BTreeSet::new();
+            for _ in 0..400 {
+                g.creatures.retain(|_, c| c.tame);
+                g.wildlife();
+                for c in g.creatures.values().filter(|c| !c.tame) {
+                    seen.insert(c.species.info().name);
+                }
+            }
+            seen
+        };
+        g.tick = YEAR * 2;
+        g.savagery = 0.6;
+        g.biome = Biome::Desert;
+        g.evil = false;
+        let desert = kinds(&mut g);
+        assert!(desert.contains("camel") && desert.contains("giant scorpion"), "{:?}", desert);
+        assert!(!desert.contains("deer") && !desert.contains("wolf"), "{:?}", desert);
+        g.biome = Biome::Taiga;
+        let taiga = kinds(&mut g);
+        assert!(taiga.contains("elk") && taiga.contains("wolf"), "{:?}", taiga);
+        g.biome = Biome::Desert;
+        g.evil = true;
+        let evil = kinds(&mut g);
+        assert!(evil.contains("walking husk"), "{:?}", evil);
     }
 
     #[test]

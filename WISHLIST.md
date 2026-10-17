@@ -256,8 +256,6 @@ Ideas not ranked yet, with a line on why.
 - Overlapping zones: a tile holds one zone, so a dining hall can't also be the meeting area as it
   often is in DF.
 - Roads, grates, bars, windows and supports: the rest of DF's constructions.
-- A large embark spans several world cells but takes its biome from the cursor cell only; blend
-  the neighbours into the map.
 - Drawbridges over open space (moats, see O04), wider than one tile, flinging what's on them;
   pressure plates.
 - Linking a lever uses a mechanism instantly; DF has a mechanic walk over and install it.
@@ -290,7 +288,8 @@ Ideas not ranked yet, with a line on why.
 
 ## Done
 
-- **Big moments, side panes, game over** (this commit): dramatic and rare events pause the game, turn the camera to them and tell them in a card (the overseer's cards go by on their own); status, brain, reports, chronicle and legends open as a side pane beside a live map (`\` for full screen); when the last dwarf dies, a game-over page tells the fortress's story. S01 (cause reports, `--story`, `--out`, `--compare`; 2e3a9c5) and the fight analysis (arena, blow counts, siege replay; c7b07f9) came before.
+- **The local map follows the world map** (16ad7d2; wildlife this commit): ground, plants and rock by biome (dunes and cacti, red clay, bare peaks, lasting snow, conifers, acacias, palms, reeds, evil-tainted growth); the neighbouring world cells reach onto the map with their biomes and heights (coasts, rising mountains, blended borders, carried on when the map grows); wildlife by biome (camels, scorpions, vipers, elk, ibex, antelope, lions, jaguars, alligators, polar bears) and walking husks on evil land.
+- **Big moments, side panes, game over** (7002196): dramatic and rare events pause the game, turn the camera to them and tell them in a card (the overseer's cards go by on their own); status, brain, reports, chronicle and legends open as a side pane beside a live map (`\` for full screen); when the last dwarf dies, a game-over page tells the fortress's story. S01 (cause reports, `--story`, `--out`, `--compare`; 2e3a9c5) and the fight analysis (arena, blow counts, siege replay; c7b07f9) came before.
 - **Planned fortresses and burials** (8c1e195): five layouts drawn up as halls first (great hall, mirrored wings, pillared atrium, grid of lanes, hub and spokes) with rooms opening off them through doors and rows of one-dwarf bedrooms; each overseer style prefers its own; the dead now get a tomb and coffins; hostiles with nobody to chase prowl (cave beasts in the caves, the rest in the open) instead of standing at the stairs; a warren tunnel bending into the gatehouse no longer hangs the game.
 - **An atlas of a world map, smoother level changes, mouse panning** (ecfc2a1): one character a cell; ridged mountain ranges, rivers and lakes, volcanoes, both poles cold; five new biomes (jungle, taiga, savanna, badlands, glacier); bigger worlds with more peoples and beasts; a river or volcano on the world map comes with the site; the terminal is written once a frame (level changes on big maps were hundreds of small writes); a middle or left drag pans the view alone and hides the cursor until a click or arrow key.
 - **Varied sites, map sizes, growing the map, faster water** (3c04e68; mouse d0c2fb0, reports 592b6dc, slowdowns e4cb4f8): twelve site features chosen per world cell and shown before embark; free map width, height and depth; `M` grows the map on any side with new land continuing the old (the save is shifted wholesale); still water sleeps until something nearby changes (a year runs two to three times faster).
