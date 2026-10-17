@@ -102,11 +102,13 @@ previous milestone's last wave is being measured, if it touches different files.
 Each plan flags choices it couldn't make alone. The near ones first; each has the plans'
 recommendation.
 
-**Milestone 1 (needed before wave 1)**
-- Bandages torn from spare clothing, not only thread and cloth? *Recommended: yes.*
-- A captured goblin's execution kept off-screen (a thought and a chronicle line)? *Recommended: yes.*
-- May a berserk dwarf kill? *Recommended: yes, rarely.*
-- Should the overseer hunt legendary beasts too? *Recommended: no, only prowling wildlife.*
+**Milestone 1 (decided October 2026)**
+- Bandages may be torn from spare clothing as well as thread and cloth. **Yes.**
+- A captured goblin's execution stays off-screen (a thought and a chronicle line). **Yes, mostly:**
+  now and then a hard overseer does it in the open, with a card, and the fort reacts.
+- A berserk dwarf may kill. **Yes, rarely.**
+- The overseer hunts prowling wildlife; legendary beasts only when it is very bold (the Bold
+  trait and a strong, armed squad).
 
 **Milestone 2**
 - The ghost overlay of the plan on `P` (`p` is stockpiles). *Recommended: yes.*
