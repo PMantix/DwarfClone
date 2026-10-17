@@ -1334,10 +1334,9 @@ impl Game {
         }
 
         self.psyche_tick(d);
-        // A melancholic dwarf still sips and picks at food when it's that
-        // bad (or they'd never live to come back out of it).
+        // A mad dwarf still sips and picks at food when it's that bad (or
+        // they'd never live to come back out of it).
         let sipping = d.insane
-            && d.melancholy
             && (matches!(d.task, Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Eat { .. })
                 || (matches!(d.task, Task::Idle | Task::Wander { .. }) && (d.thirst > THIRSTY + 6000 || d.hunger > HUNGRY + 12000)));
         if sipping && matches!(d.task, Task::Wander { .. }) {

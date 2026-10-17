@@ -168,3 +168,28 @@ fn melancholy_can_lift_with_a_friend_alive() {
     g.go_insane(&mut e, "has gone stark raving mad, unable to finish their work");
     assert!(e.insane && !e.melancholy);
 }
+
+#[test]
+fn a_raving_dwarf_still_drinks_when_desperate() {
+    let mut g = Game::new(11);
+    g.creatures.retain(|_, c| c.tame);
+    g.items.retain(|_, it| it.kind != ItemKind::Drink);
+    let mut d = std::mem::take(&mut g.dwarves[0]);
+    g.go_insane(&mut d, "has gone stark raving mad, unable to finish their work");
+    assert!(d.insane && !d.melancholy);
+    d.thirst = THIRSTY + 7000;
+    d.hunger = 0;
+    let at = d.pos;
+    let id = d.id;
+    g.dwarves[0] = d;
+    // A drink ten tiles off, and nothing else to drink.
+    let spot = (0..30).flat_map(|r| [at.offset(10, r, 0), at.offset(-10, r, 0), at.offset(10, -r, 0), at.offset(-10, -r, 0)])
+        .find(|&p| g.world.walkable(p) && g.world.t(p).water == 0)
+        .expect("somewhere to put a drink");
+    g.spawn_item(ItemKind::Drink, Mat::Stoutcap, spot);
+    run(&mut g, 600);
+    let d = g.dwarves.iter().find(|d| d.id == id).unwrap();
+    assert!(d.alive, "the raving dwarf died");
+    assert!(d.insane && !d.melancholy, "still raving");
+    assert!(d.thirst < 1000, "never drank (thirst {}, task {:?})", d.thirst, d.task);
+}
