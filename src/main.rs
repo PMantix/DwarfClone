@@ -121,12 +121,8 @@ fn autoplay_batch(args: &[String]) {
         }
     }
     if args.iter().any(|a| a == "--list-knobs") {
-        let mut g = game::Game::new(opt("--seed").and_then(|s| s.parse().ok()).unwrap_or(1));
-        g.knobs = knobs;
-        g.set_overseer(Some(Style::Steady));
-        while g.tick < game::DAY * 30 && g.alive_count() > 0 {
-            g.step();
-        }
+        let seed = opt("--seed").and_then(|s| s.parse().ok()).unwrap_or(1);
+        let _ = game::trial_game_with(seed, Style::Steady, 30, &knobs);
         println!("Knobs read in 30 days of a Steady fort (name, default):");
         for (k, v) in game::knobs::seen() {
             println!("  {:<28} {}", k, v);

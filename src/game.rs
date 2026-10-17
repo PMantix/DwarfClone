@@ -71,7 +71,9 @@ mod overseer_hooks;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
-pub use overseer::{run_trial, Overseer, Style, Trial};
+pub use overseer::{run_trial, trial_game_with, Overseer, Style, Trial};
+#[allow(unused_imports)] // for tests that look inside a trial
+pub use overseer::trial_game;
 pub use mysteries::{Mystery, MysteryKind};
 pub use necromancy::Necromancer;
 pub fn milestones_banner_ticks() -> u64 {

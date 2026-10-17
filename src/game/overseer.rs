@@ -1246,6 +1246,25 @@ pub struct Trial {
     pub knobs: BTreeMap<String, f64>,
 }
 
+/// A fresh fortress played by `style` up to the start of `until_day` (or
+/// until everyone is dead), for tests that look inside a trial. It's the same
+/// fort `run_trial` plays: the trial's bookkeeping doesn't touch the game.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn trial_game(seed: u64, style: Style, until_day: u64) -> Game {
+    trial_game_with(seed, style, until_day, &Knobs::default())
+}
+
+/// `trial_game` with `knobs` changed from their defaults.
+pub fn trial_game_with(seed: u64, style: Style, until_day: u64, knobs: &Knobs) -> Game {
+    let mut g = Game::new(seed);
+    g.knobs = knobs.clone();
+    g.set_overseer(Some(style));
+    while g.tick < until_day * DAY && g.alive_count() > 0 {
+        g.step();
+    }
+    g
+}
+
 /// Play one fortress with `style` for up to `years`, from a fresh world,
 /// with `knobs` changed from their defaults.
 pub fn run_trial(seed: u64, style: Style, years: u64, knobs: &Knobs) -> Trial {
@@ -1920,5 +1939,16 @@ mod tests {
         let t = run_trial(7, Style::Reckless, 0, &Knobs::default());
         assert_eq!(t.verdict, "Endured");
         assert!(t.alive > 0);
+    }
+
+    #[test]
+    fn a_trial_game_is_the_trials_fort() {
+        // Seed 5003 (Steady) loses four dwarves to bleeding by day 213 of its
+        // year (schedule::same_story_after_refactor has the whole year).
+        let g = trial_game(5003, Style::Steady, 213);
+        assert_eq!(g.tick, 213 * DAY);
+        let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
+        assert_eq!(deaths, vec![(254420, "Nothar Alehold"), (254580, "Dorna Stonebeard"), (254700, "Thekla Deepvein"), (255580, "Ragni Granitebrew")]);
+        assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
     }
 }
