@@ -64,9 +64,16 @@ pub mod troubles;
 pub mod word;
 pub mod personality;
 mod miasma;
+pub mod knobs;
+mod schedule;
+mod finders;
+mod overseer_hooks;
 pub use ambitions::{Ambition, Sense};
 
-pub use overseer::{run_trial, Overseer, Style, Trial};
+pub use knobs::Knobs;
+pub use overseer::{run_trial, trial_game_with, Overseer, Style, Trial};
+#[allow(unused_imports)] // for tests that look inside a trial
+pub use overseer::trial_game;
 pub use mysteries::{Mystery, MysteryKind};
 pub use necromancy::Necromancer;
 pub fn milestones_banner_ticks() -> u64 {
@@ -398,6 +405,9 @@ pub struct Game {
     /// One page per year gone by.
     #[serde(default)]
     pub chronicles: Vec<Chronicle>,
+    /// Tunable numbers the batch changed from their defaults (`--knob`).
+    #[serde(default)]
+    pub knobs: knobs::Knobs,
     /// A new page has been written and should be shown.
     #[serde(skip)]
     pub chronicle_ready: bool,
@@ -529,6 +539,7 @@ impl Game {
             necro_rolled: false,
             duels: Vec::new(),
             chronicles: Vec::new(),
+            knobs: Default::default(),
             chronicle_ready: false,
             creatures: BTreeMap::new(),
             station: None,
@@ -1015,70 +1026,8 @@ impl Game {
         let whole = self.prof.is_some().then(std::time::Instant::now);
         let before = self.prof.unwrap_or_default();
         self.tick += 1;
-        let t = self.prof.is_some().then(std::time::Instant::now);
-        if self.tick % 3 == 0 {
-            self.fluids();
-        }
-        if self.tick % 6 == 0 {
-            self.magma();
-        }
-        if self.tick % 25 == 0 {
-            self.aquifers();
-        }
-        self.prof_add(0, t);
-        if self.tick % 300 == 75 {
-            self.weather_thoughts();
-            self.lightning();
-        }
-        if self.tick % 10 == 5 && self.fire_cells.as_ref().map_or(true, |c| !c.is_empty()) {
-            self.fires();
-        }
-        if self.tick % 50 == 0 {
-            self.count_fits();
-        }
-        if self.tick % 50 == 10 {
-            self.annals_tick();
-        }
-        if self.tick % 25 == 20 {
-            self.army_arrives();
-        }
-        if self.orders_due(self.tick) {
-            self.manage_orders();
-        }
-        if self.tick % DAY == DAY / 4 {
-            self.festivals_daily();
-        }
-        if self.tick % 50 == 25 {
-            self.festival_tick();
-        }
-        let t = self.prof.is_some().then(std::time::Instant::now);
-        if self.tick % 150 == 7 && self.overseer.is_some() {
-            self.oversee();
-        }
-        if self.tick % 10 == 3 && self.overseer.is_some() {
-            self.oversee_alert();
-        }
-        self.prof_add(1, t);
-        if self.tick % 300 == 290 {
-            self.prune_designations();
-        }
-        if self.tick % 25 == 13 {
-            self.miasma_tick();
-        }
-        if self.tick % 100 == 60 {
-            self.expedition_tick();
-            self.duels_tick();
-            self.mysteries_tick();
-        }
-        if self.tick % DAY == DAY / 2 + 7 {
-            self.drama_daily();
-            self.pets_daily();
-            self.milestones_daily();
-            self.monument_daily();
-        }
-        if self.tick % 10 == 0 {
-            self.grow_farms();
-        }
+        // Every system on a timer runs from the schedule (schedule.rs).
+        self.schedule_early();
         let t = self.prof.is_some().then(std::time::Instant::now);
         for i in 0..self.dwarves.len() {
             if self.dwarves[i].alive {
@@ -1096,45 +1045,7 @@ impl Game {
         self.prof_add(3, t);
         self.traps_tick();
         self.update_caravan();
-        if self.tick % DAY == DAY / 2 {
-            self.wildlife();
-        }
-        if self.tick % DAY == 0 {
-            self.assign_rooms();
-            self.families_daily();
-            self.clothes_daily();
-            self.weather_daily();
-            self.rot_daily();
-            self.nobles_daily();
-            self.titles_daily();
-            self.check_mandate();
-        }
-        if self.tick % SEASON == 0 {
-            let season = (self.tick / SEASON) % 4;
-            let s = SEASONS[season as usize];
-            self.msg(&format!("{} has arrived.", s), (200, 200, 255));
-            self.autosave_request = true;
-            if season == 0 {
-                self.write_chronicle();
-                self.new_year();
-            }
-            self.seasonal_ice(season);
-            if season == 1 || season == 2 {
-                self.migrants();
-            }
-            self.regrow_shrubs();
-            self.maybe_siege();
-            self.maybe_megabeast();
-            self.maybe_cave_horror();
-            self.maybe_thief();
-            self.maybe_visitor(season);
-            self.maybe_undead();
-            self.maybe_stranger();
-            self.caravan_season(season);
-            self.issue_mandate();
-            self.maybe_strange_mood();
-            self.word_season();
-        }
+        self.schedule_late();
         if let (Some(w), Some(p)) = (whole, self.prof.as_mut()) {
             let ms = w.elapsed().as_secs_f64() * 1000.0;
             p[4] += ms;
@@ -1377,6 +1288,11 @@ impl Game {
                 self.kill(d, "has bled to death");
                 return;
             }
+        }
+        // What the body does before the mind has a say (schedule.rs).
+        self.body_phase(d);
+        if !d.alive {
+            return;
         }
         if self.tick % 200 == 0 {
             let in_bed = d.asleep
@@ -1827,44 +1743,11 @@ impl Game {
             self.choose_military(d);
             return;
         }
-        if self.find_punishment(d) {
-            return;
-        }
-        if self.find_lever_pull(d) {
-            return;
-        }
-        if d.has(Labor::Medicine) && self.find_patient(d) {
-            return;
-        }
-        if d.has(Labor::Butchery) && self.find_slaughter(d) {
-            return;
-        }
-        if d.has(Labor::Hauling) && self.find_burial(d) {
-            return;
-        }
-        if d.has(Labor::Building) && (self.find_construct(d) || self.find_build_tile(d)) {
-            return;
-        }
-        if self.find_craft(d) {
-            return;
-        }
-        if d.has(Labor::Engraving) && self.find_detail(d) {
-            return;
-        }
-        if d.has(Labor::Mining) && self.find_dig(d, false) {
-            return;
-        }
-        if d.has(Labor::Woodcutting) && self.find_dig(d, true) {
-            return;
-        }
-        if d.has(Labor::Farming) && (self.find_farm(d) || self.find_gather(d)) {
-            return;
-        }
-        if d.has(Labor::Fishing) && self.find_fishing(d) {
-            return;
-        }
-        if d.has(Labor::Hauling) && !d.specialist && !self.find_depot_haul(d) && !self.find_dump_haul(d) {
-            self.find_haul(d);
+        // Then work, from the finder table (finders.rs), most urgent first.
+        for (_, find) in finders::FINDERS {
+            if find(self, d) {
+                return;
+            }
         }
     }
 
@@ -2399,6 +2282,8 @@ impl Game {
             Task::Bury { item, coffin } => self.do_bury(d, item, coffin),
             Task::Slaughter { creature } => self.do_slaughter(d, creature),
             Task::Punish { culprit } => self.do_punish(d, culprit),
+            // Not given out yet: the items that use them add their own arms.
+            Task::FirstAid { .. } | Task::Rescue { .. } | Task::Press | Task::Catatonic | Task::Berserk | Task::Coax { .. } => self.release_task(d),
             Task::Wander { target } => match self.travel(d, target) {
                 Travel::Moving => {}
                 Travel::Arrived => d.task = Task::Idle,

@@ -527,10 +527,11 @@ impl Game {
     }
 
     pub(super) fn wildlife(&mut self) {
-        if !self.rng.chance(0.18) {
+        if !self.rng.chance(self.knob("wildlife.chance", 0.18)) {
             return;
         }
         let Some(entry) = self.edge_entry() else { return };
+        self.count("wildlife.visits", 1);
         let roll = self.rng.f64();
         let tame = 1.0 - self.savagery.clamp(0.05, 0.9) * 0.7;
         let (calm, pack, rare) = self.fauna();

@@ -128,10 +128,18 @@ pub enum Sense {
     Nudge,
     /// Its traits (cautious, vain, pious…).
     Temper,
+    /// A lesson learned from a siege, still fresh.
+    Lesson,
+    /// Wild beasts prowl near the fort and the squad is weak.
+    Prowlers,
+    /// Soldiers without proper arms.
+    Unarmed,
+    /// Wounded dwarves and too little care.
+    Wounded,
 }
 
 impl Sense {
-    pub const ALL: [Sense; 13] = [
+    pub const ALL: [Sense; 17] = [
         Sense::Temper,
         Sense::Leaning,
         Sense::Hunger,
@@ -145,6 +153,10 @@ impl Sense {
         Sense::Unready,
         Sense::Weary,
         Sense::Nudge,
+        Sense::Lesson,
+        Sense::Prowlers,
+        Sense::Unarmed,
+        Sense::Wounded,
     ];
 
     pub fn name(self) -> &'static str {
@@ -162,6 +174,10 @@ impl Sense {
             Sense::Weary => "Weary",
             Sense::Nudge => "Your nudge",
             Sense::Temper => "Its temper",
+            Sense::Lesson => "A lesson",
+            Sense::Prowlers => "Prowlers",
+            Sense::Unarmed => "Unarmed",
+            Sense::Wounded => "Wounded",
         }
     }
 }
@@ -220,7 +236,9 @@ impl Game {
         let strength = self.squads.first().map_or(0, |s| self.squad_strength(&s.members)) as f64;
         let wanderlust = if self.expedition.is_none() && !self.alert { ((strength - 8.0) / 12.0).clamp(0.0, 1.0) } else { 0.0 };
         let unready = if self.squads.is_empty() || tick < YEAR / 2 || o.style == Style::Reckless && strength < 1.0 { 1.0 } else { 0.0 };
-        let senses = vec![
+        // Senses the items add (overseer_hooks.rs), with their pulls.
+        let extra = self.extra_senses(o);
+        let mut senses = vec![
             (Sense::Temper, if o.traits.is_empty() { 0.0 } else { 1.0 }),
             (Sense::Leaning, 1.0),
             (Sense::Hunger, hunger),
@@ -234,7 +252,16 @@ impl Game {
             (Sense::Unready, unready),
             (Sense::Weary, if o.ambition.is_some() { 1.0 } else { 0.0 }),
             (Sense::Nudge, if o.nudges.iter().any(|&n| n != 0) { 1.0 } else { 0.0 }),
+            (Sense::Lesson, 0.0),
+            (Sense::Prowlers, 0.0),
+            (Sense::Unarmed, 0.0),
+            (Sense::Wounded, 0.0),
         ];
+        for &(s, level, _) in &extra {
+            if let Some(x) = senses.iter_mut().find(|x| x.0 == s) {
+                x.1 = level;
+            }
+        }
         let mut links = Vec::new();
         for &a in Ambition::ALL.iter() {
             use Ambition::*;
@@ -288,6 +315,13 @@ impl Game {
                     add(Sense::Unrest, 0.3 * unrest);
                     add(Sense::Hunger, -0.8 * hunger);
                     add(Sense::Besieged, -0.6 * besieged);
+                }
+            }
+            for (s, level, weights) in &extra {
+                for &(b, w) in weights {
+                    if b == a {
+                        add(*s, w * level);
+                    }
                 }
             }
             if o.ambition == Some(a) {
@@ -703,4 +737,17 @@ mod tests {
         assert!(o.ambitions.iter().all(|a| Ambition::ALL.contains(&a.1)));
     }
 
+    #[test]
+    fn every_sense_is_on_the_brain_screen() {
+        let mut g = Game::new(5);
+        g.set_overseer(Some(Style::Steady));
+        let b = g.overseer_brain().unwrap();
+        // Each sense once, in the screen's order; the ones no item has wired yet are quiet.
+        let order: Vec<Sense> = b.senses.iter().map(|s| s.0).collect();
+        assert_eq!(order, Sense::ALL.to_vec());
+        for s in [Sense::Lesson, Sense::Prowlers, Sense::Unarmed, Sense::Wounded] {
+            assert_eq!(b.senses.iter().find(|x| x.0 == s).unwrap().1, 0.0);
+            assert!(!s.name().is_empty());
+        }
+    }
 }

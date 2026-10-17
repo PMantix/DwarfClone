@@ -65,6 +65,9 @@ pub struct Annals {
     /// Who last wounded each dwarf, and when: (dwarf, kind, tick).
     #[serde(default)]
     pub wounded_by: Vec<(u32, String, u64)>,
+    /// Tallies for the batch report ("rescues", "wells"...), from `Game::count`.
+    #[serde(default)]
+    pub counters: BTreeMap<String, u32>,
 }
 
 /// A death's cause, from the words it was announced with.
@@ -191,6 +194,7 @@ impl Game {
                 "withdrew"
             }
             .into();
+            self.on_siege_end(i);
         }
     }
 }

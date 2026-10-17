@@ -52,12 +52,40 @@ fn sieges_by_order(trials: &[Trial]) -> [Vec<&SiegeNote>; 3] {
     out
 }
 
+/// Every counter, summed over the forts, by name.
+pub fn counter_totals(trials: &[Trial]) -> BTreeMap<String, u64> {
+    let mut m: BTreeMap<String, u64> = BTreeMap::new();
+    for t in trials {
+        for (k, v) in &t.counters {
+            *m.entry(k.clone()).or_default() += *v as u64;
+        }
+    }
+    m
+}
+
+/// The knobs a batch was run with ("bleed.gash=6 siege.cap=4"), or "defaults".
+/// Forts run with different knobs are listed each way.
+pub fn knobs_used(trials: &[Trial]) -> String {
+    let mut sets: Vec<String> = trials.iter().map(|t| t.knobs.iter().map(|(k, v)| format!("{}={}", k, v)).collect::<Vec<_>>().join(" ")).collect();
+    sets.sort();
+    sets.dedup();
+    let sets: Vec<String> = sets.into_iter().map(|s| if s.is_empty() { "defaults".to_string() } else { s }).collect();
+    if sets.is_empty() {
+        "defaults".into()
+    } else {
+        sets.join(" | ")
+    }
+}
+
 /// The whole report, as text.
 pub fn report(trials: &[Trial], years: usize) -> String {
     let mut s = String::new();
     let n = trials.len();
     let deaths: Vec<&DeathNote> = trials.iter().flat_map(|t| t.deaths.iter()).collect();
     let nd = deaths.len();
+    if trials.iter().any(|t| !t.knobs.is_empty()) {
+        let _ = writeln!(s, "\n  Knobs: {}", knobs_used(trials));
+    }
 
     let _ = writeln!(s, "\n  Forts standing at the end of each year (of {}):", n);
     let surv = survival(trials, years);
@@ -132,6 +160,15 @@ pub fn report(trials: &[Trial], years: usize) -> String {
         }
     }
 
+    // Counters: the total over the batch and the average per fort.
+    let counters = counter_totals(trials);
+    if !counters.is_empty() {
+        let _ = writeln!(s, "\n  Counters (total, per fort):");
+        for (k, v) in &counters {
+            let _ = writeln!(s, "    {:<22} {:>6} {:>8.1}", k, v, *v as f64 / n.max(1) as f64);
+        }
+    }
+
     let _ = writeln!(s, "\n  {:<9} {:>5} {:>6} {:>6} {:>8} {:>8} {:>10}", "style", "runs", "glory", "ruin", "standing", "avg yrs", "avg ☼peak");
     for st in Style::ALL {
         let mine: Vec<&Trial> = trials.iter().filter(|t| t.style == st).collect();
@@ -159,6 +196,10 @@ pub fn report(trials: &[Trial], years: usize) -> String {
 pub fn compare(a: &[Trial], b: &[Trial], years: usize) -> String {
     let mut s = String::new();
     let _ = writeln!(s, "\n  {:<24} {:>12} {:>12}", "", "before", "after");
+    if a.iter().chain(b.iter()).any(|t| !t.knobs.is_empty()) {
+        let _ = writeln!(s, "  knobs before: {}", knobs_used(a));
+        let _ = writeln!(s, "  knobs after:  {}", knobs_used(b));
+    }
     let (sa, sb) = (survival(a, years), survival(b, years));
     for y in 0..years {
         let _ = writeln!(s, "  {:<24} {:>12} {:>12}", format!("standing after year {}", y + 1), format!("{}/{}", sa[y], a.len()), format!("{}/{}", sb[y], b.len()));
@@ -182,6 +223,18 @@ pub fn compare(a: &[Trial], b: &[Trial], years: usize) -> String {
     };
     let _ = writeln!(s, "\n  {:<24} {:>12} {:>12}", "dwarves lost, 1st siege", lost(a, 0), lost(b, 0));
     let _ = writeln!(s, "  {:<24} {:>12} {:>12}", "dwarves lost, 2nd siege", lost(a, 1), lost(b, 1));
+    // Counters, per fort (the batches may differ in size).
+    let (na, nb) = (counter_totals(a), counter_totals(b));
+    let mut keys: Vec<&String> = na.keys().chain(nb.keys()).collect();
+    keys.sort();
+    keys.dedup();
+    if !keys.is_empty() {
+        let per = |m: &BTreeMap<String, u64>, k: &str, n: usize| format!("{:.1}", m.get(k).copied().unwrap_or(0) as f64 / n.max(1) as f64);
+        let _ = writeln!(s, "\n  Counters, per fort:");
+        for k in keys {
+            let _ = writeln!(s, "  {:<24} {:>12} {:>12}", k, per(&na, k, a.len()), per(&nb, k, b.len()));
+        }
+    }
     let changed: Vec<String> = a
         .iter()
         .filter_map(|x| {
@@ -225,6 +278,8 @@ mod tests {
             sieges: sieges.into_iter().map(|(lost, outcome)| SiegeNote { size: 5, dwarves_lost: lost, outcome: outcome.into(), ..Default::default() }).collect(),
             alive_by_year: alive,
             story: vec![],
+            counters: BTreeMap::new(),
+            knobs: BTreeMap::new(),
         }
     }
 
@@ -245,5 +300,37 @@ mod tests {
         let c = compare(&a, &b, 2);
         assert!(c.contains("1/2") && c.contains("2/2"), "{}", c);
         assert!(c.contains("seed 1 Steady: Ruin"), "{}", c);
+    }
+
+    #[test]
+    fn counters_are_summed_and_compared() {
+        let mut a = vec![trial(1, vec![7], vec![], vec![]), trial(2, vec![9], vec![], vec![])];
+        a[0].counters.insert("rescues".into(), 3);
+        a[0].counters.insert("bandages".into(), 1);
+        a[1].counters.insert("rescues".into(), 5);
+        let r = report(&a, 1);
+        assert_eq!(counter_totals(&a).get("rescues"), Some(&8));
+        // Summed over the forts, and per fort, sorted by name.
+        assert!(r.contains("rescues                     8      4.0"), "{}", r);
+        assert!(r.contains("bandages                    1      0.5"), "{}", r);
+        assert!(r.find("bandages").unwrap() < r.find("rescues").unwrap(), "{}", r);
+        assert!(!r.contains("Knobs:"), "no knobs line for a default batch: {}", r);
+        // The second batch was run with a knob, and rescued more.
+        let mut b = a.clone();
+        b[1].counters.insert("rescues".into(), 11);
+        b[1].counters.insert("wells".into(), 2);
+        for t in b.iter_mut() {
+            t.knobs.insert("bleed.gash".into(), 6.0);
+        }
+        let c = compare(&a, &b, 1);
+        assert!(c.contains("rescues                           4.0          7.0"), "{}", c);
+        assert!(c.contains("wells                             0.0          1.0"), "{}", c);
+        assert!(c.contains("knobs after:  bleed.gash=6") && c.contains("knobs before: defaults"), "{}", c);
+        assert!(report(&b, 1).contains("Knobs: bleed.gash=6"));
+        // An old batch file, from before counters, still loads.
+        let old = serde_json::to_string(&a[0]).unwrap().replace(r#","counters":{"bandages":1,"rescues":3},"knobs":{}"#, "");
+        assert!(!old.contains("counters"), "{}", old);
+        let t: Trial = serde_json::from_str(&old).unwrap();
+        assert!(t.counters.is_empty() && t.knobs.is_empty());
     }
 }

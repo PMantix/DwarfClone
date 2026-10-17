@@ -1,0 +1,40 @@
+//! Where new overseer behaviour plugs in. Each item keeps its logic in its
+//! own file and adds one line to the hook it needs here: the daily round,
+//! the alert check (every ten ticks, so keep it cheap), the brain's senses,
+//! or the end of a siege.
+
+use super::ambitions::{Ambition, Sense};
+use super::overseer::Overseer;
+use super::*;
+
+impl Game {
+    /// Daily, at the end of the overseer's round (`ov_daily`): one line per item.
+    pub(super) fn ov_daily_hooks(&mut self, o: &mut Overseer) {
+        // M1 (survival):
+        let _ = o;
+    }
+
+    /// Every ten ticks, at the end of the alert check (`ov_alert`): one line
+    /// per item, and cheap.
+    pub(super) fn ov_alert_hooks(&mut self, o: &mut Overseer) {
+        // M1 (survival):
+        let _ = o;
+    }
+
+    /// Senses beyond the brain's own: each is (sense, how strongly it fires
+    /// 0..1, per-ambition weights). The brain links the sense to each listed
+    /// ambition with weight × strength, so a weight of 1.3 is as strong a pull
+    /// as `Besieged` has on Fortify. A sense not listed fires at 0.
+    pub(super) fn extra_senses(&self, o: &Overseer) -> Vec<(Sense, f64, Vec<(Ambition, f64)>)> {
+        let senses = Vec::new();
+        // M1 (survival): Lesson, Prowlers, Unarmed, Wounded.
+        let _ = o;
+        senses
+    }
+
+    /// A siege has just ended (`annals.sieges[i]` now has its outcome).
+    pub(super) fn on_siege_end(&mut self, i: usize) {
+        // M1 (survival):
+        let _ = i;
+    }
+}
