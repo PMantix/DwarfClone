@@ -353,6 +353,23 @@ impl Game {
         }
     }
 
+    /// A siege is over: those of it still in our cages go into the records.
+    pub(super) fn captives_after_siege(&mut self, i: usize) {
+        let names: Vec<String> = self.captives.iter().filter(|c| c.siege == Some(i) && c.caged()).map(|c| c.name.clone()).collect();
+        if names.is_empty() || self.alive_count() == 0 {
+            return;
+        }
+        let foe = self.annals.sieges[i].foe.clone();
+        let fort = self.fortress_name.clone();
+        let text = if names.len() == 1 {
+            format!("{} of the {} was left behind in the cages of {}.", names[0], foe, fort)
+        } else {
+            format!("{} of the {} were left behind in the cages of {}.", names.len(), foe, fort)
+        };
+        self.msg(&text, (160, 230, 160));
+        self.legend(text);
+    }
+
     /// The captives still in their cages.
     pub fn caged(&self) -> impl Iterator<Item = &Captive> {
         self.captives.iter().filter(|c| c.caged())
@@ -432,6 +449,7 @@ mod tests {
         g.creatures.retain(|_, c| !c.siege);
         g.annals_tick();
         assert_eq!(g.annals.sieges[0].outcome, "routed");
+        assert!(g.overworld.events.iter().any(|e| e.text.contains("2 of the goblins were left behind in the cages")));
     }
 
     #[test]

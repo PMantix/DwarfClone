@@ -35,6 +35,6 @@ impl Game {
     /// A siege has just ended (`annals.sieges[i]` now has its outcome).
     pub(super) fn on_siege_end(&mut self, i: usize) {
         // M1 (survival):
-        let _ = i;
+        self.captives_after_siege(i);
     }
 }
