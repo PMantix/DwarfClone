@@ -249,7 +249,7 @@ impl Game {
             Lack::Drink if self.start_waterworks(o) => {
                 Self::boost(o, Recipe::Brew, 30 + pop * 3, tick);
                 self.hands_for(Labor::Brewing, 2);
-                Some("had a well sunk inside the fort, and set more hands to brewing.".into())
+                Some("set miners to bring water inside the walls, and more hands to brewing.".into())
             }
             Lack::Drink | Lack::Brewable => {
                 Self::boost(o, Recipe::Brew, 30 + pop * 3, tick);

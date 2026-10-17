@@ -19,6 +19,7 @@ impl Game {
     /// per item, and cheap.
     pub(super) fn ov_alert_hooks(&mut self, o: &mut Overseer) {
         // M1 (survival):
+        self.ov_cistern_gate(o);
         let _ = o;
     }
 
