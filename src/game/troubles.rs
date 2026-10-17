@@ -32,6 +32,10 @@ pub enum Lack {
     Manager,
     /// A work order no workshop can do: this kind is missing.
     Workshop(BuildingKind),
+    /// A dwarf in a strange mood needs a workshop of this kind.
+    MoodShop(BuildingKind),
+    Gem,
+    Bone,
 }
 
 impl Lack {
@@ -95,6 +99,9 @@ impl Lack {
             Lack::Axe => "axes".into(),
             Lack::Manager => "a manager".into(),
             Lack::Workshop(k) => format!("a {}", k.name().to_lowercase()),
+            Lack::MoodShop(k) => format!("a {} for a dwarf in a fey mood", k.name().to_lowercase()),
+            Lack::Gem => "gems".into(),
+            Lack::Bone => "bone".into(),
         }
     }
 }
@@ -130,6 +137,8 @@ impl Game {
             (Style::Warlord, Lack::Thread | Lack::Cloth | Lack::Leather) => 0.6,
             (Style::Reckless, Lack::Mechanism | Lack::Cage | Lack::Bucket) => 0.3,
             (_, Lack::Drink | Lack::Food) => 1.4,
+            // A dwarf in a fey mood who's kept waiting goes mad.
+            (_, Lack::MoodShop(_)) => 1.6,
             _ => 1.0,
         };
         let manager = if self.has_post(super::positions::Position::Manager) { 0.1 } else { 0.0 };
@@ -268,6 +277,26 @@ impl Game {
                 self.appoint(super::positions::Position::Manager, Some(m));
                 Some("appointed a manager.".into())
             }
+            Lack::MoodShop(kind) => {
+                // (One already on its way will do.)
+                if self.buildings.values().any(|b| b.kind == kind && !b.built) {
+                    return None;
+                }
+                let e = self.embark;
+                let p = self.ov_spot(kind, e.offset(4, 4, 0), 24)?;
+                self.place_building(kind, p);
+                Some("had the workshop the moody dwarf wants built at once.".into())
+            }
+            Lack::Gem => {
+                self.hands_for(Labor::Mining, 2);
+                self.ov_mine(o, 30, 40);
+                Some("sent miners after gems.".into())
+            }
+            Lack::Bone => {
+                self.hunt = true;
+                self.hands_for(Labor::Butchery, 1);
+                Some("sent hunters out for bone.".into())
+            }
             Lack::Workshop(_) => {
                 if !o.wants.contains(&RoomUse::Workshops) {
                     o.wants.insert(0, RoomUse::Workshops);
@@ -318,6 +347,27 @@ mod tests {
         assert!(miners >= 2, "nobody was set to mine");
         // And a shortage it has seen to isn't fussed over again at once.
         assert!(o.fixes.iter().any(|f| f.0 == Lack::Stone));
+    }
+
+    #[test]
+    fn a_moody_dwarf_gets_the_workshop_they_need() {
+        let mut g = Game::new(5);
+        g.set_overseer(Some(Style::Steady));
+        for _ in 0..DAY {
+            g.step();
+        }
+        let kind = BuildingKind::Craftsdwarf;
+        g.buildings.retain(|_, b| b.kind != kind);
+        let mut days = 0;
+        while days < 6 && !g.buildings.values().any(|b| b.kind == kind) {
+            g.trouble(Lack::MoodShop(kind));
+            for _ in 0..DAY {
+                g.step();
+            }
+            days += 1;
+        }
+        assert!(g.buildings.values().any(|b| b.kind == kind), "no craftsdwarf's workshop after {} days", days);
+        assert_eq!(g.buildings.values().filter(|b| b.kind == kind && !b.built).count().min(1), g.buildings.values().filter(|b| b.kind == kind && !b.built).count(), "only one on its way");
     }
 
     #[test]

@@ -161,8 +161,12 @@ style survive three years, and every style still loses forts in memorable ways.
   farming), sooner or later by its style and with a manager's help (this commit) · [x] only a
   delver digs levels down toward the caverns (a spider came up one fort's stair) (this commit)
   · [ ] wells and cisterns inside the fort
-- **So far** (batches/s05b.json against s03, 24 forts): thirst and starvation deaths 93 → 66, of
-  them sane 38 → 21; first siege 1.4 dead on average.
+· [x] a dwarf in a fey mood
+  gets the workshop and materials they demand: the overseer treats those as troubles of its own,
+  and urgent ones (this commit)
+- **So far:** thirst and starvation deaths 93 (s03) → 66 (s05b) → 51 with the troubles
+  (batches/troubles.json); no sane or melancholic dwarf died of thirst there, all 38 thirst
+  deaths were dwarves driven mad by a failed fey mood, which this commit goes after.
 
 ### Milestone 2: the overseer as a character (v0.4)
 

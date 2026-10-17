@@ -636,6 +636,7 @@ impl Game {
                     self.msg(&format!("{} has claimed a {}.", name, kind.name()), (255, 120, 255));
                 }
                 None => {
+                    self.trouble(super::troubles::Lack::MoodShop(kind));
                     self.warn(&format!("moodshop{}", d.id), &format!("{} needs a {} for their mood!", d.name, kind.name()), (255, 120, 255));
                     d.mood = Some(m);
                     d.task = Task::Idle;
@@ -661,6 +662,14 @@ impl Game {
                     m.items.push(id);
                 }
                 None => {
+                    use super::troubles::Lack;
+                    self.trouble(match need {
+                        MoodNeed::Log => Lack::Wood,
+                        MoodNeed::Stone => Lack::Stone,
+                        MoodNeed::Bar => Lack::Bars,
+                        MoodNeed::Bone => Lack::Bone,
+                        MoodNeed::Gem => Lack::Gem,
+                    });
                     self.warn(&format!("moodneed{}", d.id), &format!("{} demands {}!", d.name, need.desc()), (255, 120, 255));
                     d.mood = Some(m);
                     d.task = Task::Idle;
