@@ -102,3 +102,25 @@ pub fn ago(unix: u64) -> String {
         _ => format!("{} days ago", s / 86_400),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dwarf::Task;
+
+    /// A save written by the game as it was before Milestone 1 (Goldfist,
+    /// two days in, on a small map; its map and world were left out to keep
+    /// the file small) still loads, with the new fields at their defaults.
+    #[test]
+    fn a_save_from_before_m1_loads() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures");
+        let g = read(&dir, "goldfist-before-m1.json", &|_, _| {}).unwrap();
+        assert_eq!((g.fortress_name.as_str(), g.tick, g.alive_count()), ("Goldfist", 2400, 7));
+        assert!(g.knobs.set.is_empty() && g.annals.counters.is_empty());
+        assert!(g.dwarves.iter().any(|d| matches!(d.task, Task::Dig { .. })));
+        assert!(g.overseer.is_some());
+        // And it saves again as it is now.
+        let back: Game = serde_json::from_str(&serde_json::to_string(&g).unwrap()).unwrap();
+        assert_eq!((back.tick, back.dwarves.len()), (g.tick, g.dwarves.len()));
+    }
+}
