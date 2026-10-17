@@ -74,6 +74,13 @@ pub struct Annals {
     /// Tallies for the batch report ("rescues", "wells"...), from `Game::count`.
     #[serde(default)]
     pub counters: BTreeMap<String, u32>,
+    /// Extra besiegers each civilization owes us for captives put to death,
+    /// paid by its next siege (civ index -> size).
+    #[serde(default)]
+    pub grudges: BTreeMap<u32, u32>,
+    /// Fewer it sends next time, for captives set free.
+    #[serde(default)]
+    pub mercies: BTreeMap<u32, u32>,
 }
 
 /// A death's cause, from the words it was announced with.

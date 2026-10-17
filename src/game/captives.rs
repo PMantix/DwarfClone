@@ -2,6 +2,8 @@
 //! civilization (and siege) it came with; caging them counts toward breaking
 //! the siege, and the overseer decides what becomes of them.
 
+use super::overseer::Overseer;
+use super::personality::Trait;
 use super::*;
 use crate::creature::Species;
 use serde::{Deserialize, Serialize};
@@ -23,6 +25,12 @@ pub struct Captive {
     /// They led the siege.
     #[serde(default)]
     pub general: bool,
+    /// The historical figure they are, if one.
+    #[serde(default)]
+    pub figure: Option<u32>,
+    /// Questioned, and what they let slip hasn't come true yet.
+    #[serde(default)]
+    pub told: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,7 +93,8 @@ impl Game {
             (None, Some(r)) => crate::overworld::person_name(&mut self.rng, r),
             (None, None) => c.title(),
         };
-        let captive = Captive { cage, species: c.species, name, civ, siege, caught: self.tick, fate: Fate::Held, general };
+        let figure = c.general.filter(|&f| f != u32::MAX).or(c.figure);
+        let captive = Captive { cage, species: c.species, name, civ, siege, caught: self.tick, fate: Fate::Held, general, figure, told: false };
         let title = captive.title();
         self.captives.push(captive);
         self.count("captives", 1);
@@ -108,6 +117,177 @@ impl Game {
             }
             self.check_rout();
         }
+    }
+
+    /// Once a day the overseer decides what becomes of each captive who has
+    /// been in a cage a couple of days, while no siege is on: by its traits it
+    /// has them questioned, set free, put to death, or ransomed to a caravan
+    /// of their people; otherwise they're kept.
+    pub(super) fn ov_captives(&mut self, o: &mut Overseer) {
+        if self.captives.is_empty() || self.annals.sieges.iter().any(|s| s.ended.is_none()) {
+            return;
+        }
+        let wait = (self.knob("captives.wait_days", 2.0) * DAY as f64) as u64;
+        let due: Vec<usize> = (0..self.captives.len()).filter(|&i| self.captives[i].caged() && self.tick >= self.captives[i].caught + wait).collect();
+        for i in due {
+            // A cage that's gone (sold, lost) takes its captive with it.
+            if !self.items.get(&self.captives[i].cage).map_or(false, |it| it.kind == ItemKind::Cage && it.label.is_some()) {
+                self.captives[i].fate = Fate::Escaped;
+                continue;
+            }
+            let c = &self.captives[i];
+            let civ_alive = c.civ.map_or(false, |v| self.overworld.civs.get(v as usize).map_or(false, |x| x.alive));
+            let merciful = o.has(Trait::Sentimental) || o.has(Trait::Cheerful);
+            let harsh = !o.has(Trait::Sentimental) && (o.has(Trait::Bold) || o.has(Trait::Vain) || o.style == Style::Reckless || (c.general && o.style == Style::Warlord));
+            let curious = o.has(Trait::Cautious) || o.style == Style::Steady || !(merciful || harsh);
+            let ransom = self.caravan.as_ref().map_or(false, |car| Some(car.civ) == c.civ || c.general) && self.depot().is_some();
+            if c.fate == Fate::Held && civ_alive && curious {
+                self.question(o, i);
+            } else if merciful {
+                self.set_free(o, i);
+            } else if harsh {
+                self.execute(o, i);
+            } else if ransom {
+                self.ransom(o, i);
+            }
+        }
+    }
+
+    /// Made to talk: they let slip that their people will come again, so the
+    /// next siege is seen a season ahead.
+    fn question(&mut self, o: &mut Overseer, i: usize) {
+        let tick = self.tick;
+        let c = &mut self.captives[i];
+        c.fate = Fate::Questioned;
+        c.told = true;
+        let title = c.title();
+        let civ = c.civ.map(|v| self.overworld.civ(v).name.clone()).unwrap_or_else(|| "enemy".into());
+        self.siege_warned = true;
+        self.count("questioned", 1);
+        self.msg(&format!("{} has been questioned, and let slip that the {} will march on us again.", title, civ), (200, 200, 255));
+        Self::note_ov(o, tick, format!("Had the captive {} questioned: the {} are coming back.", title, civ));
+    }
+
+    fn set_free(&mut self, o: &mut Overseer, i: usize) {
+        let tick = self.tick;
+        let (title, civ, _) = self.empty_cage(i, Fate::Freed);
+        if let Some(v) = civ {
+            *self.annals.mercies.entry(v).or_default() += 1;
+        }
+        self.count("freed", 1);
+        let fort = self.fortress_name.clone();
+        self.msg(&format!("The overseer has set {} free.", title), (160, 230, 160));
+        self.legend(format!("{} was set free from a cage at {}.", title, fort));
+        Self::note_ov(o, tick, format!("Set the captive {} free.", title));
+    }
+
+    /// Sold back to their people's caravan for gold.
+    fn ransom(&mut self, o: &mut Overseer, i: usize) {
+        let tick = self.tick;
+        let general = self.captives[i].general;
+        let (title, _, cage) = self.empty_cage(i, Fate::Ransomed);
+        let at = self.depot().map(|d| d.pos).or_else(|| self.items.get(&cage).map(|it| it.pos)).unwrap_or(self.embark);
+        let worth = (self.knob("captives.ransom", 300.0) * if general { 3.0 } else { 1.0 }) as u32;
+        let mut paid = 0;
+        for _ in 0..40 {
+            if paid >= worth {
+                break;
+            }
+            let bar = self.spawn_item(ItemKind::Bar, Mat::Gold, at);
+            paid += self.items.get(&bar).map_or(worth, |it| it.value().max(1));
+        }
+        self.count("ransomed", 1);
+        let fort = self.fortress_name.clone();
+        let who = self.caravan.as_ref().map_or("the caravan".to_string(), |c| format!("the caravan from the {}", c.civ_name));
+        self.msg(&format!("{} has been ransomed to {} for gold worth ☼{}.", title, who, paid), (240, 220, 120));
+        self.legend(format!("{} was ransomed from a cage at {}.", title, fort));
+        Self::note_ov(o, tick, format!("Ransomed the captive {} for ☼{} in gold.", title, paid));
+    }
+
+    /// Put to death. Mostly out of sight: those who knew think on it, and the
+    /// chronicle has a line. Now and then a hard overseer has it done in the
+    /// open, before the whole fort, and some are shaken while others are
+    /// grimly satisfied. Their people will come in greater numbers to avenge it.
+    fn execute(&mut self, o: &mut Overseer, i: usize) {
+        let tick = self.tick;
+        let figure = self.captives[i].figure;
+        let (title, civ, cage) = self.empty_cage(i, Fate::Executed);
+        if let Some(v) = civ {
+            let g = self.knob("captives.grudge", 2.0) as u32;
+            *self.annals.grudges.entry(v).or_default() += g;
+        }
+        self.count("executed", 1);
+        let fort = self.fortress_name.clone();
+        if let Some(f) = figure {
+            let year = self.start_year + (tick / YEAR) as i32;
+            self.overworld.kill_figure(f, year, format!("put to death at {}", fort));
+        }
+        self.legend(format!("{} was put to death at {}.", title, fort));
+        Self::note_ov(o, tick, format!("Had the captive {} put to death.", title));
+        let hard = !o.has(Trait::Sentimental) && (o.has(Trait::Bold) || matches!(o.style, Style::Reckless | Style::Warlord));
+        let open = hard && self.rng.chance(self.knob("captives.open_execution", 0.25));
+        let at = self.items.get(&cage).map(|it| it.pos);
+        if open {
+            let text = format!("On the overseer's order, {} has been put to death before the whole fortress.", title);
+            self.msg(&text, (230, 120, 120));
+            self.spotlight("An execution", &text, at, (230, 120, 120));
+            self.count("executed.open", 1);
+            for d in self.dwarves.iter_mut().filter(|d| d.alive) {
+                if d.personality.anxiety > 10 {
+                    d.think(&format!("watched {} put to death", title), 6, tick);
+                } else {
+                    d.think(&format!("watched {} get what was coming", title), -4, tick);
+                }
+            }
+        } else {
+            self.msg(&format!("{} is no longer in the cages.", title), (200, 170, 170));
+            // Those who knew: the soldiers, and anyone near the cage.
+            let near_cage = |p: Pos| at.map_or(false, |a| a.z == p.z && (a.x - p.x).abs() <= 8 && (a.y - p.y).abs() <= 8);
+            for d in self.dwarves.iter_mut().filter(|d| d.alive && (d.soldier || near_cage(d.pos))) {
+                let stress = if d.personality.anxiety > 25 { 3 } else { -3 };
+                d.think(&format!("knew {} was put to death", title), stress, tick);
+            }
+        }
+    }
+
+    /// The captive's fate is settled and their cage is empty again:
+    /// (title, civ, cage).
+    fn empty_cage(&mut self, i: usize, fate: Fate) -> (String, Option<u32>, u32) {
+        let c = &mut self.captives[i];
+        c.fate = fate;
+        c.told = false;
+        let out = (c.title(), c.civ, c.cage);
+        if let Some(it) = self.items.get_mut(&out.2) {
+            it.label = None;
+        }
+        out
+    }
+
+    /// What the scouts add when `civ` marches: what a prisoner let slip, and
+    /// the captive it comes to avenge or remembers being spared. The grudge
+    /// is paid by this siege.
+    pub(super) fn captive_words(&mut self, civ: u32, warned: bool) -> String {
+        let mut s = String::new();
+        if warned {
+            if let Some(c) = self.captives.iter().rev().find(|c| c.told) {
+                s.push_str(&format!(" We knew they would come, as the prisoner {} let slip.", c.name));
+            }
+        }
+        for c in self.captives.iter_mut() {
+            c.told = false;
+        }
+        let last = |g: &Game, f: Fate| g.captives.iter().rev().find(|c| c.civ == Some(civ) && c.fate == f).map(|c| c.name.clone());
+        if self.annals.grudges.remove(&civ).is_some() {
+            if let Some(name) = last(self, Fate::Executed) {
+                s.push_str(&format!(" They come to avenge {}.", name));
+            }
+        }
+        if self.annals.mercies.remove(&civ).is_some() {
+            if let Some(name) = last(self, Fate::Freed) {
+                s.push_str(&format!(" Fewer come: they remember {} was spared.", name));
+            }
+        }
+        s
     }
 
     /// The captives still in their cages.
@@ -200,6 +380,151 @@ mod tests {
         assert!(g.siege_routed);
         assert!(g.captives[0].general && g.captives[0].name == name);
         assert!(g.log.iter().any(|l| l.text.contains("is in a cage")));
+    }
+
+    /// One goblin caged, the rest of the siege gone, and three days gone by:
+    /// the overseer may now decide. Returns the civ that sent them.
+    fn one_caged(seed: u64) -> (Game, u32) {
+        let (mut g, tid) = siege_and_trap(seed, 4);
+        let gob = g.creatures.values().find(|c| c.siege && c.general.is_none()).unwrap().id;
+        g.spring_trap(tid, gob);
+        g.creatures.retain(|_, c| !c.siege);
+        g.annals_tick();
+        assert!(g.annals.sieges[0].ended.is_some());
+        g.tick += 3 * DAY;
+        let civ = g.captives[0].civ.unwrap();
+        (g, civ)
+    }
+
+    fn overseer(style: Style, traits: [Trait; 2]) -> Overseer {
+        let mut o = Overseer::new(style);
+        o.name = "Urist".into();
+        o.traits = traits.to_vec();
+        o
+    }
+
+    #[test]
+    fn a_bold_overseer_executes_and_their_people_come_for_vengeance() {
+        let (mut g, civ) = one_caged(21);
+        g.knobs.set.insert("captives.open_execution".into(), 0.0);
+        let mut o = overseer(Style::Builder, [Trait::Bold, Trait::Greedy]);
+        // Not before the second day in the cage.
+        let caught = g.captives[0].caught;
+        g.tick = caught + DAY;
+        g.ov_captives(&mut o);
+        assert_eq!(g.captives[0].fate, Fate::Held);
+        g.tick = caught + 3 * DAY;
+        // Without the grudge, for comparison (same dice).
+        let rng = g.rng.clone();
+        let plain = g.siege_strength(civ);
+        g.rng = rng.clone();
+        g.ov_captives(&mut o);
+        let c = g.captives[0].clone();
+        assert_eq!(c.fate, Fate::Executed);
+        assert!(g.items[&c.cage].label.is_none(), "the cage is empty again");
+        assert_eq!(g.annals.grudges.get(&civ), Some(&2));
+        assert_eq!(g.annals.counters.get("executed"), Some(&1));
+        assert!(g.overworld.events.iter().any(|e| e.text.contains(&c.name) && e.text.contains("put to death")), "a chronicle line");
+        assert!(o.notes.iter().any(|(_, n)| n.contains("put to death")));
+        // Off-screen: no card, but the soldiers or those nearby know.
+        assert!(g.spotlights.iter().all(|s| s.title != "An execution"));
+        g.rng = rng;
+        assert_eq!(g.siege_strength(civ), plain + 2, "the next siege of that civ is two bigger");
+        // The scouts say why, and the grudge is paid.
+        let words = g.captive_words(civ, false);
+        assert!(words.contains("avenge") && words.contains(&c.name), "{}", words);
+        assert!(g.annals.grudges.get(&civ).is_none());
+    }
+
+    #[test]
+    fn now_and_then_a_hard_overseer_does_it_in_the_open() {
+        let (mut g, _) = one_caged(21);
+        g.knobs.set.insert("captives.open_execution".into(), 1.0);
+        for d in g.dwarves.iter_mut() {
+            d.thoughts.clear();
+        }
+        g.dwarves[0].personality.anxiety = 40;
+        g.dwarves[1].personality.anxiety = -40;
+        let mut o = overseer(Style::Warlord, [Trait::Bold, Trait::Stubborn]);
+        g.ov_captives(&mut o);
+        assert_eq!(g.captives[0].fate, Fate::Executed);
+        assert!(g.spotlights.iter().any(|s| s.title == "An execution"), "a card");
+        let felt = |i: usize| g.dwarves[i].thoughts.iter().find(|t| t.text.contains(&g.captives[0].name)).map(|t| t.stress);
+        assert!(felt(0).unwrap() > 0, "the anxious one is shaken");
+        assert!(felt(1).unwrap() < 0, "the hard one is grimly satisfied");
+        // A sentimental overseer never makes a show of it (it sets them free).
+        let (mut g, _) = one_caged(21);
+        g.knobs.set.insert("captives.open_execution".into(), 1.0);
+        let mut o = overseer(Style::Warlord, [Trait::Bold, Trait::Sentimental]);
+        g.ov_captives(&mut o);
+        assert_eq!(g.captives[0].fate, Fate::Freed);
+        assert!(g.spotlights.iter().all(|s| s.title != "An execution"));
+    }
+
+    #[test]
+    fn a_cautious_overseer_questions_and_the_next_siege_is_foretold() {
+        let (mut g, _) = one_caged(21);
+        let mut o = overseer(Style::Steady, [Trait::Cautious, Trait::Greedy]);
+        g.ov_captives(&mut o);
+        let name = g.captives[0].name.clone();
+        assert_eq!(g.captives[0].fate, Fate::Questioned);
+        assert!(g.siege_warned, "what they let slip warns of the next siege");
+        assert_eq!(g.annals.counters.get("questioned"), Some(&1));
+        assert!(g.cage_lines().iter().any(|l| l.contains(&name) && l.contains("(questioned)")));
+        // Once only: the next day they're kept, still in the cage.
+        g.tick += DAY;
+        g.siege_warned = false;
+        g.ov_captives(&mut o);
+        assert_eq!(g.captives[0].fate, Fate::Questioned);
+        assert!(!g.siege_warned);
+        // The scouts see the next one coming, and say how we knew.
+        g.siege_warned = true;
+        g.tick = g.tick.max(SEASON * 2 + 1);
+        g.maybe_siege();
+        assert!(g.incoming.is_some(), "a warned siege comes for certain");
+        assert!(g.log.iter().any(|l| l.text.contains("Scouts report") && l.text.contains("let slip") && l.text.contains(&name)));
+    }
+
+    #[test]
+    fn a_sentimental_overseer_sets_them_free_and_fewer_come() {
+        let (mut g, civ) = one_caged(21);
+        let mut o = overseer(Style::Builder, [Trait::Sentimental, Trait::Pious]);
+        let rng = g.rng.clone();
+        let plain = g.siege_strength(civ);
+        g.rng = rng.clone();
+        g.ov_captives(&mut o);
+        assert_eq!(g.captives[0].fate, Fate::Freed);
+        assert_eq!(g.annals.counters.get("freed"), Some(&1));
+        g.rng = rng;
+        assert_eq!(g.siege_strength(civ), (plain - 1).max(1));
+        assert!(g.captive_words(civ, false).contains("spared"));
+    }
+
+    #[test]
+    fn a_general_is_ransomed_to_a_caravan() {
+        let (mut g, tid) = siege_and_trap(21, 4);
+        let gen = g.creatures.values().find(|c| c.general.is_some()).unwrap().id;
+        g.spring_trap(tid, gen);
+        g.creatures.retain(|_, c| !c.siege);
+        g.annals_tick();
+        g.tick += 3 * DAY;
+        let mut o = overseer(Style::Delver, [Trait::Greedy, Trait::Stubborn]);
+        // No caravan: kept (it can't question them twice).
+        g.captives[0].fate = Fate::Questioned;
+        g.ov_captives(&mut o);
+        assert_eq!(g.captives[0].fate, Fate::Questioned);
+        // Any caravan will pay for a general.
+        let at = g.open_patch(5, 5, 8);
+        assert!(g.place_building(BuildingKind::Depot, at));
+        let dep = *g.buildings.keys().max().unwrap();
+        g.buildings.get_mut(&dep).unwrap().built = true;
+        let home = g.civ.unwrap_or(0);
+        g.caravan = Some(Caravan { civ: home, race: Race::Dwarf, civ_name: "Hosts".into(), goods: Vec::new(), merchants: Vec::new(), depot: dep, arrived: true, leave_tick: g.tick + DAY });
+        let gold0 = g.items.values().filter(|it| it.kind == ItemKind::Bar && it.mat == Mat::Gold).count();
+        g.ov_captives(&mut o);
+        assert_eq!(g.captives[0].fate, Fate::Ransomed);
+        let gold: u32 = g.items.values().filter(|it| it.kind == ItemKind::Bar && it.mat == Mat::Gold).map(|it| it.value()).sum();
+        assert!(gold >= 900 && g.items.values().filter(|it| it.kind == ItemKind::Bar && it.mat == Mat::Gold).count() > gold0, "a general's ransom: ☼{}", gold);
     }
 
     #[test]
