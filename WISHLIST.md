@@ -114,11 +114,18 @@ style survive three years, and every style still loses forts in memorable ways.
   (this commit) · [x] the shelter covers every hall, room and stair the overseer digs (it used
   to skip rooms not yet dug, and the halls of planned layouts, so sheltering dwarves died of
   thirst beside full barrels) (this commit) · [x] fleeing dwarves run somewhere well away,
-  deeper into the fort, rather than into a corner (this commit) · [ ] soldiers hold the
-  gatehouse instead of charging (they're stationed there; check they stay) · [ ] after a siege
+  deeper into the fort, rather than into a corner (this commit) · [x] the bridge goes up
+  sooner: 150 ticks after an army appears, and whoever stands by the lever (the squad's
+  station) throws it at once; traps wait for the bridge's mechanisms; the exploring shaft is
+  dug inside the gate, not beside the stair (goblins went straight down it) (this commit) ·
+  [x] soldiers hold the gatehouse (stationed by the lever) · [ ] after a siege
   it learns: more traps where the enemy came in, a second squad, walls · [x] cavern breaches
   get a door the moment they're dug into (beasts can't open doors) (this commit)
-- **So far** (batches/s04c.json against batches/before-S04.json): forts standing after years
+- **Latest** (batches/s04d.json): 17/7/7 standing; the bridge is up in 46% of first sieges,
+  58–70% of later ones. What's left is the first siege: it comes on day 168, mostly before the
+  bridge is built, and catches dwarves in the open (44% of the dead died under the sky). That
+  is S03's to fix (a smaller first raid, seen coming).
+- **Before that** (batches/s04c.json against batches/before-S04.json): forts standing after years
   1/2/3 went from 15/1/0 to 18/9/7; later sieges mostly fail now (the bridge is up in 82–86% of
   them), but the first siege still kills 9 dwarves on average and takes 13 forts of 25, because
   the bridge is up for only a third of them. Thirst deaths rose (22 → 58) with forts living

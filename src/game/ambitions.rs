@@ -591,7 +591,10 @@ impl Game {
     /// Sink the exploring shaft another few levels, with a tunnel at the bottom.
     pub(super) fn ov_shaft(&mut self, o: &mut Overseer) {
         let base = o.base.unwrap();
-        let shaft = base.offset(-1, 0, 0);
+        // Inside the gate, so nothing comes down the stair and straight into
+        // the deep (older forts keep the shaft they dug beside the stair).
+        let old = base.offset(-1, 0, -1);
+        let shaft = if self.world.kind(old).map_or(false, |k| matches!(k, TileKind::StairUD | TileKind::StairDown)) { base.offset(-1, 0, 0) } else { base.offset(11, 1, 0) };
         let deep = (1..=base.z).rev().take_while(|&z| self.world.kind(Pos::new(shaft.x, shaft.y, z)).map_or(false, |k| matches!(k, TileKind::StairUD | TileKind::StairDown))).last().unwrap_or(base.z);
         let digging = self.designations.iter().filter(|p| p.x == shaft.x && p.y == shaft.y).count();
         if deep > 3 && digging == 0 && self.designations.len() < 80 {

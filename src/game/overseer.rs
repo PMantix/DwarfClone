@@ -160,6 +160,9 @@ pub struct Overseer {
     /// How far east the plan of halls runs (0: not drawn up yet).
     #[serde(default)]
     pub plan_len: i32,
+    /// When the army now on the map first came (0: none).
+    #[serde(default)]
+    pub army_since: u64,
     /// What it decided, newest last.
     pub notes: Vec<(u64, String)>,
 }
@@ -189,6 +192,7 @@ impl Overseer {
             anchors: Vec::new(),
             plan_taken: Vec::new(),
             plan_len: 0,
+            army_since: 0,
             notes: Vec::new(),
         }
     }
@@ -780,16 +784,29 @@ impl Game {
             let inside = self.dwarves.iter().filter(|d| d.alive && !d.soldier).all(|d| d.pos.z <= base.z && !self.world.outside(d.pos));
             let army = |near: bool| {
                 self.creatures.values().any(|c| {
-                    c.alive && c.siege && !c.legendary() && c.hostile() && (!near || ((c.pos.x - top.x).abs() <= 25 && (c.pos.y - top.y).abs() <= 25))
+                    c.alive && c.siege && !c.legendary() && c.hostile() && (!near || ((c.pos.x - top.x).abs() <= 40 && (c.pos.y - top.y).abs() <= 40))
                 })
             };
             let (any, at_gate) = (army(false), army(true));
+            // How long the army has been on the map: a little while for those
+            // outside to run in, then the bridge goes up regardless.
+            if any && o.army_since == 0 {
+                o.army_since = self.tick;
+            } else if !any {
+                o.army_since = 0;
+            }
+            let waited = any && self.tick > o.army_since + 150;
             let long = self.tick > o.raised_at + DAY * 4;
-            let want = any && (at_gate || inside) && !(long && !at_gate && o.raised_at > 0);
+            let want = any && (at_gate || inside || waited) && !(long && !at_gate && o.raised_at > 0);
             let bridges = self.gate_bridges(base);
             let raised = bridges.iter().any(|id| self.buildings.get(id).map_or(false, |b| b.raised));
             if let Some(lever) = self.gate_lever(base) {
-                if raised != want && !self.buildings[&lever].pull {
+                // Anyone standing by the lever (the squad holds station there) throws it at once.
+                let lp = self.buildings[&lever].pos;
+                let by = self.dwarves.iter().any(|d| d.alive && d.pos.z == lp.z && (d.pos.x - lp.x).abs() <= 1 && (d.pos.y - lp.y).abs() <= 1);
+                if raised != want && by {
+                    self.pull_lever(lever);
+                } else if raised != want && !self.buildings[&lever].pull {
                     self.request_pull(lever);
                 }
                 if want && !raised {
@@ -891,7 +908,8 @@ impl Game {
                 }
             }
         }
-        if o.did("gate") && !o.did("traps") && self.stock_of(ItemKind::Mechanism) >= 2 && self.stock_of(ItemKind::Cage) >= 2 {
+        // Traps once the bridge is begun: it needs the mechanisms more.
+        if o.did("bridge") && !o.did("traps") && self.stock_of(ItemKind::Mechanism) >= 2 && self.stock_of(ItemKind::Cage) >= 2 {
             let mut n = 0;
             for dx in 4..8 {
                 for dy in 0..2 {
@@ -1014,7 +1032,8 @@ impl Game {
                         t.dug && !t.kind.solid() || matches!(t.desig, Desig::Dig | Desig::StairUD)
                     })
                     .map(|k| self.world.pos_of(k))
-                    .filter(|&p| !self.world.outside(p) && p.z <= base.z)
+                    // (Not the stair from the surface: that's the way in, outside the gate.)
+                    .filter(|&p| !self.world.outside(p) && p.z <= base.z && (p.x, p.y) != (base.x, base.y) && (p.x - base.x, p.y - base.y) != (-1, 0))
                     .collect();
                 self.burrow_add(i, &dug);
                 self.set_alert_burrow(i);
@@ -1377,9 +1396,11 @@ mod tests {
                 let gobs: Vec<Pos> = g.creatures.values().filter(|c| c.alive && c.siege && !c.legendary()).map(|c| c.pos).collect();
                 let near_gate = gobs.iter().filter(|p| (p.x - top.x).abs() <= 12 && (p.y - top.y).abs() <= 12).count();
                 let inside = gobs.iter().filter(|p| in_shelter(**p)).count();
-                let bridge = g.buildings.values().filter(|b| b.kind == BuildingKind::Door && (b.pos.x - base.x).abs() <= 3 && (b.pos.y - base.y).abs() <= 3).map(|b| (b.built, b.locked, g.world.t(b.pos).door)).collect::<Vec<_>>();
+                let bridge = g.buildings.values().filter(|b| matches!(b.kind, BuildingKind::Bridge | BuildingKind::Lever) && (b.pos.x - base.x).abs() <= 4 && (b.pos.y - base.y).abs() <= 2).map(|b| format!("{:?} raised {} pull {}", b.kind, b.raised, b.pull)).collect::<Vec<_>>();
+                let nearest = gobs.iter().map(|p| (p.x - top.x).abs().max((p.y - top.y).abs())).min().unwrap_or(-1);
+                let _ = nearest;
                 eprintln!(
-                    "t+{:>4} alert {} civ {} bridge {:?} | civilians {} (out of shelter {}, under sky {}) | foes {} near gate {} in shelter {}",
+                    "t+{:>4} alert {} civ {} {:?} | civilians {} (out of shelter {}, under sky {}) | foes {} near gate {} in shelter {}",
                     g.tick - start, g.alert as u8, g.civ_alert as u8, bridge, civ.len(), out, outside, gobs.len(), near_gate, inside
                 );
                 for l in &g.log[seen.min(g.log.len())..] {
