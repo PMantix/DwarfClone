@@ -15,6 +15,7 @@ impl Game {
         self.ov_coax(o);
         self.ov_readiness(o);
         self.ov_water(o);
+        self.ov_hospital(o);
         let _ = o;
     }
 

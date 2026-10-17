@@ -35,6 +35,7 @@ impl Game {
         if tick % DAY == DAY / 2 + 7 { self.drama_daily(); self.pets_daily(); self.milestones_daily(); self.monument_daily(); }
         if tick % 10 == 0 { self.grow_farms(); }
         // M1 (survival):
+        if tick % 150 == 77 { self.doctor_check(); }
     }
 
     /// After the dwarves and creatures have moved: wildlife, the day's

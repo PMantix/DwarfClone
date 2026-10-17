@@ -226,11 +226,13 @@ impl Overseer {
 fn plan(style: Style) -> Vec<RoomUse> {
     use RoomUse::*;
     match style {
-        Style::Builder => vec![Workshops, Stockpile, Dining, Dormitory, Meeting, Workshops, Tavern, Temple, Hospital, Tomb, Office, Stockpile, Dormitory, Barracks, Jail],
-        Style::Warlord => vec![Workshops, Stockpile, Barracks, Dining, Dormitory, Workshops, Hospital, Meeting, Tomb, Office, Stockpile, Dormitory, Tavern, Jail, Temple],
-        Style::Delver => vec![Workshops, Stockpile, Dining, Dormitory, Workshops, Stockpile, Hospital, Meeting, Tomb, Barracks, Office, Dormitory, Tavern, Temple, Jail],
+        // (A hospital right after the first beds: it must be ready before the first siege.)
+        Style::Builder => vec![Workshops, Stockpile, Dining, Dormitory, Hospital, Meeting, Workshops, Tavern, Temple, Tomb, Office, Stockpile, Dormitory, Barracks, Jail],
+        Style::Warlord => vec![Workshops, Stockpile, Barracks, Dining, Dormitory, Hospital, Workshops, Meeting, Tomb, Office, Stockpile, Dormitory, Tavern, Jail, Temple],
+        Style::Delver => vec![Workshops, Stockpile, Dining, Dormitory, Hospital, Workshops, Stockpile, Meeting, Tomb, Barracks, Office, Dormitory, Tavern, Temple, Jail],
+        // (Reckless has no hospital: the dormitory's beds will do.)
         Style::Reckless => vec![Workshops, Stockpile, Dining, Dormitory, Workshops, Tavern, Meeting, Stockpile, Dormitory, Temple],
-        Style::Steady => vec![Workshops, Stockpile, Dining, Dormitory, Meeting, Workshops, Hospital, Tomb, Barracks, Tavern, Office, Stockpile, Dormitory, Temple, Jail],
+        Style::Steady => vec![Workshops, Stockpile, Dining, Dormitory, Hospital, Meeting, Workshops, Tomb, Barracks, Tavern, Office, Stockpile, Dormitory, Temple, Jail],
     }
 }
 
@@ -625,6 +627,8 @@ impl Game {
             RoomUse::Temple => zone(ZoneKind::Temple),
             RoomUse::Hospital => {
                 self.ov_grid(r, BuildingKind::Bed, 3, 3, 3);
+                // Its last row keeps the thread, cloth and splints to hand.
+                self.add_zone(Pos::new(r.a.x, r.b.y, r.a.z), r.b, ZoneKind::Stockpile(StockFilter::Medical));
                 zone(ZoneKind::Hospital)
             }
             RoomUse::Tomb => {
@@ -687,10 +691,11 @@ impl Game {
             (Recipe::Blocks, if o.style == Style::Builder { 40 } else { 10 }),
             (Recipe::StoneCraft, 8),
             (Recipe::Bucket, 1),
-            (Recipe::Splint, 2),
+            // Thread and cloth to dress wounds, splints to set bones.
+            (Recipe::Splint, 3),
             (Recipe::Crutch, 1),
-            (Recipe::SpinThread, 4),
-            (Recipe::Weave, 3),
+            (Recipe::SpinThread, 6),
+            (Recipe::Weave, if pop >= 10 { 5 } else { 3 }),
             (Recipe::ClothShirt, 2),
             (Recipe::ClothTrousers, 2),
             (Recipe::Mechanism, if o.style == Style::Reckless { 0 } else { 5 }),
@@ -1043,9 +1048,8 @@ impl Game {
                 need.push((l, 1));
             }
         }
-        if self.zones.values().any(|z| z.kind == ZoneKind::Hospital) {
-            need.push((Labor::Medicine, 1 + pop / 15));
-        }
+        // A doctor always, hospital or not: the wounded can't wait for one.
+        need.push((Labor::Medicine, 1 + pop / 15));
         if o.style == Style::Builder {
             need.push((Labor::Engraving, 2));
         }
@@ -1943,6 +1947,22 @@ mod tests {
         let t = run_trial(7, Style::Reckless, 0, &Knobs::default());
         assert_eq!(t.verdict, "Endured");
         assert!(t.alive > 0);
+    }
+
+    #[test]
+    fn a_hospital_before_the_first_siege() {
+        // By the first siege's season, each careful style has its hospital
+        // fitted, a doctor, and thread or cloth to dress wounds with.
+        for (seed, style) in [(5003, Style::Steady), (5001, Style::Builder), (5002, Style::Delver)] {
+            let g = trial_game(seed, style, 168);
+            let o = g.overseer.as_ref().unwrap();
+            let rooms: Vec<(RoomUse, u8)> = o.rooms.iter().map(|r| (r.kind, r.stage)).collect();
+            assert!(o.rooms.iter().any(|r| r.kind == RoomUse::Hospital && r.stage == 1), "{} {}: no hospital fitted: {:?}", style.name(), seed, rooms);
+            assert!(g.zones.values().any(|z| z.kind == ZoneKind::Stockpile(StockFilter::Medical)), "{} {}: no medical stockpile", style.name(), seed);
+            assert!(g.has_doctor(), "{} {}: no doctor", style.name(), seed);
+            let dressings = g.items.values().filter(|it| matches!(it.kind, ItemKind::Thread | ItemKind::Cloth)).count();
+            assert!(dressings >= 2, "{} {}: {} thread or cloth", style.name(), seed, dressings);
+        }
     }
 
     #[test]

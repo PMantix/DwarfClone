@@ -302,10 +302,12 @@ pub enum StockFilter {
     Refuse,
     Metal,
     Goods,
+    /// The hospital's own: what a doctor dresses wounds and sets bones with.
+    Medical,
 }
 
 impl StockFilter {
-    pub const ALL: [StockFilter; 9] = [
+    pub const ALL: [StockFilter; 10] = [
         StockFilter::All,
         StockFilter::Stone,
         StockFilter::Wood,
@@ -315,6 +317,7 @@ impl StockFilter {
         StockFilter::Metal,
         StockFilter::Goods,
         StockFilter::Refuse,
+        StockFilter::Medical,
     ];
 
     pub fn name(self) -> &'static str {
@@ -328,6 +331,7 @@ impl StockFilter {
             StockFilter::Refuse => "refuse",
             StockFilter::Metal => "bars & fuel",
             StockFilter::Goods => "finished goods",
+            StockFilter::Medical => "medical supplies",
         }
     }
 
@@ -342,6 +346,7 @@ impl StockFilter {
             StockFilter::Refuse => 'r',
             StockFilter::Metal => 'm',
             StockFilter::Goods => 'g',
+            StockFilter::Medical => 'h',
         }
     }
 
@@ -362,6 +367,7 @@ impl StockFilter {
             }
             StockFilter::Refuse => matches!(k, Corpse | Carcass | Hide),
             StockFilter::Equipment => k.is_equipment(),
+            StockFilter::Medical => matches!(k, Thread | Cloth | Splint | Crutch | Soap | Bucket),
         }
     }
 }
