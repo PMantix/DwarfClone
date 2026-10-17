@@ -1,7 +1,7 @@
 //! Doctors, hospitals and treatment: sutures, cleaning, splints and crutches.
 
 use super::{Game, Travel, ZoneKind, SEARCH_LIMIT, THIRSTY};
-use crate::body::{Part, PARTS};
+use crate::body::{BleedParams, Part, PARTS};
 use crate::dwarf::{Dwarf, Labor, Task};
 use crate::geom::Pos;
 use crate::items::ItemKind;
@@ -58,6 +58,28 @@ impl Treatment {
 
 fn leg(p: Part) -> bool {
     matches!(p, Part::LeftLeg | Part::RightLeg)
+}
+
+impl Game {
+    /// How wounds bleed and clot, from the knobs (read once, then kept).
+    pub(crate) fn bleed_params(&self) -> BleedParams {
+        if let Some(p) = self.bleed_params.get() {
+            return p;
+        }
+        let d = BleedParams::default();
+        let k = |name: &'static str, v: i32| self.knob(name, v as f64).round() as i32;
+        let p = BleedParams {
+            cut: k("bleed.cut", d.cut),
+            gash: k("bleed.gash", d.gash),
+            mangle: k("bleed.mangle", d.mangle),
+            sever: k("bleed.sever", d.sever),
+            vital_pct: (self.knob("bleed.vital", d.vital_pct as f64 / 100.0) * 100.0).round() as i32,
+            clot_still: k("bleed.clot_still", d.clot_still),
+            clot_moving: k("bleed.clot_moving", d.clot_moving),
+        };
+        self.bleed_params.set(Some(p));
+        p
+    }
 }
 
 /// What a patient still needs, most urgent first.
@@ -220,7 +242,7 @@ impl Game {
         let Some(p) = self.dwarves.iter_mut().find(|p| p.id == patient) else { return };
         let b = &mut p.body;
         match what {
-            Treatment::Suture => b.bleeding = 0,
+            Treatment::Suture => b.suture(),
             Treatment::Clean => {
                 b.dirty = false;
                 b.infection = if item.is_some() { 0 } else { b.infection / 2 };
@@ -263,7 +285,8 @@ mod tests {
         }
         let patient = g.dwarves[0].id;
         g.dwarves[0].pos = e.offset(1, 0, 0);
-        g.dwarves[0].body.bleeding = 13;
+        g.dwarves[0].body.bleeds[Part::UpperBody.idx()] = 40;
+        g.dwarves[0].body.bleeding = 4;
         g.dwarves[0].body.dirty = true;
         let start = g.tick;
         for _ in 0..DAY {
@@ -289,7 +312,7 @@ mod tests {
         let mut b = crate::body::Body::new(1.0);
         b.wound(Part::LeftArm, 8, true);
         assert!(b.dirty, "an open cut should be dirty");
-        b.bleeding = 0;
+        b.suture();
         for _ in 0..400 {
             b.tick();
         }

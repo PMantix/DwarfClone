@@ -117,7 +117,7 @@ impl Game {
                 part.name()
             ));
         }
-        let suffix = match body.wound(part, dmg, att.edged) {
+        let suffix = match body.wound_with(part, dmg, att.edged, &self.bleed_params()) {
             Wound::Bruise => "",
             Wound::Gash => if att.edged { ", tearing the flesh" } else { ", bruising the muscle" },
             Wound::Mangle => ", mangling it!",
@@ -1138,7 +1138,7 @@ impl Game {
             return false;
         }
         if self.tick % 10 == 0 {
-            c.body.tick();
+            c.body.tick_with(&self.bleed_params(), !c.path.is_empty() || c.target.is_some());
             if c.body.dead {
                 self.creature_died(c.clone());
                 return false;
