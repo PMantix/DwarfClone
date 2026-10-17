@@ -435,6 +435,10 @@ pub struct Game {
     /// Patients a doctor is already on the way to.
     #[serde(skip)]
     treating: HashSet<u32>,
+    /// Patients nobody could reach or find a place for, by (patient, carrying
+    /// rather than bandaging): nobody tries again until the tick.
+    #[serde(skip)]
+    care_retry: HashMap<(u32, bool), u64>,
     /// Animals a butcher is already on the way to.
     #[serde(skip)]
     slaughtering: HashSet<u32>,
@@ -586,6 +590,7 @@ impl Game {
             dig_fail: [None, None, None, None],
             haul_retry: 0,
             treating: HashSet::new(),
+            care_retry: HashMap::new(),
             slaughtering: HashSet::new(),
         }
     }

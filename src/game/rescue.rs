@@ -15,6 +15,26 @@ fn desperate(d: &Dwarf) -> bool {
     d.thirst > THIRSTY + 1500 || d.hunger > HUNGRY + 3000
 }
 
+/// Down where they are: senseless, or crippled and hurt with nothing to get
+/// up for. A crippled dwarf who is thirsty or hungry, or on the way to a
+/// drink, a meal or a bed, is left to it: lifting them drops the errand, and
+/// a thirsty dwarf laid in bed only gets up again.
+fn down(p: &Dwarf) -> bool {
+    let b = &p.body;
+    if b.unconscious() {
+        return true;
+    }
+    let walking = !p.path.is_empty();
+    let errand = p.thirst > THIRSTY
+        || p.hunger > HUNGRY
+        || matches!(p.task, Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Eat { .. } | Task::Dine { .. })
+        || walking && matches!(p.task, Task::Rest { .. } | Task::Sleep { .. });
+    b.limp() >= 5 && b.needs_rest() && !errand
+}
+
+/// How long a patient nobody could help is left before anyone tries again.
+const CARE_RETRY: u64 = 60;
+
 impl Game {
     /// In `body_phase`: a dwarf bleeding hard, with no foe within five
     /// tiles, drops what they're doing and presses the wound (`Task::Press`).
@@ -87,7 +107,7 @@ impl Game {
         let min = self.knob("firstaid.min", 2.0);
         let mut wounded: HashMap<Pos, (u32, bool)> = HashMap::new();
         for p in self.dwarves.iter() {
-            if !p.alive || p.id == d.id || p.carried_by.is_some() || self.treating.contains(&p.id) {
+            if !p.alive || p.id == d.id || p.carried_by.is_some() || self.treating.contains(&p.id) || self.care_waits(p.id, false) {
                 continue;
             }
             if (p.body.bleed_rate() as f64) < min || matches!(p.task, Task::Flee | Task::Attack { .. } | Task::Berserk) {
@@ -106,12 +126,20 @@ impl Game {
             return false;
         }
         let close = |q: Pos| wounded.keys().any(|&p| beside(q, p));
-        let Some((at, path)) = path::search(&self.world, d.pos, SEARCH_LIMIT / 4, Mover::Dwarf, close) else { return false };
+        let Some((at, path)) = path::search(&self.world, d.pos, SEARCH_LIMIT / 4, Mover::Dwarf, close) else {
+            // Out of reach (for now).
+            let ids: Vec<u32> = wounded.values().map(|w| w.0).collect();
+            for id in ids {
+                self.care_later(id, false);
+            }
+            return false;
+        };
         let (_, &(patient, pressed)) = wounded.iter().find(|(&p, _)| beside(at, p)).unwrap();
         let item = self.find_bandage(d.pos);
         // With nothing to bind it, a helper can only hold the wound, and
         // somebody already is.
         if item.is_none() && pressed {
+            self.care_later(patient, false);
             return false;
         }
         let item = match item {
@@ -236,10 +264,20 @@ impl Game {
         if !p.alive || p.carried_by.is_some() || self.treating.contains(&p.id) || self.abed(p) {
             return false;
         }
-        let b = &p.body;
-        b.unconscious()
-            || b.limp() >= 5 && b.needs_rest()
-            || p.task == Task::Press && b.ticks_to_death().map_or(false, |t| t < self.knob("rescue.dying", 800.0) as u64)
+        down(p) || p.task == Task::Press && p.body.ticks_to_death().map_or(false, |t| t < self.knob("rescue.dying", 800.0) as u64)
+    }
+
+    /// Whether nobody need try to help `patient` again yet (`carry`: to carry
+    /// them; else to bind their wound), after a try that came to nothing.
+    fn care_waits(&self, patient: u32, carry: bool) -> bool {
+        self.care_retry.get(&(patient, carry)).map_or(false, |&t| self.tick < t)
+    }
+
+    /// Nothing came of trying to help `patient`: leave them a while.
+    fn care_later(&mut self, patient: u32, carry: bool) {
+        let tick = self.tick;
+        self.care_retry.retain(|_, t| *t > tick);
+        self.care_retry.insert((patient, carry), tick + CARE_RETRY);
     }
 
     /// Whether a rescuer may go to `p`: no foe within nine tiles, and while
@@ -263,14 +301,21 @@ impl Game {
     /// Where to carry someone lying at `from`: a free hospital bed, else
     /// any free bed nobody owns (or their own), else nowhere in particular
     /// (the shelter, worked out on the way). None if there's nowhere at all.
+    /// A bed somebody already lies in (a senseless patient lets go of the
+    /// bed's claim but stays in it) won't do, and while the civilians
+    /// shelter only beds inside the alert burrow will.
     fn carry_to(&self, from: Pos, patient: u32) -> Option<Option<u32>> {
-        let hospital = self.hospital_beds();
+        let lain: HashSet<Pos> = self.dwarves.iter().filter(|p| p.alive && p.id != patient && p.carried_by.is_none()).map(|p| p.pos).collect();
+        let shelter = self.alert_burrow.filter(|_| self.civ_alert);
+        let usable = |p: &Pos| !lain.contains(p) && shelter.map_or(true, |bit| self.world.t(*p).burrows & (1 << bit) != 0);
+        let mut hospital = self.hospital_beds();
+        hospital.retain(|p, _| usable(p));
         let beds: HashMap<Pos, u32> = if !hospital.is_empty() {
             hospital
         } else {
             self.buildings
                 .values()
-                .filter(|b| b.kind == BuildingKind::Bed && b.built && b.occupant.is_none() && b.owner.map_or(true, |o| o == patient))
+                .filter(|b| b.kind == BuildingKind::Bed && b.built && b.occupant.is_none() && b.owner.map_or(true, |o| o == patient) && usable(&b.pos))
                 .map(|b| (b.pos, b.id))
                 .collect()
         };
@@ -301,14 +346,21 @@ impl Game {
             return false;
         }
         let down: Vec<(u32, Pos)> =
-            self.dwarves.iter().filter(|p| p.id != d.id && only.map_or(true, |o| o == p.id) && self.needs_carrying(p)).map(|p| (p.id, p.pos)).collect();
+            self.dwarves.iter().filter(|p| p.id != d.id && only.map_or(true, |o| o == p.id) && !self.care_waits(p.id, true) && self.needs_carrying(p)).map(|p| (p.id, p.pos)).collect();
         if down.is_empty() {
             return false;
         }
         let doctor = d.has(Labor::Medicine);
         let free_doctor_near = |g: &Game, p: Pos| {
             g.dwarves.iter().any(|o| {
-                o.alive && o.id != d.id && o.has(Labor::Medicine) && !o.soldier && !o.is_child() && matches!(o.task, Task::Idle | Task::Wander { .. }) && combat::near(o.pos, p, 20)
+                o.alive
+                    && o.id != d.id
+                    && o.has(Labor::Medicine)
+                    && !o.soldier
+                    && !o.is_child()
+                    // (Not one on a break: they don't look for work till it's over.)
+                    && (o.task == Task::Idle || matches!(o.task, Task::Wander { .. }) && g.tick >= o.break_until)
+                    && combat::near(o.pos, p, 20)
             })
         };
         let targets: HashMap<Pos, u32> = down
@@ -322,12 +374,24 @@ impl Game {
         // A sanctioned rescue may leave the burrow (see `burrow_mask`).
         let restrict = std::mem::take(&mut self.world.restrict);
         let found = path::search(&self.world, d.pos, SEARCH_LIMIT / 4, Mover::Dwarf, |q| targets.keys().any(|&p| beside(q, p)));
-        let picked = found.and_then(|(at, path)| {
-            let (&ppos, &patient) = targets.iter().find(|(&p, _)| beside(at, p))?;
-            Some((patient, self.carry_to(ppos, patient)?, path))
-        });
+        let picked = match found {
+            None => Err(targets.values().copied().collect::<Vec<_>>()),
+            Some((at, path)) => match targets.iter().find(|(&p, _)| beside(at, p)) {
+                Some((&ppos, &patient)) => self.carry_to(ppos, patient).map(|bed| (patient, bed, path)).ok_or_else(|| vec![patient]),
+                None => Err(Vec::new()),
+            },
+        };
         self.world.restrict = restrict;
-        let Some((patient, bed, path)) = picked else { return false };
+        let (patient, bed, path) = match picked {
+            Ok(p) => p,
+            Err(none) => {
+                // Out of reach, or nowhere to take them: leave them a while.
+                for id in none {
+                    self.care_later(id, true);
+                }
+                return false;
+            }
+        };
         if let Some(b) = bed.and_then(|b| self.buildings.get_mut(&b)) {
             b.occupant = Some(patient);
         }
@@ -347,8 +411,7 @@ impl Game {
         if d.carrying_dwarf != Some(patient) {
             let ppos = self.dwarves[j].pos;
             // Still down? (They may have come round and got up.)
-            let b = &self.dwarves[j].body;
-            let down = b.unconscious() || b.limp() >= 5 && b.needs_rest() || self.dwarves[j].task == Task::Press;
+            let down = down(&self.dwarves[j]) || self.dwarves[j].task == Task::Press;
             let stale = self.dwarves[j].carried_by.is_some() || !down;
             if stale || self.tick % 10 == d.id as u64 % 10 && !self.safe_to_fetch(ppos, d) {
                 self.release_task(d);
@@ -383,7 +446,8 @@ impl Game {
             }),
         };
         let Some(dest) = dest else {
-            self.lay_down(d, patient, None);
+            // Nowhere to take them after all: set them down to rest here.
+            self.lay_down(d, patient, None, false);
             return;
         };
         let before = d.pos;
@@ -396,7 +460,7 @@ impl Game {
             }
             Travel::Arrived => {
                 self.carry_dwarf(d);
-                self.lay_down(d, patient, bed_pos.and(bed));
+                self.lay_down(d, patient, bed_pos.and(bed), true);
             }
             Travel::Failed => self.release_task(d),
         }
@@ -427,7 +491,8 @@ impl Game {
     }
 
     /// Carried all the way: into bed (or onto the shelter floor) to rest.
-    fn lay_down(&mut self, d: &mut Dwarf, patient: u32, bed: Option<u32>) {
+    /// Only a patient who got somewhere (`arrived`) counts as rescued.
+    fn lay_down(&mut self, d: &mut Dwarf, patient: u32, bed: Option<u32>, arrived: bool) {
         d.carrying_dwarf = None;
         d.task = Task::Idle;
         d.path.clear();
@@ -443,10 +508,16 @@ impl Game {
         let senseless = p.body.unconscious();
         let fought = p.attacker.map_or(false, |(_, t)| tick < t + DAY);
         let (pname, rescuer) = (p.name.clone(), d.name.clone());
-        p.think(&format!("was carried to safety by {}", rescuer), -8, tick);
-        p.adjust_regard(d.id, 10);
+        if arrived {
+            p.think(&format!("was carried to safety by {}", rescuer), -8, tick);
+            p.adjust_regard(d.id, 10);
+        }
         if let Some(b) = bed.and_then(|b| self.buildings.get_mut(&b)) {
             b.occupant = Some(patient);
+        }
+        if !arrived {
+            self.msg(&format!("{} sets {} down to rest, having nowhere to take them.", rescuer, pname), (200, 180, 140));
+            return;
         }
         d.think(&format!("carried {} from the field", pname), -4, tick);
         d.gain_xp(Labor::Medicine, 10);
@@ -704,7 +775,10 @@ mod tests {
     }
 
     /// The WISHLIST's "done when": three dwarves gashed and down in the
-    /// field are carried in and sutured.
+    /// field are carried in and sutured. Only the first half is proven
+    /// here: the gashes clot before the doctor comes, so nothing is sutured.
+    /// P8 (feeding and the medical stockpile) adds the suture or "Clean"
+    /// check; the name stays the plan's.
     #[test]
     fn three_gashed_dwarves_are_carried_in_and_sutured() {
         let (mut g, _) = quiet(11);
@@ -743,6 +817,116 @@ mod tests {
         }
         assert!(done, "not all three abed and stanched: {:?}", g.dwarves.iter().filter(|d| ids.contains(&d.id)).map(|d| (d.pos, d.body.bleed_rate())).collect::<Vec<_>>());
         assert!(g.annals.counters.get("rescues").copied().unwrap_or(0) >= 3, "{:?}", g.annals.counters);
+    }
+
+    /// A crippled dwarf going for a drink is left to it, not lifted off to
+    /// bed (where thirst only gets them up again) over and over.
+    #[test]
+    fn a_crippled_thirsty_dwarf_is_left_to_drink() {
+        let (mut g, c) = quiet(11);
+        ward(&mut g, 1);
+        let id = {
+            let d = &mut g.dwarves[0];
+            d.body.hp[Part::LeftLeg.idx()] = 0;
+            d.body.hp[Part::RightLeg.idx()] = 0;
+            d.body.infection = crate::body::INFECTED;
+            d.thirst = THIRSTY + 1200;
+            assert!(d.body.limp() >= 5 && d.body.needs_rest());
+            d.id
+        };
+        for y in 0..3 {
+            g.spawn_item(ItemKind::Drink, Mat::Stoutcap, c.offset(4, y, 0));
+        }
+        let mut drank = None;
+        for t in 0..1500 {
+            g.step();
+            let p = g.dwarves.iter().find(|d| d.id == id).unwrap();
+            assert!(p.alive, "died");
+            if p.thirst < THIRSTY {
+                drank = Some(t);
+                break;
+            }
+        }
+        let rescues = g.annals.counters.get("rescues").copied().unwrap_or(0);
+        assert!(drank.is_some(), "never drank (carried {} times)", rescues);
+        assert!(rescues <= 1, "carried {} times", rescues);
+    }
+
+    /// A senseless patient lying in a hospital bed has let go of its claim,
+    /// but nobody else is laid on top of them.
+    #[test]
+    fn a_bed_holds_one_patient() {
+        let (mut g, _) = quiet(11);
+        let beds = ward(&mut g, 1);
+        let id = fell(&mut g, 0);
+        let from = g.dwarves[0].pos;
+        assert_eq!(g.carry_to(from, id), Some(Some(beds[0].0)));
+        fell(&mut g, 1);
+        g.dwarves[1].pos = beds[0].1;
+        assert!(g.buildings[&beds[0].0].occupant.is_none());
+        assert_ne!(g.carry_to(from, id), Some(Some(beds[0].0)), "laid on top of another patient");
+    }
+
+    /// While the civilians shelter, a patient is carried into the alert
+    /// burrow, never out across open ground to a hospital outside it.
+    #[test]
+    fn under_alert_the_carried_stay_in_the_shelter() {
+        let (mut g, c) = quiet(11);
+        let beds = ward(&mut g, 1);
+        let id = fell(&mut g, 0);
+        let from = g.dwarves[0].pos;
+        let idx = g.new_burrow().unwrap();
+        assert!(g.paint_burrow(idx, c.offset(-1, -1, 0), c.offset(5, 3, 0), true) > 0);
+        g.set_alert_burrow(idx);
+        g.civ_alert = true;
+        assert!(g.world.t(from).burrows & g.burrows[idx].mask() != 0);
+        assert_eq!(g.carry_to(from, id), None, "carried out of the shelter");
+        g.civ_alert = false;
+        assert_eq!(g.carry_to(from, id), Some(Some(beds[0].0)));
+    }
+
+    /// A doctor on a break doesn't keep the haulers from a casualty.
+    #[test]
+    fn a_doctor_on_break_does_not_hold_haulers_back() {
+        let (mut g, c) = quiet(11);
+        ward(&mut g, 1);
+        fell(&mut g, 0);
+        for d in g.dwarves.iter_mut() {
+            d.labors[Labor::Medicine.idx()] = false;
+            d.labors[Labor::Hauling.idx()] = false;
+        }
+        assert!(!g.dwarves[1].is_child() && !g.dwarves[2].is_child());
+        g.dwarves[1].labors[Labor::Hauling.idx()] = true;
+        g.dwarves[2].labors[Labor::Medicine.idx()] = true;
+        g.dwarves[2].task = Task::Wander { target: c };
+        let mut d = std::mem::take(&mut g.dwarves[1]);
+        assert!(!g.find_rescue(&mut d), "went before the free doctor");
+        g.dwarves[2].break_until = g.tick + 500;
+        assert!(g.find_rescue(&mut d), "waited for a doctor on a break");
+        g.dwarves[1] = d;
+    }
+
+    /// With nowhere to carry them, nobody searches again every pass; and one
+    /// set down where they stand isn't counted rescued.
+    #[test]
+    fn nowhere_to_carry_is_not_a_rescue() {
+        let (mut g, _) = quiet(11);
+        let id = fell(&mut g, 0);
+        let mut d = std::mem::take(&mut g.dwarves[1]);
+        assert!(!g.find_rescue(&mut d));
+        assert!(g.care_waits(id, true));
+        g.tick += CARE_RETRY;
+        assert!(!g.care_waits(id, true));
+        // Carried, then nowhere to go: set down, not rescued.
+        g.dwarves[0].carried_by = Some(d.id);
+        d.carrying_dwarf = Some(id);
+        d.task = Task::Rescue { patient: id, bed: None };
+        g.do_rescue(&mut d, id, None);
+        assert_eq!(d.task, Task::Idle);
+        assert!(d.carrying_dwarf.is_none() && g.dwarves[0].carried_by.is_none());
+        assert_eq!(g.annals.counters.get("rescues"), None);
+        assert_eq!(g.year_log.carried, 0);
+        g.dwarves[1] = d;
     }
 
     #[test]

@@ -122,8 +122,10 @@ mod tests {
         assert_eq!(t.ambitions, ["Revel", "Fortify", "Prosper", "Revel", "Provision", "Muster", "Expand", "Revel", "Revel", "Expand", "Prosper", "Muster", "Expand"]);
     }
 
-    /// The tasks the survival items will hand out are in place but do nothing
-    /// yet: a dwarf given one drops it, and they save and load by name.
+    /// The survival items' tasks save and load by name, and a dwarf given one
+    /// with nothing to act on drops it. (FirstAid, Rescue and Press are live
+    /// since P7; here the patient isn't bleeding or down and nobody bleeds,
+    /// so they drop too. The rest do nothing yet.)
     #[test]
     fn the_new_tasks_are_inert() {
         let mut g = Game::new(5);
