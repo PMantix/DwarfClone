@@ -65,6 +65,7 @@ pub mod word;
 pub mod personality;
 mod miasma;
 pub mod knobs;
+mod schedule;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -1021,70 +1022,8 @@ impl Game {
         let whole = self.prof.is_some().then(std::time::Instant::now);
         let before = self.prof.unwrap_or_default();
         self.tick += 1;
-        let t = self.prof.is_some().then(std::time::Instant::now);
-        if self.tick % 3 == 0 {
-            self.fluids();
-        }
-        if self.tick % 6 == 0 {
-            self.magma();
-        }
-        if self.tick % 25 == 0 {
-            self.aquifers();
-        }
-        self.prof_add(0, t);
-        if self.tick % 300 == 75 {
-            self.weather_thoughts();
-            self.lightning();
-        }
-        if self.tick % 10 == 5 && self.fire_cells.as_ref().map_or(true, |c| !c.is_empty()) {
-            self.fires();
-        }
-        if self.tick % 50 == 0 {
-            self.count_fits();
-        }
-        if self.tick % 50 == 10 {
-            self.annals_tick();
-        }
-        if self.tick % 25 == 20 {
-            self.army_arrives();
-        }
-        if self.orders_due(self.tick) {
-            self.manage_orders();
-        }
-        if self.tick % DAY == DAY / 4 {
-            self.festivals_daily();
-        }
-        if self.tick % 50 == 25 {
-            self.festival_tick();
-        }
-        let t = self.prof.is_some().then(std::time::Instant::now);
-        if self.tick % 150 == 7 && self.overseer.is_some() {
-            self.oversee();
-        }
-        if self.tick % 10 == 3 && self.overseer.is_some() {
-            self.oversee_alert();
-        }
-        self.prof_add(1, t);
-        if self.tick % 300 == 290 {
-            self.prune_designations();
-        }
-        if self.tick % 25 == 13 {
-            self.miasma_tick();
-        }
-        if self.tick % 100 == 60 {
-            self.expedition_tick();
-            self.duels_tick();
-            self.mysteries_tick();
-        }
-        if self.tick % DAY == DAY / 2 + 7 {
-            self.drama_daily();
-            self.pets_daily();
-            self.milestones_daily();
-            self.monument_daily();
-        }
-        if self.tick % 10 == 0 {
-            self.grow_farms();
-        }
+        // Every system on a timer runs from the schedule (schedule.rs).
+        self.schedule_early();
         let t = self.prof.is_some().then(std::time::Instant::now);
         for i in 0..self.dwarves.len() {
             if self.dwarves[i].alive {
@@ -1102,45 +1041,7 @@ impl Game {
         self.prof_add(3, t);
         self.traps_tick();
         self.update_caravan();
-        if self.tick % DAY == DAY / 2 {
-            self.wildlife();
-        }
-        if self.tick % DAY == 0 {
-            self.assign_rooms();
-            self.families_daily();
-            self.clothes_daily();
-            self.weather_daily();
-            self.rot_daily();
-            self.nobles_daily();
-            self.titles_daily();
-            self.check_mandate();
-        }
-        if self.tick % SEASON == 0 {
-            let season = (self.tick / SEASON) % 4;
-            let s = SEASONS[season as usize];
-            self.msg(&format!("{} has arrived.", s), (200, 200, 255));
-            self.autosave_request = true;
-            if season == 0 {
-                self.write_chronicle();
-                self.new_year();
-            }
-            self.seasonal_ice(season);
-            if season == 1 || season == 2 {
-                self.migrants();
-            }
-            self.regrow_shrubs();
-            self.maybe_siege();
-            self.maybe_megabeast();
-            self.maybe_cave_horror();
-            self.maybe_thief();
-            self.maybe_visitor(season);
-            self.maybe_undead();
-            self.maybe_stranger();
-            self.caravan_season(season);
-            self.issue_mandate();
-            self.maybe_strange_mood();
-            self.word_season();
-        }
+        self.schedule_late();
         if let (Some(w), Some(p)) = (whole, self.prof.as_mut()) {
             let ms = w.elapsed().as_secs_f64() * 1000.0;
             p[4] += ms;
