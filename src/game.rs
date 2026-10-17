@@ -413,6 +413,9 @@ pub struct Game {
     /// Tunable numbers the batch changed from their defaults (`--knob`).
     #[serde(default)]
     pub knobs: knobs::Knobs,
+    /// The bleed knobs, read once (`bleed_params`).
+    #[serde(skip)]
+    bleed_params: std::cell::Cell<Option<crate::body::BleedParams>>,
     /// A new page has been written and should be shown.
     #[serde(skip)]
     pub chronicle_ready: bool,
@@ -546,6 +549,7 @@ impl Game {
             duels: Vec::new(),
             chronicles: Vec::new(),
             knobs: Default::default(),
+            bleed_params: Default::default(),
             chronicle_ready: false,
             creatures: BTreeMap::new(),
             station: None,
@@ -1289,7 +1293,7 @@ impl Game {
             }
         }
         if self.tick % 10 == 0 {
-            d.body.tick();
+            d.body.tick_with(&self.bleed_params(), !d.path.is_empty() || d.attack_cd > 0);
             if d.body.dead {
                 self.kill(d, "has bled to death");
                 return;

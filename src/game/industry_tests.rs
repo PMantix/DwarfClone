@@ -235,7 +235,7 @@ fn soap_from_ash_and_tallow_lets_doctors_clear_infection() {
     {
         let d = &mut g.dwarves[0];
         d.body.wound(crate::body::Part::LeftArm, 4, true);
-        d.body.bleeding = 0;
+        d.body.suture();
         d.body.infection = 300;
         d.task = Task::Rest { bed: None, stand: d.pos };
         d.asleep = true;

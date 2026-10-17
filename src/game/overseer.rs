@@ -1943,8 +1943,8 @@ mod tests {
 
     #[test]
     fn a_trial_game_is_the_trials_fort() {
-        // Seed 5003 (Steady) loses four dwarves to bleeding by day 213 of its
-        // year (schedule::same_story_after_refactor has the whole year).
+        // Seed 5003 (Steady) loses a dwarf to a wolf by day 213 of its year
+        // (schedule::same_story_after_refactor has the whole year).
         let g = trial_game(5003, Style::Steady, 213);
         assert_eq!(g.tick, 213 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();

@@ -117,7 +117,7 @@ impl Game {
                 part.name()
             ));
         }
-        let suffix = match body.wound(part, dmg, att.edged) {
+        let suffix = match body.wound_with(part, dmg, att.edged, &self.bleed_params()) {
             Wound::Bruise => "",
             Wound::Gash => if att.edged { ", tearing the flesh" } else { ", bruising the muscle" },
             Wound::Mangle => ", mangling it!",
@@ -1108,7 +1108,7 @@ impl Game {
             return false;
         }
         if self.tick % 10 == 0 {
-            c.body.tick();
+            c.body.tick_with(&self.bleed_params(), !c.path.is_empty() || c.target.is_some());
             if c.body.dead {
                 self.creature_died(c.clone());
                 return false;
@@ -1441,6 +1441,12 @@ mod tests {
             delay: u32,
         }
         let mut g = Game::new(5);
+        // KNOBS="bleed.gash=6,bleed.clot_moving=3" to try other numbers.
+        for kv in std::env::var("KNOBS").unwrap_or_default().split(',').filter(|s| !s.is_empty()) {
+            let (k, v) = crate::game::knobs::parse_knob(kv).unwrap();
+            g.knobs.set.insert(k, v);
+        }
+        let bp = g.bleed_params();
         let e = g.embark;
         let mut gear = |g: &mut Game, kinds: &[(ItemKind, Mat)]| -> (Option<u32>, Vec<u32>) {
             let mut held = None;
@@ -1518,8 +1524,9 @@ mod tests {
                             }
                         }
                         if t % 10 == 0 {
-                            a.body.tick();
-                            b.body.tick();
+                            // Both are fighting, so their wounds clot slowly.
+                            a.body.tick_with(&bp, true);
+                            b.body.tick_with(&bp, true);
                         }
                         let a_down = a.body.dead || a.body.unconscious();
                         let b_down = b.body.dead || b.body.unconscious();

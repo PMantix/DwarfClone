@@ -29,6 +29,7 @@ impl Game {
         let mut senses = Vec::new();
         // M1 (survival): Lesson, Prowlers, Unarmed, Wounded.
         senses.extend(self.prowler_sense(o));
+        senses.push((Sense::Wounded, self.wounded_sense(), vec![(Ambition::Provision, 0.6), (Ambition::Venture, -1.5)]));
         let _ = o;
         senses
     }
