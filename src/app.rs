@@ -1,6 +1,6 @@
 use crate::buildings::BuildingKind;
 use crate::dwarf::LABORS;
-use crate::game::{BuildMat, ConstructKind, Game, ZoneKind};
+use crate::game::{BuildMat, ConstructKind, Game, Loadout, ZoneKind};
 use crate::geom::Pos;
 use crate::items::StockFilter;
 use crate::jobs::{AfterSave, Job, JobDone};
@@ -271,6 +271,12 @@ pub enum Mode {
     Expedition { squad: usize, sel: usize },
     /// Choose an embark site on the world map.
     WorldMap { x: i32, y: i32 },
+    /// Embark here? The site's summary, then Play now, Prepare carefully
+    /// or Back (`sel` is the highlighted one).
+    Embark { x: i32, y: i32, sel: usize },
+    /// Spend points on the expedition: rows are the founders, then the
+    /// supplies and animals; `col` picks a founder's main or second skill.
+    Prepare { x: i32, y: i32, sel: usize, col: usize },
     /// Browse history. `from_world` returns to the world map on Esc.
     Legends { tab: usize, scroll: usize, from_world: bool },
     /// Barter at the depot. side 0 = our goods, 1 = theirs.
@@ -350,6 +356,8 @@ pub struct App {
     /// Index into `MapSize::ALL` for the next embark.
     /// The fortress map to embark on.
     pub embark_size: crate::world::MapSize,
+    /// The expedition being prepared carefully (kept while choosing a site).
+    pub loadout: Loadout,
     /// The squad selected on the military screen.
     pub squad_sel: usize,
     /// Where the mouse is, and any drag under way.
@@ -415,6 +423,7 @@ impl App {
             worldgen: None,
             gen_fast: false,
             embark_size: crate::world::MapSize::MEDIUM,
+            loadout: Loadout::prepared(),
             squad_sel: 0,
             hover: None,
             drag: None,
@@ -507,6 +516,8 @@ impl App {
                 | Mode::WorldSetup { .. }
                 | Mode::WorldGen
                 | Mode::WorldMap { .. }
+                | Mode::Embark { .. }
+                | Mode::Prepare { .. }
                 | Mode::Legends { from_world: true, .. }
         )
     }
@@ -602,11 +613,11 @@ impl App {
         }
     }
 
-    fn start_embark(&mut self, x: i32, y: i32) {
+    fn start_embark(&mut self, x: i32, y: i32, loadout: Loadout) {
         let ow = self.game.overworld.clone();
         let seed = self.seed;
         let size = self.embark_size;
-        self.run_job("Embarking", move |report| Ok(JobDone::Embarked(Game::embark_with(seed, ow, x, y, size, report))));
+        self.run_job("Embarking", move |report| Ok(JobDone::Embarked(Game::embark_prepared(seed, ow, x, y, size, &loadout, report))));
     }
 
     /// A fresh world and fortress, played by the overseer in a random style.
@@ -1082,6 +1093,8 @@ impl App {
             Mode::Loading => return,
             Mode::WorldSetup { sel } => return self.key_world_setup(k, sel),
             Mode::WorldGen => return self.key_worldgen(k),
+            Mode::Embark { x, y, sel } => return self.key_embark(k, x, y, sel),
+            Mode::Prepare { x, y, sel, col } => return self.key_prepare(k, x, y, sel, col),
             Mode::Title { sel } => return self.key_title(k, sel),
             Mode::LoadMenu { sel, confirm } => return self.key_load_menu(k, sel, confirm),
             _ => {}
@@ -1580,7 +1593,7 @@ impl App {
                 KeyCode::Char('y') | KeyCode::Char('Y') => self.quit = true,
                 _ => self.mode = Mode::Normal,
             },
-            Mode::Title { .. } | Mode::LoadMenu { .. } | Mode::Loading | Mode::WorldSetup { .. } | Mode::WorldGen => {}
+            Mode::Title { .. } | Mode::LoadMenu { .. } | Mode::Loading | Mode::WorldSetup { .. } | Mode::WorldGen | Mode::Embark { .. } | Mode::Prepare { .. } => {}
         }
     }
 
@@ -2113,7 +2126,7 @@ impl App {
                 return;
             }
             KeyCode::Char('?') => {
-                self.flash = Some("Arrows pick a site, Enter embarks. Map size: s presets, [ ] width, { } height, d depth. l legends, Esc back.".into());
+                self.flash = Some("Arrows pick a site, Enter to embark (play now or prepare carefully). Map size: s presets, [ ] width, { } height, d depth. l legends, Esc back.".into());
                 return;
             }
             KeyCode::Char('Q') => {
@@ -2125,8 +2138,10 @@ impl App {
                 return;
             }
             KeyCode::Enter => {
+                // Nothing commits yet: first the site's card and the choices.
                 if ow.embarkable(x, y) {
-                    self.start_embark(x, y);
+                    self.flash = None;
+                    self.mode = Mode::Embark { x, y, sel: 0 };
                 } else {
                     self.flash = Some("You can't embark on water or an existing site.".into());
                 }
@@ -2137,6 +2152,86 @@ impl App {
         nx = nx.clamp(0, ow.w - 1);
         ny = ny.clamp(0, ow.h - 1);
         self.mode = Mode::WorldMap { x: nx, y: ny };
+    }
+
+    /// The embark card: Play now, Prepare carefully, or Back.
+    fn key_embark(&mut self, k: KeyEvent, x: i32, y: i32, sel: usize) {
+        let choose = match k.code {
+            KeyCode::Up => {
+                self.mode = Mode::Embark { x, y, sel: (sel + 2) % 3 };
+                return;
+            }
+            KeyCode::Down | KeyCode::Tab => {
+                self.mode = Mode::Embark { x, y, sel: (sel + 1) % 3 };
+                return;
+            }
+            KeyCode::Enter => sel,
+            KeyCode::Char('p') | KeyCode::Char('P') => 0,
+            KeyCode::Char('c') | KeyCode::Char('C') => 1,
+            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => 2,
+            KeyCode::Char('Q') => {
+                self.quit = true;
+                return;
+            }
+            _ => return,
+        };
+        match choose {
+            0 => self.start_embark(x, y, Loadout::standard()),
+            1 => self.mode = Mode::Prepare { x, y, sel: 0, col: 0 },
+            _ => self.mode = Mode::WorldMap { x, y },
+        }
+    }
+
+    /// Preparing carefully: ↑↓ rows, ←→ less or more, Tab main/second
+    /// skill, Space (or l / L) another labor, r start over, Enter embark.
+    fn key_prepare(&mut self, k: KeyEvent, x: i32, y: i32, sel: usize, col: usize) {
+        use crate::game::loadout::{ANIMALS, SUPPLIES};
+        let founders = self.loadout.founders.len();
+        let rows = founders + SUPPLIES.len() + ANIMALS.len();
+        let (mut sel, mut col) = (sel.min(rows - 1), col.min(1));
+        match k.code {
+            KeyCode::Up => sel = (sel + rows - 1) % rows,
+            KeyCode::Down => sel = (sel + 1) % rows,
+            KeyCode::PageUp => sel = sel.saturating_sub(7),
+            KeyCode::PageDown => sel = (sel + 7).min(rows - 1),
+            KeyCode::Tab | KeyCode::BackTab => col = 1 - col,
+            KeyCode::Left | KeyCode::Right | KeyCode::Char('-') | KeyCode::Char('+') | KeyCode::Char('=') => {
+                let up = matches!(k.code, KeyCode::Right | KeyCode::Char('+') | KeyCode::Char('='));
+                if sel < founders {
+                    self.loadout.adjust_skill(sel, col, up);
+                } else if sel < founders + SUPPLIES.len() {
+                    self.loadout.adjust_supply(sel - founders, up);
+                } else {
+                    self.loadout.adjust_animal(sel - founders - SUPPLIES.len(), up);
+                }
+            }
+            KeyCode::Char(' ') | KeyCode::Char('l') | KeyCode::Char('L') => {
+                if sel < founders {
+                    self.loadout.cycle_labor(sel, col, k.code != KeyCode::Char('L'));
+                }
+            }
+            KeyCode::Char('r') | KeyCode::Char('R') => {
+                self.loadout = Loadout::prepared();
+                self.flash = Some("Back to the standard expedition.".into());
+            }
+            KeyCode::Enter => {
+                let left = self.loadout.points_left();
+                if left < 0 {
+                    self.flash = Some(format!("That's {} points over the budget: leave something behind.", -left));
+                } else {
+                    self.flash = None;
+                    self.start_embark(x, y, self.loadout.clone());
+                    return;
+                }
+            }
+            KeyCode::Esc => {
+                self.flash = None;
+                self.mode = Mode::Embark { x, y, sel: 1 };
+                return;
+            }
+            _ => return,
+        }
+        self.mode = Mode::Prepare { x, y, sel, col };
     }
 
     fn key_trade(&mut self, k: KeyEvent, side: usize, mut sel: [usize; 2]) {

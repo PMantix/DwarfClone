@@ -94,8 +94,8 @@ impl Game {
     }
 
     /// Embark animals: a pair of dogs, a pair of goats and a cat.
-    pub(super) fn bring_animals(&mut self, near_pos: Pos) {
-        for (species, female) in [(Species::Dog, false), (Species::Dog, true), (Species::Goat, false), (Species::Goat, true), (Species::Cat, true)] {
+    pub(super) fn bring_animals(&mut self, near_pos: Pos, which: &[(Species, bool)]) {
+        for &(species, female) in which {
             let p = self.random_spot_near(near_pos, 3);
             self.spawn_tame(species, p, female, true);
         }

@@ -1447,7 +1447,9 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
         | Mode::LoadMenu { .. }
         | Mode::Loading
         | Mode::WorldSetup { .. }
-        | Mode::WorldGen => {
+        | Mode::WorldGen
+        | Mode::Embark { .. }
+        | Mode::Prepare { .. } => {
             title = String::new();
         }
         Mode::Nobles | Mode::Appoint { .. } => {
@@ -2006,7 +2008,194 @@ fn draw_world(f: &mut Frame, app: &mut App, cx: i32, cy: i32) {
     );
 }
 
-/// What part of the world a map view shows: top-left cell, size in cells,
+//// The card shown before embarking: what the site is like, who lives near
+/// and who means harm, and the three choices.
+fn draw_embark_card(f: &mut Frame, app: &App, x: i32, y: i32, sel: usize) {
+    let area = f.size();
+    let ow = &app.game.overworld;
+    let mut v = embark_summary(ow, app.seed, x, y);
+    v.push(Line::default());
+    for (i, (key, what)) in [("p", "Play now: the usual seven and the usual wagon"), ("c", "Prepare carefully: choose skills and supplies"), ("Esc", "Back to the map")].iter().enumerate() {
+        let on = i == sel;
+        let st = if on { Style::default().fg(BLACK).bg(KEY).add_modifier(Modifier::BOLD) } else { Style::default().fg(TEXT) };
+        v.push(Line::from(vec![
+            Span::styled(if on { " ▶ " } else { "   " }, Style::default().fg(KEY)),
+            Span::styled(format!("{:>3} ", key), Style::default().fg(KEY).add_modifier(Modifier::BOLD)),
+            Span::styled(format!(" {} ", what), st),
+        ]));
+    }
+    v.push(Line::default());
+    v.push(plain("  ↑↓ choose · Enter confirm".into(), MUTED));
+    let r = centered(area, 66, v.len() as u16 + 2);
+    f.render_widget(Clear, r);
+    f.render_widget(
+        Paragraph::new(v).wrap(Wrap { trim: false }).style(Style::default().bg(Color::Rgb(12, 12, 20))).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(KEY))
+                .title(Span::styled(" Embark here? ", Style::default().fg(KEY))),
+        ),
+        r,
+    );
+}
+
+/// A site in a few lines: land, features, water, wildlife, neighbours.
+fn embark_summary(ow: &Overworld, seed: u64, x: i32, y: i32) -> Vec<Line<'static>> {
+    let c = ow.cell(x, y);
+    let (g, col) = ow.look(x, y);
+    let mut v = vec![Line::from(vec![
+        Span::styled(format!("{} ", g), Style::default().fg(col)),
+        Span::styled(cap_first(c.biome.name()), Style::default().fg(TEXT).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            ow.region_at(x, y).map_or(String::new(), |r| format!(" in {}", r.name)),
+            Style::default().fg(Color::Rgb(170, 200, 230)),
+        ),
+        Span::styled(format!("  ({}, {})", x, y), Style::default().fg(MUTED)),
+    ])];
+    if c.evil {
+        v.push(plain("An evil taint lies on this land.".into(), Color::Rgb(200, 120, 255)));
+    }
+    let bits = ow.site_features(seed, x, y);
+    let feats: Vec<&str> = crate::terrain::feature_names(bits);
+    v.push(Line::from(vec![
+        Span::styled("Features: ", Style::default().fg(MUTED)),
+        Span::styled(if feats.is_empty() { "none to speak of".to_string() } else { feats.join(", ") }, Style::default().fg(Color::Rgb(170, 220, 170))),
+    ]));
+    let p = c.biome.params();
+    let aq = ow.aquifer(x, y);
+    let savage = p.savagery + if c.evil { 0.3 } else { 0.0 } > 0.35;
+    v.push(Line::from(vec![
+        Span::styled("Aquifer: ", Style::default().fg(MUTED)),
+        Span::styled(["none", "light", "heavy"][aq.min(2) as usize], Style::default().fg(if aq > 0 { Color::Rgb(90, 160, 255) } else { TEXT })),
+        Span::styled("   Wildlife: ", Style::default().fg(MUTED)),
+        Span::styled(if savage { "savage" } else { "calm" }, Style::default().fg(if savage { Color::Rgb(240, 120, 90) } else { TEXT })),
+    ]));
+    let beasts = ow.beasts_near(x, y, 12).len();
+    if beasts > 0 {
+        v.push(plain(format!("{} ancient beast{} not far off.", beasts, if beasts == 1 { "" } else { "s" }), Color::Rgb(240, 120, 90)));
+    }
+    v.push(Line::default());
+    v.push(header("Nearest neighbours"));
+    let parent = ow.parent_civ(x, y);
+    let ns = ow.neighbors(x, y, 30);
+    if ns.is_empty() {
+        v.push(plain("None within reach.".into(), MUTED));
+    }
+    for n in ns.iter().take(5) {
+        let civ = ow.civ(n.civ);
+        let war = parent.map_or(false, |p| ow.civ(p).enemies.contains(&n.civ) || civ.enemies.contains(&p));
+        let (note, nc) = if n.race == Race::Goblin || war {
+            ("hostile", Color::Rgb(240, 100, 90))
+        } else if Some(n.civ) == parent {
+            ("your kin, who send you", Color::Rgb(255, 210, 90))
+        } else if n.race == Race::Dwarf {
+            ("kin", TEXT)
+        } else {
+            ("friendly traders", TEXT)
+        };
+        v.push(Line::from(vec![
+            Span::styled(format!("{} ({}), {} away: ", civ.name, n.race.plural(), n.dist), Style::default().fg(n.race.color())),
+            Span::styled(note, Style::default().fg(nc)),
+        ]));
+    }
+    v
+}
+
+/// Preparing carefully: the seven founders' skills, the wagon, the animals,
+/// and the points left to spend.
+fn draw_prepare(f: &mut Frame, app: &App, x: i32, y: i32, sel: usize, col: usize) {
+    use crate::dwarf::skill_rank;
+    use crate::game::loadout::{level_cost, Loadout, ANIMALS, BUDGET, STANDARD_LEVELS, SUPPLIES};
+    let area = f.size();
+    backdrop(f, area);
+    let l = &app.loadout;
+    let left = l.points_left();
+    let rank = |lv: u32| if lv == 0 { "none".to_string() } else { skill_rank(lv * 400 + 200).to_string() };
+    let mut v: Vec<Line> = vec![
+        Line::from(vec![
+            Span::styled(format!(" {} ", cap_first(app.game.overworld.cell(x, y).biome.name())), Style::default().fg(TEXT)),
+            Span::styled(format!("({}, {})", x, y), Style::default().fg(MUTED)),
+            Span::styled("     Points left: ", Style::default().fg(MUTED)),
+            Span::styled(
+                format!("{}", left),
+                Style::default().fg(if left < 0 { Color::Rgb(240, 90, 80) } else { Color::Rgb(140, 230, 140) }).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(format!(" of {}", BUDGET), Style::default().fg(MUTED)),
+        ]),
+        Line::default(),
+        header(&format!(" {:<13}{:<26}{:<26}{}", "The founders", "main skill", "second skill", "cost")),
+    ];
+    let hi = |on: bool| if on { Style::default().fg(BLACK).bg(KEY) } else { Style::default().fg(TEXT) };
+    let n = l.founders.len();
+    for (i, fd) in l.founders.iter().enumerate() {
+        let lv = fd.levels.unwrap_or(STANDARD_LEVELS);
+        let on = i == sel;
+        v.push(Line::from(vec![
+            Span::styled(if on { " ▶ " } else { "   " }, Style::default().fg(KEY)),
+            Span::styled(format!("Founder {}  ", i + 1), Style::default().fg(MUTED)),
+            Span::styled(format!("{:<14}", fd.labors[0].name()), Style::default().fg(TEXT)),
+            Span::styled(format!("{:<11}", rank(lv[0])), hi(on && col == 0)),
+            Span::styled(" ", Style::default()),
+            Span::styled(format!("{:<14}", fd.labors[1].name()), Style::default().fg(TEXT)),
+            Span::styled(format!("{:<11}", rank(lv[1])), hi(on && col == 1)),
+            Span::styled(format!(" {:>4}", Loadout::founder_cost(fd)), Style::default().fg(MUTED)),
+        ]));
+    }
+    v.push(Line::default());
+    v.push(header(&format!(" {:<38}{:>7}   {}", "The wagon", "count", "cost")));
+    for (i, s) in SUPPLIES.iter().enumerate() {
+        let on = sel == n + i;
+        v.push(Line::from(vec![
+            Span::styled(if on { " ▶ " } else { "   " }, Style::default().fg(KEY)),
+            Span::styled(format!("{:<36}", s.name), hi(on)),
+            Span::styled(format!("{:>7}", l.supply(i)), Style::default().fg(TEXT)),
+            Span::styled(format!("   {} pts per {}", s.cost, s.step), Style::default().fg(MUTED)),
+        ]));
+    }
+    for (i, a) in ANIMALS.iter().enumerate() {
+        let on = sel == n + SUPPLIES.len() + i;
+        v.push(Line::from(vec![
+            Span::styled(if on { " ▶ " } else { "   " }, Style::default().fg(KEY)),
+            Span::styled(format!("{:<36}", a.1), hi(on)),
+            Span::styled(format!("{:>7}", l.animal(i)), Style::default().fg(TEXT)),
+            Span::styled(format!("   {} pts each", a.3), Style::default().fg(MUTED)),
+        ]));
+    }
+    v.push(Line::default());
+    v.push(plain(
+        format!(
+            " A skill costs {}/{}/{}/{}/{} points in all at Novice to Proficient.",
+            level_cost(1),
+            level_cost(2),
+            level_cost(3),
+            level_cost(4),
+            level_cost(5)
+        ),
+        MUTED,
+    ));
+    v.push(plain(" ↑↓ row · ←→ less/more · Tab main/second skill · Space other labor".into(), MUTED));
+    v.push(plain(" r start over · Enter embark · Esc back".into(), MUTED));
+    if let Some(fl) = &app.flash {
+        v.push(plain(format!(" {}", fl), Color::Rgb(255, 150, 90)));
+    }
+    // Keep the highlighted row in sight on a short screen.
+    let h = (v.len() as u16 + 2).min(area.height);
+    let row = if sel < n { 3 + sel } else { 5 + sel } as u16;
+    let scroll = (row + 4).saturating_sub(h.saturating_sub(2));
+    let r = centered(area, 90, h);
+    f.render_widget(Clear, r);
+    f.render_widget(
+        Paragraph::new(v).scroll((scroll, 0)).style(Style::default().bg(Color::Rgb(12, 12, 20))).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(KEY))
+                .title(Span::styled(" Prepare carefully ", Style::default().fg(KEY))),
+        ),
+        r,
+    );
+}
+
+// What part of the world a map view shows: top-left cell, size in cells,
 /// and how many world cells each character stands for.
 #[derive(Clone, Copy)]
 struct WorldView {
@@ -2331,7 +2520,7 @@ fn world_info(ow: &Overworld, x: i32, y: i32, flash: &Option<String>) -> Vec<Lin
     v.push(Line::default());
     v.push(header("Keys"));
     v.push(key_line("↑↓←→", "move (Shift = x5)", false));
-    v.push(key_line("Enter", "embark here", false));
+    v.push(key_line("Enter", "embark here (asks first)", false));
     v.push(key_line("l", "legends of this world", false));
     v.push(key_line("Q", "quit", false));
     if let Some(f) = flash {
@@ -2580,6 +2769,15 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
     if let Mode::WorldMap { x, y } = app.mode {
         draw_world(f, app, x, y);
+        return;
+    }
+    if let Mode::Embark { x, y, sel } = app.mode {
+        draw_world(f, app, x, y);
+        draw_embark_card(f, app, x, y, sel);
+        return;
+    }
+    if let Mode::Prepare { x, y, sel, col } = app.mode {
+        draw_prepare(f, app, x, y, sel, col);
         return;
     }
     if let Mode::Legends { tab, scroll, from_world: true } = app.mode {
@@ -4532,6 +4730,111 @@ mod tests {
     }
 
     #[test]
+    fn embarking_asks_first_and_can_be_prepared_carefully() {
+        use crate::game::loadout::{Loadout, SUPPLIES};
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
+        let finish = |app: &mut App| {
+            let t = std::time::Instant::now();
+            while app.mode == Mode::Loading {
+                app.frame();
+                std::thread::sleep(std::time::Duration::from_millis(5));
+                assert!(t.elapsed().as_secs() < 120, "embarking never finished");
+            }
+        };
+        let mut app = App::generated(42);
+        let site = app.game.site;
+        let ow = app.game.overworld.clone();
+        // Enter alone only opens the card.
+        app.on_key(key(KeyCode::Enter));
+        assert_eq!(app.mode, Mode::Embark { x: site.0, y: site.1, sel: 0 });
+        assert!(app.job.is_none(), "Enter alone must not embark");
+        let s = dump(&mut app, 150, 50);
+        assert!(s.contains("Embark here?") && s.contains("Play now") && s.contains("Prepare carefully") && s.contains("Aquifer") && s.contains("Nearest neighbours"), "{}", s);
+        // Esc goes back to the map.
+        app.on_key(key(KeyCode::Esc));
+        assert_eq!(app.mode, Mode::WorldMap { x: site.0, y: site.1 });
+
+        // Play now: today's standard party and wagon.
+        app.on_key(key(KeyCode::Enter));
+        app.on_key(key(KeyCode::Enter));
+        assert_eq!(app.mode, Mode::Loading);
+        finish(&mut app);
+        let want = Game::embark_with(42, ow.clone(), site.0, site.1, app.embark_size, &|_, _| {});
+        let skills = |g: &Game| g.dwarves.iter().map(|d| (d.name.clone(), d.skills.to_vec(), d.labors.to_vec())).collect::<Vec<_>>();
+        assert_eq!(skills(&app.game), skills(&want));
+        assert_eq!(app.game.items.len(), want.items.len());
+        assert_eq!(app.game.creatures.values().filter(|c| c.tame).count(), 5);
+
+        // Prepare carefully: a master miner, less drink, an extra cat.
+        let mut app = App::generated(42);
+        app.on_key(key(KeyCode::Enter));
+        app.on_key(key(KeyCode::Char('c')));
+        assert!(matches!(app.mode, Mode::Prepare { .. }), "{:?}", app.mode);
+        let before = app.loadout.points_left();
+        let s = dump(&mut app, 150, 50);
+        assert!(s.contains("Points left: ") && s.contains(&format!("{}", before)) && s.contains("copper picks") && s.contains("goats"), "{}", s);
+        for _ in 0..3 {
+            app.on_key(key(KeyCode::Right));
+        }
+        assert_eq!(app.loadout.founders[0].levels, Some([5, 1]));
+        let drink = 7 + 1;
+        for _ in 0..drink {
+            app.on_key(key(KeyCode::Down));
+        }
+        assert!(matches!(app.mode, Mode::Prepare { sel: 8, .. }), "{:?}", app.mode);
+        app.on_key(key(KeyCode::Left));
+        app.on_key(key(KeyCode::Left));
+        assert_eq!(app.loadout.supply(1), 30);
+        for _ in 0..SUPPLIES.len() + 1 {
+            app.on_key(key(KeyCode::Down));
+        }
+        app.on_key(key(KeyCode::Right));
+        assert_eq!(app.loadout.animals, vec![2, 2, 2]);
+        let left = app.loadout.points_left();
+        assert!(left >= 0 && left < before, "{} of {}", left, before);
+        app.on_key(key(KeyCode::Enter));
+        finish(&mut app);
+        let miner = &app.game.dwarves[0];
+        assert_eq!(crate::dwarf::skill_level(miner.skills[crate::dwarf::Labor::Mining.idx()]), 5);
+        assert_eq!(app.game.items.values().filter(|it| it.kind == crate::items::ItemKind::Drink).count(), 30);
+        let cats = app.game.creatures.values().filter(|c| c.tame && c.species == crate::creature::Species::Cat).count();
+        assert_eq!(cats, 2);
+
+        // Over the budget it won't go, and Esc steps back to the card.
+        let mut app = App::generated(42);
+        app.loadout = Loadout::prepared();
+        app.mode = Mode::Prepare { x: site.0, y: site.1, sel: 0, col: 0 };
+        for i in 0..7 {
+            for _ in 0..4 {
+                app.loadout.adjust_skill(i, 0, true);
+                app.loadout.adjust_skill(i, 1, true);
+            }
+        }
+        assert!(app.loadout.points_left() < 0);
+        app.on_key(key(KeyCode::Enter));
+        assert!(matches!(app.mode, Mode::Prepare { .. }) && app.job.is_none());
+        assert!(dump(&mut app, 150, 50).contains("over the budget"));
+        app.on_key(key(KeyCode::Esc));
+        assert_eq!(app.mode, Mode::Embark { x: site.0, y: site.1, sel: 1 });
+        app.on_key(key(KeyCode::Esc));
+        assert_eq!(app.mode, Mode::WorldMap { x: site.0, y: site.1 });
+    }
+
+    #[test]
+    #[ignore]
+    fn show_embark_screens() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let seed = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(42);
+        let mut app = App::generated(seed);
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        println!("{}", dump(&mut app, 120, 40));
+        app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        println!("{}", dump(&mut app, 120, 40));
+    }
+
+    #[test]
     #[ignore]
     fn show_world_map() {
         let seed = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(42);
@@ -5173,6 +5476,8 @@ mod tests {
         app.on_key(key(KeyCode::Char('s')));
         check(&mut app, "Embark: Small 64×48");
 
+        app.on_key(key(KeyCode::Enter));
+        check(&mut app, "Embark here?");
         app.on_key(key(KeyCode::Enter));
         wait(&mut app, "Embarking");
         assert_eq!((app.game.world.w, app.game.world.h), (64, 48), "embarked at the wrong size");
