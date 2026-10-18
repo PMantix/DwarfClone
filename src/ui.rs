@@ -3525,6 +3525,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 if let Some(d) = it.claimed_by.and_then(|o| g.dwarves.iter().find(|d| d.id == o)) {
                     v.push(plain(format!("Wanted by {}", d.name), detail_col));
                 }
+                for line in g.magic_item_lines(it.id) {
+                    v.push(plain(line, Color::Rgb(255, 215, 60)));
+                }
                 if it.to_depot {
                     v.push(plain("Marked for the trade depot".into(), Color::Rgb(240, 240, 160)));
                 }

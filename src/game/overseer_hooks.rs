@@ -36,6 +36,8 @@ impl Game {
         self.ov_rescue(o);
         self.ov_hunts(o);
         self.ov_towers_alert(o);
+        // Myth and magic: a thief with a relic has the squad after it.
+        self.ov_relics(o);
         let _ = o;
     }
 

@@ -1688,6 +1688,9 @@ impl Game {
     }
 
     fn creature_attack(&mut self, c: &Creature, di: usize) {
+        if self.blow_turned(c, di) {
+            return;
+        }
         let mut d = std::mem::take(&mut self.dwarves[di]);
         let att = self.creature_fighter(c);
         let def = self.dwarf_fighter(&d);

@@ -525,6 +525,7 @@ impl Game {
                 it.label = Some(name.clone());
             }
             self.msg(&format!("Among the loot: {}, an artifact of a forgotten age!", name), (255, 215, 60));
+            self.empower_artifact(id, None);
         }
         let leader_name = leader.called();
         home.push(leader);

@@ -92,6 +92,7 @@ pub mod fortify;
 mod towers;
 pub mod magic;
 mod faith;
+pub mod relics;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;

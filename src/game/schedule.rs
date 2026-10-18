@@ -39,6 +39,8 @@ impl Game {
         // M1 (survival):
         if tick % 150 == 77 { self.doctor_check(); }
         if tick % 50 == 35 { self.watch_siege(); }
+        // Myth and magic: the relics' powers at work.
+        if tick % 20 == 11 { self.relics_tick(); }
     }
 
     /// After the dwarves and creatures have moved: wildlife, the day's
@@ -88,6 +90,8 @@ impl Game {
         self.maybe_strange_mood();
         self.word_season();
         // M1 (survival), seasonal:
+        // Myth and magic, seasonal:
+        self.magic_season();
     }
 
     /// Each living dwarf, every tick, just after their wounds have bled (and

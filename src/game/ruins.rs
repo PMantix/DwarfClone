@@ -141,6 +141,7 @@ impl Game {
             it.quality = ARTIFACT;
             it.label = Some(name);
         }
+        self.empower_artifact(id, None);
         // Something was sealed in, and it isn't dead.
         if self.rng.chance(0.75) {
             let id = self.make_cave_horror(v.center());

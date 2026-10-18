@@ -17,6 +17,9 @@ pub struct Magic {
     /// Temples (zone id) and the god each is dedicated to.
     #[serde(default)]
     pub shrines: BTreeMap<u32, u32>,
+    /// Artifacts with powers (`relics.rs`).
+    #[serde(default)]
+    pub relics: Vec<super::relics::Relic>,
     /// Lines for this year's chronicle.
     #[serde(default)]
     pub year: Vec<String>,
@@ -42,6 +45,11 @@ impl Game {
     pub(super) fn magic_daily(&mut self) {
         self.faith_daily();
     }
+
+    /// Each season: word of the relics gets about.
+    pub(super) fn magic_season(&mut self) {
+        self.relics_season();
+    }
 }
 
 impl Game {
@@ -53,6 +61,11 @@ impl Game {
     /// For the look panel, under a dwarf: whom they worship.
     pub fn magic_dwarf_lines(&self, id: u32) -> Vec<String> {
         self.faith_line(id).into_iter().collect()
+    }
+
+    /// For the look panel, under an item: its power.
+    pub fn magic_item_lines(&self, id: u32) -> Vec<String> {
+        self.relic_lines(id)
     }
 }
 

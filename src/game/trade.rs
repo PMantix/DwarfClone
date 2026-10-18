@@ -285,6 +285,10 @@ impl Game {
     /// The percentage over value merchants insist on: a tenth, or less with
     /// a broker to haggle (a sociable, even-tempered one gets them down to nothing).
     pub fn trade_margin(&self) -> u32 {
+        // A ring of luck: the merchants give way (relics.rs).
+        if self.trade_luck() {
+            return 0;
+        }
         match self.holder(super::Position::Broker) {
             Some(b) => {
                 let score = self.post_suitability(super::Position::Broker, b).0;
