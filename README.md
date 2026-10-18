@@ -659,7 +659,11 @@ to link, `p` to pull) lock doors and raise drawbridges that nothing can get past
 **Burrows & traffic.** `w` paints burrows and assigns dwarves who must stay inside them.
 Mark one as the alert burrow and raise the civilian alert from the military screen (`m`,
 `c`) to pull every civilian to safety. `o` paints high, low or restricted traffic to steer
-where dwarves walk.
+where dwarves walk. The overseer's shelter keeps the gate (stair foot, doors, bridge) outside
+it, so those running in go on past the bridge; keeps a larder inside it, a small stockpile the
+haulers fill with drink and meals (four drinks and two meals a dwarf) whenever there's no
+alert; and walls up every other way in that reaches the sky, daily and the moment the alert
+goes up. A siege sheltered through without loss is told.
 
 **Labors.** `y` shows every dwarf against every labor, with skill levels. Toggle cells or
 whole columns, apply named work details (or save your own), and mark specialists who never

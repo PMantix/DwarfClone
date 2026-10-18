@@ -206,12 +206,16 @@ style survive three years, and every style still loses forts in memorable ways.
   10-fort run). And halls or tunnels that came up under the sky let besiegers walk round the
   raised bridge into the shelter (one Delver fort lost 8 in one siege that way).
 - **Steps:** [x] the gate (stair foot, doors, bridge) is no part of the shelter, so those
-  running in go on past the bridge (this commit) · [ ] a larder inside the shelter, kept in
-  drink and meals by the haulers · [ ] every other way in (to the sky, or into the stair from
-  the surface) is walled up, daily and the moment the alert goes up · [ ] the shelter sings,
-  and a siege sheltered through without loss is told
+  running in go on past the bridge · [x] a larder inside the shelter, kept in
+  drink and meals by the haulers · [x] every other way in (to the sky, or into the stair from
+  the surface) is walled up, daily and the moment the alert goes up · [ ] the shelter sings
+  · [x] a siege sheltered through without loss is told
 - **Done when:** a long siege doesn't end in thirst while there's drink; a way in past the gate
   is walled in an alert; deaths inside the shelter fall in the 10-fort batch.
+- **Result** (`--autoplay --runs 10 --years 2 --seed 5000`, `batches/m1-shelter.json`): deaths
+  inside the shelter 33 of 115 before, 2 of 76 after (both to a cave horror, outside any siege);
+  thirst deaths 0 before and after (one appeared while walls could still split the shelter, and
+  went when they no longer could). 26 sieges were sheltered through without loss.
 
 ### Milestone 2: the overseer as a character (v0.4)
 
