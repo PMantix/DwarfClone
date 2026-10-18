@@ -146,7 +146,7 @@ impl Game {
             }
             if let Some((text, own)) = found {
                 let d = &mut self.dwarves[i];
-                d.think(&text, if own { -12 } else { -8 }, tick);
+                d.think(&text, if own { -8 } else { -4 }, tick);
                 self.count("culture.admired", 1);
             }
         }

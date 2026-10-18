@@ -43,19 +43,28 @@ const DANCE_TITLES: [&str; 4] = ["The Dance of", "The Stamp of", "The Reel of", 
 /// What a legend is about, for a title, and how it went, for the telling:
 /// ("Ironhold", "the goblins came against Ironhold").
 pub fn subject_of(event: &str, fort: &str) -> (String, String) {
+    const OPENERS: [&str; 10] = ["The", "A", "An", "After", "In", "On", "At", "When", "Word", "Fire"];
     let words: Vec<&str> = event.split(' ').collect();
-    let subject: String = if words.first() == Some(&"The") || words.first() == Some(&"A") {
-        if event.contains(fort) {
-            fort.to_string()
-        } else {
-            format!("the {}", words.get(1).copied().unwrap_or("Ages"))
-        }
+    let first = words.first().copied().unwrap_or("");
+    let subject = if OPENERS.contains(&first) {
+        if event.contains(fort) { fort.to_string() } else { format!("the {}", words.get(1).copied().unwrap_or("Ages").trim_end_matches(|ch: char| !ch.is_alphanumeric())) }
     } else {
-        words.iter().take(2).copied().collect::<Vec<_>>().join(" ")
+        // The name at the front: capitalised words, up to a comma.
+        let mut name: Vec<&str> = Vec::new();
+        for w in &words {
+            if !w.chars().next().map_or(false, |c| c.is_uppercase()) {
+                break;
+            }
+            name.push(w);
+            if w.ends_with(',') {
+                break;
+            }
+        }
+        if name.is_empty() { fort.to_string() } else { name.join(" ") }
     };
     let subject = subject.trim_end_matches(|ch: char| !ch.is_alphanumeric()).to_string();
     let mut how = event.trim_end_matches('.').to_string();
-    if how.starts_with("The ") || how.starts_with("A ") {
+    if OPENERS.contains(&first) {
         how.replace_range(..1, &how[..1].to_lowercase());
     }
     (subject, how)
@@ -87,7 +96,7 @@ impl Game {
                 d.alive && !d.ghost && !d.insane && !d.is_child() && d.mood.is_none() && d.tantrum == 0 && d.personality.artistry >= 10
             })
             .collect();
-        let base = self.knob("culture.compose", 0.03);
+        let base = self.knob("culture.compose", 0.006);
         for i in cands {
             let p = base * self.dwarves[i].personality.artistry as f64 / 50.0;
             if self.c_roll() < p {
@@ -309,6 +318,17 @@ mod tests {
         assert!(!g.fort_events().contains(&n));
         assert_eq!(g.works_of_year(work.year).len(), 1);
         println!("{:?}", work);
+    }
+
+    #[test]
+    fn a_legend_gives_a_title_its_subject() {
+        let f = "Ironhold";
+        assert_eq!(subject_of("Ashgim the cave horror emerged from the depths beneath Ironhold.", f).0, "Ashgim");
+        assert_eq!(subject_of("Okgash Mogsk, general of the Horde, fell at Ironhold.", f).0, "Okgash Mogsk");
+        let (s, how) = subject_of("After a siege of Ironhold, its overseer resolved to arm the soldiers.", f);
+        assert_eq!(s, "Ironhold");
+        assert!(how.starts_with("after a siege"));
+        assert_eq!(subject_of("The Grim Shields killed the wolf.", f).0, "the Grim");
     }
 
     #[test]

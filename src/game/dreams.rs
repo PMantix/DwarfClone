@@ -71,9 +71,12 @@ impl Game {
         self.count("culture.dreams", 1);
         // An army coming, if the fortress has foes and it's late enough for one.
         let foes = self.neighbors.iter().any(|n| self.at_war_with(n));
-        let pending = |g: &Game, k: OmenKind| g.culture.omens.iter().any(|o| o.kind == k && !o.fulfilled && tick < o.tick + SEASON * 2);
-        let siege_p = if self.siege_warned || self.incoming.is_some() { 0.3 } else { self.knob("culture.omen_siege", 0.01) };
-        if foes && tick + SEASON / 2 >= SEASON * 2 && !pending(self, OmenKind::Siege) && self.c_roll() < siege_p {
+        // One omen of a kind a year at most.
+        let pending = |g: &Game, k: OmenKind| g.culture.omens.iter().any(|o| o.kind == k && tick < o.tick + YEAR);
+        // Before the army is sighted: likelier when a spy or a prisoner has
+        // already warned of it.
+        let siege_p = if self.siege_warned { 0.1 } else { self.knob("culture.omen_siege", 0.002) };
+        if foes && self.incoming.is_none() && tick + SEASON / 2 >= SEASON * 2 && !pending(self, OmenKind::Siege) && self.c_roll() < siege_p {
             let text = SIEGE_DREAMS[self.c_pick(SIEGE_DREAMS.len())].to_string();
             // What's dreamt will be: the next season brings them for certain.
             self.siege_warned = true;
@@ -82,7 +85,7 @@ impl Game {
         }
         let moody = self.dwarves.iter().any(|d| d.alive && d.mood.is_some());
         let d = &self.dwarves[i];
-        if !moody && !d.is_child() && d.mood.is_none() && !d.soldier && !pending(self, OmenKind::Mood) && self.c_roll() < self.knob("culture.omen_mood", 0.01) {
+        if !moody && !d.is_child() && d.mood.is_none() && !d.soldier && !pending(self, OmenKind::Mood) && self.c_roll() < self.knob("culture.omen_mood", 0.002) {
             let text = MOOD_DREAMS[self.c_pick(MOOD_DREAMS.len())].to_string();
             let due = tick + DAY * (2 + self.c_pick(6) as u64);
             self.omen(i, OmenKind::Mood, text, due);

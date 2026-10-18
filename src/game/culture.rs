@@ -441,6 +441,38 @@ mod tests {
         assert!(g.log.iter().any(|l| l.text.contains("leads the fortress in \"The Reel of Stone\"")));
     }
 
+    /// A year of the overseer's fort: the culture lives in it.
+    #[test]
+    fn an_overseen_year_has_music_works_and_dreams() {
+        let mut g = Game::new(5003);
+        g.set_overseer(Some(Style::Steady));
+        while g.tick < YEAR + DAY && g.alive_count() > 0 {
+            g.step();
+        }
+        let c = |k: &str| g.annals.counters.get(k).copied().unwrap_or(0);
+        let made = g.items.values().filter(|it| it.kind == ItemKind::Instrument).count();
+        println!(
+            "instruments {} tunes {} dances {} works {} forms {} performed {} depictions {} admired {} dreams {} omens {} true {}",
+            made,
+            c("culture.tunes"),
+            c("culture.dances"),
+            c("culture.works"),
+            c("culture.forms"),
+            c("culture.performed"),
+            c("culture.depictions"),
+            c("culture.admired"),
+            c("culture.dreams"),
+            c("culture.omens"),
+            c("culture.omens_true")
+        );
+        for w in &g.culture.works {
+            println!("  {:?}", w);
+        }
+        assert!(c("culture.dreams") > 0, "nobody dreamt");
+        assert!(c("culture.works") > 0, "nobody composed");
+        assert!(!g.culture.memories.is_empty());
+    }
+
     #[test]
     fn the_overseer_orders_instruments_for_its_tavern() {
         let mut g = Game::new(81);
