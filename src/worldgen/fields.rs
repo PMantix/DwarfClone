@@ -57,17 +57,31 @@ pub struct Fields {
     pub good: Vec<u8>,
     #[serde(with = "b64")]
     pub salt: Vec<u8>,
+    /// Water gathered from upstream, `28 ln(1 + flow)`.
+    #[serde(with = "b64", default)]
+    pub flow: Vec<u8>,
 }
 
 impl Fields {
-    pub fn from_grids(g: &Grids) -> Fields {
+    pub fn from_grids(g: &Grids, flow: &[f32]) -> Fields {
         let b = |v: &Vec<f32>| v.iter().map(|&x| x.round().clamp(0.0, 255.0) as u8).collect();
-        Fields { temp: b(&g.temp), rain: b(&g.rain), drain: b(&g.drain), veg: b(&g.veg), savage: b(&g.savage), good: b(&g.good), salt: b(&g.salt) }
+        let flow = flow.iter().map(|&f| flow_byte(f)).collect();
+        Fields { temp: b(&g.temp), rain: b(&g.rain), drain: b(&g.drain), veg: b(&g.veg), savage: b(&g.savage), good: b(&g.good), salt: b(&g.salt), flow }
     }
 
     pub fn is_empty(&self) -> bool {
         self.rain.is_empty()
     }
+}
+
+/// Flow as kept in a byte.
+pub fn flow_byte(f: f32) -> u8 {
+    ((1.0 + f.max(0.0)).ln() * 28.0).round().clamp(0.0, 255.0) as u8
+}
+
+/// The flow a byte stands for.
+pub fn byte_flow(b: u8) -> f32 {
+    (b as f32 / 28.0).exp() - 1.0
 }
 
 /// One cell's fields, read back.

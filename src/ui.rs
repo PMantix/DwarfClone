@@ -2540,6 +2540,15 @@ fn world_info(ow: &Overworld, x: i32, y: i32, flash: &Option<String>) -> Vec<Lin
     if let Some(r) = ow.region_at(x, y) {
         v.push(plain(format!("{}, a {} of {} cells", r.name, r.kind.name(), r.size), Color::Rgb(170, 200, 230)));
     }
+    if let Some(r) = ow.river_at(x, y) {
+        let note = match r.joins {
+            Some(j) => format!(", feeding {}", ow.rivers[j as usize].name),
+            None => String::new(),
+        };
+        v.push(plain(format!("{} runs through{}", r.name, note), Color::Rgb(90, 200, 240)));
+    } else if c.brook != 0 {
+        v.push(plain("A brook runs through.".into(), Color::Rgb(90, 200, 240)));
+    }
     if c.evil {
         v.push(plain("An evil taint lies on this land.".into(), Color::Rgb(200, 120, 255)));
     }

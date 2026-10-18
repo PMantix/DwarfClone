@@ -5,6 +5,7 @@
 //! built from.
 
 pub mod fields;
+pub mod rivers;
 
 use crate::overworld::Biome;
 use fields::{Grids, Sample};
@@ -14,6 +15,16 @@ pub struct Land {
     pub grids: Grids,
     pub biomes: Vec<Biome>,
     pub evil: Vec<bool>,
+    /// River and brook links per cell (1 north, 2 east, 4 south, 8 west).
+    pub river: Vec<u8>,
+    pub brook: Vec<u8>,
+    /// Summed rain from upstream.
+    pub flow: Vec<f32>,
+    /// The rivers, split into stems (main rivers and tributaries).
+    pub stems: Vec<rivers::Stem>,
+    /// Lake number + 1 per cell, and which lakes have no outflow.
+    pub lake: Vec<u32>,
+    pub terminal: Vec<bool>,
 }
 
 /// Below this on the good/evil field the land is evil.
@@ -36,14 +47,44 @@ impl Grids {
     }
 }
 
-/// Make the land of a `w`×`h` world.
+/// Make the land of a `w`×`h` world: elevation, the erosion phase, the
+/// depressions filled (lakes where deep), the climate on the land as it
+/// ends up, biomes, rivers and brooks.
 pub fn build(seed: u64, w: i32, h: i32) -> Land {
-    let elev = fields::elevation(seed, w, h);
-    let grids = fields::climate(seed, w, h, elev);
     let n = (w * h) as usize;
-    let biomes: Vec<Biome> = (0..n).map(|i| fields::classify(&grids.sample(i))).collect();
+    let mut elev = fields::elevation(seed, w, h);
+    rivers::erode(&mut elev, w, h, seed);
+    fields::proportion(&mut elev);
+    let (spill, recv) = rivers::route(&elev, w, h);
+    let depth: Vec<f32> = (0..n).map(|i| if elev[i] < fields::SEA { 0.0 } else { spill[i] - elev[i] }).collect();
+    let filled: Vec<f32> = (0..n).map(|i| if elev[i] < fields::SEA { elev[i] } else { spill[i] }).collect();
+    let grids = fields::climate(seed, w, h, filled);
+    let water = rivers::water(&grids.elev, &depth, recv, &grids.rain, w, h);
+    let biomes: Vec<Biome> = (0..n).map(|i| if water.lake[i] != 0 { Biome::Lake } else { fields::classify(&grids.sample(i)) }).collect();
     let evil = (0..n).map(|i| !biomes[i].is_water() && grids.good[i] < EVIL).collect();
-    Land { grids, biomes, evil }
+    let mut river = vec![0u8; n];
+    let mut brook = vec![0u8; n];
+    for i in 0..n {
+        let r = water.recv[i];
+        if r < 0 || !(water.river[i] || water.brook[i]) {
+            continue;
+        }
+        let r = r as usize;
+        let (out, back) = rivers::link(w, i, r);
+        if water.river[i] {
+            river[i] |= out;
+            if water.river[r] {
+                river[r] |= back;
+            }
+        } else {
+            brook[i] |= out;
+            if water.river[r] || water.brook[r] {
+                brook[r] |= back;
+            }
+        }
+    }
+    let stems = rivers::stems(&water);
+    Land { grids, biomes, evil, river, brook, flow: water.flow, stems, lake: water.lake, terminal: water.terminal }
 }
 
 #[cfg(test)]
@@ -196,4 +237,64 @@ fn print_fields() {
     let land_cells: Vec<usize> = (0..g.elev.len()).filter(|&i| g.elev[i] >= fields::SEA).collect();
     let mean = |f: &Vec<f32>| land_cells.iter().map(|&i| f[i]).sum::<f32>() / land_cells.len() as f32;
     println!("land means: rain {:.1} temp {:.1} drain {:.1} veg {:.1}", mean(&g.rain), mean(&g.temp), mean(&g.drain), mean(&g.veg));
+}
+
+#[cfg(test)]
+mod water_tests {
+    use super::fields::SEA;
+    use super::*;
+
+    #[test]
+    fn rivers_gather_and_end_in_water() {
+        let mut lakes = 0;
+        for seed in [1u64, 42, 7, 99] {
+            let land = build(seed, 192, 80);
+            let g = &land.grids;
+            let w = g.w;
+            for s in &land.stems {
+                // Downhill and gathering all the way.
+                for k in 1..s.course.len() {
+                    let (a, b) = (s.course[k - 1], s.course[k]);
+                    assert!(g.elev[b] < g.elev[a], "seed {}: river climbs at {}", seed, b);
+                    assert!(land.flow[b] >= land.flow[a], "seed {}: river loses water at {}", seed, b);
+                }
+                let into = s.into as usize;
+                let end_ok = g.elev[into] < SEA || land.lake[into] != 0 || land.river[into] != 0;
+                assert!(end_ok, "seed {}: a river ends on dry land at {:?}", seed, (into as i32 % w, into as i32 / w));
+            }
+            // A lake with no outflow lies in a dry basin; the others pass their water on.
+            for (k, &t) in land.terminal.iter().enumerate() {
+                let cells: Vec<usize> = (0..land.lake.len()).filter(|&i| land.lake[i] == k as u32 + 1).collect();
+                let rain = cells.iter().map(|&i| g.rain[i]).sum::<f32>() / cells.len() as f32;
+                if t {
+                    assert!(rain < 35.0, "seed {}: a terminal lake in wet land (rain {:.0})", seed, rain);
+                }
+            }
+            lakes += land.terminal.len();
+            // Only the bigger water is a river; the rest are brooks.
+            let rivers = land.river.iter().filter(|&&r| r != 0).count();
+            let brooks = land.brook.iter().filter(|&&b| b != 0).count();
+            eprintln!("seed {}: {} river cells in {} stems, {} brook cells, {} lakes", seed, rivers, land.stems.len(), brooks, land.terminal.len());
+            assert!(rivers > 100 && brooks > rivers, "seed {}: {} river cells, {} brook cells", seed, rivers, brooks);
+        }
+        assert!(lakes >= 4, "only {} lakes in four worlds", lakes);
+    }
+
+    #[test]
+    fn erosion_cuts_channels_through_the_heights() {
+        let (w, h) = (192, 80);
+        let mut e = fields::elevation(3, w, h);
+        let before = e.clone();
+        rivers::erode(&mut e, w, h, 3);
+        let worn = (0..e.len()).filter(|&i| before[i] >= fields::HILLS && e[i] < before[i] - 2.0).count();
+        eprintln!("{} high cells worn more than 2", worn);
+        assert!(worn > 100);
+        // Pits are fewer: cells with every neighbour higher.
+        let pits = |v: &[f32]| (1..h - 1).flat_map(|y| (1..w - 1).map(move |x| (x, y))).filter(|&(x, y)| {
+            let i = (y * w + x) as usize;
+            v[i] >= SEA && [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().all(|&(dx, dy)| v[((y + dy) * w + x + dx) as usize] > v[i])
+        }).count();
+        eprintln!("pits before {} after {}", pits(&before), pits(&e));
+        assert!(pits(&e) < pits(&before));
+    }
 }

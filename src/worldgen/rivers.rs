@@ -12,8 +12,8 @@ use std::collections::BinaryHeap;
 const DIRS: [(i32, i32, u8); 4] = [(0, -1, 1), (1, 0, 2), (0, 1, 4), (-1, 0, 8)];
 
 /// Flow (summed rain) at which water is a river, and a brook.
-pub const RIVER_FLOW: f32 = 11.0;
-pub const BROOK_FLOW: f32 = 2.5;
+pub const RIVER_FLOW: f32 = 45.0;
+pub const BROOK_FLOW: f32 = 6.0;
 
 /// Wear the land with temporary rivers run from every cell at or above
 /// the hills line: each steps to its lowest neighbour, wearing the cells it
@@ -65,9 +65,8 @@ pub fn erode(elev: &mut [f32], w: i32, h: i32, seed: u64) {
 }
 
 /// Where each cell's water goes and the level it spills at: a priority
-/// flood from the sea and the world's edge. `recv[i]` is the neighbour it
-/// drains to (or -1 for the sea and the edge); `spill[i]` never rises
-/// along the way.
+/// flood from the sea. `recv[i]` is the neighbour it drains to (-1 for the
+/// sea itself); `spill[i]` never rises along the way.
 pub fn route(elev: &[f32], w: i32, h: i32) -> (Vec<f32>, Vec<i32>) {
     let n = elev.len();
     let mut spill = elev.to_vec();
@@ -78,7 +77,7 @@ pub fn route(elev: &[f32], w: i32, h: i32) -> (Vec<f32>, Vec<i32>) {
     for y in 0..h {
         for x in 0..w {
             let i = (y * w + x) as usize;
-            if elev[i] < SEA || x == 0 || y == 0 || x == w - 1 || y == h - 1 {
+            if elev[i] < SEA {
                 done[i] = true;
                 heap.push(Reverse((key(spill[i]), i)));
             }
@@ -165,15 +164,21 @@ pub fn water(elev: &[f32], depth: &[f32], recv: Vec<i32>, rain: &[f32], w: i32, 
         }
         lakes.push(cells);
     }
+    // Only the deepest hollows hold a lake (a few to a world); the rest
+    // silt up level with their rims.
+    let mut deep: Vec<(f32, Vec<usize>)> = lakes
+        .into_iter()
+        .map(|cells| (cells.iter().map(|&i| depth[i]).fold(0.0f32, f32::max), cells))
+        .filter(|(d, cells)| *d >= 4.0 && (cells.len() >= 2 || *d >= 8.0))
+        .collect();
+    deep.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+    deep.truncate((n / 1200).max(3));
     let mut kept: Vec<Vec<usize>> = Vec::new();
-    for cells in lakes {
-        let deepest = cells.iter().map(|&i| depth[i]).fold(0.0f32, f32::max);
-        if deepest >= 3.0 || cells.len() >= 3 && deepest >= 1.5 {
-            for &i in &cells {
-                lake[i] = kept.len() as u32 + 1;
-            }
-            kept.push(cells);
+    for (_, cells) in deep {
+        for &i in &cells {
+            lake[i] = kept.len() as u32 + 1;
         }
+        kept.push(cells);
     }
 
     // Catchment of each lake (for the dry ones), and the flow.
