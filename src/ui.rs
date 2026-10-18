@@ -428,6 +428,8 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
             ('D', (255, 90, 40))
         } else if c.species == crate::creature::Species::Undead && c.general.is_some() {
             ('N', (190, 110, 240))
+        } else if let Some(look) = g.kin_look(c) {
+            look
         } else {
             (info.glyph, info.color)
         };
@@ -574,6 +576,10 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                         fg = Color::Rgb(175, 175, 180);
                     }
                 }
+            }
+            if t.revealed && g.web_at(p) {
+                ch = '#';
+                fg = Color::Rgb(225, 225, 235);
             }
             if t.fire > 0 && t.revealed {
                 let flick = hash2(wx + (g.tick / 4) as i32 % 50, wy) % 3;
@@ -1517,7 +1523,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             for n in g.neighbors.iter().take(4) {
                 let war = g.civ.map_or(false, |c| g.overworld.civ(c).enemies.contains(&n.civ)) || n.race == Race::Goblin;
                 v.push(plain(
-                    format!("  {} {} away{}", n.race.plural(), n.dist, if war { " (hostile)" } else { "" }),
+                    format!("  {} {} away{}", g.overworld.people(n.civ), n.dist, if war { " (hostile)" } else { "" }),
                     if war { Color::Rgb(240, 110, 90) } else { rgb_of(n.race.color()) },
                 ));
             }
@@ -2151,7 +2157,7 @@ fn embark_summary(ow: &Overworld, seed: u64, x: i32, y: i32) -> Vec<Line<'static
             ("friendly traders", TEXT)
         };
         v.push(Line::from(vec![
-            Span::styled(format!("{} ({}), {} away: ", civ.name, n.race.plural(), n.dist), Style::default().fg(n.race.color())),
+            Span::styled(format!("{} ({}), {} away: ", civ.name, ow.people(n.civ), n.dist), Style::default().fg(n.race.color())),
             Span::styled(note, Style::default().fg(nc)),
         ]));
     }
@@ -2666,7 +2672,7 @@ fn world_info(ow: &Overworld, x: i32, y: i32, flash: &Option<String>) -> Vec<Lin
             Race::Dwarf => " — your kin",
             _ => " — traders",
         };
-        v.push(plain(format!("{} ({}), {} away{}", civ.name, n.race.plural(), n.dist, note), n.race.color()));
+        v.push(plain(format!("{} ({}), {} away{}", civ.name, ow.people(n.civ), n.dist, note), n.race.color()));
     }
     v.push(Line::default());
     let parent = ow.parent_civ(x, y).map(|c| ow.civ(c).name.clone());
@@ -2774,17 +2780,19 @@ fn legends_lines(ow: &Overworld, tab: usize) -> Vec<Line<'static>> {
             let sites = ow.sites.iter().filter(|s| s.civ == Some(c.id) && !s.ruined).count();
             let ruler = c.ruler.map(|r| ow.figures[r as usize].name.clone()).unwrap_or_else(|| "none".into());
             let enemies: Vec<String> = c.enemies.iter().map(|e| ow.civ(*e).name.clone()).collect();
-            vec![
+            let mut v = vec![
                 Line::from(Span::styled(
-                    format!("{} ({}){}", c.name, c.race.plural(), if c.alive { "" } else { " — fallen" }),
+                    format!("{} ({}){}", c.name, ow.people(c.id), if c.alive { "" } else { " — fallen" }),
                     Style::default().fg(if c.alive { c.race.color() } else { MUTED }).add_modifier(Modifier::BOLD),
                 )),
                 plain(format!("   {} sites, ruler: {}", sites, ruler), TEXT),
                 plain(format!("   at war with: {}", if enemies.is_empty() { "nobody".into() } else { enemies.join(", ") }), MUTED),
-            ]
+            ];
+            v.extend(ow.made_lines(c.id).into_iter().map(|l| plain(l, Color::Rgb(210, 160, 255))));
+            v
         }).collect(),
         2 => ow.sites.iter().map(|s| {
-            let owner = s.civ.map_or("—".to_string(), |c| ow.civ(c).race.plural().to_string());
+            let owner = s.civ.map_or("—".to_string(), |c| ow.people(c));
             Line::from(vec![
                 Span::styled(format!("{} ", if s.ruined { '×' } else { s.kind.glyph() }), Style::default().fg(KEY)),
                 Span::styled(format!("{:<20}", s.name), Style::default().fg(TEXT)),
@@ -3477,6 +3485,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 ));
                 v.push(plain(task_desc(g, d), KEY));
                 v.push(plain(mood.to_string(), rgb(mc)));
+                for line in g.affliction_lines(d) {
+                    v.push(plain(line, Color::Rgb(200, 230, 120)));
+                }
                 if let Some(t) = d.thoughts.last() {
                     v.push(plain(format!("Recently {}.", t.text), detail_col));
                 }
@@ -3510,6 +3521,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 v.push(plain(state.into(), if c.hostile() { Color::Rgb(255, 100, 90) } else { detail_col }));
                 if let Some(mood) = g.wild_mood(c) {
                     v.push(plain(mood, Color::Rgb(255, 190, 110)));
+                }
+                for line in g.horror_lines(c) {
+                    v.push(plain(line, Color::Rgb(230, 160, 255)));
                 }
                 if let Some(w) = c.weapon.and_then(|id| g.items.get(&id)) {
                     v.push(plain(format!("Wields {}", w.name()), detail_col));
@@ -3726,6 +3740,12 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
             }
             for line in g.magic_status_lines() {
                 v.push(plain(line, Color::Rgb(200, 170, 255)));
+            }
+            // Long lines (a sign, the thing's look): wrapped to fit an 80-column screen.
+            for l in g.haunt_lines() {
+                for (i, part) in wrap_words(&l, 68).into_iter().enumerate() {
+                    v.push(plain(if i == 0 { part } else { format!("  {}", part) }, Color::Rgb(200, 170, 230)));
+                }
             }
             v.push(Line::default());
 

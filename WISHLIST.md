@@ -440,7 +440,7 @@ Goal: the world map is alive. What happens out there reaches the fort, and the f
 
 #### B22 Beasts of legend (L)
 - **Why:** Monsters should have names, habits and powers that the fort learns about, and hunters who come for them.
-- **Steps:** [ ] Forgotten beasts with powers ([CRE-05](ideas/myth-and-depths.md)) · [ ] Man-eaters become legends ([CRE-08](ideas/myth-and-depths.md)) · [ ] Disturbed lairs ([CRE-09](ideas/myth-and-depths.md)) · [ ] Cyclic beasts ([CRE-10](ideas/myth-and-depths.md)) · [ ] Monster hunters ([CRE-07](ideas/myth-and-depths.md)) · [ ] Flying snatchers ([CRE-13](ideas/myth-and-depths.md)) · [ ] Dragon lairs and hoards ([CRE-18](ideas/myth-and-depths.md)) · [ ] Hydras fight on ([CRE-21](ideas/myth-and-depths.md)) · [ ] Megabeasts take fallen forts ([CRE-19](ideas/myth-and-depths.md)) · [ ] Generated megabeasts that breed and bargain ([CRE-25](ideas/myth-and-depths.md))
+- **Steps:** [x] Forgotten beasts with powers ([CRE-05](ideas/myth-and-depths.md), this commit) · [ ] Man-eaters become legends ([CRE-08](ideas/myth-and-depths.md)) · [ ] Disturbed lairs ([CRE-09](ideas/myth-and-depths.md)) · [ ] Cyclic beasts ([CRE-10](ideas/myth-and-depths.md)) · [ ] Monster hunters ([CRE-07](ideas/myth-and-depths.md)) · [ ] Flying snatchers ([CRE-13](ideas/myth-and-depths.md)) · [ ] Dragon lairs and hoards ([CRE-18](ideas/myth-and-depths.md)) · [ ] Hydras fight on ([CRE-21](ideas/myth-and-depths.md)) · [ ] Megabeasts take fallen forts ([CRE-19](ideas/myth-and-depths.md)) · [ ] Generated megabeasts that breed and bargain ([CRE-25](ideas/myth-and-depths.md))
 - **Done when:** A cave horror's generated power changes how it fights, and the fort learns it after the first clash.
 
 #### B23 The restless dead (L)
@@ -602,7 +602,7 @@ Goal: the worst threats come from inside. Night creatures, spies and curses make
 
 #### N01 Things in the night (M)
 - **Why:** Night creatures with known banes: werebeasts under the moon, a vampire hiding among the migrants, omens before them.
-- **Steps:** [ ] Omens ([MYT-05](ideas/myth-and-depths.md)) · [ ] Banes and weaknesses ([MYT-06](ideas/myth-and-depths.md)) · [ ] Werebeast raid and moon curse ([MYT-03](ideas/myth-and-depths.md)) · [ ] Secret vampire citizen ([MYT-04](ideas/myth-and-depths.md)) · [ ] Bogeymen ([MYT-07](ideas/myth-and-depths.md)) · [ ] Sensing evil ([MYT-26](ideas/myth-and-depths.md)) · [ ] Charms and wards ([MYT-25](ideas/myth-and-depths.md))
+- **Steps:** [ ] Omens ([MYT-05](ideas/myth-and-depths.md)) · [x] Banes and weaknesses ([MYT-06](ideas/myth-and-depths.md), the thing in the night) · [ ] Werebeast raid and moon curse ([MYT-03](ideas/myth-and-depths.md)) · [ ] Secret vampire citizen ([MYT-04](ideas/myth-and-depths.md)) · [ ] Bogeymen ([MYT-07](ideas/myth-and-depths.md)) · [ ] Sensing evil ([MYT-26](ideas/myth-and-depths.md)) · [ ] Charms and wards ([MYT-25](ideas/myth-and-depths.md))
 - **Done when:** A vampire among the migrants drains sleepers until the fort works out who it is.
 
 #### B04 Enemies within (L)

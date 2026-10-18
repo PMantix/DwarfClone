@@ -100,6 +100,9 @@ mod faith;
 pub mod relics;
 pub mod omens;
 pub mod wizard;
+pub mod horrors;
+mod kin;
+mod haunt;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -469,6 +472,9 @@ pub struct Game {
     /// The overseer's last war-game of a coming siege (`wargame.rs`).
     #[serde(default)]
     pub wargame: Option<wargame::WarGame>,
+    /// Horrors' powers, webs, venom, kin and the thing in the night (`horrors.rs`).
+    #[serde(default)]
+    pub horrors: horrors::Horrors,
     /// A new page has been written and should be shown.
     #[serde(skip)]
     pub chronicle_ready: bool,
@@ -635,6 +641,7 @@ impl Game {
             hunts: Default::default(),
             lairs: Vec::new(),
             wargame: None,
+            horrors: Default::default(),
             chronicle_ready: false,
             creatures: BTreeMap::new(),
             station: None,

@@ -5,6 +5,10 @@ use crate::rng::Rng;
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 
+mod peoples;
+#[allow(unused_imports)]
+pub use peoples::{MadeRace, Temper};
+
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Biome {
@@ -494,6 +498,9 @@ pub struct Overworld {
     /// The gods the peoples worship (empty in old saves; see `worldgen::myth`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub gods: Vec<crate::worldgen::myth::God>,
+    /// Peoples made by villains in history (`overworld/peoples.rs`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub made: Vec<MadeRace>,
 }
 
 /// How a clash ended for the place attacked.
@@ -665,6 +672,7 @@ impl WorldGen {
             rivers: Vec::new(),
             clashes: None,
             gods: Vec::new(),
+            made: Vec::new(),
         };
         WorldGen { params, ow, rng, land: None, row: 0, stage: GenStage::Terrain, rivers: Vec::new(), trace: None }
     }
@@ -754,6 +762,11 @@ impl WorldGen {
                 }
                 if self.ow.year >= self.params.history {
                     self.ow.gods = crate::worldgen::myth::pantheon(&self.ow);
+                    // The villains' tale, told over the history just made
+                    // on streams of its own (peoples.rs).
+                    let end = self.ow.year;
+                    self.ow.villains_history(end);
+                    self.note_sites(end);
                     self.stage = GenStage::Done;
                 }
             }
@@ -1355,6 +1368,10 @@ impl Overworld {
             return ('×', Color::Rgb(170, 170, 170));
         }
         let ch = s.kind.glyph();
+        // A made people's places in their own colour (peoples.rs).
+        if let Some(m) = s.civ.and_then(|c| self.made_of(c)) {
+            return (ch, Color::Rgb(m.color.0, m.color.1, m.color.2));
+        }
         let col = match (s.kind, s.civ) {
             (SiteKind::Lair, _) => Color::Rgb(255, 110, 230),
             (SiteKind::Town, _) => Color::Rgb(255, 255, 255),
@@ -1439,7 +1456,7 @@ impl Overworld {
     fn add_site(&mut self, rng: &mut Rng, kind: SiteKind, civ: Option<u32>, x: i32, y: i32, year: i32) -> u32 {
         let id = self.sites.len() as u32;
         let race = civ.map(|c| self.civs[c as usize].race).unwrap_or(Race::Goblin);
-        let name = place_name(rng, race);
+        let name = civ.and_then(|c| self.made_place(rng, c)).unwrap_or_else(|| place_name(rng, race));
         let pop = match kind {
             SiteKind::Town | SiteKind::DarkFortress => 300,
             SiteKind::Fortress | SiteKind::Retreat => 200,
@@ -1497,6 +1514,13 @@ impl Overworld {
             Race::Elf => "druid",
             Race::Goblin => "warlord",
         };
+        // A made people's ruler bears a name in their tongue (peoples.rs).
+        let title = if self.made_of(civ).is_some() { "overlord" } else { title };
+        if let Some(name) = self.made_person(rng, civ) {
+            let kind = self.made_of(civ).map(|m| m.singular.clone()).unwrap_or_default();
+            self.figures[f as usize].name = name;
+            self.figures[f as usize].kind = kind;
+        }
         self.figures[f as usize].title = Some(format!("{} of the {}", title, self.civs[civ as usize].name));
         self.civs[civ as usize].ruler = Some(f);
         let fname = self.figures[f as usize].name.clone();
@@ -1529,6 +1553,7 @@ impl Overworld {
             rivers: Vec::new(),
             clashes: None,
             gods: Vec::new(),
+            made: Vec::new(),
         }
     }
 
@@ -1588,7 +1613,7 @@ impl Overworld {
                     let sid = self.add_site(rng, Overworld::site_kind_for(race, false), Some(c), x, y, year);
                     let text = format!(
                         "The {} of {} founded the {} of {}.",
-                        race.plural(),
+                        self.people(c),
                         from.name,
                         self.sites[sid as usize].kind.name(),
                         self.sites[sid as usize].name
@@ -1726,7 +1751,7 @@ impl Overworld {
             let t = &mut self.sites[target as usize];
             t.pop = t.pop * 2 / 3;
             self.clash(year, from, target, ClashEnd::Held);
-            self.log(year, format!("{}: the {} of the {} broke upon the gates of the mountainhome.", label, ar.plural(), an));
+            self.log(year, format!("{}: the {} of the {} broke upon the gates of the mountainhome.", label, self.people(att), an));
         } else if a_pow > d_pow {
             let t = &mut self.sites[target as usize];
             t.pop = t.pop / 3;
@@ -1734,11 +1759,11 @@ impl Overworld {
                 t.civ = Some(att);
                 t.kind = SiteKind::DarkFortress;
                 self.clash(year, from, target, ClashEnd::Taken);
-                self.log(year, format!("{}: the {} of the {} conquered {}.", label, ar.plural(), an, tname));
+                self.log(year, format!("{}: the {} of the {} conquered {}.", label, self.people(att), an, tname));
             } else {
                 t.ruined = true;
                 self.clash(year, from, target, ClashEnd::Fell);
-                self.log(year, format!("{}: the {} of the {} razed {}.", label, ar.plural(), an, tname));
+                self.log(year, format!("{}: the {} of the {} razed {}.", label, self.people(att), an, tname));
             }
             // Sometimes a ruler falls.
             if rng.chance(0.25) {
@@ -1756,7 +1781,7 @@ impl Overworld {
             let f = &mut self.sites[from as usize];
             f.pop = f.pop * 4 / 5;
             self.clash(year, from, target, ClashEnd::Repulsed);
-            self.log(year, format!("{}: the {} of the {} were repulsed.", label, ar.plural(), an));
+            self.log(year, format!("{}: the {} of the {} were repulsed.", label, self.people(att), an));
         }
     }
 
@@ -1772,7 +1797,7 @@ impl Overworld {
             let id = self.civs[i].id;
             if self.civs[i].alive && self.living_sites(id).is_empty() {
                 self.civs[i].alive = false;
-                let text = format!("The {} of the {} have vanished from the world.", self.civs[i].race.plural(), self.civs[i].name);
+                let text = format!("The {} of the {} have vanished from the world.", self.people(id), self.civs[i].name);
                 self.log(year, text);
             }
         }

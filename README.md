@@ -225,6 +225,20 @@ your embark site; the biome shapes the map (relief, forest, lakes, savage wildli
 nearby goblins, and any civilization at war with yours in the world's history, decide how
 often sieges come.
 
+**Peoples made by villains.** In most worlds a necromancer or a dark wizard raises a tower
+somewhere lonely and twists prisoners, beasts or the dead into a new people
+(`overworld/peoples.rs`): a generated name ("the qydrooths"), a body ("squat, horned things
+with rust-brown skin"), a letter and colour of their own, a temper (warlike, wary, or given to
+trade) and one power every one of them has (webs, venom, a roar, a hide like armour...). From
+then on they are a civilization like any other, named in their own tongue: they found towns,
+go to war, buy peace, turn on their maker or lose them to a hero, and the legends keep it all
+(the civilization list says who made them, from what, and what they can do). Their tale is
+told over the world's history after the rest of it is written, on dice of its own, so a world
+is otherwise the same with or without them. Near your fort, the warlike besiege it as their
+own kind, led by one of theirs, each with the maker's gift (learned of them all at the first
+clash); the others send traders in the dead of winter, when nobody else comes, with strange
+goods of their own (`game/kin.rs`).
+
 **The world map.** One character a cell, tight like the old game's atlas: each region is a
 solid texture of one glyph family in two or three shades of its colour (green `∩` `n` hills,
 `♣` forests, `"` grass, grey and white `▲` `^` mountains with snow on the high peaks, `↑`
@@ -399,9 +413,36 @@ the way and setting trees, grass and wooden things alight; slay it and it leaves
 treasure, and the hoard it carried.
 Once you've broken into the caverns, a cave horror may crawl up out of them: a one-of-a-kind
 creature with its own name and look ("a bloated spider of crystal with many eyes") that hunts
-until it's killed. Skulkers are thieves: unseen, they make for the most valuable thing lying
+until it's killed. Its look is no idle talk (`game/horrors.rs`): each horror has one to three
+powers that fit it, fixed by the world's seed: it **breathes fire**, **spits webs** that hold a
+dwarf fast (the strands left about catch the careless), **bites with venom** that works on the
+worst wound for a day and can kill, **knits its wounds shut** (not while fire burns beside it),
+**turns flesh to stone** with its gaze for a while, **roars** until all but hardened soldiers
+run, or wears a **hide like armour**. The spotlight card and the look panel show the signs
+("Embers glow between its teeth", "Its hide is plated like armour"); what they mean the fort
+learns in the first clash ("Now we know: Ozthra the cave horror breathes fire!"), the legends
+keep it, and `k` lists what is known and how many powers are still a mystery. A webbed or
+stony dwarf shows it in the look panel, and webs show on the map as `#`. Skulkers are thieves: unseen, they make for the most valuable thing lying
 about, grab it and run for the edge of the map. A dwarf who comes within five tiles spots
 them, and once spotted they flee and can be fought; killing one drops what it stole.
+
+**The thing in the night.** After the first year, something may come to live near the fort
+(`game/haunt.rs`). Nobody sees it; the dwarves give it a name ("the Pale Drinker") and notice
+its signs: livestock found drained of blood, tracks as wide as a cartwheel leading off to the
+north-east, a hauler gone missing and found at dawn, torn and senseless. Once the tales pile
+up, the sheriff (or the bookkeeper, the manager or the eldest) looks into it and, clue by clue
+("its tracks run along the brook for a mile and never cross it"), finds out what it is, where
+it lairs and what it can't bear: **gold**, **fire**, **running water** or **a warding
+engraving**. The fort arms the hunters with it if it can (gold from the stocks, a log for
+torches, water drawn from the map, a copy of an engraving): their blows then bite deep and its
+wounds no longer knit; a gold blade, a fire or water beside it, or an engraving it brushes
+against hurt it whoever brought them, and the first time gives the bane away. The overseer
+reacts by temper: a cautious one keeps everyone indoors at each new tale and waits behind the
+walls, a bold one (or a warlord) sends the squad to its lair at once, a steady one once the
+bane is ready and three can go; the reckless pay it no mind. Whoever doesn't go to it, it
+comes to in the end. The status screen (`z`) follows the tale, the look panel names it and its
+bane, and the legends keep who found it out and who slew it. Its look, powers, name and bane
+are fixed by the world's seed and the site, and it's all saved with the fort.
 
 **Justice.** Punches and wrecked furniture in a tantrum, and the dwarf blamed for an unmet
 mandate, go on the fortress's record of crimes, shown on the nobles screen. Appoint a sheriff
@@ -783,6 +824,7 @@ cargo test --release profile_year -- --ignored --nocapture
 | `game/overseer.rs`, `game/layout.rs`, `game/blueprint.rs` | the overseer AI: styles, room plans and layouts |
 | `game/architect.rs`, `game/maturity.rs` | the fort's insides: bedrooms, suites, gathering halls, taste; maturity, the industry quarter, rebuilding |
 | `game/fortify.rs`, `game/towers.rs` | the curtain wall, towers and grand works outside; the watch, tower stations, shooting down |
+| `game/horrors.rs`, `game/haunt.rs`, `game/kin.rs`, `overworld/peoples.rs` | horrors' powers; the thing in the night; peoples made by villains, in history and at the fort |
 | `dwarf.rs`, `body.rs`, `creature.rs` | units |
 | `buildings.rs`, `items.rs`, `material.rs` | data definitions and recipes |
 | `path.rs` | A* and nearest-goal Dijkstra search |

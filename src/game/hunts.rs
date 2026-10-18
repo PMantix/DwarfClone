@@ -313,7 +313,7 @@ impl Game {
 
     /// The squad most fit to hunt: (index, fit members, how many in full kit,
     /// strength). Not one away on an expedition.
-    fn best_hunters(&self) -> Option<(usize, Vec<u32>, usize, i32)> {
+    pub(super) fn best_hunters(&self) -> Option<(usize, Vec<u32>, usize, i32)> {
         let away = self.expedition.as_ref().map(|e| e.squad.clone());
         (0..self.squads.len())
             .filter(|&s| Some(&self.squads[s].name) != away.as_ref())
@@ -353,7 +353,7 @@ impl Game {
     }
 
     /// The squad's members fit to hunt, and how many of them are kit-ready.
-    fn hunters(&self, s: usize) -> (Vec<u32>, usize) {
+    pub(super) fn hunters(&self, s: usize) -> (Vec<u32>, usize) {
         let fit: Vec<u32> = self.squads[s].members.iter().copied().filter(|&id| self.dwarves.iter().any(|d| d.id == id && self.fit_to_hunt(d))).collect();
         let ready = fit.iter().filter(|&&id| self.kit_ready(id)).count();
         (fit, ready)
@@ -405,7 +405,7 @@ impl Game {
 
     /// Hunters at drill, on station or idling go at once, rather than when
     /// they next look for something to do.
-    fn call_out(&mut self, ids: &[u32]) {
+    pub(super) fn call_out(&mut self, ids: &[u32]) {
         for i in 0..self.dwarves.len() {
             if !ids.contains(&self.dwarves[i].id) || !matches!(self.dwarves[i].task, Task::Idle | Task::Wander { .. } | Task::Station { .. } | Task::Train) {
                 continue;

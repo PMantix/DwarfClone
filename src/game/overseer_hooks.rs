@@ -44,6 +44,8 @@ impl Game {
         self.ov_wargame(o);
         // Myth and magic: a thief with a relic has the squad after it.
         self.ov_relics(o);
+        // The thing in the night: hunt it or hide (haunt.rs).
+        self.ov_haunt(o);
         let _ = o;
     }
 

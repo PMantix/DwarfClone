@@ -172,6 +172,7 @@ impl Game {
             teeth: c.species.person() || c.species == Species::Troglodyte,
         };
         self.apply_gear(&mut f, c.weapon, &c.armor, c.body.can_hold());
+        self.gifted_fighter(c, &mut f);
         f
     }
 
@@ -397,6 +398,7 @@ impl Game {
         let (hp0, siege): (i32, bool) = (body.hp.iter().sum(), c.siege);
         let (cpos, species, owner, seen) = (c.pos, c.species, super::gore::owner_of_creature(c), a_or_name(c));
         let blow = self.strike(&att, &def, &mut body);
+        self.struck_horror(cid, d, &mut body, hp0);
         if siege {
             let hurt = body.hp.iter().sum::<i32>() < hp0;
             self.note_blow(if d.soldier { super::annals::BY_SOLDIER } else { super::annals::BY_CIVILIAN }, hurt);
@@ -1024,6 +1026,7 @@ impl Game {
         c.siege = true;
         c.label = Some(label);
         c.desc = Some(desc);
+        self.gift_horror(id, 1, 3);
         id
     }
 
@@ -1069,7 +1072,7 @@ impl Game {
         let (sooner, watch) = self.watch_warning();
         let arrive = arrive + sooner;
         let civ = self.overworld.civ(foe.civ).name.clone();
-        let plural = Self::army_species(foe.race).info().plural;
+        let plural = self.army_plural(foe.civ, Self::army_species(foe.race));
         let raid = n <= 3;
         let what = if raid { format!("a raiding party of {} {}", n, plural) } else { format!("an army of {} {}", n, plural) };
         let mut text = format!("Scouts report {} of the {}, led by {}, marching on {}. They will be at the gates within a day!", what, civ, leader, self.fortress_name);
@@ -1128,7 +1131,7 @@ impl Game {
 
     /// Who leads them: a living figure of their civilization, or a new name.
     fn siege_leader(&mut self, foe: &Neighbor) -> (Option<u32>, String) {
-        let kind = format!("{:?}", foe.race).to_lowercase();
+        let kind = self.leader_kind(foe.civ, foe.race);
         let year = self.start_year + (self.tick / YEAR) as i32;
         let known: Vec<u32> = self
             .overworld
@@ -1140,7 +1143,7 @@ impl Game {
         let general = if known.is_empty() { None } else { Some(*self.rng.pick(&known)) };
         let name = match general {
             Some(f) => self.overworld.figures[f as usize].name.clone(),
-            None => crate::overworld::person_name(&mut self.rng, foe.race),
+            None => self.leader_name(foe.civ, foe.race),
         };
         (general, name)
     }
@@ -1169,6 +1172,8 @@ impl Game {
             Race::Elf => (Species::Elf, &[Mat::Wood], &[ItemKind::Spear, ItemKind::Sword], [0.3, 0.0, 0.4]),
             Race::Dwarf => (Species::Raider, &[Mat::Bronze, Mat::Iron, Mat::Iron], &[ItemKind::Axe, ItemKind::Hammer], [0.9, 0.7, 0.4]),
         };
+        // A people made by a villain comes as its own kind (kin.rs).
+        let species = self.army_kind(foe.civ, species);
         let stay = DAY * 5;
         // A living figure of theirs leads, or a new one rises to it (the one
         // the scouts named, if they did).
@@ -1201,6 +1206,7 @@ impl Game {
                 c.general = Some(general.unwrap_or(u32::MAX));
                 c.body = crate::body::Body::new(species.info().scale * 1.3);
             }
+            self.dress_kin(id, foe.civ, leads);
             for k in gear {
                 let iid = self.spawn_item(k, mat, p);
                 if let Some(it) = self.items.get_mut(&iid) {
@@ -1217,11 +1223,11 @@ impl Game {
         }
         self.siege_size = n as u32;
         self.siege_routed = false;
-        self.note_siege(species.info().plural, n as u32, &general_name);
+        let plural = self.army_plural(foe.civ, species);
+        self.note_siege(&plural, n as u32, &general_name);
         self.annals.sieges.last_mut().unwrap().civ = Some(foe.civ);
         self.siege_race = Some(foe.race);
         self.year_log.siege = Some(civ_name.clone());
-        let plural = species.info().plural;
         let text = if foe.race == Race::Goblin {
             format!("A vile force of darkness has arrived! {} {}, led by {}.", n, plural, general_name)
         } else {
@@ -1250,6 +1256,7 @@ impl Game {
             Some(Race::Dwarf) => "raiders",
             _ => "goblins",
         };
+        let who = self.routed_kin().unwrap_or_else(|| who.to_string());
         self.msg(&format!("The {} are fleeing!", who), (120, 255, 120));
         let fort = self.fortress_name.clone();
         self.spotlight("The siege is broken", &format!("The {} are fleeing from {}!", who, fort), None, (120, 255, 120));
@@ -1363,6 +1370,8 @@ impl Game {
         } else if c.hostile() {
             self.msg(&format!("The {} has been slain.", info.name), (160, 230, 160));
         }
+        // Horrors, made peoples, the thing in the night (horrors.rs).
+        self.horror_died(&c);
         if c.siege && !c.legendary() {
             self.check_rout();
         }
@@ -1495,6 +1504,10 @@ impl Game {
             if !c.siege && !near(dpos, c.pos, info.aggro * 2 + 2) {
                 c.target = None;
                 c.path.clear();
+                return true;
+            }
+            // A horror's powers (horrors.rs).
+            if self.power_turn(c, dpos) {
                 return true;
             }
             // A dragon breathes fire down a clear line at whoever it hunts.
@@ -1707,6 +1720,8 @@ impl Game {
         let blow = self.strike(&att, &def, &mut d.body);
         d.attacker = Some((c.id, self.tick));
         self.note_wound(&mut d, c, &before);
+        let hurt = d.body.hp.iter().sum::<i32>() < hp0;
+        self.gifted_blow(c, &mut d, hurt);
         if c.siege {
             let hurt = d.body.hp.iter().sum::<i32>() < hp0;
             self.note_blow(if d.soldier { super::annals::ON_SOLDIER } else { super::annals::ON_CIVILIAN }, hurt);

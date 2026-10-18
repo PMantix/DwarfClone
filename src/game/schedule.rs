@@ -41,6 +41,8 @@ impl Game {
         if tick % 50 == 35 { self.watch_siege(); }
         // Myth and magic: the relics' powers at work.
         if tick % 20 == 11 { self.magic_tick(); }
+        // Horrors: powers, webs, venom (horrors.rs).
+        if tick % horrors::HORROR_TICK == 11 { self.horrors_tick(); }
     }
 
     /// After the dwarves and creatures have moved: wildlife, the day's
@@ -64,6 +66,8 @@ impl Game {
             self.stories_daily();
             // Myth and magic (magic.rs), daily:
             self.magic_daily();
+            // The thing in the night (haunt.rs).
+            self.haunt_daily();
         }
         if tick % SEASON == 0 { self.season_turns(); }
     }
@@ -95,6 +99,8 @@ impl Game {
         self.lairs_season(season);
         // Myth and magic, seasonal:
         self.magic_season();
+        // A made people's traders in winter (kin.rs).
+        self.kin_caravan(season);
     }
 
     /// Each living dwarf, every tick, just after their wounds have bled (and
@@ -105,6 +111,8 @@ impl Game {
         self.check_carried(d);
         self.maybe_press(d);
         self.fit_body(d);
+        // Held fast in a web, or stiff from a gaze (horrors.rs).
+        self.held_fast(d);
     }
 }
 
