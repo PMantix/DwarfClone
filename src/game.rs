@@ -90,6 +90,8 @@ mod hunts;
 mod larder;
 pub mod fortify;
 mod towers;
+#[allow(dead_code)] // (until the arena screens use it)
+pub mod arena;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
