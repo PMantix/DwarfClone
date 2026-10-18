@@ -81,6 +81,7 @@ pub mod lessons;
 mod openings;
 mod archery;
 mod hunts;
+mod larder;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -882,8 +883,13 @@ impl Game {
     }
 
     pub fn add_zone(&mut self, a: Pos, b: Pos, kind: ZoneKind) -> usize {
+        self.add_zone_tiles(box_iter(a, b).collect(), kind)
+    }
+
+    /// A zone of just these tiles (those that can take it).
+    pub fn add_zone_tiles(&mut self, all: Vec<Pos>, kind: ZoneKind) -> usize {
         let mut tiles = Vec::new();
-        for p in box_iter(a, b) {
+        for p in all {
             let Some(t) = self.world.get(p) else { continue };
             // A meeting hall can take in the tables and chairs already standing in it.
             let bld_ok = t.building == 0 || kind.holds_furniture();
@@ -1416,7 +1422,7 @@ impl Game {
         // A mad dwarf still sips and picks at food when it's that bad (or
         // they'd never live to come back out of it).
         let sipping = d.insane
-            && (matches!(d.task, Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Eat { .. })
+            && (matches!(d.task, Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Eat { .. } | Task::Dine { .. })
                 || (matches!(d.task, Task::Idle | Task::Wander { .. }) && (d.thirst > THIRSTY + 6000 || d.hunger > HUNGRY + 12000)));
         if sipping && matches!(d.task, Task::Wander { .. }) {
             d.task = Task::Idle;

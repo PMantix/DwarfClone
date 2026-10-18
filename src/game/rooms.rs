@@ -491,6 +491,47 @@ mod tests {
         );
     }
 
+    /// A dwarf faint with hunger (or mad, and starving) who sits down to a
+    /// meal at a table eats it: the meal was once dropped every tick as
+    /// "ordinary work" that hunger interrupts, or as no task for the mad,
+    /// and picked up again, and they starved at the table.
+    #[test]
+    fn a_starving_dwarf_eats_at_the_table() {
+        let mut g = Game::new(23);
+        g.creatures.retain(|_, c| c.tame);
+        let place = |g: &mut Game, kind: BuildingKind, p: Pos| {
+            assert!(g.place_building(kind, p));
+            let id = *g.buildings.keys().max().unwrap();
+            g.buildings.get_mut(&id).unwrap().built = true;
+            id
+        };
+        let near = open_patch(&g, 4, 1, &HashSet::new());
+        place(&mut g, BuildingKind::Table, near);
+        place(&mut g, BuildingKind::Chair, near.offset(1, 0, 0));
+        place(&mut g, BuildingKind::Table, near.offset(2, 0, 0));
+        place(&mut g, BuildingKind::Chair, near.offset(3, 0, 0));
+        for _ in 0..6 {
+            g.spawn_item(ItemKind::Meal, Mat::Stoutcap, near.offset(0, 1, 0));
+        }
+        g.dwarves[0].hunger = crate::game::HUNGRY + 6000;
+        g.dwarves[1].hunger = crate::game::HUNGRY + 13000;
+        g.dwarves[1].insane = true;
+        let mut ate = [false; 2];
+        let mut dined = [false; 2];
+        for _ in 0..DAY {
+            g.step();
+            for i in 0..2 {
+                dined[i] |= matches!(g.dwarves[i].task, Task::Dine { .. });
+                ate[i] |= g.dwarves[i].hunger < crate::game::HUNGRY;
+            }
+            if ate == [true, true] {
+                break;
+            }
+        }
+        assert!(dined[0] && ate[0], "the starving dwarf never finished a meal at the table");
+        assert!(ate[1], "the mad dwarf starves with meals at hand (dined: {})", dined[1]);
+    }
+
     #[test]
     fn forbidden_items_are_left_alone_until_allowed() {
         let mut g = Game::new(81);

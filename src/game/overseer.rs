@@ -785,6 +785,13 @@ impl Game {
                 None => orders.push((r, keep)),
             }
         }
+        // Food short: no edible plant goes to the still while there's drink
+        // for a week (the stills once brewed a fort's last stoutcaps).
+        if self.food_short() && self.stock_of(ItemKind::Drink) as u32 >= pop * 2 {
+            for x in orders.iter_mut().filter(|x| x.0 == Recipe::Brew) {
+                x.1 = x.1.min(pop * 2);
+            }
+        }
         // Stone short and the gate still wanting its mechanisms: none of it
         // goes on blocks or crafts until they're made (a fort cut in soil
         // once turned all the stone it quarried for them into blocks).
@@ -1386,6 +1393,8 @@ impl Game {
         if o.style == Style::Builder {
             need.push((Labor::Engraving, 2));
         }
+        // While food is short, the field hands stay in the fields (larder.rs).
+        let hands = self.field_hands();
         for (labor, want) in need {
             let have = self.dwarves.iter().filter(|d| d.alive && !d.is_child() && !d.soldier && d.has(labor)).count();
             if have >= want {
@@ -1395,6 +1404,7 @@ impl Game {
                 .dwarves
                 .iter()
                 .filter(|d| d.alive && !d.is_child() && !d.soldier && !d.insane && !d.has(labor))
+                .filter(|d| Self::field_hand_may(labor) || !hands.contains(&d.id))
                 .map(|d| (d.skills[labor.idx()], LABORS.iter().filter(|l| d.has(**l)).count(), d.id))
                 .collect();
             // The most skilled, then whoever has least to do.
