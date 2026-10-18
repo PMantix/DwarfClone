@@ -136,10 +136,12 @@ pub enum Sense {
     Unarmed,
     /// Wounded dwarves and too little care.
     Wounded,
+    /// An ill omen hangs over the fort (`omens.rs`).
+    Omens,
 }
 
 impl Sense {
-    pub const ALL: [Sense; 17] = [
+    pub const ALL: [Sense; 18] = [
         Sense::Temper,
         Sense::Leaning,
         Sense::Hunger,
@@ -157,6 +159,7 @@ impl Sense {
         Sense::Prowlers,
         Sense::Unarmed,
         Sense::Wounded,
+        Sense::Omens,
     ];
 
     pub fn name(self) -> &'static str {
@@ -178,6 +181,7 @@ impl Sense {
             Sense::Prowlers => "Prowlers",
             Sense::Unarmed => "Unarmed",
             Sense::Wounded => "Wounded",
+            Sense::Omens => "An omen",
         }
     }
 }
@@ -256,6 +260,7 @@ impl Game {
             (Sense::Prowlers, 0.0),
             (Sense::Unarmed, 0.0),
             (Sense::Wounded, 0.0),
+            (Sense::Omens, 0.0),
         ];
         for &(s, level, _) in &extra {
             if let Some(x) = senses.iter_mut().find(|x| x.0 == s) {
@@ -370,7 +375,7 @@ impl Game {
         n as f64 / self.alive_count().max(1) as f64
     }
 
-    fn food_per_head(&self) -> f64 {
+    pub(super) fn food_per_head(&self) -> f64 {
         self.per_head(&[ItemKind::Meal, ItemKind::Plant, ItemKind::Meat, ItemKind::Fish])
     }
 

@@ -24,6 +24,7 @@ impl Game {
         self.ov_fortify(o);
         // Myth and magic: temples dedicated, a temple for a devout fort.
         self.ov_faith(o);
+        self.ov_omens(o);
         let _ = o;
     }
 
@@ -52,6 +53,8 @@ impl Game {
         senses.push((Sense::Wounded, self.wounded_sense(), vec![(Ambition::Provision, 0.6), (Ambition::Venture, -1.5)]));
         senses.extend(self.unarmed_sense(o));
         senses.extend(self.lesson_sense(o));
+        // Myth and magic: an ill omen readies the fort.
+        senses.push((Sense::Omens, self.omen_sense(), vec![(Ambition::Fortify, 0.8), (Ambition::Muster, 0.8), (Ambition::Venture, -1.0)]));
         let _ = o;
         senses
     }

@@ -93,6 +93,7 @@ mod towers;
 pub mod magic;
 mod faith;
 pub mod relics;
+pub mod omens;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -2487,10 +2488,14 @@ impl Game {
                     }
                     Travel::Arrived => {
                         let labor = if desig == Desig::Chop { Labor::Woodcutting } else { Labor::Mining };
+                        let tree = desig == Desig::Chop && self.world.t(target).kind == TileKind::Tree;
                         let base = if desig == Desig::Chop { 80 } else { self.world.t(target).mat.dig_ticks() };
                         if Self::labor(d, base, d.skill(labor)) {
                             let gem = self.world.t(target).kind == TileKind::Wall && self.world.t(target).mat.is_gem();
                             self.complete_dig(target);
+                            if tree {
+                                self.tree_felled(d, target);
+                            }
                             if gem {
                                 self.maybe_whispering_stone(d.id, target);
                             }

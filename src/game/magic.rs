@@ -20,6 +20,18 @@ pub struct Magic {
     /// Artifacts with powers (`relics.rs`).
     #[serde(default)]
     pub relics: Vec<super::relics::Relic>,
+    /// Each god's anger at broken taboos (`omens.rs`).
+    #[serde(default)]
+    pub wrath: BTreeMap<u32, u32>,
+    /// Dwarves under a god's curse.
+    #[serde(default)]
+    pub curses: Vec<super::omens::Curse>,
+    /// An omen seen, and not yet come true.
+    #[serde(default)]
+    pub omen: Option<super::omens::Omen>,
+    /// When blood was last found on a temple floor.
+    #[serde(default)]
+    pub blood_seen: u64,
     /// Lines for this year's chronicle.
     #[serde(default)]
     pub year: Vec<String>,
@@ -41,14 +53,22 @@ impl Game {
         self.overworld.gods.get(id as usize)
     }
 
+    /// The year's omens, curses and wonders, for the chronicle.
+    pub(super) fn magic_chronicle(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.magic.year)
+    }
+
     /// Once a day: the faithful.
     pub(super) fn magic_daily(&mut self) {
         self.faith_daily();
+        self.curses_daily();
+        self.omens_daily();
     }
 
     /// Each season: word of the relics gets about.
     pub(super) fn magic_season(&mut self) {
         self.relics_season();
+        self.omens_season();
     }
 }
 
@@ -60,7 +80,7 @@ impl Game {
 
     /// For the look panel, under a dwarf: whom they worship.
     pub fn magic_dwarf_lines(&self, id: u32) -> Vec<String> {
-        self.faith_line(id).into_iter().collect()
+        self.faith_line(id).into_iter().chain(self.curse_line(id)).collect()
     }
 
     /// For the look panel, under an item: its power.

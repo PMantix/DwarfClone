@@ -138,6 +138,7 @@ impl Game {
 
     /// A dwarf at prayer in a temple: once a day, whom they pray to.
     pub(super) fn at_prayer(&mut self, d: &mut Dwarf) {
+        self.atone(d);
         let tick = self.tick;
         if d.thoughts.iter().any(|t| t.text.starts_with("prayed to ") && tick < t.tick + DAY) {
             return;
