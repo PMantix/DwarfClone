@@ -71,6 +71,11 @@ impl Game {
     /// warrior makes up their mind.
     pub(super) fn visitor_think(&mut self, c: &mut Creature) {
         let mut tavern = self.tavern_tiles();
+        // A bard takes the stage, if the tavern has one.
+        let stage = self.stage_tiles();
+        if c.visitor == BARD && !stage.is_empty() && !tavern.is_empty() {
+            tavern = stage;
+        }
         if tavern.is_empty() && c.visitor == STRANGER {
             // A stranger waits wherever folk gather.
             tavern = self.meeting_tiles();

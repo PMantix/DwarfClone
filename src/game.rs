@@ -79,6 +79,8 @@ mod cistern;
 mod rescue;
 mod hospital;
 mod watchdog;
+pub mod architect;
+mod maturity;
 pub mod lessons;
 mod openings;
 pub mod gore;
@@ -1043,6 +1045,9 @@ impl Game {
                 BuildingKind::Door => ItemKind::Door,
                 BuildingKind::Coffin => ItemKind::Coffin,
                 BuildingKind::Slab => ItemKind::Slab,
+                BuildingKind::Cabinet => ItemKind::Cabinet,
+                BuildingKind::Chest => ItemKind::Chest,
+                BuildingKind::Statue => ItemKind::Statue,
                 BuildingKind::Well => ItemKind::Bucket,
                 _ => ItemKind::Boulder,
             };

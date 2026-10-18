@@ -151,6 +151,10 @@ impl Game {
 
     fn pick_shape(&mut self, o: &Overseer, kind: RoomUse) -> Shape {
         let r = |g: &mut Game, a: i32, b: i32| g.rng.range(a, b + 1);
+        // The architect's own rooms, and its taste (architect.rs).
+        if let Some(s) = super::architect::taste_shape(o, kind) {
+            return s;
+        }
         if kind == RoomUse::Grand {
             return match self.rng.range(0, 4) {
                 0 => Shape::Pillared { w: 15, h: 11 },
@@ -400,8 +404,9 @@ impl Game {
                     self.open_room(o, level, room.a, room.b, &halls, door);
                     return Some(room);
                 }
-                // Bedrooms only come in the plan's rows.
-                if kind == RoomUse::Bedrooms {
+                // Bedrooms only come in the plan's rows (or, past them, one
+                // to a small room off the halls: architect.rs).
+                if kind == RoomUse::Bedrooms && !super::architect::pods(o) {
                     if level > o.level + 1 || Self::level_z(o, level + 1) < 3 {
                         return None;
                     }
@@ -450,8 +455,10 @@ impl Game {
             }
             let _ = b;
             self.open_room(o, level, o0, o0.offset(w - 1, h - 1, 0), &path, door);
-            let kind = if kind == RoomUse::Bedrooms { RoomUse::Dormitory } else { kind };
-            return Some(Room { kind, a: o0, b: o0.offset(w - 1, h - 1, 0), stage: 0, tiles, shape: Some(shape), since: self.tick, doors: Vec::new(), beds: Vec::new() });
+            // A bedroom of its own off the tunnel (a dormitory where the
+            // overseer still houses its dwarves together).
+            let (kind, doors, beds) = super::architect::pod(o, kind, &tiles, &path);
+            return Some(Room { kind, a: o0, b: o0.offset(w - 1, h - 1, 0), stage: 0, tiles, shape: Some(shape), since: self.tick, doors, beds });
         }
     }
 

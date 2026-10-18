@@ -63,9 +63,8 @@ been doing: each note it made and how many days ago.
 Each overseer has a taste in halls, and its fortress follows a plan of halls first: a great
 hall with rooms opening off both sides and a cross hall at its end; mirrored wings on cross
 halls, every room with its twin; rooms round a pillared atrium; a grid of lanes with rooms back
-to back between them; or a round hub with spokes. Rooms open onto their hall through a door,
-and after the first dormitory dwarves sleep in rows of bedrooms, a bed and a door each (so
-each gets a room of their own). A tidy Steady overseer leans to the great hall and the grid, a
+to back between them; or a round hub with spokes. Rooms open onto their hall through a door.
+A tidy Steady overseer leans to the great hall and the grid, a
 Builder to the atrium and the wings, a Warlord to the grid, a Delver to the warren and spokes;
 a Reckless one sprawls. The sprawl and the warren have no plan at all: odd rooms on tunnels,
 or round, crossed and crooked rooms on winding passages. The dead get buried: when a dwarf
@@ -74,7 +73,38 @@ Rooms come as plain halls, pillared halls, round halls, crosses and L-shapes, ar
 solid rock surrounds them, and always open behind the gate; when a level is full, a stair
 inside the gate leads down to the next. The *Architect* ambition raises a grand work: a
 pillared great hall to feast in, a rotunda with the monument at its heart, a cross-shaped
-temple, or a long gallery with every wall carved. Press `A` in a fortress to hand it over (or take it back), or pick
+temple, or a long gallery with every wall carved.
+
+The inside of the fort grows up with it (`game/architect.rs`, `game/maturity.rs`). A fort is
+*founded*, then *settled* (the essentials dug and fitted), *established* (a dozen dwarves,
+some wealth, a season of peace) and in time *comes of age*, and the overseer notes each step.
+Once settled, every dwarf gets a bedroom of their own after the first dormitory: a cell in a
+row off a hall, or a small room off the tunnels when the rows are used up, with a door, a bed,
+and a cabinet and a chest as the carpenters make them. Couples share (a second bed goes in),
+children sleep beside their parents, and once everyone has a room (and two are spare) the
+dormitory is emptied and becomes a library or a parlour ("Retired the old dormitory: every
+dwarf has a room of their own now."). Nobles get suites, walled into a bedchamber, an office
+and a dining room with doors between. Gathering rooms follow as the fort comes up: a parlour,
+a meeting hall, a tavern with a bar counter, its drink kept behind it and a stage where
+visiting bards perform, a great dining hall with a chair either side of every table and statues
+along the walls, a temple with an altar and statues, a barracks with targets and kit cabinets
+round a clear training floor, a library of desks and cabinets; the halls are smoothed, then
+engraved. Once established it rebuilds its rough beginnings: an industry quarter of halls, one
+per chain of workshops (the Kitchens, the Woodworks, the Stoneworks, the Forge Hall, the
+Weavers' Hall) with the stockpile they use beside them; the makeshift workshops by the wagon
+come down once their replacement stands built, never while someone works at them (their queue
+moves over), the wood and stone piles in the open are cleared, and a hospital wing takes over
+from the first ward. Where there's no rock left it makes over a spare storeroom instead.
+Taste shows: a vain overseer wants big halls, leaves pillars standing in them and fills them
+with statues, and engraves everything; a cautious one keeps rooms small and plain; a pious one
+puts up a temple early and a great temple later; Builders are the most lavish and the Reckless
+keep their dormitories and hardly bother. Rooms have names in the look panel ("Urist and
+Kadol's bedroom", "the mayor's bedchamber", "the Great Dining Hall", "the Copper Tankard
+(tavern)", "the Woodworks"), and the director's camera visits a hall newly finished.
+`SEED=5003 STYLE=builder DAYS=672 cargo test --release show_interior -- --ignored --nocapture`
+draws a fort's levels and lists its rooms and what the overseer said of them.
+
+Press `A` in a fortress to hand it over (or take it back), or pick
 *Watch a fort* on the title screen. From the command line, `--autoplay` plays many forts side
 by side and reports how each ended (`--runs`, `--years`, `--style`, `--seed`). Most end in
 ruin; that's the fun of it.
@@ -349,7 +379,8 @@ workshop (query it with `q`) picks who may work there.
 
 **Industry.** Farming with seeds, brewing, cooking, butchery, charcoal, ore smelting,
 steel (with limestone flux), a forge for tools, weapons and armor, stone and bone crafts,
-gem cutting, furniture, barrels and bins that store goods. Multi-input recipes, repeating
+gem cutting, furniture (cabinets `b x` and chests `b H` from the carpenter, statues `b S` from
+the mason; a tavern stage `b A` from a stone), barrels and bins that store goods. Multi-input recipes, repeating
 work orders, item quality from skill. The butcher leaves hides; a tanner's shop (`b`, `T`)
 turns them into leather, and the leather works (`b`, `L`) makes leather armor, caps and
 crafts (Leatherworking labor) and leather shoes. A loom (`b`, `W`) weaves thread into cloth
@@ -647,6 +678,8 @@ cargo test --release profile_year -- --ignored --nocapture
 | `game/melee.rs`, `game/gore.rs` | close quarters, creature feuds; blood, smoke, severed parts |
 | `game/psyche.rs` | relationships, rooms, nobles, mandates, moods, insanity |
 | `game/trade.rs` | caravans, depot, bartering |
+| `game/overseer.rs`, `game/layout.rs`, `game/blueprint.rs` | the overseer AI: styles, room plans and layouts |
+| `game/architect.rs`, `game/maturity.rs` | the fort's insides: bedrooms, suites, gathering halls, taste; maturity, the industry quarter, rebuilding |
 | `dwarf.rs`, `body.rs`, `creature.rs` | units |
 | `buildings.rs`, `items.rs`, `material.rs` | data definitions and recipes |
 | `path.rs` | A* and nearest-goal Dijkstra search |

@@ -81,6 +81,14 @@ pub enum RoomUse {
     Grand,
     /// A row of bedrooms off a hall, a bed and a door each.
     Bedrooms,
+    /// A noble's rooms: bedroom, office and dining room (`architect`).
+    Suite,
+    /// A quiet room of desks and cabinets.
+    Library,
+    /// A small meeting room.
+    Parlour,
+    /// One chain's workshops with their stockpile (`maturity`).
+    Industry,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -202,6 +210,9 @@ pub struct Overseer {
     pub stalls: u32,
     #[serde(default)]
     pub resites: u32,
+    /// How the inside of the fort grows up (`architect`, `maturity`).
+    #[serde(default)]
+    pub interior: super::architect::Interior,
 }
 
 impl Overseer {
@@ -244,6 +255,7 @@ impl Overseer {
             stall_since: 0,
             stalls: 0,
             resites: 0,
+            interior: Default::default(),
         }
     }
 
@@ -285,6 +297,10 @@ pub(super) fn room_name(k: RoomUse) -> &'static str {
         RoomUse::Jail => "jail",
         RoomUse::Grand => "grand hall",
         RoomUse::Bedrooms => "row of bedrooms",
+        RoomUse::Suite => "noble's suite",
+        RoomUse::Library => "library",
+        RoomUse::Parlour => "parlour",
+        RoomUse::Industry => "workshop quarter",
     }
 }
 
@@ -598,7 +614,7 @@ impl Game {
         let next = o.wants.first().copied().map(|k| (k, true)).or_else(|| plan.get(o.planned).map(|&k| (k, false)));
         // Past the first dormitory, a planned fortress sleeps in bedrooms.
         let next = next.map(|(k, w)| {
-            if k == RoomUse::Dormitory && o.layout.planned() && o.rooms.iter().any(|r| r.kind == RoomUse::Dormitory) {
+            if k == RoomUse::Dormitory && super::architect::sleeps_in_rooms(o) {
                 (RoomUse::Bedrooms, w)
             } else {
                 (k, w)
@@ -606,10 +622,13 @@ impl Game {
         });
         // (Once nothing has fit, it only looks again daily: it's a long search.)
         let retry = o.stuck_since == 0 || self.tick % DAY < 150;
-        if let Some((kind, wanted)) = next.filter(|_| (o.rooms.len() < want || !o.wants.is_empty()) && digging < 2 && dig_jobs < 120 && retry) {
+        // (Bedrooms don't count against the plan: a fort of rooms of their own has many.)
+        let rooms = o.rooms.iter().filter(|r| r.kind != RoomUse::Bedrooms).count();
+        if let Some((kind, wanted)) = next.filter(|_| (rooms < want || !o.wants.is_empty()) && digging < 2 && dig_jobs < 120 && retry) {
             match self.plan_room(o, kind) {
                 Some(room) => {
                     let what = match (room.kind, room.shape) {
+                        (RoomUse::Bedrooms, _) if room.beds.len() == 1 => "Dug out a bedroom of its own off the halls.".to_string(),
                         (RoomUse::Bedrooms, _) => format!("Dug out a row of {} bedrooms.", room.beds.len()),
                         (RoomUse::Grand, Some(s)) => format!("Began its grand work: a great {}.", s.describe()),
                         (_, Some(s)) if !matches!(s, Shape::Rect { .. }) => format!("Dug out a {} for a {:?}.", s.describe(), kind).to_lowercase().replace("dug out", "Dug out"),
@@ -674,10 +693,9 @@ impl Game {
             let beds = self.buildings.values().filter(|b| b.kind == BuildingKind::Bed).count();
             // A planned fortress digs another row of bedrooms.
             if beds < self.alive_count() + 1
-                && o.layout.planned()
+                && super::architect::sleeps_in_rooms(o)
                 && !o.wants.contains(&RoomUse::Bedrooms)
                 && !o.rooms.iter().any(|r| r.stage == 0 && matches!(r.kind, RoomUse::Bedrooms | RoomUse::Dormitory))
-                && o.rooms.iter().any(|r| r.kind == RoomUse::Dormitory)
             {
                 o.wants.push(RoomUse::Bedrooms);
             }
@@ -807,6 +825,7 @@ impl Game {
             }
             RoomUse::Office => zone(ZoneKind::Office),
             RoomUse::Jail => zone(ZoneKind::Jail),
+            RoomUse::Suite | RoomUse::Library | RoomUse::Parlour | RoomUse::Industry => self.fit_interior(o, r),
             RoomUse::Grand => match r.shape {
                 // A great hall to feast in, among the pillars.
                 Some(Shape::Pillared { .. }) => {
@@ -893,6 +912,7 @@ impl Game {
             orders.push(self.metal_arms_order(Recipe::ForgeCrossbow, if o.style == Style::Warlord { 4 } else { 2 }));
         }
         self.ambition_orders(o, &mut orders);
+        self.interior_orders(o, &mut orders);
         // What it raised to meet a shortage, on top.
         for &(r, keep, _) in &o.boosts {
             match orders.iter_mut().find(|x| x.0 == r) {

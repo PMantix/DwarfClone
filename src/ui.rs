@@ -897,6 +897,10 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
                     let who = z.owner.and_then(|o| g.dwarves.iter().find(|d| d.id == o)).map_or("unassigned".to_string(), |d| d.name.clone());
                     s.push_str(&format!(" ({})", who));
                 }
+                // What the overseer calls it: "the Great Dining Hall", "the mayor's bedchamber".
+                if let Some(n) = g.place_name(p).filter(|n| !k.ownable() || n.contains(" and ") || n.contains("bedchamber")) {
+                    s = format!("{}: {}", s, n);
+                }
                 v.push(plain(s, Color::Rgb(110, 200, 170)));
                 if k.holds_furniture() && k != ZoneKind::Meeting {
                     let tiles = z.tiles.iter().copied().collect();

@@ -42,13 +42,20 @@ pub enum BuildingKind {
     Millstone,
     /// A megaproject: a great monument raised block by block.
     Monument,
+    /// Bedroom furniture: a cabinet for clothes, a chest for belongings.
+    Cabinet,
+    Chest,
+    /// A carved stone statue, for halls and temples.
+    Statue,
+    /// A low stone stage in a tavern, where bards perform.
+    Stage,
 }
 
 /// Stone blocks a monument takes.
 pub const MONUMENT_BLOCKS: u8 = 30;
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 34] = [
+    pub const ALL: [BuildingKind; 38] = [
         BuildingKind::Carpenter,
         BuildingKind::Mason,
         BuildingKind::Still,
@@ -83,6 +90,10 @@ impl BuildingKind {
         BuildingKind::Soapmaker,
         BuildingKind::Millstone,
         BuildingKind::Monument,
+        BuildingKind::Cabinet,
+        BuildingKind::Chest,
+        BuildingKind::Statue,
+        BuildingKind::Stage,
     ];
 
     pub fn name(self) -> &'static str {
@@ -121,6 +132,10 @@ impl BuildingKind {
             BuildingKind::Soapmaker => "Soap maker's workshop",
             BuildingKind::Millstone => "Millstone",
             BuildingKind::Monument => "Great monument",
+            BuildingKind::Cabinet => "Cabinet",
+            BuildingKind::Chest => "Chest",
+            BuildingKind::Statue => "Statue",
+            BuildingKind::Stage => "Stage",
         }
     }
 
@@ -160,6 +175,10 @@ impl BuildingKind {
             BuildingKind::Soapmaker => 'P',
             BuildingKind::Millstone => 'M',
             BuildingKind::Monument => 'G',
+            BuildingKind::Cabinet => 'x',
+            BuildingKind::Chest => 'H',
+            BuildingKind::Statue => 'S',
+            BuildingKind::Stage => 'A',
         }
     }
 
@@ -186,6 +205,10 @@ impl BuildingKind {
                 | BuildingKind::Well
                 | BuildingKind::Floodgate
                 | BuildingKind::Monument
+                | BuildingKind::Cabinet
+                | BuildingKind::Chest
+                | BuildingKind::Statue
+                | BuildingKind::Stage
         )
     }
 
@@ -239,6 +262,8 @@ impl BuildingKind {
     pub fn size(self) -> i32 {
         if self.is_workshop() || self == BuildingKind::Monument {
             3
+        } else if self == BuildingKind::Stage {
+            2
         } else {
             1
         }
@@ -254,6 +279,9 @@ impl BuildingKind {
             BuildingKind::Door => item.kind == ItemKind::Door,
             BuildingKind::Coffin => item.kind == ItemKind::Coffin,
             BuildingKind::Slab => item.kind == ItemKind::Slab,
+            BuildingKind::Cabinet => item.kind == ItemKind::Cabinet,
+            BuildingKind::Chest => item.kind == ItemKind::Chest,
+            BuildingKind::Statue => item.kind == ItemKind::Statue,
             _ => item.kind == ItemKind::Boulder && item.mat.is_building_stone(),
         }
     }
@@ -267,6 +295,9 @@ impl BuildingKind {
             BuildingKind::Door => "a door",
             BuildingKind::Coffin => "a coffin",
             BuildingKind::Slab => "a slab",
+            BuildingKind::Cabinet => "a cabinet",
+            BuildingKind::Chest => "a chest",
+            BuildingKind::Statue => "a statue",
             BuildingKind::Lever => "a mechanism",
             BuildingKind::CageTrap => "a mechanism + an empty cage",
             BuildingKind::WeaponTrap => "a mechanism + a weapon",
@@ -282,9 +313,9 @@ impl BuildingKind {
     pub fn recipes(self) -> &'static [Recipe] {
         use Recipe::*;
         match self {
-            BuildingKind::Carpenter => &[WoodBed, WoodTable, WoodChair, WoodDoor, Barrel, Bin, WoodCage, WoodCrossbow, Bolts, Splint, Crutch, WoodCoffin, Bucket],
+            BuildingKind::Carpenter => &[WoodBed, WoodTable, WoodChair, WoodDoor, Barrel, Bin, WoodCage, WoodCrossbow, Bolts, Splint, Crutch, WoodCoffin, Bucket, WoodCabinet, WoodChest],
             BuildingKind::Mechanic => &[Mechanism],
-            BuildingKind::Mason => &[Blocks, StoneTable, StoneChair, StoneDoor, StoneCoffin, Slab],
+            BuildingKind::Mason => &[Blocks, StoneTable, StoneChair, StoneDoor, StoneCoffin, Slab, Statue],
             BuildingKind::Still => &[Brew],
             BuildingKind::Kitchen => &[Cook],
             BuildingKind::Butcher => &[Butcher],
@@ -339,6 +370,9 @@ impl BuildingKind {
             BuildingKind::Soapmaker => Color::Rgb(240, 240, 200),
             BuildingKind::Millstone => Color::Rgb(210, 200, 170),
             BuildingKind::Monument => Color::Rgb(255, 215, 90),
+            BuildingKind::Cabinet | BuildingKind::Chest => Color::Rgb(200, 160, 110),
+            BuildingKind::Statue => Color::Rgb(235, 235, 245),
+            BuildingKind::Stage => Color::Rgb(210, 170, 120),
             _ => Color::Rgb(200, 200, 200),
         }
     }
@@ -377,6 +411,10 @@ impl BuildingKind {
             BuildingKind::Soapmaker => 'P',
             BuildingKind::Millstone => 'M',
             BuildingKind::Monument => '▲',
+            BuildingKind::Cabinet => 'π',
+            BuildingKind::Chest => '■',
+            BuildingKind::Statue => '♀',
+            BuildingKind::Stage => '▒',
         }
     }
 }
@@ -511,6 +549,9 @@ pub enum Recipe {
     Mill,
     ForgeCrossbow,
     ForgeBolts,
+    WoodCabinet,
+    WoodChest,
+    Statue,
 }
 
 impl Recipe {
@@ -568,6 +609,9 @@ impl Recipe {
             Mill => "Mill grain into flour",
             ForgeCrossbow => "Forge crossbow",
             ForgeBolts => "Forge bolts",
+            WoodCabinet => "Make wooden cabinet",
+            WoodChest => "Make wooden chest",
+            Statue => "Carve a statue",
         }
     }
 
@@ -616,6 +660,9 @@ impl Recipe {
             Mill => 'm',
             ForgeCrossbow => 'x',
             ForgeBolts => 'l',
+            WoodCabinet => 'i',
+            WoodChest => 'e',
+            Statue => 'a',
         }
     }
 
@@ -642,17 +689,19 @@ impl Recipe {
             MakeSoap => Labor::Soapmaking,
             Mill => Labor::Farming,
             ForgeCrossbow | ForgeBolts => Labor::Smithing,
+            WoodCabinet | WoodChest => Labor::Carpentry,
+            Statue => Labor::Masonry,
         }
     }
 
     pub fn inputs(self) -> &'static [Input] {
         use Recipe::*;
         match self {
-            WoodBed | WoodTable | WoodChair | WoodDoor | Barrel | Bin | Charcoal | WoodCage | WoodCrossbow | Bolts | Splint | Crutch | WoodCoffin | Bucket => {
+            WoodBed | WoodTable | WoodChair | WoodDoor | Barrel | Bin | Charcoal | WoodCage | WoodCrossbow | Bolts | Splint | Crutch | WoodCoffin | Bucket | WoodCabinet | WoodChest => {
                 &[Input::Log]
             }
             SpinThread => &[Input::Fiber],
-            Blocks | StoneTable | StoneChair | StoneDoor | StoneCraft | Mechanism | StoneCoffin | Slab => &[Input::Stone],
+            Blocks | StoneTable | StoneChair | StoneDoor | StoneCraft | Mechanism | StoneCoffin | Slab | Statue => &[Input::Stone],
             Brew => &[Input::Brewable],
             Cook => &[Input::Edible],
             Butcher => &[Input::Carcass],
@@ -765,6 +814,9 @@ impl Recipe {
             Mill => vec![(ItemKind::Flour, m, None), (ItemKind::Flour, m, None), (ItemKind::Seed, m, None)],
             ForgeCrossbow => one(ItemKind::Crossbow),
             ForgeBolts => vec![(ItemKind::Bolt, m, None); 3],
+            WoodCabinet => one(ItemKind::Cabinet),
+            WoodChest => one(ItemKind::Chest),
+            Statue => one(ItemKind::Statue),
             MakeSoap => {
                 let fat = inputs.get(1).and_then(|i| i.label.clone());
                 vec![(ItemKind::Soap, Mat::Flesh, fat.clone()), (ItemKind::Soap, Mat::Flesh, fat)]
@@ -783,7 +835,7 @@ impl Recipe {
             ForgeBreastplate => 260,
             ForgePick | ForgeAxe | ForgeSword | ForgeSpear | ForgeHammer | ForgeHelm | ForgeShield | ForgeCrossbow => 200,
             ForgeBolts => 180,
-            CutGem => 180,
+            CutGem | Statue => 180,
             _ => 150,
         }
     }
@@ -879,6 +931,9 @@ impl Building {
                     _ => '▄',
                 }
             };
+        }
+        if self.kind == BuildingKind::Stage {
+            return if self.built { '▒' } else { '░' };
         }
         if self.kind == BuildingKind::Bridge && self.raised {
             return '▀';

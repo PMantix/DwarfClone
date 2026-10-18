@@ -46,6 +46,8 @@ pub enum Kind {
     Construction,
     Work,
     Tavern,
+    /// A hall the overseer has just finished.
+    Hall,
     Wildlife,
     /// Nothing else at all: someone going about their day.
     Idle,
@@ -74,6 +76,7 @@ impl Kind {
             Kind::Construction => 30,
             Kind::Work => 20,
             Kind::Tavern => 18,
+            Kind::Hall => 28,
             Kind::Wildlife => 15,
             Kind::Idle => 5,
         }
@@ -423,6 +426,11 @@ pub fn candidates(g: &Game) -> Vec<Subject> {
             v.push(Subject { who: Who::Dwarf(d.id), kind: Kind::Tavern, what: format!("the tavern, {} among the drinkers", d.name) });
             break;
         }
+    }
+
+    // Halls newly finished: the great dining hall, the tavern, a suite.
+    for (p, name) in g.new_halls(DAY * 20).into_iter().take(2) {
+        v.push(Subject { who: Who::Spot(p), kind: Kind::Hall, what: format!("{}, newly finished", name) });
     }
 
     // The field of a fight just over, while the blood is fresh.
