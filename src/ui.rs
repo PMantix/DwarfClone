@@ -541,6 +541,9 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                 fg = Color::Rgb(255, 230, 120);
                 bg = Color::Rgb(200, 60, 0);
             }
+            if let Some((gl, (r, gg, b))) = g.lair_mark(p) {
+                (ch, fg) = (gl, Color::Rgb(r, gg, b));
+            }
             if t.miasma > 0 && t.revealed && t.fire == 0 {
                 let k = t.miasma as u32;
                 bg = Color::Rgb((25 + 14 * k) as u8, (8 + 3 * k) as u8, (30 + 16 * k) as u8);
@@ -3328,6 +3331,9 @@ fn item_line(it: &Item, extra: &str, selected: bool) -> Line<'static> {
 /// The look panel: terrain, then everything standing or lying on the tile.
 fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
     let mut v = cursor_info_terrain(g, p);
+    if let Some(n) = g.lair_note(p) {
+        v.push(plain(n, Color::Rgb(200, 160, 110)));
+    }
     let entries = look_entries(g, p);
     if g.zone_at(p).map_or(false, |z| z.kind.ownable()) {
         v.push(plain("o: choose who owns it".into(), KEY));

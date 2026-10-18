@@ -38,11 +38,14 @@ impl Game {
         }
     }
 
+    /// Once a day: a dwarf may come upon a lair, and the wild may come
+    /// calling, from a lair that has beasts at home (or, for those with
+    /// none, from the map's edge). A land hunted out sends nothing.
     pub(super) fn wildlife(&mut self) {
+        self.come_upon_lairs();
         if !self.rng.chance(self.knob("wildlife.chance", 0.18)) {
             return;
         }
-        let Some(entry) = self.edge_entry() else { return };
         self.count("wildlife.visits", 1);
         let roll = self.rng.f64();
         let tame = 1.0 - self.savagery.clamp(0.05, 0.9) * 0.7;
@@ -58,11 +61,25 @@ impl Game {
         if self.evil && species.info().aggro > 0 && self.rng.chance(0.5) {
             species = Species::Husk;
         }
+        let Some(from) = self.lair_sends(species, n as u32) else {
+            self.count("wildlife.none", 1);
+            return;
+        };
+        let (entry, n, lair) = match from {
+            Some((i, n)) => (self.lairs[i].pos, n as i32, Some(i as u32)),
+            None => match self.edge_entry() {
+                Some(p) => (p, n, None),
+                None => return,
+            },
+        };
         let stay = DAY * self.rng.range(2, 5) as u64;
         let mut pack = 0;
         for _ in 0..n {
             let p = self.spot_near(entry, 2);
             let id = self.spawn_creature(species, p, stay);
+            if let Some(c) = self.creatures.get_mut(&id) {
+                c.lair = lair;
+            }
             // Those that came together hunt together.
             if n > 1 {
                 if pack == 0 {
@@ -77,7 +94,11 @@ impl Game {
         if info.aggro > 0 {
             let a = if info.name.starts_with(|c: char| "aeiou".contains(c)) { "An" } else { "A" };
             let what = if n > 1 { format!("A pack of {}", info.plural) } else { format!("{} {}", a, info.name) };
-            self.msg(&format!("{} has been spotted nearby.", what), (255, 170, 80));
+            let from = match lair.map(|i| &self.lairs[i as usize]) {
+                Some(l) if l.found => format!(", out of {}", l.name),
+                _ => String::new(),
+            };
+            self.msg(&format!("{} has been spotted nearby{}.", what, from), (255, 170, 80));
         }
     }
 
@@ -104,6 +125,8 @@ impl Game {
         // In the last quarter of the day it takes more chances.
         let night = self.tick % DAY >= DAY * 3 / 4;
         let nerve = self.knob("wild.nerve", 1.5) * if night { self.knob("wild.night", 0.5) } else { 1.0 };
+        // With the grazing grounds emptied, hunger makes it bolder.
+        let nerve = nerve * if self.prey_scarce() { self.knob("wild.hungry", 0.7) } else { 1.0 };
         // Everyone in sight (and the one it follows, a little further), the
         // weakest (then the nearest) first.
         let mut prey: Vec<(f64, f64, u32, Pos)> = self
@@ -419,8 +442,11 @@ impl Game {
     /// What a wild beast is up to, for its card: shadowing someone, or
     /// keeping off with a wound.
     pub fn wild_mood(&self, c: &Creature) -> Option<String> {
-        if c.leaving || !c.alive {
+        if !c.alive {
             return None;
+        }
+        if c.leaving {
+            return self.lair_of(c).filter(|l| l.found).map(|l| format!("Making for {}", l.name));
         }
         if c.wary_until > self.tick {
             return Some("Wounded and wary: keeping its distance".into());

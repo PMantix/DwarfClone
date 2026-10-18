@@ -646,6 +646,9 @@ pub struct Creature {
     /// Burned once, it keeps well clear of flames (`game::wildlife`).
     #[serde(default)]
     pub fears_fire: bool,
+    /// The lair it came out of and goes home to (`game::lairs`).
+    #[serde(default)]
+    pub lair: Option<u32>,
 }
 
 fn yes() -> bool {
@@ -695,6 +698,7 @@ impl Creature {
             wary_until: 0,
             foe: None,
             fears_fire: false,
+            lair: None,
         }
     }
 

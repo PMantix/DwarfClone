@@ -86,6 +86,7 @@ impl Game {
         self.maybe_strange_mood();
         self.word_season();
         // M1 (survival), seasonal:
+        self.lairs_season(season);
     }
 
     /// Each living dwarf, every tick, just after their wounds have bled (and
