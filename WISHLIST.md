@@ -225,8 +225,10 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O03 Halls that look lived in (M)
 - **Why:** finished forts in DF are smoothed, engraved, furnished and named.
-- **Steps:** [ ] the main halls are smoothed, then engraved, as the fort grows rich · [ ] bedrooms
-  get a cabinet and a chest; nobles get suites with an office and a dining room · [ ] the atrium
+- **Steps:** [ ] the main halls are smoothed, then engraved, as the fort grows rich · [x] bedrooms
+  get a cabinet and a chest; nobles get suites with an office and a dining room (feat/interiors:
+  architect.rs; also bedrooms of their own, the dormitory retired, gathering halls, the industry
+  quarter and rebuilding in maturity.rs) · [ ] the atrium
   and the hub get statues and the monument · [ ] halls are named after heroes and events
   ("the Hall of the Unbeaten") and the names show in the look panel and the chronicle
 - **From the Bay 12 review:** [ ] Trophies of war ([CRF-01](ideas/economy.md)) · [ ] Named weapons ([CRF-02](ideas/economy.md)) · [ ] Inscriptions and maker's marks ([CRF-06](ideas/economy.md)) · [ ] Name creator ([CRF-08](ideas/economy.md)) · [ ] Jeweler and decorations ([CRF-13](ideas/economy.md)) · [ ] Gems in engravings, engraved built walls ([CRF-12](ideas/economy.md)) · [ ] Statues and figurines of things ([CRF-21](ideas/economy.md)) · [ ] Places named for what happened there ([WLD-02](ideas/world-and-overseer.md))
