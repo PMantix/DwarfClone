@@ -274,6 +274,24 @@ mountains and badlands; camels, giant scorpions and vipers in the desert; antelo
 on the savanna and shrubland; jaguars and vipers in the jungle; vipers and alligators in the
 swamp and marsh. Where evil lies on the land, walking husks come in their place half the time.
 
+The wild live somewhere. At embark the land gets a grazing ground, one or two dens of its
+pack hunters and a lair of its rare beast, out towards the map's edge in woods or on high
+ground. Each holds so many beasts; a party comes out of one with some at home, and when it
+leaves it walks back there (a dwarf who sees it go in, or a squad hunting it, finds the
+place: `Ω` on the map, and the look panel says how many are at home). Those the fort kills
+are gone. When the last of a den dies, the woods there fall silent ("The woods to the north
+have gone quiet") for a year, and it goes in the chronicle; otherwise each lair grows back by
+one a season, and in spring the young are seen about a known den. A den that keeps sending
+packs is a target: with no beasts about the fort, the overseer marches a squad on it, and
+the wolves at home come out to meet them. Empty the grazing grounds and the hunters grow
+hungry and bolder.
+
+Beasts with sense weigh their chances. Three dwarves together make a wolf back off (each
+swing it may lose its nerve, the likelier the more friends stand by); flames scare the wild,
+and a beast once burned keeps well clear of fire. When something takes up a trail, the birds
+go quiet near the dwarves under the sky ("The birds have gone quiet near the woodcutter
+Urist"), they grow uneasy, and an overseer takes it as warning and keeps the work indoors.
+
 **Sites and maps.** Every site has its own features, shown on the world map before you
 embark: a river with fords, a chasm crossed by natural bridges, a volcano with a magma
 crater, terraced mesas, sharp peaks, an oasis, a glacier, a bog of shallow pools, a coast, tors
@@ -703,6 +721,7 @@ cargo test --release profile_year -- --ignored --nocapture
 | `world.rs` | fortress tiles, movement rules, reveal, embark generation |
 | `game.rs` | core simulation: jobs, needs, fluids, farms, hauling, player commands |
 | `game/combat.rs` | creatures, fighting, wildlife, sieges |
+| `game/wildlife.rs`, `game/lairs.rs`, `game/hunts.rs` | predators' sense, fire and standing together; lairs and living populations; the overseer's hunts |
 | `game/melee.rs`, `game/gore.rs` | close quarters, creature feuds; blood, smoke, severed parts |
 | `game/psyche.rs` | relationships, rooms, nobles, mandates, moods, insanity |
 | `game/trade.rs` | caravans, depot, bartering |
