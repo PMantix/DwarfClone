@@ -612,7 +612,9 @@ impl Game {
             if self.world.t(plan.breach).kind == TileKind::Wall && self.world.t(plan.breach.up()).desig == Desig::None {
                 self.designate(plan.breach.up(), plan.breach.up(), Desig::Channel);
             }
-            let full = self.world.t(plan.drop.down()).water >= self.knob("cistern.full", 4.0) as u8;
+            // (The water levels out across the chamber once the gate is
+            // shut, so count all of it, not just the tile under the drop.)
+            let full = plan.chamber_tiles().map(|p| self.world.t(p).water as u32).sum::<u32>() >= self.knob("cistern.full", 4.0) as u32;
             if !o.did("cistern") && full && self.building_on(plan.well, BuildingKind::Well).map_or(false, |b| b.built) {
                 o.done.push("cistern".into());
                 o.done.push("well".into());
@@ -857,7 +859,7 @@ mod tests {
         assert!(g.world.t(plan.well).water == 0 && g.world.t(plan.stair).water == 0, "water rose to the halls");
         assert!(g.cistern_sealed(&plan));
         let o = g.overseer.as_ref().unwrap();
-        assert!(o.did("cistern") && o.did("well"), "not called done: {:?}", o.done);
+        assert!(o.did("cistern") && o.did("well"), "not called done: {:?} drop {} well {:?} tick {}", o.done, g.world.t(plan.drop.down()).water, g.building_on(plan.well, BuildingKind::Well).map(|b| b.built), g.tick);
         assert_eq!(g.annals.counters.get("cisterns"), Some(&1));
         // An army at the gates shuts an open floodgate.
         g.pull_lever(g.world.t(g.waterworks.cistern.as_ref().unwrap().lever.unwrap()).building);

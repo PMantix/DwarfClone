@@ -387,9 +387,12 @@ mod tests {
     fn a_strong_edged_blow_can_sever_and_leaves_a_named_part() {
         let (mut g, p) = field(5);
         send_dwarves_off(&mut g, p);
-        // A dwarf with an iron axe at a goblin, many times over.
+        // A dwarf with an iron axe at a goblin, many times over. (Only her
+        // fighting matters, not where she stood: send_dwarves_off may have
+        // sent every dwarf off when the field is near the wagon.)
         let gob = g.spawn_creature(Species::Goblin, p, u64::MAX);
-        let mut d = g.dwarves.iter().find(|d| d.alive).unwrap().clone();
+        let mut d = g.dwarves[0].clone();
+        d.alive = true;
         let axe = g.spawn_item(ItemKind::Axe, Mat::Iron, p);
         g.items.get_mut(&axe).unwrap().carried_by = Some(d.id);
         d.held = Some(axe);
