@@ -209,7 +209,10 @@ impl Game {
         match kind {
             ItemKind::Meal => d.think("enjoyed a fine prepared meal", -12, tick),
             ItemKind::Meat => d.think("ate some roasted meat", -4, tick),
-            ItemKind::Fish => d.think("ate a grilled fish", -4, tick),
+            ItemKind::Fish => {
+                d.think("ate a grilled fish", -4, tick);
+                self.taboo_broken(crate::worldgen::myth::Taboo::EatingFish, Some(&*d));
+            }
             _ => {
                 let plant = mat.crop().map_or("stoutcaps", |c| c.plant);
                 d.think(&format!("ate raw {}", plant), 0, tick);
@@ -770,6 +773,7 @@ impl Game {
         let who = d.name.clone();
         self.msg(&format!("{} has created {}!", who, desc), (255, 215, 60));
         self.spotlight("An artifact", &format!("{} has created {}!", who, desc), Some(site), (255, 215, 60));
+        self.empower_artifact(id, Some((d.id, who.clone())));
         self.year_log.artifact = self.items[&id].label.clone();
         self.milestone("artifact", &format!("The first artifact: {}", desc));
         self.earn_epithet(d, "Inspired", super::heroes::RANK_FEAT, &format!("made {}", desc));

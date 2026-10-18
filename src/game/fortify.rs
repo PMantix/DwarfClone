@@ -655,7 +655,7 @@ impl Game {
 
     /// Whether to raise a wizard's tower: a vain, pious or greedy overseer
     /// once the fort is comfortable, anyone once it is very rich.
-    fn wizard_due(&self, o: &Overseer) -> bool {
+    pub(super) fn wizard_due(&self, o: &Overseer) -> bool {
         if self.works.list.iter().any(|w| w.kind == WorkKind::WizardTower) || o.did("wizard") {
             return false;
         }
@@ -665,6 +665,8 @@ impl Game {
         let pop = self.alive_count();
         (minded && wealth >= self.knob("works.wizard_wealth", 20_000.0) && day >= self.knob("works.wizard_day", 240.0) && pop >= 12)
             || (wealth >= 80_000.0 && day >= 240.0 && pop >= 12)
+            // A resident wizard asking for a laboratory (`wizard.rs`).
+            || (self.wizard_wants_lab() && pop >= 10)
     }
 
     /// A tall slender tower with a laboratory at the top, inside the

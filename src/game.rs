@@ -95,6 +95,11 @@ mod shelter;
 pub mod stories;
 pub mod arena;
 mod wargame;
+pub mod magic;
+mod faith;
+pub mod relics;
+pub mod omens;
+pub mod wizard;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -476,6 +481,9 @@ pub struct Game {
     /// Named battles and places, weddings and feasts (`stories.rs`).
     #[serde(default)]
     pub stories: stories::Stories,
+    /// Gods, temples and strange powers (`magic.rs`).
+    #[serde(default)]
+    pub magic: magic::Magic,
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
@@ -598,6 +606,7 @@ impl Game {
             flames: Vec::new(),
             gore: Default::default(),
             stories: Default::default(),
+            magic: Default::default(),
             festival: None,
             year_log: YearLog::default(),
             vault: None,
@@ -2502,10 +2511,14 @@ impl Game {
                     }
                     Travel::Arrived => {
                         let labor = if desig == Desig::Chop { Labor::Woodcutting } else { Labor::Mining };
+                        let tree = desig == Desig::Chop && self.world.t(target).kind == TileKind::Tree;
                         let base = if desig == Desig::Chop { 80 } else { self.world.t(target).mat.dig_ticks() };
                         if Self::labor(d, base, d.skill(labor)) {
                             let gem = self.world.t(target).kind == TileKind::Wall && self.world.t(target).mat.is_gem();
                             self.complete_dig(target);
+                            if tree {
+                                self.tree_felled(d, target);
+                            }
                             if gem {
                                 self.maybe_whispering_stone(d.id, target);
                             }

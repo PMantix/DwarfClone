@@ -491,6 +491,9 @@ pub struct Overworld {
     /// world is made to be watched (`None` otherwise; never saved).
     #[serde(skip)]
     pub clashes: Option<Vec<Clash>>,
+    /// The gods the peoples worship (empty in old saves; see `worldgen::myth`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gods: Vec<crate::worldgen::myth::God>,
 }
 
 /// How a clash ended for the place attacked.
@@ -661,6 +664,7 @@ impl WorldGen {
             fields: Default::default(),
             rivers: Vec::new(),
             clashes: None,
+            gods: Vec::new(),
         };
         WorldGen { params, ow, rng, land: None, row: 0, stage: GenStage::Terrain, rivers: Vec::new(), trace: None }
     }
@@ -749,6 +753,7 @@ impl WorldGen {
                     self.note_sites(year);
                 }
                 if self.ow.year >= self.params.history {
+                    self.ow.gods = crate::worldgen::myth::pantheon(&self.ow);
                     self.stage = GenStage::Done;
                 }
             }
@@ -1523,6 +1528,7 @@ impl Overworld {
             fields: Default::default(),
             rivers: Vec::new(),
             clashes: None,
+            gods: Vec::new(),
         }
     }
 

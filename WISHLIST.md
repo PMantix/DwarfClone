@@ -776,3 +776,4 @@ above; the [idea catalogue](ideas/README.md) holds hundreds more.
 - **Psychology** (2ba1bbb): personalities, friendships, rooms, nobles, mandates, strange moods, insanity.
 - **Industry** (f69a174): seeds, kitchen, butcher, smelting, steel, forge, crafts, barrels and bins, item quality.
 - **Combat** (100e73f): wildlife, caverns, sieges, body-part wounds, military drafting, doors.
+- **Strange powers** (B14, branch feat/magic): gods with spheres, taboos and myths worshipped by civs, patrons and dedicated temples; a working power on every artifact; taboos, curses and atonement; omens that come true; a resident wizard with a laboratory, materials, an assistant, spells and accidents. Shown in the look panel, the status screen, the chronicle and the legends' Gods tab.

@@ -163,6 +163,8 @@ impl Game {
         let told: Vec<String> = self.overworld.events.iter().filter(|e| e.year == year && e.text.contains(&fort) && !log.stories.contains(&e.text)).map(|e| e.text.clone()).collect();
         let skip = told.len().saturating_sub(10);
         lines.extend(told.into_iter().skip(skip));
+        // Omens, curses and wonders (magic.rs).
+        lines.extend(self.magic_chronicle());
         if log.deaths.is_empty() {
             lines.push("No dwarf of the fortress died. May the next year be as kind.".into());
             self.milestone("nodeath", "A whole year without a death");

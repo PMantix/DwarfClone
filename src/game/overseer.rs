@@ -1597,7 +1597,7 @@ impl Game {
         // What the announcements say the fortress is short of.
         self.ov_troubles(o);
         // Keep the wood coming: chop further out when it runs low.
-        if self.stock_of(ItemKind::Log) < 6 {
+        if self.stock_of(ItemKind::Log) < self.ov_wood_floor() {
             let chopping = self.designations.iter().filter(|p| self.world.t(**p).desig == Desig::Chop).count();
             if chopping < 5 {
                 self.chop_further(&mut o.done);

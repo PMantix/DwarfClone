@@ -94,7 +94,7 @@ impl Game {
     }
 
     /// Mark a dead dwarf as resting, lay any ghost and comfort the mourners.
-    fn lay_to_rest(&mut self, i: usize, how: &str, tomb: bool) {
+    pub(super) fn lay_to_rest(&mut self, i: usize, how: &str, tomb: bool) {
         let tick = self.tick;
         let (dead, name, ghost) = {
             let d = &mut self.dwarves[i];

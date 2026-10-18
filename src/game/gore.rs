@@ -201,6 +201,9 @@ impl Game {
         }
         s.amt = (s.amt + amt).min(MAX_AMT);
         s.at = tick;
+        if self.world.t(p).zone != 0 {
+            self.blood_on_holy_ground(p);
+        }
     }
 
     /// At the cap: forget the oldest tenth of the stains in one go.
