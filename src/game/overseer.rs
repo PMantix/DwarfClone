@@ -792,7 +792,8 @@ impl Game {
         let melee = self.items.values().filter(|it| UniformWeapon::Best.accepts(it.kind) && (it.carried_by.is_none() || self.dwarves.iter().any(|d| d.soldier && d.held == Some(it.id)))).count();
         for s in 0..self.squads.len() {
             let n = self.squads[s].members.len().max(2);
-            self.squads[s].weapon = if melee >= n || bows < 2 { UniformWeapon::Best } else { UniformWeapon::Crossbow };
+            let archers = self.archer_uniform(o, s);
+            self.squads[s].weapon = archers.unwrap_or(if melee >= n || bows < 2 { UniformWeapon::Best } else { UniformWeapon::Crossbow });
         }
         let _ = o.style;
         let have: usize = self.squads.iter().map(|s| s.members.len()).sum();
@@ -908,7 +909,9 @@ impl Game {
             for s in 0..self.squads.len() {
                 let holding = self.squads[s].order == super::SquadOrder::Station;
                 if danger && !charge && !holding {
-                    self.order_station(s, base.offset(4 + s as i32, 0, 0));
+                    // Marksdwarves hold back from the gate with a clear shot at it (archery.rs).
+                    let st = self.archer_station(s, base).unwrap_or(base.offset(4 + s as i32, 0, 0));
+                    self.order_station(s, st);
                 } else if !danger && holding {
                     self.order_train(s);
                 }

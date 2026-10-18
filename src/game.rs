@@ -78,6 +78,8 @@ mod cistern;
 mod rescue;
 mod hospital;
 pub mod lessons;
+mod openings;
+mod archery;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;

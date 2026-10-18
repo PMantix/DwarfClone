@@ -93,21 +93,25 @@ impl Game {
 
     /// Resolve one blow. Returns a log line for anything worth reporting.
     pub(super) fn strike(&mut self, att: &Fighter, def: &Fighter, body: &mut Body) -> Option<String> {
+        // An opening: one who lies senseless can't dodge or block, and the
+        // blow goes where it ends things (openings.rs).
+        let downed = body.unconscious();
         let chance = (0.55 + 0.05 * (att.skill as f64 - def.skill as f64)).clamp(0.15, 0.95);
-        if !self.rng.chance(chance) {
+        if !self.rng.chance(if downed { self.knob("opening.hit", 0.95) } else { chance }) {
             return None;
         }
-        if def.shield && self.rng.chance(0.25) {
+        if !downed && def.shield && self.rng.chance(0.25) {
             return Some(format!("{} blocks {}'s attack with a shield.", cap(&def.name), att.name));
         }
-        let part = body.pick_part(&mut self.rng);
+        let part = if downed { self.opening_part() } else { body.pick_part(&mut self.rng) };
         let roll = 0.6 + self.rng.f64() as f32 * 0.8;
         let armor = match part {
             Part::Head => def.helm,
             Part::UpperBody | Part::LowerBody => def.mail,
             _ => def.mail / 2,
         };
-        let dmg = (att.dmg * roll + att.skill as f32 * 0.5).round() as i32 - armor;
+        let mult = if downed { self.knob("opening.dmg", 1.5) as f32 } else { 1.0 };
+        let dmg = ((att.dmg * roll + att.skill as f32 * 0.5) * mult).round() as i32 - armor;
         if dmg <= 0 {
             return Some(format!(
                 "{} {} {} in the {}, but the armor deflects the blow.",
@@ -124,6 +128,9 @@ impl Game {
             Wound::Sever => ", severing it!",
             Wound::Fatal => " — a fatal blow!",
         };
+        if downed {
+            return Some(self.finishing_words(att, def, part, body, suffix));
+        }
         Some(format!("{} {} {} in the {}{}", cap(&att.name), att.verb, def.name, part.name(), suffix))
     }
 
@@ -219,7 +226,20 @@ impl Game {
         }
         let threats = self.threats_near(d.pos, 7);
         if d.attack_cd == 0 {
+            // A foe lying senseless at their feet is finished first (openings.rs).
+            if let Some(cid) = self.downed_foe_beside(d).filter(|_| d.soldier) {
+                self.dwarf_attack(d, cid);
+                return;
+            }
             if let Some(&(cid, _)) = threats.iter().find(|(_, p)| adjacent(*p, d.pos)) {
+                // A marksdwarf with bolts steps back to shoot rather than swing (archery.rs).
+                if d.soldier && self.keeps_distance(d) {
+                    if !matches!(d.task, Task::Attack { .. }) {
+                        self.release_task(d);
+                        d.task = Task::Attack { target: cid };
+                    }
+                    return;
+                }
                 let struck_recently = d.attacker.map_or(false, |(_, t)| self.tick < t + 40);
                 if d.soldier || struck_recently || d.tantrum > 0 {
                     self.dwarf_attack(d, cid);
@@ -228,6 +248,7 @@ impl Game {
             }
         }
         if d.soldier {
+            self.archer_awareness(d);
             if !threats.is_empty() && !matches!(d.task, Task::Attack { .. }) && self.alert {
                 let nearest = threats.iter().min_by_key(|(_, p)| dist2(*p, d.pos)).unwrap().0;
                 if !d.task.is_need() || d.task == Task::Flee {
@@ -306,6 +327,9 @@ impl Game {
             d.task = Task::Idle;
             return;
         };
+        if self.archer_attack(d, target, cpos) {
+            return;
+        }
         if adjacent(cpos, d.pos) {
             if d.attack_cd == 0 {
                 self.dwarf_attack(d, target);
@@ -975,6 +999,7 @@ impl Game {
             o.target = None;
             o.path.clear();
         }
+        self.parting_swings_on_rout();
         let who = match self.siege_race {
             Some(Race::Human) => "human soldiers",
             Some(Race::Elf) => "elves",
@@ -1149,6 +1174,9 @@ impl Game {
             c.target = None;
             c.path.clear();
             self.msg(&format!("The wounded {} flees!", info.name), (160, 230, 160));
+            if c.siege && !self.parting_swing(c) {
+                return false;
+            }
         }
         self.wild_nerve(c);
         c.attack_cd = c.attack_cd.saturating_sub(1);
@@ -1212,6 +1240,10 @@ impl Game {
                 return true;
             }
             if adjacent(c.pos, dpos) {
+                if c.attack_cd == 0 && self.leave_the_fallen(c) {
+                    c.think_cd = 0;
+                    return true;
+                }
                 if c.attack_cd == 0 {
                     c.attack_cd = info.attack_delay + c.body.limp();
                     self.creature_attack(c, di);
@@ -1319,7 +1351,7 @@ impl Game {
             return;
         }
         if c.siege {
-            if c.target.map_or(false, |t| dwarves.iter().any(|(id, _)| *id == t)) {
+            if c.target.map_or(false, |t| dwarves.iter().any(|(id, _)| *id == t)) && !self.leave_the_fallen(c) {
                 return;
             }
             // Standing on something worth taking: take it and go.
@@ -1346,9 +1378,8 @@ impl Game {
                 c.think_cd = 200;
                 return;
             }
-            let at: HashMap<Pos, u32> = dwarves.iter().map(|&(id, p)| (p, id)).collect();
-            if let Some((p, path)) = path::search(&self.world, c.pos, SEARCH_LIMIT, info.mover, |q| at.contains_key(&q)) {
-                c.target = Some(at[&p]);
+            if let Some((id, path)) = self.siege_quarry(c, &dwarves) {
+                c.target = Some(id);
                 c.path = path.into_iter().rev().collect();
                 c.bash = None;
                 return;
@@ -1489,7 +1520,7 @@ mod tests {
             ("veteran (skill 4), same kit", 1600, vec![(ItemKind::Axe, Mat::Iron), (ItemKind::Helm, Mat::Iron), (ItemKind::Breastplate, Mat::Iron), (ItemKind::Shield, Mat::Iron)]),
         ];
         let gid = g.spawn_creature(Species::Goblin, e, u64::MAX);
-        eprintln!("{:<36} {:<22} {:>5} {:>6} {:>7} {:>7} {:>8} {:>8} {:>9}", "dwarf", "goblin", "wins", "ticks", "d hit%", "g hit%", "d dmg", "g dmg", "d bled%");
+        eprintln!("{:<36} {:<22} {:>5} {:>6} {:>7} {:>7} {:>8} {:>8} {:>9} {:>6} {:>5}", "dwarf", "goblin", "wins", "ticks", "d hit%", "g hit%", "d dmg", "g dmg", "d bled%", "fin%", "fin t");
         for (dname, xp, dkit) in &dwarf_kits {
             for (gi, gkit) in gob_kits.iter().enumerate() {
                 let (dh, da) = gear(&mut g, dkit);
@@ -1505,14 +1536,19 @@ mod tests {
                 c.armor = ga;
                 let gf = g.creature_fighter(&c);
                 let (mut wins, mut ticks, mut bled) = (0, 0u64, 0);
+                // After one side goes down: how long until the other finishes them.
+                let (mut fin, mut fin_ticks) = (0, 0u64);
                 let (mut dsw, mut dhit, mut ddmg, mut gsw, mut ghit, mut gdmg) = (0, 0, 0i64, 0, 0, 0i64);
                 let n = 400;
                 for _ in 0..n {
                     let mut a = Side { fighter: Fighter { ..df_clone(&df) }, body: Body::new(1.0), cd: 0, delay: 9 };
                     let mut b = Side { fighter: df_clone(&gf), body: Body::new(Species::Goblin.info().scale), cd: 4, delay: 9 };
                     let mut t = 0;
+                    let mut down_at = None;
                     loop {
                         t += 1;
+                        // (The blows tallied are those of the fight itself, not the finishing.)
+                        let tally = down_at.is_none();
                         for (att, def, sw, hit, dmg) in [(&mut a as *mut Side, &mut b as *mut Side, &mut dsw, &mut dhit, &mut ddmg), (&mut b as *mut Side, &mut a as *mut Side, &mut gsw, &mut ghit, &mut gdmg)] {
                             // (Two sides of one fight, each borrowed in turn.)
                             let (att, def) = unsafe { (&mut *att, &mut *def) };
@@ -1524,14 +1560,14 @@ mod tests {
                                 continue;
                             }
                             att.cd = att.delay + att.body.limp();
-                            *sw += 1;
+                            *sw += tally as i32;
                             let before: i32 = def.body.hp.iter().sum();
                             let bleed_before = def.body.bleeding;
                             let fa = df_clone(&att.fighter);
                             let fd = df_clone(&def.fighter);
                             g.strike(&fa, &fd, &mut def.body);
                             let after: i32 = def.body.hp.iter().sum();
-                            if after < before || def.body.bleeding > bleed_before {
+                            if tally && (after < before || def.body.bleeding > bleed_before) {
                                 *hit += 1;
                                 *dmg += (before - after) as i64;
                             }
@@ -1543,6 +1579,28 @@ mod tests {
                         }
                         let a_down = a.body.dead || a.body.unconscious();
                         let b_down = b.body.dead || b.body.unconscious();
+                        if let Some(at) = down_at {
+                            // The one standing strikes at the fallen (an opening).
+                            if a.body.dead || b.body.dead || t > at + 300 {
+                                if a.body.dead || b.body.dead {
+                                    fin += 1;
+                                    fin_ticks += t - at;
+                                }
+                                break;
+                            }
+                            continue;
+                        }
+                        if (a_down || b_down) && !(a_down && b_down) && t <= 3000 && !(a.body.dead || b.body.dead) {
+                            if b_down {
+                                wins += 1;
+                            }
+                            if a_down && a.body.blood <= a.body.max_blood / 3 && a.body.hp[crate::body::Part::Head.idx()] > 0 {
+                                bled += 1;
+                            }
+                            ticks += t;
+                            down_at = Some(t);
+                            continue;
+                        }
                         if a_down || b_down || t > 3000 {
                             if b_down && !a_down {
                                 wins += 1;
@@ -1557,7 +1615,7 @@ mod tests {
                 }
                 let gname = ["copper spear", "bronze sword+helm", "iron axe, full kit"][gi];
                 eprintln!(
-                    "{:<36} {:<22} {:>4}% {:>6} {:>6}% {:>6}% {:>8.1} {:>8.1} {:>8}%",
+                    "{:<36} {:<22} {:>4}% {:>6} {:>6}% {:>6}% {:>8.1} {:>8.1} {:>8}% {:>5}% {:>5}",
                     dname,
                     gname,
                     wins * 100 / n,
@@ -1566,7 +1624,9 @@ mod tests {
                     ghit * 100 / gsw.max(1),
                     ddmg as f64 / dhit.max(1) as f64,
                     gdmg as f64 / ghit.max(1) as f64,
-                    bled * 100 / (n - wins).max(1)
+                    bled * 100 / (n - wins).max(1),
+                    fin * 100 / n,
+                    fin_ticks / fin.max(1) as u64
                 );
             }
         }
@@ -1839,6 +1899,172 @@ mod tests {
             eprintln!("  {}", l);
         }
         g.alive_count() > 0
+    }
+
+    /// Knock a body senseless without opening a wound: it stays down a while.
+    fn senseless(b: &mut Body) {
+        b.blood = b.max_blood / 5;
+    }
+
+    /// A goblin lying senseless beside a soldier is finished, not left to
+    /// crawl off: blows at it land, and on the head or chest.
+    #[test]
+    fn a_downed_goblin_is_finished() {
+        let mut g = Game::new(21);
+        g.creatures.retain(|_, c| c.tame);
+        let a = g.open_patch(4, 4, 8).offset(1, 1, 0);
+        let gob = g.spawn_creature(Species::Goblin, a.offset(1, 0, 0), u64::MAX);
+        g.creatures.get_mut(&gob).unwrap().siege = true;
+        senseless(&mut g.creatures.get_mut(&gob).unwrap().body);
+        let axe = g.spawn_item(ItemKind::Axe, Mat::Copper, a);
+        let id = g.dwarves[0].id;
+        g.toggle_soldier(id);
+        g.items.get_mut(&axe).unwrap().carried_by = Some(id);
+        g.dwarves[0].held = Some(axe);
+        assert!(!g.creature_active(&g.creatures[&gob]), "it should lie senseless");
+        let mut ticks = 0;
+        while g.creatures.contains_key(&gob) && ticks < 200 {
+            // The soldier stands over it.
+            g.dwarves[0].pos = a;
+            g.step();
+            ticks += 1;
+        }
+        assert!(!g.creatures.contains_key(&gob), "the downed goblin was left lying");
+        assert!(g.annals.counters.get("finished").copied().unwrap_or(0) >= 1);
+        assert!(g.log.iter().any(|l| l.text.contains("where they lie")), "no word of it");
+        eprintln!("finished in {} ticks", ticks);
+
+        // The blow itself: a senseless body is hit nearly every time, on the
+        // head or chest, and harder than one on its feet.
+        let att = Fighter { name: "a dwarf".into(), skill: 2, dmg: 3.0 * Mat::Copper.weapon_mult(), verb: "hacks", edged: true, helm: 0, mail: 0, shield: false };
+        let def = Fighter { name: "the goblin".into(), skill: 2, dmg: 3.0, verb: "punches", edged: false, helm: 0, mail: 0, shield: true };
+        let fresh = Body::new(Species::Goblin.info().scale);
+        let (mut up, mut down, mut hits, mut limbs) = (0, 0, 0, 0);
+        for _ in 0..400 {
+            let mut b = fresh.clone();
+            g.strike(&att, &def, &mut b);
+            up += fresh.hp.iter().sum::<i32>() - b.hp.iter().sum::<i32>();
+            let mut b = fresh.clone();
+            senseless(&mut b);
+            let before = b.hp;
+            g.strike(&att, &def, &mut b);
+            down += fresh.hp.iter().sum::<i32>() - b.hp.iter().sum::<i32>();
+            let hit: Vec<usize> = (0..7).filter(|&i| b.hp[i] < before[i]).collect();
+            hits += !hit.is_empty() as i32;
+            limbs += hit.iter().filter(|&&i| i != Part::Head.idx() && i != Part::UpperBody.idx()).count();
+        }
+        eprintln!("damage in 400 blows: standing {} senseless {}; hits on the senseless {}", up, down, hits);
+        assert!(hits >= 360, "only {} of 400 blows landed on a senseless goblin", hits);
+        assert_eq!(limbs, 0, "a finishing blow goes to the head or chest");
+        assert!(down as f64 > up as f64 * 1.8, "senseless {} vs standing {}", down, up);
+    }
+
+    /// A besieger whose dwarf goes down leaves them for one still standing
+    /// close by, which is what gives the fallen time to be carried off; with
+    /// nobody else near, it finishes them.
+    #[test]
+    fn goblins_leave_the_fallen_for_the_standing() {
+        let mut g = Game::new(21);
+        g.creatures.retain(|_, c| c.tame);
+        g.dwarves.truncate(2);
+        let a = g.open_patch(8, 4, 8).offset(1, 1, 0);
+        let (fallen, standing) = (g.dwarves[0].id, g.dwarves[1].id);
+        g.dwarves[0].pos = a;
+        senseless(&mut g.dwarves[0].body);
+        g.toggle_soldier(standing);
+        g.dwarves[1].pos = a.offset(4, 0, 0);
+        let gob = g.spawn_creature(Species::Goblin, a.offset(1, 0, 0), u64::MAX);
+        {
+            let c = g.creatures.get_mut(&gob).unwrap();
+            c.siege = true;
+            c.target = Some(fallen);
+        }
+        let hp0: i32 = g.dwarves[0].body.hp.iter().sum();
+        for _ in 0..60 {
+            g.step();
+            if !g.creatures.contains_key(&gob) {
+                break;
+            }
+        }
+        let hp: i32 = g.dwarves[0].body.hp.iter().sum();
+        assert!(g.dwarves[0].alive, "the fallen dwarf was finished with a soldier standing by");
+        assert_eq!(hp, hp0, "the goblin kept beating the fallen dwarf");
+        assert!(g.annals.counters.get("left_fallen").copied().unwrap_or(0) >= 1);
+        if let Some(c) = g.creatures.get(&gob) {
+            assert_eq!(c.target, Some(standing), "it should have turned on the soldier");
+        }
+
+        // Nobody else about: the goblin goes back and finishes them.
+        let mut g2 = Game::new(21);
+        g2.creatures.retain(|_, c| c.tame);
+        g2.dwarves.truncate(1);
+        g2.dwarves[0].pos = a;
+        senseless(&mut g2.dwarves[0].body);
+        let gob = g2.spawn_creature(Species::Goblin, a.offset(1, 0, 0), u64::MAX);
+        g2.creatures.get_mut(&gob).unwrap().siege = true;
+        for _ in 0..300 {
+            g2.step();
+            if !g2.dwarves[0].alive {
+                break;
+            }
+        }
+        assert!(!g2.dwarves[0].alive, "alone, the fallen dwarf should be finished");
+        assert!(g2.annals.counters.get("finished").copied().unwrap_or(0) >= 1);
+    }
+
+    /// The WISHLIST's "done when" for S07, as far as a raid of four can
+    /// give it: four soldiers in iron (axe, helm, mail, shield) holding a
+    /// station against four goblins break them by killing them. The raid
+    /// routs once fewer than half are left (`check_rout`), so the last one
+    /// (or three, if the general falls first) gets away; "at least one each"
+    /// would need the soldiers to catch goblins as fast as they are. So: the
+    /// raid is routed rather than withdrawing, and in most forts it leaves
+    /// three dead behind. (Before the openings, the same forts saw three
+    /// withdrawals, 2.3 goblins slain a raid and three of ten with three slain;
+    /// with them, ten routs, 2.6 slain and seven of ten.)
+    #[test]
+    fn soldiers_in_metal_kill_their_goblins() {
+        let mut table = Vec::new();
+        for seed in 0..10u64 {
+            let mut g = Game::new(900 + seed);
+            g.creatures.retain(|_, c| c.tame);
+            let e = g.embark;
+            let s = g.new_squad();
+            let ids: Vec<u32> = g.dwarves.iter().filter(|d| !d.is_child()).take(4).map(|d| d.id).collect();
+            for &id in &ids {
+                g.set_squad_member(s, id, true);
+                let kit: Vec<u32> = [ItemKind::Axe, ItemKind::Helm, ItemKind::Breastplate, ItemKind::Shield]
+                    .iter()
+                    .map(|&k| g.spawn_item(k, Mat::Iron, e))
+                    .collect();
+                for &it in &kit {
+                    g.items.get_mut(&it).unwrap().carried_by = Some(id);
+                }
+                let d = g.dwarves.iter_mut().find(|d| d.id == id).unwrap();
+                d.held = Some(kit[0]);
+                d.armor = kit[1..].to_vec();
+            }
+            g.order_station(s, e);
+            run(&mut g, DAY / 4);
+            let civ = g.civ.map_or(0, |c| if c == 0 { 1 } else { 0 });
+            g.overworld.civs[civ as usize].alive = true;
+            let foe = Neighbor { civ, race: Race::Goblin, dist: 5 };
+            g.lay_siege_of(&foe, 4, None);
+            let lost0 = g.dwarves.iter().filter(|d| !d.alive).count();
+            run(&mut g, DAY);
+            let siege = g.annals.sieges.last().unwrap();
+            let lost = g.dwarves.iter().filter(|d| !d.alive).count() - lost0;
+            let kills: Vec<u32> = g.dwarves.iter().filter(|d| ids.contains(&d.id)).map(|d| d.kills).collect();
+            table.push((900 + seed, siege.foes_slain, siege.outcome.clone(), lost, kills));
+        }
+        eprintln!("seed, goblins slain, outcome, dwarves lost, soldiers' kills:");
+        for row in &table {
+            eprintln!("  {:?}", row);
+        }
+        let routed = table.iter().filter(|r| r.2 == "routed").count();
+        let three = table.iter().filter(|r| r.1 >= 3).count();
+        assert!(routed >= 8, "only {} of 10 raids were routed", routed);
+        assert!(three >= 6, "only {} of 10 raids left three dead", three);
     }
 }
 
