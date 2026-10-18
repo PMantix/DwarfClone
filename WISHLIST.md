@@ -231,7 +231,7 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
   quarter and rebuilding in maturity.rs) · [ ] the atrium
   and the hub get statues and the monument · [ ] halls are named after heroes and events
   ("the Hall of the Unbeaten") and the names show in the look panel and the chronicle
-- **From the Bay 12 review:** [ ] Trophies of war ([CRF-01](ideas/economy.md)) · [ ] Named weapons ([CRF-02](ideas/economy.md)) · [ ] Inscriptions and maker's marks ([CRF-06](ideas/economy.md)) · [ ] Name creator ([CRF-08](ideas/economy.md)) · [ ] Jeweler and decorations ([CRF-13](ideas/economy.md)) · [ ] Gems in engravings, engraved built walls ([CRF-12](ideas/economy.md)) · [ ] Statues and figurines of things ([CRF-21](ideas/economy.md)) · [ ] Places named for what happened there ([WLD-02](ideas/world-and-overseer.md))
+- **From the Bay 12 review:** [ ] Trophies of war ([CRF-01](ideas/economy.md)) · [ ] Named weapons ([CRF-02](ideas/economy.md)) · [ ] Inscriptions and maker's marks ([CRF-06](ideas/economy.md)) · [ ] Name creator ([CRF-08](ideas/economy.md)) · [ ] Jeweler and decorations ([CRF-13](ideas/economy.md)) · [ ] Gems in engravings, engraved built walls ([CRF-12](ideas/economy.md)) · [ ] Statues and figurines of things ([CRF-21](ideas/economy.md)) · [x] (this commit) Places named for what happened there ([WLD-02](ideas/world-and-overseer.md))
 - **Done when:** a three-year fort has smoothed main halls, furnished bedrooms and named halls.
 
 #### O04 Defences in the plan (M)

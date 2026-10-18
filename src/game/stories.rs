@@ -1,7 +1,9 @@
 //! Stories with names (WLD-01): a siege, a massacre or a great hunt is
 //! given a name once it's over ("the Battle of Copper Gate", "the Wolf
 //! Winter", "the Night of Red Knives"), from where and how it happened, and
-//! goes into the chronicle and the legends as one named event.
+//! goes into the chronicle and the legends as one named event. The place
+//! where it broke takes a name from the deed done there (WLD-02: "Kolvar's
+//! Stand", "the Weeping Gate"), shown on look and in the legends.
 //!
 //! Names come from a hash of the fort and the moment, never the game's
 //! RNG, so naming things changes nothing else that happens.
@@ -58,6 +60,19 @@ pub struct Mark {
     pub siege: Option<usize>,
 }
 
+/// A place named for what happened there.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Place {
+    /// "Kolvar's Stand".
+    pub name: String,
+    pub at: Pos,
+    /// How far around `at` the name holds.
+    pub r: i32,
+    /// "where Kolvar the Grim slew three goblins in the Battle of Copper Gate".
+    pub deed: String,
+    pub year: i32,
+}
+
 /// The fort's named stories (`Game.stories`).
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Stories {
@@ -66,6 +81,8 @@ pub struct Stories {
     /// Deaths and kills of the last month.
     #[serde(default)]
     pub marks: Vec<Mark>,
+    #[serde(default)]
+    pub places: Vec<Place>,
 }
 
 /// How long a mark is kept.
@@ -103,6 +120,27 @@ const ORDINALS: [&str; 5] = ["Second", "Third", "Fourth", "Fifth", "Sixth"];
 
 fn cap(s: &str) -> String {
     super::heroes::cap_word(s)
+}
+
+/// "Kolvar" from "Kolvar Ironfist" (or "Kolvar the Grim").
+pub fn first_name(n: &str) -> &str {
+    n.split(' ').next().unwrap_or(n)
+}
+
+fn number(n: usize) -> String {
+    match n {
+        1 => "one".into(),
+        2 => "two".into(),
+        3 => "three".into(),
+        4 => "four".into(),
+        5 => "five".into(),
+        6 => "six".into(),
+        n => n.to_string(),
+    }
+}
+
+fn plural_of(kind: &str) -> String {
+    crate::creature::Species::ALL.iter().map(|s| s.info()).find(|i| i.name == kind).map_or(format!("{}s", kind), |i| i.plural.to_string())
 }
 
 fn list(names: &[String]) -> String {
@@ -190,6 +228,9 @@ impl Game {
     /// What to call the place at `p` in a name: "Copper Gate", or the hall's
     /// own name ("the Great Dining Hall").
     pub(super) fn place_words(&self, p: Pos, h: u64) -> String {
+        if let Some(pl) = self.story_place(p) {
+            return pl.name.clone();
+        }
         let noun = self.place_noun(p);
         if noun == "Hall" {
             if let Some(n) = self.place_name(p).filter(|n| n.starts_with("the ")) {
@@ -221,6 +262,7 @@ impl Game {
 
     /// Tell a named event: announcement, card, chronicle and legend.
     fn tell_episode(&mut self, e: Episode, summary: String, color: (u8, u8, u8)) {
+        self.name_place(&e);
         let title = cap(&e.name);
         let at = e.at;
         self.msg(&format!("It will be remembered as {}.", e.name), color);
@@ -236,6 +278,68 @@ impl Game {
         }
         self.count("stories.named", 1);
         self.stories.episodes.push(e);
+    }
+
+    /// The named place at `p`, if any.
+    pub fn story_place(&self, p: Pos) -> Option<&Place> {
+        self.stories.places.iter().find(|pl| near(pl.at, p, pl.r))
+    }
+
+    /// What the look panel says of a named place: "Kolvar's Stand: where…".
+    pub fn story_place_at(&self, p: Pos) -> Option<String> {
+        self.story_place(p).map(|pl| format!("{}: {} ({})", cap(&pl.name), pl.deed, pl.year))
+    }
+
+    /// The place where `e` broke takes a name from the deed done there:
+    /// a dwarf's stand, a hero's fall, a massacre's weeping, or else the
+    /// name the battle gave it. A place already named keeps its name.
+    fn name_place(&mut self, e: &Episode) {
+        if self.story_place(e.at).is_some() {
+            return;
+        }
+        let at = e.at;
+        let h = hash(&e.name, e.tick);
+        let noun = self.place_noun(at);
+        let marks: Vec<&Mark> = self.stories.marks.iter().filter(|m| near(m.at, at, 6) && m.tick + 10 * DAY >= e.tick && (e.siege.is_none() || m.siege == e.siege)).collect();
+        // Who did the most killing here.
+        let mut killers: Vec<(u32, String, usize, Option<String>)> = Vec::new();
+        for m in marks.iter().filter(|m| !m.died) {
+            match killers.iter_mut().find(|k| k.0 == m.dwarf) {
+                Some(k) => k.2 += 1,
+                None => killers.push((m.dwarf, m.name.clone(), 1, m.foe.clone())),
+            }
+        }
+        let best = killers.into_iter().max_by_key(|k| (k.2, u32::MAX - k.0));
+        let hero_dead = marks.iter().find(|m| m.died && self.dwarves.iter().any(|d| d.id == m.dwarf && d.epithet.is_some())).map(|m| m.name.clone());
+        let (name, deed) = match (best, hero_dead) {
+            (Some((_, who, n, foe)), _) if n >= 2 => {
+                let foes = foe.map_or("foes".to_string(), |f| plural_of(&f));
+                (format!("{} Stand", super::gore::possessive(first_name(&who))), format!("where {} slew {} {} in {}", who, number(n), foes, e.name))
+            }
+            (_, Some(m)) => (format!("{} Fall", super::gore::possessive(first_name(&m))), format!("where {} fell in {}", m, e.name)),
+            _ if e.kind == EpisodeKind::Massacre && !e.dead.is_empty() => {
+                let w = pick(h, 5, &["Weeping", "Red", "Silent", "Widows'"]);
+                (format!("the {} {}", w, noun), format!("where {} died in {}", list(&e.dead), e.name))
+            }
+            _ => {
+                // The name the battle gave it: "Copper Gate" from "the Battle of Copper Gate".
+                let Some(p) = e.name.rsplit_once(" of ").or_else(|| e.name.rsplit_once(" at ")).map(|x| x.1.to_string()) else { return };
+                if p.starts_with("the ") || !p.ends_with(noun) {
+                    return;
+                }
+                (p, format!("named for {}", e.name))
+            }
+        };
+        let year = self.start_year + (self.tick / YEAR) as i32;
+        let fort = self.fortress_name.clone();
+        self.legend(format!("The {} of {} has been called {} ever since, {}.", noun.to_lowercase(), fort, name, deed));
+        if let Some(mut o) = self.overseer.take() {
+            Self::note_ov(&mut o, self.tick, format!("Called the place {}.", name));
+            self.overseer = Some(o);
+        }
+        self.msg(&format!("The {} is called {} now, {}.", noun.to_lowercase(), name, deed), (230, 200, 150));
+        self.count("stories.places", 1);
+        self.stories.places.push(Place { name, at, r: 4, deed, year });
     }
 
     fn veterans_near(&self, at: Pos, r: i32) -> Vec<u32> {
@@ -338,7 +442,7 @@ impl Game {
         let at = Self::thickest(&marks).unwrap_or(self.embark);
         let h = hash(&self.fortress_name, tick ^ 0x4d41_5353);
         let place = self.place_words(at, h);
-        let plural = crate::creature::Species::ALL.iter().map(|s| s.info()).find(|i| i.name == foe).map_or(format!("{}s", foe), |i| i.plural.to_string());
+        let plural = plural_of(&foe);
         let pool: &[&str] = if self.season_word() == "Winter" && pick(h, 4, &["a", "b"]) == "a" { &["the {K} Winter"] } else { &BEASTLY };
         let name = self.unique(self.fill(pick(h, 3, pool), h, &place, &foe, &plural, ""));
         let summary = format!("The {} fell upon {} and killed {}.", plural, self.fortress_name, list(&dead));
@@ -484,6 +588,33 @@ mod tests {
         g.name_hunt("The Axes of Dawn", "Emberwing the dragon", "", 1, true);
         let e = g.stories.episodes.last().unwrap();
         assert!(e.name.ends_with("of Emberwing"), "{}", e.name);
+    }
+
+    #[test]
+    fn the_place_of_a_stand_takes_the_name_of_who_stood() {
+        let mut g = quiet(5);
+        fought_siege(&mut g, 0, 4);
+        let e = g.stories.episodes.last().unwrap().clone();
+        let pl = g.stories.places.last().expect("the place should be named").clone();
+        let who = first_name(&g.dwarves[0].name).to_string();
+        // Dwarf 0 struck down all four where they fell: their stand.
+        assert_eq!(pl.name, format!("{} Stand", super::super::gore::possessive(&who)));
+        assert!(pl.deed.contains("slew four goblins") && pl.deed.contains(&e.name), "{}", pl.deed);
+        let look = g.story_place_at(pl.at).expect("look shows it");
+        assert!(look.starts_with(&pl.name), "{}", look);
+        assert!(g.story_place_at(pl.at.offset(20, 20, 0)).is_none());
+        assert!(g.overworld.events.iter().any(|ev| ev.text.contains(&pl.name) && ev.text.contains("ever since")), "not in the legends");
+        // The next fight there is fought at the named place.
+        assert_eq!(g.place_words(pl.at.offset(1, 1, 0), 99), pl.name);
+    }
+
+    #[test]
+    fn a_massacre_leaves_a_weeping_place() {
+        let mut g = quiet(7);
+        fought_siege(&mut g, 4, 0);
+        let pl = g.stories.places.last().expect("named").clone();
+        assert!(pl.name.starts_with("the "), "{}", pl.name);
+        assert!(pl.deed.contains(" died in "), "{}", pl.deed);
     }
 
     #[test]
