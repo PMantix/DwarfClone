@@ -1002,6 +1002,7 @@ impl App {
                     Some(crate::ui::Target::Key(k)) => return self.on_key(KeyEvent::new(k, KeyModifiers::NONE)),
                     Some(crate::ui::Target::Row(i)) => return self.select_row(i),
                     Some(crate::ui::Target::Block) => return,
+                    Some(crate::ui::Target::Dwarf(id)) => return self.jump_to_dwarf(id),
                     None => {}
                 }
                 if !in_map || !self.uses_map_cursor() {

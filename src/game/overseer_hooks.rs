@@ -22,6 +22,8 @@ impl Game {
         self.ov_interior(o);
         // The outside and the grand works:
         self.ov_fortify(o);
+        // Interface flair: the row of faces.
+        self.ov_mood_strip(o);
         let _ = o;
     }
 

@@ -90,6 +90,7 @@ mod hunts;
 mod larder;
 pub mod fortify;
 mod towers;
+pub mod moods;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;

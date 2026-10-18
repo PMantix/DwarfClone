@@ -247,7 +247,7 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O05 Spectator mode (M)
 - **Why:** An autoplay fort is a show: the player should see moods at a glance, have the camera cut to the drama, and replay the best moments.
-- **Steps:** [ ] Mood strip ([UI-01](ideas/world-and-overseer.md)) · [ ] Director camera ([UI-03](ideas/world-and-overseer.md)) · [ ] Sound-based reports ([UI-06](ideas/world-and-overseer.md)) · [ ] Last words ([UI-02](ideas/world-and-overseer.md)) · [ ] Announcement control ([UI-07](ideas/world-and-overseer.md)) · [ ] Step size ([UI-32](ideas/world-and-overseer.md)) · [ ] Highlight reel and replay ([UI-04](ideas/world-and-overseer.md)) · [ ] Export the fort ([UI-10](ideas/world-and-overseer.md))
+- **Steps:** [x] Mood strip ([UI-01](ideas/world-and-overseer.md), this commit: faces in the top bar, click to go, the overseer reads them) · [ ] Director camera ([UI-03](ideas/world-and-overseer.md)) · [ ] Sound-based reports ([UI-06](ideas/world-and-overseer.md)) · [ ] Last words ([UI-02](ideas/world-and-overseer.md)) · [ ] Announcement control ([UI-07](ideas/world-and-overseer.md)) · [ ] Step size ([UI-32](ideas/world-and-overseer.md)) · [ ] Highlight reel and replay ([UI-04](ideas/world-and-overseer.md)) · [ ] Export the fort ([UI-10](ideas/world-and-overseer.md))
 - **Done when:** A three-year autoplay fort produces a highlight reel that replays its sieges and deaths.
 
 #### O06 Know your dwarves (M)

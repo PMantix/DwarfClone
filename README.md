@@ -121,6 +121,14 @@ same thing twice running, and says what it's watching above the map. A fight cut
 anything calmer. It only moves the camera; big-moment cards come first. Any key or mouse
 movement gives control back (the key does what it always does).
 
+**The mood strip.** The top bar has a tiny face for every dwarf, coloured by how they feel: smiles
+first, then the long faces (☹), a dark ☻ for anyone beside themselves (a tantrum, melancholy,
+madness, a fit), and a skull ☠ for each who died this season. Hover over a face for their name,
+mood and what's on their mind; click it to go to them with their sheet open. When the bar is too
+narrow (80 columns) the faces are counted instead ("☺9 ☹2 ☠1"), and a click on a count goes to
+the worst of them. The overseer looks down the same row once a season and notes it when a third
+of the faces are long, or the season has taken two or more (`game/moods.rs`, `ui/moodstrip.rs`).
+
 Use Windows Terminal (or any truecolor + Unicode terminal) at 130x40 or larger.
 Press `?` in game for keys.
 
@@ -713,3 +721,4 @@ cargo test --release profile_year -- --ignored --nocapture
 | `buildings.rs`, `items.rs`, `material.rs` | data definitions and recipes |
 | `path.rs` | A* and nearest-goal Dijkstra search |
 | `app.rs`, `ui.rs` | input modes and rendering |
+| `game/moods.rs`, `ui/moodstrip.rs` | the mood strip in the top bar |

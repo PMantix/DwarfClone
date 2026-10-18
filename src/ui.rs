@@ -16,6 +16,7 @@ use ratatui::Frame;
 use std::collections::{HashMap, HashSet};
 
 mod health;
+mod moodstrip;
 
 const SIDEBAR_W: u16 = 38;
 
@@ -27,6 +28,8 @@ pub enum Target {
     Key(crossterm::event::KeyCode),
     Row(usize),
     Block,
+    /// A face in the mood strip: go to that dwarf.
+    Dwarf(u32),
 }
 
 thread_local! {
@@ -2964,10 +2967,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     } else {
         Span::styled(format!(" x{} ", app.ticks_per_frame()), Style::default().fg(BLACK).bg(Color::Rgb(90, 200, 90)))
     };
-    let status = Line::from(vec![
+    let mut status = vec![
         Span::styled(" ☼ DwarfClone ", Style::default().fg(KEY).add_modifier(Modifier::BOLD)),
         Span::styled(format!("│ {} ", g.date_string()), Style::default().fg(TEXT)),
-        Span::styled(format!("│ {} dwarves ", g.alive_count()), Style::default().fg(TEXT)),
         match &g.overseer {
             Some(o) => Span::styled(
                 match o.ambition {
@@ -3000,7 +3002,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Span::raw(" "),
         speed,
         Span::styled("  ? help", Style::default().fg(MUTED)),
-    ]);
+    ];
+    // The dwarves, a face each (src/ui/moodstrip.rs).
+    moodstrip::splice(g, &mut status, 2, rows[0]);
+    let status = Line::from(status);
     f.render_widget(Paragraph::new(status).style(Style::default().bg(Color::Rgb(20, 20, 30))), rows[0]);
 
     draw_map(f, app, mid[0]);
@@ -3150,6 +3155,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         f.render_widget(Paragraph::new(Span::styled(hint, Style::default().fg(MUTED))), Rect::new(full.x + full.width.saturating_sub(w + 1), full.y + full.height - 1, w, 1));
     }
     draw_tooltip(f, app);
+    moodstrip::draw_tip(f, app);
     if app.in_fortress() && matches!(app.mode, Mode::Normal) {
         let over = if app.map_rect.width > 0 { app.map_rect } else { area };
         draw_banner(f, over, &app.game);
