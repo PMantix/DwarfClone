@@ -32,6 +32,12 @@ pub struct Magic {
     /// When blood was last found on a temple floor.
     #[serde(default)]
     pub blood_seen: u64,
+    /// The resident wizard (`wizard.rs`).
+    #[serde(default)]
+    pub wizard: Option<super::wizard::Wizard>,
+    /// When a wizard was last turned away.
+    #[serde(default)]
+    pub wizard_refused: u64,
     /// Lines for this year's chronicle.
     #[serde(default)]
     pub year: Vec<String>,
@@ -63,12 +69,20 @@ impl Game {
         self.faith_daily();
         self.curses_daily();
         self.omens_daily();
+        self.wizard_daily();
+    }
+
+    /// Every 20 ticks: the relics at work, the wizard at their spells.
+    pub(super) fn magic_tick(&mut self) {
+        self.relics_tick();
+        self.wizard_tick();
     }
 
     /// Each season: word of the relics gets about.
     pub(super) fn magic_season(&mut self) {
         self.relics_season();
         self.omens_season();
+        self.wizard_season();
     }
 }
 
@@ -80,7 +94,39 @@ impl Game {
 
     /// For the look panel, under a dwarf: whom they worship.
     pub fn magic_dwarf_lines(&self, id: u32) -> Vec<String> {
-        self.faith_line(id).into_iter().chain(self.curse_line(id)).collect()
+        self.faith_line(id).into_iter().chain(self.curse_line(id)).chain(self.wizard_lines(id)).collect()
+    }
+
+    /// For the fortress status screen: the fort's god, the omen hanging
+    /// over it, the cursed, the relics and the wizard.
+    pub fn magic_status_lines(&self) -> Vec<String> {
+        let mut v = Vec::new();
+        if let Some(god) = self.chief_god().and_then(|g| self.god(g)) {
+            let temples = self.magic.shrines.values().filter(|&&s| self.god(s).map_or(false, |x| x.name == god.name)).count();
+            let t = match temples {
+                0 => "no temple".to_string(),
+                1 => "one temple".to_string(),
+                n => format!("{} temples", n),
+            };
+            v.push(format!("Most here worship {} ({}); {} forbids {}.", god.called(), t, god.name, god.taboo.name()));
+        }
+        if let Some(o) = &self.magic.omen {
+            v.push(format!("An omen hangs over the fort: {}, and {}.", o.kind.sight(&self.fortress_name), o.kind.meaning()));
+        }
+        for c in &self.magic.curses {
+            if let (Some(d), Some(god)) = (self.dwarves.iter().find(|d| d.id == c.dwarf), self.god(c.god)) {
+                v.push(format!("{} is cursed by {} for {}.", d.name, god.name, c.why.name()));
+            }
+        }
+        let relics = self.magic.relics.iter().filter(|r| self.items.contains_key(&r.item)).count();
+        if relics > 0 {
+            v.push(format!("Artifacts of power in the fort: {}.", relics));
+        }
+        if let Some(w) = &self.magic.wizard {
+            let lab = if w.lab != 0 { "in their laboratory" } else { "wanting a laboratory" };
+            v.push(format!("The wizard {} {} lives here, {}; {} spells cast, {} accidents.", w.name, w.title, lab, w.spells, w.accidents));
+        }
+        v
     }
 
     /// For the look panel, under an item: its power.

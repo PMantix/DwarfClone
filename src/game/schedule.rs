@@ -40,7 +40,7 @@ impl Game {
         if tick % 150 == 77 { self.doctor_check(); }
         if tick % 50 == 35 { self.watch_siege(); }
         // Myth and magic: the relics' powers at work.
-        if tick % 20 == 11 { self.relics_tick(); }
+        if tick % 20 == 11 { self.magic_tick(); }
     }
 
     /// After the dwarves and creatures have moved: wildlife, the day's

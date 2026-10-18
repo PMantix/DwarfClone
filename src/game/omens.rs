@@ -269,6 +269,7 @@ impl Game {
         if kind == OmenKind::FleeingBirds {
             self.siege_warned = true;
         }
+        self.wizard_reads(kind, due);
         let chief = self.chief_god().and_then(|g| self.god(g)).map(|g| g.name.clone());
         for d in self.dwarves.iter_mut().filter(|d| d.alive && !d.is_child()) {
             let dev = self.magic.patrons.get(&d.id).map_or(0, |p| p.1);

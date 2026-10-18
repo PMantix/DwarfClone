@@ -51,6 +51,8 @@ pub enum Kind {
     /// A hall the overseer has just finished.
     Hall,
     Wildlife,
+    /// The wizard at a spell or at study (`game/wizard.rs`).
+    Magic,
     /// Nothing else at all: someone going about their day.
     Idle,
 }
@@ -82,6 +84,7 @@ impl Kind {
             Kind::Hall => 28,
             Kind::Wildlife => 15,
             Kind::Idle => 5,
+            Kind::Magic => 50,
         }
     }
 }
@@ -428,6 +431,13 @@ pub fn candidates(g: &Game) -> Vec<Subject> {
     if let Some(cv) = &g.caravan {
         if let Some(m) = cv.merchants.iter().filter_map(|id| g.creatures.get(id)).find(|c| seen(g, c)) {
             v.push(Subject { who: Who::Creature(m.id), kind: Kind::Caravan, what: format!("the {} caravan", cv.civ_name) });
+        }
+    }
+
+    // The wizard: a spell (worth a look) or study in the laboratory.
+    if let Some((id, what, spell)) = g.wizard_sight() {
+        if spell || !v.iter().any(|s| s.who == Who::Dwarf(id)) {
+            v.push(Subject { who: Who::Dwarf(id), kind: if spell { Kind::Magic } else { Kind::Work }, what });
         }
     }
 

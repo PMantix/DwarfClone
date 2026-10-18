@@ -25,6 +25,7 @@ impl Game {
         // Myth and magic: temples dedicated, a temple for a devout fort.
         self.ov_faith(o);
         self.ov_omens(o);
+        self.ov_wizard(o);
         let _ = o;
     }
 

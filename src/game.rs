@@ -94,6 +94,7 @@ pub mod magic;
 mod faith;
 pub mod relics;
 pub mod omens;
+pub mod wizard;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
