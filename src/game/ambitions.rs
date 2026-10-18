@@ -543,24 +543,49 @@ impl Game {
     }
 
     /// A walled yard round the top of the stair, with a door in it, once.
+    /// The door goes in the middle of a side where the ground runs level
+    /// through it and on to the wagon: on rough land, walls on the three
+    /// sides that can take them and a door that can't be hung (the ground
+    /// falling away under it) shut the stair in, and the fort out of its
+    /// own halls.
     pub(super) fn plan_yard(&mut self, o: &mut Overseer) {
         let top = o.top.unwrap();
-        if !o.did("yard") {
-            let r = 3;
-            let mut n = 0;
-            for (a, b) in [
-                (top.offset(-r, -r, 0), top.offset(r, -r, 0)),
-                (top.offset(-r, r, 0), top.offset(r, r, 0)),
-                (top.offset(r, -r, 0), top.offset(r, r, 0)),
-                (top.offset(-r, -r, 0), top.offset(-r, -1, 0)),
-                (top.offset(-r, 1, 0), top.offset(-r, r, 0)),
-            ] {
-                n += self.plan_constructions(a, b, super::ConstructKind::Wall, super::BuildMat::Any);
-            }
-            self.place_building(BuildingKind::Door, top.offset(-r, 0, 0));
-            o.done.push("yard".into());
-            Self::note_ov(o, self.tick, format!("Planned a walled yard round the stair ({} wall sections) with a gate.", n));
+        if o.did("yard") {
+            return;
         }
+        let r = 3;
+        let e = self.embark;
+        let gate = [(-1, 0), (0, 1), (0, -1), (1, 0)]
+            .iter()
+            .map(|&(ux, uy)| (top.offset(ux * r, uy * r, 0), top.offset(ux * (r + 1), uy * (r + 1), 0)))
+            .find(|&(g, out)| {
+                self.world.walkable(g)
+                    && self.world.walkable(out)
+                    && self.can_place(BuildingKind::Door, g)
+                    && path::astar(&self.world, top, g, 2_000, Mover::Dwarf).is_some()
+                    && path::astar(&self.world, out, e, 20_000, Mover::Dwarf).is_some()
+            })
+            .map(|x| x.0);
+        o.done.push("yard".into());
+        let Some(gate) = gate else {
+            Self::note_ov(o, self.tick, "Meant to wall the yard round the stair, but the ground gives it no level way in.".into());
+            return;
+        };
+        let mut n = 0;
+        for (a, b) in [
+            (top.offset(-r, -r, 0), top.offset(r, -r, 0)),
+            (top.offset(-r, r, 0), top.offset(r, r, 0)),
+            (top.offset(r, -r + 1, 0), top.offset(r, r - 1, 0)),
+            (top.offset(-r, -r + 1, 0), top.offset(-r, r - 1, 0)),
+        ] {
+            for p in box_iter(a, b) {
+                if p != gate {
+                    n += self.plan_constructions(p, p, super::ConstructKind::Wall, super::BuildMat::Any);
+                }
+            }
+        }
+        self.place_building(BuildingKind::Door, gate);
+        Self::note_ov(o, self.tick, format!("Planned a walled yard round the stair ({} wall sections) with a gate.", n));
     }
 
     /// Work orders the ambition adds or raises.
