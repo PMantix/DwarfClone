@@ -2,6 +2,7 @@ mod app;
 mod body;
 mod buildings;
 mod creature;
+mod director;
 mod dwarf;
 mod game;
 mod geom;
@@ -212,6 +213,7 @@ fn autoplay_batch(args: &[String]) {
 }
 
 fn run(terminal: &mut Terminal<CrosstermBackend<io::BufWriter<io::Stdout>>>, app: &mut App) -> Result<()> {
+    let mut last = Instant::now();
     while !app.quit {
         let start = Instant::now();
         terminal.draw(|f| ui::draw(f, app))?;
@@ -232,6 +234,9 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::BufWriter<io::Stdout>>>, app
             }
         }
         let (t, ticks0) = (Instant::now(), app.game.tick);
+        // The director keeps time by the clock, not by frames.
+        app.frame_dt = t.duration_since(last).as_secs_f64();
+        last = t;
         app.frame();
         app.perf_frame(draw, t.elapsed().as_secs_f64() * 1000.0, (app.game.tick - ticks0) as u32);
     }

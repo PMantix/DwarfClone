@@ -79,6 +79,17 @@ temple, or a long gallery with every wall carved. Press `A` in a fortress to han
 by side and reports how each ended (`--runs`, `--years`, `--style`, `--seed`). Most end in
 ruin; that's the fun of it.
 
+**The director.** Leave the keys and mouse alone for 20 seconds while the overseer plays and
+the camera tours the fort like a screensaver: to a fight (staying with the fighter until it
+ends), a siege and the gate it comes for, a beast of legend or a monster near the walls, a
+berserk dwarf, a rescue or first aid, a strange mood, migrants or a caravan arriving, a
+workshop or wall going up, a festival, the tavern, and in quiet times dwarves at the forge, the
+mining face or the fields, or a wolf pack among the trees. It pans to a subject nearby and cuts
+to one far off or on another level, stays about nine seconds on each calm one, doesn't show the
+same thing twice running, and says what it's watching above the map. A fight cuts in on
+anything calmer. It only moves the camera; big-moment cards come first. Any key or mouse
+movement gives control back (the key does what it always does).
+
 Use Windows Terminal (or any truecolor + Unicode terminal) at 130x40 or larger.
 Press `?` in game for keys.
 
