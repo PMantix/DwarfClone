@@ -383,12 +383,8 @@ impl Game {
             }
             (1..=depth).take_while(|&k| g.world.get(p.offset(0, 0, -k)).map_or(false, |t| !t.aquifer) && (-1..=1).all(|dx| (-1..=1).all(|dy| g.world.get(p.offset(dx, dy, -k)).map_or(true, |t| !t.aquifer)))).last().unwrap_or(0)
         };
-        let score = |g: &Game, p: Pos| -> Option<i32> {
+        let score_at = |g: &Game, p: Pos, depth: i32| -> Option<i32> {
             let w = &g.world;
-            let depth = reach(g, p);
-            if depth < 1 {
-                return None;
-            }
             let base = p.offset(0, 0, -depth);
             let gate_dry = (0..=14).all(|dx| (0..=1).all(|dy| w.get(base.offset(dx, dy, 0)).map_or(false, |t| t.water == 0 && !t.aquifer)));
             // Under rock all the way: a gatehouse that comes out under the sky is no gate.
@@ -396,29 +392,69 @@ impl Game {
                 let q = base.offset(dx, dy, 0);
                 !w.in_bounds(q) || w.surface_z(q.x, q.y) >= base.z + 2
             }));
-            if !gate_dry || !roofed || base.z < 2 {
+            // And solid rock where it's cut, and above and below it: a cave
+            // or a gully across the corridor (or in its walls) is a gap no
+            // gate closes, and a pocket of water over it floods it.
+            let solid = (-1..=16).all(|dx| (-1..=2).all(|dy| {
+                let q = base.offset(dx, dy, 0);
+                let rock = dx <= 0 && dy == 0 || w.get(q).map_or(false, |t| t.kind == TileKind::Wall && t.mat != Mat::Bedrock);
+                rock && [q.up(), q.down()].iter().all(|&r| w.get(r).map_or(false, |t| t.kind.solid() && t.water == 0))
+            }));
+            // The stair, too, goes down through rock all the way: not
+            // through a cave or a cavern (what lives there would come up it).
+            let shaft = (1..=depth).all(|k| (-1..=1).all(|dx| (-1..=1).all(|dy| w.get(p.offset(dx, dy, -k)).map_or(false, |t| t.kind.solid()))));
+            if !gate_dry || !roofed || !solid || !shaft || base.z < 2 {
                 return None;
             }
             let far = (1..=8)
                 .find(|&r| (-r..=r).any(|dy| (-r..=r).any(|dx| (dx as i32).abs().max((dy as i32).abs()) == r && (-1..=1).any(|dz| w.get(p.offset(dx, dy, dz)).map_or(false, |t| t.water > 0)))))
                 .unwrap_or(9);
             let dist = (p.x - e.x).abs().max((p.y - e.y).abs());
-            Some(far * 20 + (p.z - w.water_level).clamp(-5, 6) * 6 - dist)
+            // Room for the halls: they run east from the end of the
+            // gatehouse, so a stair by the map's east edge (or its north or
+            // south edge), or with the hill falling away east of it, leaves
+            // no rock to cut rooms from. The share of the ground the plans
+            // use that is good rock under cover (sampled every other tile).
+            let mut good = 0;
+            let mut all = 0;
+            for dy in (-18..=18).step_by(2) {
+                for dx in (15..=59).step_by(2) {
+                    all += 1;
+                    let q = base.offset(dx, dy, 0);
+                    if w.get(q).map_or(false, |t| t.kind == TileKind::Wall && t.mat != Mat::Bedrock && t.water == 0 && !t.aquifer) && w.surface_z(q.x, q.y) > base.z {
+                        good += 1;
+                    }
+                }
+            }
+            let room = good * 200 / all;
+            Some(far * 20 + (p.z - w.water_level).clamp(-5, 6) * 6 - dist + room)
         };
-        let s = (1..22)
+        // The stair goes down as far as it may (above a heavy aquifer), or
+        // a level or three further when that finds the gatehouse its rock
+        // (a little dearer for each level more): the best depth, and its score.
+        let score = |g: &Game, p: Pos| -> Option<(i32, i32)> {
+            let most = reach(g, p);
+            if most < 1 {
+                return None;
+            }
+            let deeper = if g.world.aquifer < 2 { 3 } else { 0 };
+            (most..=most + deeper).filter_map(|k| score_at(g, p, k).map(|s| (s - (k - most) * 8, k))).max()
+        };
+        // (Out to 45 tiles: a wagon near the east edge has its halls' rock
+        // to the west of it.)
+        let s = (1..46)
             .flat_map(|r| (-r..=r).flat_map(move |k| [e.offset(k, -r, 0), e.offset(k, r, 0), e.offset(-r, k, 0), e.offset(r, k, 0)]))
             .filter(|p| self.world.in_bounds(Pos::new(p.x, p.y, 0)))
             .map(|p| Pos::new(p.x, p.y, self.world.surface_z(p.x, p.y)))
             .filter(|&p| open(self, p))
             .filter_map(|p| score(self, p).map(|s| (s, p)))
-            .max_by_key(|&(s, p)| (s, -(p.x - e.x).abs() - (p.y - e.y).abs()))
-            .map(|(_, p)| p)
-            .or_else(|| (1..12).flat_map(|i| [e.offset(i, 0, 0), e.offset(0, i, 0), e.offset(-i, 0, 0)]).find(|&p| open(self, p)));
-        let Some(s) = s else {
+            .max_by_key(|&((s, _), p)| (s, -(p.x - e.x).abs() - (p.y - e.y).abs()))
+            .map(|((_, k), p)| (p, k))
+            .or_else(|| (1..12).flat_map(|i| [e.offset(i, 0, 0), e.offset(0, i, 0), e.offset(-i, 0, 0)]).find(|&p| open(self, p)).map(|p| (p, reach(self, p).max(1))));
+        let Some((s, depth)) = s else {
             self.overseer = None;
             return;
         };
-        let depth = reach(self, s).max(1);
         let base = s.offset(0, 0, -depth);
         if base.z < 2 {
             return;
