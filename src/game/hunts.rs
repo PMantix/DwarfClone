@@ -61,6 +61,8 @@ pub struct Hunt {
 const NEAR: i32 = 30;
 /// How hard to look for a beast's way to the stair.
 const REACH: usize = 8000;
+/// How hard to look for the squad's way to a den.
+const DEN_REACH: usize = 40000;
 
 fn number(n: u32) -> String {
     match n {
@@ -117,7 +119,7 @@ impl Game {
         (0..self.lairs.len())
             .filter(|&i| {
                 let l = &self.lairs[i];
-                l.found && l.pop > 0 && l.sent >= sent && !l.silent(self.tick) && l.species.info().aggro > 0
+                l.found && l.pop > 0 && l.sent >= sent && !l.silent(self.tick) && l.species.info().aggro > 0 && self.tick >= l.march_after
             })
             .min_by_key(|&i| (crate::game::combat::dist2(self.lairs[i].pos, self.embark), i))
     }
@@ -137,6 +139,13 @@ impl Game {
             (ids.len() >= 2, 1.0)
         };
         if !enough || (strength as f64) < threat * odds {
+            return;
+        }
+        // Not across water or up a cliff: no way there, and the den is let
+        // be for a while (knob hunt.den_wait, in days).
+        let from = self.dwarves.iter().find(|d| ids.contains(&d.id)).map(|d| d.pos);
+        if from.map_or(true, |f| crate::path::astar(&self.world, f, pos, DEN_REACH, crate::world::Mover::Dwarf).is_none()) {
+            self.lairs[i].march_after = self.tick + (self.knob("hunt.den_wait", 4.0) * DAY as f64) as u64;
             return;
         }
         let squad = self.squads[s].name.clone();
@@ -169,6 +178,7 @@ impl Game {
             return self.end_hunt(o, s, h, "the hunters are hurt");
         }
         if self.tick > h.since + (self.knob("hunt.den_days", 2.0) * DAY as f64) as u64 {
+            self.lairs[i].march_after = self.tick + (self.knob("hunt.den_wait", 4.0) * DAY as f64) as u64;
             return self.end_hunt(o, s, h, "the den was too far");
         }
         let there: Vec<(u32, Pos)> = self.dwarves.iter().filter(|d| fit.contains(&d.id) && crate::game::combat::near(d.pos, at, 4)).map(|d| (d.id, d.pos)).collect();
@@ -494,12 +504,24 @@ impl Game {
         if matches!(self.squads[s].order, SquadOrder::Kill(_)) && !why.is_empty() {
             self.squads[s].order = SquadOrder::Train;
         }
-        // Back from a den: to the squad's old station, and training.
-        if h.lair.is_some() && !why.is_empty() {
-            if self.squads[s].order == SquadOrder::Station {
-                self.squads[s].order = SquadOrder::Train;
+        // Back from a den: to the squad's old station, and training. (Given
+        // other orders on the way, it keeps them, but not the den for a
+        // station.)
+        if let Some(i) = h.lair {
+            let den = self.lairs.get(i as usize).map(|l| l.pos);
+            let at_den = den.is_some() && self.squads[s].station == den;
+            if !why.is_empty() || at_den {
+                if self.squads[s].order == SquadOrder::Station {
+                    self.squads[s].order = SquadOrder::Train;
+                }
+                self.squads[s].station = h.home;
             }
-            self.squads[s].station = h.home;
+            // However it went, the den is let be a while (knob hunt.den_rest,
+            // in days): those that got away home lick their wounds.
+            let wait = self.tick + (self.knob("hunt.den_rest", 1.0) * DAY as f64) as u64;
+            if let Some(l) = self.lairs.get_mut(i as usize) {
+                l.march_after = l.march_after.max(wait);
+            }
         }
         let squad = self.squads[s].name.clone();
         let fort = self.fortress_name.clone();
@@ -792,7 +814,7 @@ mod tests {
         for l in g.lairs.iter_mut() {
             l.found = false;
         }
-        g.lairs.push(crate::game::lairs::Lair { pos: at, species: Species::Wolf, pop: 2, cap: 6, found: true, name: "the near den".into(), sent: 1, kills: 0, quiet_until: 0 });
+        g.lairs.push(crate::game::lairs::Lair { pos: at, species: Species::Wolf, pop: 2, cap: 6, found: true, name: "the near den".into(), sent: 1, kills: 0, quiet_until: 0, march_after: 0 });
         let i = g.lairs.len() - 1;
         g.alert = false;
         let top = g.overseer.as_ref().unwrap().top.unwrap();
@@ -858,4 +880,59 @@ mod tests {
         assert!(g.hunts.on.is_none());
         assert!(!g.outdoors_banned());
     }
+
+    /// The den march in play, the alert and all: the squad keeps on to the
+    /// den (the alert doesn't stand it down), and sets out only the once:
+    /// the den is let be a day before the next march.
+    #[test]
+    fn a_den_march_holds_in_play() {
+        let (mut g, s, _) = fort(21, Style::Steady);
+        let at = out_by(&g, 20);
+        for l in g.lairs.iter_mut() {
+            l.found = false;
+        }
+        g.lairs.push(crate::game::lairs::Lair { pos: at, species: Species::Wolf, pop: 2, cap: 6, found: true, name: "the near den".into(), sent: 3, kills: 0, quiet_until: 0, march_after: 0 });
+        let i = g.lairs.len() - 1;
+        let was = g.squads[s].station;
+        let mut marched = false;
+        for _ in 0..400 {
+            g.step();
+            marched |= g.hunts.on.as_ref().map_or(false, |h| h.lair == Some(i as u32) && g.tick > h.since + 100);
+        }
+        let set_out = g.log.iter().filter(|l| l.text.contains("set out for the near den")).count();
+        assert_eq!(set_out, 1, "set out again and again");
+        assert_eq!(g.annals.counters.get("hunts.den").copied(), Some(1));
+        assert!(marched, "the march never held");
+        assert!(g.lairs[i].kills > 0, "never got there");
+        assert!(g.lairs[i].march_after > g.tick, "no rest for the den");
+        if g.hunts.on.is_none() {
+            assert_eq!(g.squads[s].station, was, "left stationed at the den");
+        }
+    }
+
+    /// A den with no way there (shut in the rock): no march, and it is let
+    /// be for a while.
+    #[test]
+    fn a_den_with_no_way_there_is_let_be() {
+        let (mut g, _, _) = fort(21, Style::Steady);
+        let base = g.overseer.as_ref().unwrap().base.unwrap();
+        let pocket = (-12..=12)
+            .flat_map(|dx| (-12..=12).map(move |dy| base.offset(dx, dy, 0)))
+            .find(|&p| (-1..=1).all(|x| (-1..=1).all(|y| (-1..=1).all(|z| g.world.in_bounds(p.offset(x, y, z)) && g.world.solid(p.offset(x, y, z))))))
+            .expect("no solid rock by the halls");
+        g.world.t_mut(pocket).kind = TileKind::Floor;
+        for l in g.lairs.iter_mut() {
+            l.found = false;
+        }
+        g.lairs.push(crate::game::lairs::Lair { pos: pocket, species: Species::Wolf, pop: 2, cap: 6, found: true, name: "the shut den".into(), sent: 3, kills: 0, quiet_until: 0, march_after: 0 });
+        let i = g.lairs.len() - 1;
+        g.alert = false;
+        let mut o = g.overseer.take().unwrap();
+        g.ov_hunts(&mut o);
+        assert!(g.hunts.on.is_none(), "marched on a den there's no way to");
+        assert!(g.lairs[i].march_after > g.tick);
+        assert_eq!(g.den_to_clear(), None);
+        g.overseer = Some(o);
+    }
 }
+

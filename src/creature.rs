@@ -649,6 +649,10 @@ pub struct Creature {
     /// The lair it came out of and goes home to (`game::lairs`).
     #[serde(default)]
     pub lair: Option<u32>,
+    /// No way back to its lair: it leaves by the map's edge instead, and
+    /// is back in the lair's numbers once gone (`game::lairs`).
+    #[serde(default)]
+    pub lost_home: bool,
 }
 
 fn yes() -> bool {
@@ -699,6 +703,7 @@ impl Creature {
             foe: None,
             fears_fire: false,
             lair: None,
+            lost_home: false,
         }
     }
 

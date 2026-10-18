@@ -32,6 +32,10 @@ pub struct Lair {
     /// Hunted out: nothing grows back before this tick (0: it never was).
     #[serde(default)]
     pub quiet_until: u64,
+    /// No squad marches on it before this tick: the last march found no
+    /// way there, or never got there (`hunts.rs`).
+    #[serde(default)]
+    pub march_after: u64,
 }
 
 impl Lair {
@@ -52,6 +56,10 @@ impl Game {
     /// in woods or on high ground where there is some. Its own generator,
     /// so the rest of the embark is as it was.
     pub(super) fn make_lairs(&mut self, seed: u64) {
+        // (No room on a map too small to be a site: a stub save's.)
+        if self.world.w < 24 || self.world.h < 24 {
+            return;
+        }
         let mut rng = Rng::new(seed ^ 0x1A15_D3E5);
         let (calm, pack, rare) = self.fauna();
         let mut want = vec![(calm, rng.range(8, 13) as u32, "grazing grounds")];
@@ -65,7 +73,7 @@ impl Game {
             if self.lairs.iter().any(|l| l.name == name) {
                 name = format!("the far {} {}", self.compass(pos), kind);
             }
-            self.lairs.push(Lair { pos, species, pop: cap, cap, found: false, name, sent: 0, kills: 0, quiet_until: 0 });
+            self.lairs.push(Lair { pos, species, pop: cap, cap, found: false, name, sent: 0, kills: 0, quiet_until: 0, march_after: 0 });
         }
     }
 
@@ -157,6 +165,9 @@ impl Game {
     /// there, and makes for the edge as ever; `Some(false)`: it is home, and
     /// gone from the map; `Some(true)`: still on its way.
     pub(super) fn go_home(&mut self, c: &mut Creature) -> Option<bool> {
+        if c.lost_home {
+            return None;
+        }
         let i = c.lair? as usize;
         let at = self.lairs.get(i)?.pos;
         if near(c.pos, at, 1) && c.pos.z == at.z {
@@ -167,8 +178,10 @@ impl Game {
             c.think_cd = 50;
             match path::search(&self.world, c.pos, SEARCH_LIMIT, c.mover(), |q| near(q, at, 1) && q.z == at.z) {
                 Some((_, path)) => c.path = path.into_iter().rev().collect(),
+                // No way home: it goes round by the map's edge, still one of
+                // its lair's (it counts there again once it's gone).
                 None => {
-                    c.lair = None;
+                    c.lost_home = true;
                     return None;
                 }
             }
@@ -468,5 +481,50 @@ mod tests {
         g.lairs_season(0);
         assert_eq!(g.lairs[i].pop, 1);
         assert!(g.log.iter().any(|l| l.text.contains("have been seen about")), "no young");
+    }
+
+    /// A beast with no way back to its den leaves by the map's edge, and is
+    /// one of the den's again once gone.
+    #[test]
+    fn a_beast_cut_off_from_its_den_goes_round() {
+        let (mut g, i) = wild(2);
+        let pocket = (2..g.world.w - 2)
+            .flat_map(|x| (2..g.world.h - 2).map(move |y| (x, y)))
+            .map(|(x, y)| Pos::new(x, y, 3))
+            .find(|&p| (-1..=1).all(|x| (-1..=1).all(|y| (-1..=1).all(|z| g.world.in_bounds(p.offset(x, y, z)) && g.world.solid(p.offset(x, y, z))))))
+            .expect("no solid rock");
+        g.lairs[i].pos = pocket;
+        g.lairs[i].pop = g.lairs[i].cap - 1;
+        let edge = (2..g.world.h - 2)
+            .map(|y| Pos::new(0, y, g.world.surface_z(0, y)))
+            .find(|&p| g.world.walkable(p) && g.world.outside(p))
+            .expect("no open edge");
+        let id = g.spawn_creature(g.lairs[i].species, edge, 0);
+        {
+            let c = g.creatures.get_mut(&id).unwrap();
+            c.lair = Some(i as u32);
+            c.leaving = true;
+            c.think_cd = 0;
+        }
+        let mut t = 0;
+        while g.creatures.contains_key(&id) && t < 200 {
+            g.update_creatures();
+            g.tick += 1;
+            t += 1;
+        }
+        assert!(!g.creatures.contains_key(&id), "it never left");
+        assert_eq!(g.lairs[i].pop, g.lairs[i].cap, "still one of the den's");
+    }
+
+    /// An older fort, saved before there were lairs, gets them on load.
+    #[test]
+    fn an_old_fort_gets_its_lairs_on_load() {
+        let mut g = Game::new(2);
+        g.lairs.clear();
+        g.after_load();
+        assert!(g.lairs.len() >= 3);
+        let n = g.lairs.len();
+        g.after_load();
+        assert_eq!(g.lairs.len(), n, "only once");
     }
 }

@@ -1153,8 +1153,13 @@ impl Game {
             let strength = self.squad_strength(&self.squads[0].members.clone());
             let charge = o.style == Style::Warlord && strength >= 15;
             let holding = self.squads[0].order == super::SquadOrder::Station;
+            // (A squad marching on a den holds its station there: hunts.rs.)
+            let marching = self.hunts.on.as_ref().filter(|h| h.lair.is_some() && h.target == 0).map(|h| h.squad);
             for s in 0..self.squads.len() {
                 let holding = self.squads[s].order == super::SquadOrder::Station;
+                if !danger && marching == Some(self.squads[s].id) {
+                    continue;
+                }
                 if danger && !charge && !holding {
                     // Marksdwarves hold back from the gate with a clear shot at it (archery.rs).
                     let st = self.archer_station(s, base).unwrap_or(base.offset(4 + s as i32, 0, 0));
@@ -2603,14 +2608,14 @@ mod tests {
     #[test]
     fn a_trial_game_is_the_trials_fort() {
         // Seed 5003 (Steady) has seen two goblin raids off by day 262 of its
-        // year, losing two dwarves to the second (schedule::
+        // year, losing one dwarf to the second (schedule::
         // same_story_after_refactor has the whole year).
         let g = trial_game(5003, Style::Steady, 262);
         assert_eq!(g.tick, 262 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
-        assert_eq!(deaths, vec![]);
+        assert_eq!(deaths, vec![(303947, "Dorna Stonebeard")]);
         let sieges: Vec<(u64, &str)> = g.annals.sieges.iter().map(|s| (s.tick, s.foe.as_str())).collect();
-        assert_eq!(sieges, vec![(303345, "goblins")]);
+        assert_eq!(sieges, vec![(202345, "goblins"), (303620, "goblins")]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
     }
 

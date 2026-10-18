@@ -1453,6 +1453,10 @@ impl Game {
                 if let Some(it) = c.loot.and_then(|id| self.items.remove(&id)) {
                     self.msg(&format!("A thief has made off with {}!", it.name()), (255, 120, 90));
                 }
+                // A beast cut off from its lair goes round to it (lairs.rs).
+                if let Some(l) = c.lair.and_then(|i| self.lairs.get_mut(i as usize)) {
+                    l.pop = (l.pop + 1).min(l.cap);
+                }
                 return false;
             }
             if c.path.is_empty() && c.think_cd == 0 {
