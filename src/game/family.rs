@@ -283,6 +283,7 @@ impl Game {
             self.msg(&format!("{} and {} have married.", an, bn), (255, 200, 220));
             let fort = self.fortress_name.clone();
             self.legend(format!("{} and {} married in {}.", an, bn, fort));
+            self.wedding(i, j);
         }
         // Pregnancies.
         for i in 0..self.dwarves.len() {

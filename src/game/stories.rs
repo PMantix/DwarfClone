@@ -5,7 +5,8 @@
 //! where it broke takes a name from the deed done there (WLD-02: "Kolvar's
 //! Stand", "the Weeping Gate"), shown on look and in the legends.
 //! Children are named for the fallen (SOC-01), with the reason in the
-//! chronicle.
+//! chronicle. Friends who marry are wed before the fort with a feast and
+//! gifts, and a jealous rival may turn up (SOC-02).
 //!
 //! Names come from a hash of the fort and the moment, never the game's
 //! RNG, so naming things changes nothing else that happens.
@@ -62,6 +63,17 @@ pub struct Mark {
     pub siege: Option<usize>,
 }
 
+/// A wedding or a victory feast under way, for the camera.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Occasion {
+    /// "the wedding of Kolvar and Ingra".
+    pub what: String,
+    /// Who to watch, the first still here.
+    pub who: Vec<u32>,
+    pub wedding: bool,
+    pub until: u64,
+}
+
 /// A place named for what happened there.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Place {
@@ -91,6 +103,8 @@ pub struct Stories {
     /// News to tell once the day's births are announced.
     #[serde(default)]
     pub pending: Vec<String>,
+    #[serde(default)]
+    pub occasion: Option<Occasion>,
 }
 
 /// How long a mark is kept.
@@ -391,6 +405,114 @@ impl Game {
         child
     }
 
+    /// Who and what the camera should watch of a wedding or feast under
+    /// way: (dwarf, a wedding, "the wedding of Kolvar and Ingra").
+    pub fn occasion_sight(&self) -> Option<(u32, bool, String)> {
+        let o = self.stories.occasion.as_ref().filter(|o| self.tick < o.until)?;
+        let id = o.who.iter().copied().find(|id| self.dwarves.iter().any(|d| d.id == *id && d.alive))?;
+        Some((id, o.wedding, o.what.clone()))
+    }
+
+    /// Two friends have married (`families_daily`, dwarves `i` and `j`): a
+    /// short ceremony before the fort, gifts from their friends, a feast,
+    /// and now and then a rival who wasn't asked.
+    pub(super) fn wedding(&mut self, i: usize, j: usize) {
+        let tick = self.tick;
+        let (a, b) = (self.dwarves[i].id, self.dwarves[j].id);
+        let (an, bn) = (self.dwarves[i].called(), self.dwarves[j].called());
+        let h = hash(&format!("{}&{}", an, bn), tick);
+        let zone = |k: ZoneKind| self.zones.values().any(|z| z.kind == k);
+        let venue = if zone(ZoneKind::Temple) {
+            "in the temple"
+        } else if zone(ZoneKind::Meeting) || zone(ZoneKind::Tavern) {
+            "in the great hall"
+        } else {
+            "beneath the open sky"
+        };
+        self.msg(&format!("{} and {} are wed {}, before the whole fortress!", an, bn, venue), (255, 200, 220));
+        // Gifts, from their closest friends.
+        let mut givers: Vec<(i32, usize)> = (0..self.dwarves.len())
+            .filter(|&k| k != i && k != j)
+            .filter_map(|k| {
+                let d = &self.dwarves[k];
+                let r = d.regard(a).max(d.regard(b));
+                (d.alive && !d.insane && !d.is_child() && r >= 30).then_some((r, k))
+            })
+            .collect();
+        givers.sort_by_key(|&(r, k)| (-r, k));
+        let mut stock: Vec<u32> = self.items.values().filter(|it| it.free() && matches!(it.kind, ItemKind::Craft | ItemKind::Gem | ItemKind::Drink)).map(|it| it.id).collect();
+        let mut gave = Vec::new();
+        for (n, &(_, k)) in givers.iter().take(3).enumerate() {
+            let gift = if stock.is_empty() {
+                pick(h, 10 + n as u64, &["a song of their own making", "a blessing on their hearth", "a promise of ale", "a lucky stone", "a carved spoon"]).to_string()
+            } else {
+                let id = stock.remove((hash("gift", h ^ n as u64) % stock.len() as u64) as usize);
+                let name = self.items[&id].name();
+                let an = if name.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
+                format!("{} {}", an, name)
+            };
+            let giver = self.dwarves[k].called();
+            self.dwarves[k].think("gave a wedding gift", -5, tick);
+            for x in [i, j] {
+                self.dwarves[x].think(&format!("was given a wedding gift by {}", giver), -6, tick);
+            }
+            self.msg(&format!("{} gives the couple {}.", giver, gift), (255, 200, 220));
+            gave.push(first_name(&giver).to_string());
+        }
+        // A rival in love, who wasn't asked.
+        let rival = (0..self.dwarves.len())
+            .filter(|&k| k != i && k != j)
+            .filter_map(|k| {
+                let d = &self.dwarves[k];
+                let unwed = d.spouse.map_or(true, |s| !self.dwarves.iter().any(|o| o.id == s && o.alive));
+                let r = d.regard(a).max(d.regard(b));
+                (d.alive && !d.insane && !d.is_child() && unwed && r as f64 >= self.knob("story.rival_regard", 60.0)).then_some((r, k))
+            })
+            .max_by_key(|&(r, k)| (r, usize::MAX - k))
+            .map(|(_, k)| k);
+        let mut uninvited = None;
+        if let Some(r) = rival.filter(|_| (hash("rival", h) % 100) < 60) {
+            let (loved, other) = if self.dwarves[r].regard(a) >= self.dwarves[r].regard(b) { (i, j) } else { (j, i) };
+            let (rn, ln, on) = (self.dwarves[r].called(), self.dwarves[loved].called(), self.dwarves[other].called());
+            let (rid, oid) = (self.dwarves[r].id, self.dwarves[other].id);
+            self.dwarves[r].think(&format!("watched {} wed another", first_name(&ln)), 30, tick);
+            self.dwarves[r].adjust_regard(oid, -30);
+            self.dwarves[other].adjust_regard(rid, -15);
+            let busy = self.duels.iter().any(|d| [d.a, d.b].contains(&rid) || [d.a, d.b].contains(&oid));
+            let text = if self.dwarves[r].personality.temper > 30 && !busy {
+                let at = (tick / DAY + 1) * DAY + DAY / 10;
+                self.duels.push(super::drama::Duel { a: rid, b: oid, at });
+                format!("{}, who loved {}, bursts in uninvited and challenges {} to a duel at dawn!", rn, first_name(&ln), on)
+            } else {
+                let how = pick(h, 6, &["drinks alone at the back", "weeps through the vows", "glowers from the doorway", "leaves before the toasts"]);
+                format!("{}, who loved {}, turns up uninvited and {}.", rn, first_name(&ln), how)
+            };
+            self.msg(&text, (255, 170, 90));
+            self.gossip(text);
+            uninvited = Some(first_name(&rn).to_string());
+            self.count("stories.rivals", 1);
+        }
+        // The feast.
+        let len = self.knob("story.wedding_len", (DAY / 4) as f64) as u64;
+        if self.festival.is_none() {
+            self.start_festival(super::festivals::FestivalKind::Wedding);
+            if let Some(f) = self.festival.as_mut().filter(|f| f.kind == super::festivals::FestivalKind::Wedding) {
+                f.until = tick + len;
+            }
+        }
+        self.stories.occasion = Some(Occasion { what: format!("the wedding of {} and {}", first_name(&an), first_name(&bn)), who: vec![a, b], wedding: true, until: tick + len });
+        let mut line = format!("{} and {} were wed {}", an, bn, venue);
+        if !gave.is_empty() {
+            line.push_str(&format!("; {} brought gifts", list(&gave)));
+        }
+        if let Some(r) = uninvited {
+            line.push_str(&format!(", and {} came uninvited", r));
+        }
+        line.push('.');
+        self.year_log.stories.push(line);
+        self.count("stories.weddings", 1);
+    }
+
     fn veterans_near(&self, at: Pos, r: i32) -> Vec<u32> {
         self.dwarves.iter().filter(|d| d.alive && (d.soldier || near(d.pos, at, r))).map(|d| d.id).collect()
     }
@@ -470,6 +592,9 @@ impl Game {
     /// same kind of killer).
     pub(super) fn stories_daily(&mut self) {
         let tick = self.tick;
+        if self.stories.occasion.as_ref().map_or(false, |o| tick >= o.until) {
+            self.stories.occasion = None;
+        }
         for text in std::mem::take(&mut self.stories.pending) {
             self.msg(&text, (150, 255, 150));
         }
@@ -709,6 +834,80 @@ mod tests {
         g.families_daily();
         assert!(g.dwarves.iter().any(|d| d.parents == Some((m, f))));
         assert!(g.year_log.stories.is_empty() && g.stories.honoured.is_empty());
+    }
+
+    /// Two friends of age, of opposite sexes, ready to wed; dwarf 2 their
+    /// friend, dwarf 3 in love with the bride.
+    fn sweethearts(g: &mut Game) -> (u32, u32) {
+        for (i, f) in [(0, true), (1, false), (3, false)] {
+            g.dwarves[i].female = Some(f);
+            g.dwarves[i].age = Some(40);
+            g.dwarves[i].spouse = None;
+        }
+        let (a, b) = (g.dwarves[0].id, g.dwarves[1].id);
+        g.dwarves[0].adjust_regard(b, 90);
+        g.dwarves[1].adjust_regard(a, 90);
+        g.dwarves[2].adjust_regard(a, 50);
+        g.dwarves[3].adjust_regard(a, 80);
+        (a, b)
+    }
+
+    #[test]
+    fn a_wedding_has_gifts_a_feast_and_maybe_a_rival() {
+        let mut g = quiet(81);
+        let (a, b) = sweethearts(&mut g);
+        g.spawn_item(ItemKind::Craft, crate::material::Mat::Granite, g.embark);
+        g.wedding(0, 1);
+        assert!(g.log.iter().any(|l| l.text.contains("are wed")), "no ceremony");
+        assert!(g.log.iter().any(|l| l.text.contains("gives the couple")), "no gifts");
+        assert!(g.dwarves[0].thoughts.iter().any(|t| t.text.starts_with("was given a wedding gift")));
+        let f = g.festival.as_ref().expect("a feast");
+        assert_eq!(f.kind, super::super::festivals::FestivalKind::Wedding);
+        assert!(g.year_log.stories.iter().any(|l| l.contains("were wed")), "{:?}", g.year_log.stories);
+        let (who, wedding, what) = g.occasion_sight().expect("the camera has a subject");
+        assert!(wedding && (who == a || who == b) && what.starts_with("the wedding of"));
+        // The rival: turned up or not, as the hash says, the same each time.
+        let came = g.log.iter().any(|l| l.text.contains("uninvited"));
+        let mut g2 = quiet(81);
+        sweethearts(&mut g2);
+        g2.spawn_item(ItemKind::Craft, crate::material::Mat::Granite, g2.embark);
+        g2.wedding(0, 1);
+        assert_eq!(came, g2.log.iter().any(|l| l.text.contains("uninvited")));
+        if came {
+            assert!(g.dwarves[3].thoughts.iter().any(|t| t.text.starts_with("watched")));
+        }
+        // The feast ends, and the camera moves on.
+        for _ in 0..DAY / 4 + 60 {
+            g.step();
+        }
+        assert!(g.festival.is_none(), "the wedding feast should be over");
+        assert!(g.occasion_sight().is_none());
+    }
+
+    #[test]
+    fn a_rival_always_comes_somewhere() {
+        // Over a few couples, some rival turns up uninvited.
+        let mut seen = false;
+        for seed in [81, 82, 83, 84, 85, 86] {
+            let mut g = quiet(seed);
+            sweethearts(&mut g);
+            g.wedding(0, 1);
+            seen |= g.log.iter().any(|l| l.text.contains("uninvited"));
+        }
+        assert!(seen, "no rival in six weddings");
+    }
+
+    #[test]
+    fn friends_who_marry_hold_a_wedding() {
+        let mut g = quiet(81);
+        sweethearts(&mut g);
+        for _ in 0..60 {
+            g.families_daily();
+            if g.stories.occasion.is_some() {
+                break;
+            }
+        }
+        assert!(g.stories.occasion.as_ref().map_or(false, |o| o.wedding), "no wedding");
     }
 
     #[test]

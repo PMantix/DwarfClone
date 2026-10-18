@@ -311,7 +311,7 @@ Goal: the fort runs on its own politics and feelings. Dwarves remember, grieve, 
 
 #### C05 Family sagas (L)
 - **Why:** Births, weddings and deaths should be stories the chronicle can tell.
-- **Steps:** [x] (this commit) Named after heroes ([SOC-01](ideas/society.md)) · [ ] Weddings as events ([SOC-02](ideas/society.md)) · [ ] Orphans adopted ([SOC-13](ideas/society.md)) · [ ] Siblings, grandparents, heirs ([SOC-24](ideas/society.md)) · [ ] Mothers and babies ([SOC-25](ideas/society.md)) · [ ] Sibling rivalry and favourites ([SOC-23](ideas/society.md)) · [ ] Inheritance ([SOC-51](ideas/society.md)) · [ ] Heredity ([SOC-52](ideas/society.md)) · [ ] Coming-of-age rite ([SOC-12](ideas/society.md)) · [ ] Rebellious youth ([SOC-22](ideas/society.md))
+- **Steps:** [x] (this commit) Named after heroes ([SOC-01](ideas/society.md)) · [x] (this commit) Weddings as events ([SOC-02](ideas/society.md)) · [ ] Orphans adopted ([SOC-13](ideas/society.md)) · [ ] Siblings, grandparents, heirs ([SOC-24](ideas/society.md)) · [ ] Mothers and babies ([SOC-25](ideas/society.md)) · [ ] Sibling rivalry and favourites ([SOC-23](ideas/society.md)) · [ ] Inheritance ([SOC-51](ideas/society.md)) · [ ] Heredity ([SOC-52](ideas/society.md)) · [ ] Coming-of-age rite ([SOC-12](ideas/society.md)) · [ ] Rebellious youth ([SOC-22](ideas/society.md))
 - **Done when:** A child named after a fallen hero appears in the chronicle with the reason.
 
 #### C06 The council (L)
