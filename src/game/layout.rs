@@ -366,7 +366,7 @@ impl Game {
             }
             // Only a delver digs halls down into the caverns' reach: the stair
             // would open into them, and what lives there would come up it.
-            if level > 0 && o.style != super::overseer::Style::Delver {
+            if level > 0 && (o.style != super::overseer::Style::Delver || !self.delving_deep()) {
                 let roof = self.world.caverns.iter().map(|c| c.1).max().unwrap_or(0);
                 if z <= roof + 2 {
                     return None;

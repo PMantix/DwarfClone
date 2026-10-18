@@ -666,6 +666,12 @@ impl Game {
         }
     }
 
+    /// Whether a delver may dig into the caverns' reach yet (after its
+    /// first four months).
+    pub(super) fn delving_deep(&self) -> bool {
+        self.tick as f64 >= self.knob("delve.caverns_day", 120.0) * DAY as f64
+    }
+
     /// Sink the exploring shaft another few levels, with a tunnel at the bottom.
     pub(super) fn ov_shaft(&mut self, o: &mut Overseer) {
         let base = o.base.unwrap();
@@ -675,8 +681,12 @@ impl Game {
         let shaft = if self.world.kind(old).map_or(false, |k| matches!(k, TileKind::StairUD | TileKind::StairDown)) { base.offset(-1, 0, 0) } else { base.offset(11, 1, 0) };
         let deep = (1..=base.z).rev().take_while(|&z| self.world.kind(Pos::new(shaft.x, shaft.y, z)).map_or(false, |k| matches!(k, TileKind::StairUD | TileKind::StairDown))).last().unwrap_or(base.z);
         let digging = self.designations.iter().filter(|p| p.x == shaft.x && p.y == shaft.y).count();
-        if deep > 3 && digging == 0 && self.designations.len() < 80 {
-            let to = Pos::new(shaft.x, shaft.y, (deep - 4).max(2));
+        // Not into the caverns' reach in the fort's first months: a shaft
+        // that opens one in the first weeks lets the spiders up before
+        // there is a soldier to meet them.
+        let floor = if self.delving_deep() { 2 } else { self.world.caverns.iter().map(|c| c.1).max().unwrap_or(0) + 2 };
+        if deep > 3 && deep - 1 >= floor && digging == 0 && self.designations.len() < 80 {
+            let to = Pos::new(shaft.x, shaft.y, (deep - 4).max(2).max(floor));
             self.designate(Pos::new(shaft.x, shaft.y, deep), to, Desig::StairUD);
             // Tunnels west and north-south only, well clear of the halls to the east.
             self.designate(to.offset(-14, 0, 0), to, Desig::Dig);
