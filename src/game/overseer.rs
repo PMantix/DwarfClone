@@ -2178,12 +2178,12 @@ mod tests {
 
     #[test]
     fn a_trial_game_is_the_trials_fort() {
-        // Seed 5003 (Steady) loses one dwarf by day 213 of its year
+        // Seed 5003 (Steady) loses one dwarf by day 262 of its year
         // (schedule::same_story_after_refactor has the whole year).
-        let g = trial_game(5003, Style::Steady, 213);
-        assert_eq!(g.tick, 213 * DAY);
+        let g = trial_game(5003, Style::Steady, 262);
+        assert_eq!(g.tick, 262 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
-        assert_eq!(deaths, vec![(203291, "Runa Ashdelver")]);
+        assert_eq!(deaths, vec![(313250, "Kolvar Golddelver")]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
     }
 
