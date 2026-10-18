@@ -128,7 +128,8 @@ impl Game {
 
     /// The burrow bits a dwarf is kept to right now (0 = free to roam).
     pub fn burrow_mask(&self, d: &Dwarf) -> u8 {
-        if self.civ_alert && !d.soldier {
+        // (A rescue is only given out when it's safe to leave: rescue.rs.)
+        if self.civ_alert && !d.soldier && !matches!(d.task, Task::Rescue { .. }) {
             if let Some(bit) = self.alert_burrow {
                 return 1 << bit;
             }

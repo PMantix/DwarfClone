@@ -333,13 +333,11 @@ impl Body {
     }
 
     /// A hand pressed on the wound in `part`.
-    #[allow(dead_code)] // (first aid, S02 P7)
     pub fn press(&mut self, part: Part) {
         self.pressed[part.idx()] = true;
     }
 
     /// The wound in `part` bound up: it bleeds half as fast and clots sooner.
-    #[allow(dead_code)] // (first aid, S02 P7)
     pub fn bandage(&mut self, part: Part) {
         let i = part.idx();
         self.bandaged[i] = true;

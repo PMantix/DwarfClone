@@ -10,7 +10,9 @@ pub(super) type Finder = fn(&mut Game, &mut Dwarf) -> bool;
 /// Every finder, most urgent first.
 pub(super) const FINDERS: &[(&str, Finder)] = &[
     ("punishment", |g, d| g.find_punishment(d)),
+    ("rescue", |g, d| g.find_rescue(d)),
     ("lever", |g, d| g.find_lever_pull(d)),
+    ("first aid", |g, d| g.find_first_aid(d)),
     ("patient", |g, d| d.has(Labor::Medicine) && g.find_patient(d)),
     ("coax", |g, d| g.find_coax(d)),
     ("slaughter", |g, d| d.has(Labor::Butchery) && g.find_slaughter(d)),

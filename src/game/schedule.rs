@@ -89,6 +89,8 @@ impl Game {
     /// before the mind has a say. One line per item.
     pub(super) fn body_phase(&mut self, d: &mut Dwarf) {
         // M1 (survival): pressing a wound, being carried, a berserk fit.
+        self.check_carried(d);
+        self.maybe_press(d);
         self.fit_body(d);
     }
 }
@@ -127,8 +129,10 @@ mod tests {
         );
     }
 
-    /// The tasks the survival items will hand out are in place but do nothing
-    /// yet: a dwarf given one drops it, and they save and load by name.
+    /// The survival items' tasks save and load by name, and a dwarf given one
+    /// with nothing to act on drops it. (FirstAid, Rescue and Press are live
+    /// since P7; here the patient isn't bleeding or down and nobody bleeds,
+    /// so they drop too. The rest do nothing yet.)
     #[test]
     fn the_new_tasks_are_inert() {
         let mut g = Game::new(5);

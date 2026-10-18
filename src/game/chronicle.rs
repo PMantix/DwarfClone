@@ -27,6 +27,9 @@ pub struct YearLog {
     pub undead: bool,
     #[serde(default)]
     pub monument: Option<String>,
+    /// The wounded carried from the field to a bed.
+    #[serde(default)]
+    pub carried: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -132,6 +135,9 @@ impl Game {
         }
         if log.fires > 0 {
             lines.push(format!("Fire broke out {} time{}.", log.fires, if log.fires == 1 { "" } else { "s" }));
+        }
+        if log.carried > 0 {
+            lines.push(if log.carried == 1 { "A wounded dwarf was carried from the field.".to_string() } else { format!("{} dwarves were carried from the field.", log.carried) });
         }
         if log.crimes > 0 {
             lines.push(format!("{} crime{} went on the record.", log.crimes, if log.crimes == 1 { "" } else { "s" }));

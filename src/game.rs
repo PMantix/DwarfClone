@@ -75,6 +75,7 @@ pub mod captives;
 pub mod breakdowns;
 pub mod readiness;
 mod cistern;
+mod rescue;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -436,6 +437,10 @@ pub struct Game {
     /// Patients a doctor is already on the way to.
     #[serde(skip)]
     treating: HashSet<u32>,
+    /// Patients nobody could reach or find a place for, by (patient, carrying
+    /// rather than bandaging): nobody tries again until the tick.
+    #[serde(skip)]
+    care_retry: HashMap<(u32, bool), u64>,
     /// Animals a butcher is already on the way to.
     #[serde(skip)]
     slaughtering: HashSet<u32>,
@@ -592,6 +597,7 @@ impl Game {
             dig_fail: [None, None, None, None],
             haul_retry: 0,
             treating: HashSet::new(),
+            care_retry: HashMap::new(),
             slaughtering: HashSet::new(),
         }
     }
@@ -1325,7 +1331,7 @@ impl Game {
         }
         // What the body does before the mind has a say (schedule.rs).
         self.body_phase(d);
-        if !d.alive {
+        if !d.alive || d.carried_by.is_some() {
             return;
         }
         if self.tick % 200 == 0 {
@@ -1603,6 +1609,7 @@ impl Game {
                     c.worker = None;
                 }
             }
+            Task::FirstAid { .. } | Task::Rescue { .. } => self.release_care(d),
             Task::Harvest { pos } | Task::Gather { pos } => {
                 self.claimed.remove(&pos);
             }
@@ -2325,8 +2332,9 @@ impl Game {
             Task::Bury { item, coffin } => self.do_bury(d, item, coffin),
             Task::Slaughter { creature } => self.do_slaughter(d, creature),
             Task::Punish { culprit } => self.do_punish(d, culprit),
-            // Not given out yet: the items that use them add their own arms.
-            Task::FirstAid { .. } | Task::Rescue { .. } | Task::Press => self.release_task(d),
+            Task::Rescue { patient, bed } => self.do_rescue(d, patient, bed),
+            Task::FirstAid { patient, item } => self.do_first_aid(d, patient, item),
+            Task::Press => self.do_press(d),
             Task::Berserk => self.do_berserk(d),
             // (They lie where they are: breakdowns.rs.)
             Task::Catatonic => {
