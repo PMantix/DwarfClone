@@ -149,10 +149,12 @@ fn bare(sym: &str) -> bool {
 pub(super) fn draw(f: &mut Frame, app: &App, inner: Rect) {
     let g = &app.game;
     let Some(kind) = air(g) else {
-        COST.with(|c| c.set((None, 0.0, c.get().2)));
+        COST.with(|c| c.set((None, 0.0, false)));
         return;
     };
-    let (_, avg, off) = COST.with(|c| c.get());
+    let (prev, avg, off) = COST.with(|c| c.get());
+    // New weather gets a fresh chance.
+    let (avg, off) = if prev == Some(kind) { (avg, off) } else { (0.0, false) };
     if off {
         COST.with(|c| c.set((Some(kind), avg, true)));
         return;
@@ -188,8 +190,15 @@ pub(super) fn draw(f: &mut Frame, app: &App, inner: Rect) {
         cell.set_char(ch).set_fg(rgb(col));
     }
     let ms = t0.elapsed().as_secs_f64() * 1000.0;
-    let avg = if avg == 0.0 { ms } else { avg * 0.9 + ms * 0.1 };
-    COST.with(|c| c.set((Some(kind), avg, avg > BUDGET_MS)));
+    COST.with(|c| c.set(judge((Some(kind), avg, false), ms)));
+}
+
+/// The running cost after a frame that took `ms`: smoothed, so one slow
+/// frame (the first, a hitch) doesn't switch the particles off, but a run
+/// of them does, until the weather changes.
+fn judge(cost: (Option<Air>, f64, bool), ms: f64) -> (Option<Air>, f64, bool) {
+    let avg = cost.1 * 0.9 + ms * 0.1;
+    (cost.0, avg, cost.2 || avg > BUDGET_MS)
 }
 
 /// For the F3 overlay: what's in the air and what it costs.
@@ -249,6 +258,7 @@ mod tests {
         app.mode = Mode::Normal;
         app.game.weather = Weather::Snow;
         app.game.tick = 0;
+        app.paused = false;
         // Keep the old flicker of falling weather off, to see only ours.
         let surface = app.game.world.surface_z(app.cursor.x, app.cursor.y);
         for (w, h) in [(80u16, 24u16), (200, 60)] {
@@ -279,6 +289,27 @@ mod tests {
         assert_eq!(k, Some(Air::Snow));
         assert!(!off && ms < BUDGET_MS, "{} ms", ms);
         assert!(perf_note().starts_with("ambient: snow"));
+    }
+
+    #[test]
+    fn one_slow_frame_is_forgiven_but_a_run_of_them_is_not() {
+        let snow = (Some(Air::Snow), 0.0, false);
+        let after_hitch = judge(snow, 15.0);
+        assert!(!after_hitch.2, "{:?}", after_hitch);
+        let calm = (0..30).fold(after_hitch, |c, _| judge(c, 0.2));
+        assert!(!calm.2 && calm.1 < 1.0);
+        let slow = (0..30).fold(calm, |c, _| judge(c, 5.0));
+        assert!(slow.2, "{:?}", slow);
+        // Off stays off for this weather; drawing with new weather starts over.
+        assert!(judge(slow, 0.0).2);
+        let mut app = App::with_game_for_tests(Game::new(5));
+        app.mode = Mode::Normal;
+        app.game.weather = Weather::Rain;
+        app.cursor.z = app.game.world.surface_z(app.cursor.x, app.cursor.y);
+        COST.with(|c| c.set(slow));
+        map_cells(&mut app, 80, 24);
+        let (k, _, off) = COST.with(|c| c.get());
+        assert_eq!((k, off), (Some(Air::Rain), false));
     }
 
     #[test]

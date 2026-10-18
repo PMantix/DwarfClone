@@ -155,8 +155,8 @@ a beast, a thing or a building) the air moves: rain streaks slanting in the wind
 evil land, snowflakes drifting, leaves falling under the trees in autumn, fireflies blinking at
 summer dusk, dust blowing over dry country. They stand still while the game is paused. They're
 a few hundred points worked out from a clock, well under a millisecond a frame; the F3 overlay
-says what's in the air and what it costs, and they switch themselves off if a frame's worth ever
-costs more than 2 ms (`ui/ambient.rs`).
+says what's in the air and what it costs, and they switch themselves off (until the weather
+changes) if a run of frames costs more than 2 ms each (`ui/ambient.rs`).
 
 **The news ticker.** When the announcements can't be seen (a full-screen page or a side pane is
 over them) or the news comes faster than they show it, the latest notable news of the last two
