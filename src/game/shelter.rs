@@ -3,6 +3,10 @@
 //! bridge) are no part of it: a dwarf who stopped there when the bridge went
 //! up was shut out with the enemy, and a third of those who died "inside
 //! the shelter" died on the gate's doorstep that way.
+//!
+//! The shelter keeps a larder: a stockpile inside it for drink and meals,
+//! filled before the enemy comes and topped up from the stores outside, so
+//! a long siege doesn't end in thirst with the barrels out of reach.
 
 use super::overseer::Overseer;
 use super::*;
@@ -14,7 +18,17 @@ pub struct Shelter {
     /// The civilian alert as it was at the last check, to see it raised.
     #[serde(default)]
     pub was_alert: bool,
+    /// The shelter's larder (a stockpile zone), once it has one.
+    #[serde(default)]
+    pub larder: Option<u32>,
+    /// Drink and meals still wanted in the shelter, and when that was
+    /// counted (the haulers ask often; it's counted now and then).
+    #[serde(skip)]
+    pub want: (u64, u32, u32),
 }
+
+/// What the shelter's larder takes: drink and meals, nothing else.
+const LARDER_DENIES: [ItemKind; 5] = [ItemKind::Plant, ItemKind::Seed, ItemKind::Meat, ItemKind::Fish, ItemKind::Flour];
 
 impl Game {
     /// The shelter's burrow mask, if there is a shelter.
@@ -40,6 +54,7 @@ impl Game {
             return;
         }
         self.gate_out_of_shelter(base);
+        self.ov_larder_in_shelter(o, base);
     }
 
     /// Every ten ticks (`overseer_hooks.rs`): when the alert is raised, the
@@ -68,6 +83,175 @@ impl Game {
         }
         self.burrows[i].tiles = self.burrows[i].tiles.saturating_sub(n);
         n
+    }
+
+    /// Drink, and food a dwarf could eat, lying in the shelter.
+    pub fn shelter_supplies(&self) -> (usize, usize) {
+        let Some(mask) = self.shelter_bits() else { return (0, 0) };
+        let inside = |p: Pos| self.world.get(p).map_or(false, |t| t.burrows & mask != 0);
+        let mut v = (0, 0);
+        for it in self.items.values().filter(|it| it.carried_by.is_none() && !it.forbidden) {
+            if it.kind == ItemKind::Drink && inside(it.pos) {
+                v.0 += 1;
+            } else if it.is_food() && inside(it.pos) {
+                v.1 += 1;
+            }
+        }
+        v
+    }
+
+    /// How much drink and food the shelter should hold for the dwarves
+    /// there are: a siege's worth (a dwarf drinks every four days or so and
+    /// eats about weekly).
+    fn shelter_wants(&self) -> (usize, usize) {
+        let pop = self.alive_count() as f64;
+        ((pop * self.knob("shelter.drink", 4.0)) as usize, (pop * self.knob("shelter.food", 2.0)) as usize)
+    }
+
+    /// The larder's tiles, if it still stands.
+    pub fn larder_tiles(&self) -> Vec<Pos> {
+        self.shelter.larder.and_then(|z| self.zones.get(&z)).map_or(Vec::new(), |z| z.tiles.clone())
+    }
+
+    /// Daily: lay out the larder in the shelter, and count what it wants.
+    fn ov_larder_in_shelter(&mut self, o: &mut Overseer, base: Pos) {
+        if self.shelter.larder.map_or(false, |z| !self.zones.contains_key(&z)) {
+            self.shelter.larder = None;
+        }
+        if self.shelter.larder.is_none() {
+            let Some(tiles) = self.larder_spot(base) else { return };
+            // Carved from a stockpile room's general pile, if it has to be.
+            for &p in &tiles {
+                let z = self.world.t(p).zone;
+                if z != 0 {
+                    self.world.t_mut(p).zone = 0;
+                    if let Some(zone) = self.zones.get_mut(&z) {
+                        zone.tiles.retain(|q| *q != p);
+                    }
+                }
+            }
+            self.zones.retain(|_, z| !z.tiles.is_empty());
+            if self.add_zone_tiles(tiles.clone(), ZoneKind::Stockpile(StockFilter::Food)) == 0 {
+                return;
+            }
+            let id = self.world.t(tiles[0]).zone;
+            if let Some(z) = self.zones.get_mut(&id) {
+                z.deny = LARDER_DENIES.to_vec();
+            }
+            self.shelter.larder = Some(id);
+            self.count("shelter_larders", 1);
+            Self::note_ov(o, self.tick, "Set a larder inside the shelter, so the sheltering can always reach drink and a meal.".into());
+        }
+        let (drink, food) = self.shelter_supplies();
+        let (wd, wf) = self.shelter_wants();
+        self.shelter.want = (self.tick, wd.saturating_sub(drink) as u32, wf.saturating_sub(food) as u32);
+    }
+
+    /// Where the larder goes: a block of three by three floor inside the
+    /// shelter, clear of the gatehouse corridor, as near its inner end as
+    /// can be. Free floor first; else carved from a general stockpile.
+    fn larder_spot(&self, base: Pos) -> Option<Vec<Pos>> {
+        let mask = self.shelter_bits()?;
+        let w = &self.world;
+        let general = |z: u32| self.zones.get(&z).map_or(false, |z| z.kind == ZoneKind::Stockpile(StockFilter::All));
+        // 0: free floor, 1: a general pile's, 2: no good.
+        let grade = |p: Pos| -> u8 {
+            let Some(t) = w.get(p) else { return 2 };
+            if t.burrows & mask == 0 || t.kind != TileKind::Floor || t.building != 0 || t.desig != Desig::None || t.water > 0 || w.outside(p) || Self::gatehouse(base, p) {
+                return 2;
+            }
+            match t.zone {
+                0 => 0,
+                z if general(z) => 1,
+                _ => 2,
+            }
+        };
+        let inner = base.offset(17, 0, 0);
+        let mut best: Option<(i32, Pos)> = None;
+        for (k, t) in w.tiles.iter().enumerate() {
+            if t.burrows & mask == 0 {
+                continue;
+            }
+            let a = w.pos_of(k);
+            let d = (a.x - inner.x).abs() + (a.y - inner.y).abs() + (a.z - inner.z).abs() * 20;
+            if best.map_or(false, |b| d >= b.0) {
+                continue;
+            }
+            let grades: Vec<u8> = box_iter(a, a.offset(2, 2, 0)).map(grade).collect();
+            if grades.iter().any(|&g| g == 2) {
+                continue;
+            }
+            // Free floor beats carving a pile.
+            let score = d + if grades.iter().any(|&g| g == 1) { 60 } else { 0 };
+            if best.map_or(true, |b| score < b.0) {
+                best = Some((score, a));
+            }
+        }
+        best.map(|(_, a)| box_iter(a, a.offset(2, 2, 0)).collect())
+    }
+
+    /// A hauler's job (`finders.rs`): drink or a meal from outside the
+    /// shelter into its larder, while it holds less than it should. Not
+    /// during an alert (nobody may leave the shelter then).
+    pub(super) fn find_larder_haul(&mut self, d: &mut Dwarf) -> bool {
+        if self.civ_alert || self.shelter.larder.is_none() {
+            return false;
+        }
+        // Counted afresh now and then.
+        if self.tick >= self.shelter.want.0 + 200 {
+            let (drink, food) = self.shelter_supplies();
+            let (wd, wf) = self.shelter_wants();
+            self.shelter.want = (self.tick, wd.saturating_sub(drink) as u32, wf.saturating_sub(food) as u32);
+        }
+        let (_, wd, wf) = self.shelter.want;
+        if wd == 0 && wf == 0 {
+            return false;
+        }
+        let Some(mask) = self.shelter_bits() else { return false };
+        let tiles: Vec<Pos> = self.larder_tiles().into_iter().filter(|p| self.world.walkable(*p)).collect();
+        if tiles.is_empty() {
+            return false;
+        }
+        // Where it can go: a barrel there with room, or a bare tile.
+        let mut barrels: HashMap<Pos, u32> = HashMap::new();
+        let mut taken: HashSet<Pos> = HashSet::new();
+        for it in self.items.values().filter(|it| it.carried_by.is_none()) {
+            if tiles.contains(&it.pos) {
+                taken.insert(it.pos);
+                if it.kind == ItemKind::Barrel && it.container.is_none() && self.contents(it.id) < CONTAINER_CAP {
+                    barrels.insert(it.pos, it.id);
+                }
+            }
+        }
+        let bare: HashSet<Pos> = tiles.iter().copied().filter(|p| !taken.contains(p) && !self.reserved.contains(p)).collect();
+        if barrels.is_empty() && bare.is_empty() {
+            return false;
+        }
+        let w = &self.world;
+        let outside_shelter = |p: Pos| w.get(p).map_or(false, |t| t.burrows & mask == 0);
+        let wanted = |it: &Item| outside_shelter(it.pos) && !it.dump && !it.to_depot && ((wd > 0 && it.kind == ItemKind::Drink) || (wf > 0 && it.kind == ItemKind::Meal));
+        let Some((item, path)) = self.find_item(d.pos, wanted) else {
+            // Nothing to fetch: ask again tomorrow.
+            self.shelter.want = (self.tick + DAY, 0, 0);
+            return false;
+        };
+        let ipos = self.items[&item].pos;
+        let Some((dest, _)) = path::search(&self.world, ipos, SEARCH_LIMIT, Mover::Dwarf, |p| barrels.contains_key(&p) || bare.contains(&p)) else {
+            return false;
+        };
+        let into = barrels.get(&dest).copied();
+        if into.is_none() {
+            self.reserved.insert(dest);
+        }
+        if self.items[&item].kind == ItemKind::Drink {
+            self.shelter.want.1 = wd.saturating_sub(1);
+        } else {
+            self.shelter.want.2 = wf.saturating_sub(1);
+        }
+        self.claim_item(item, d.id);
+        d.task = Task::Haul { item, dest, into };
+        Self::set_path(d, path);
+        true
     }
 }
 
@@ -116,6 +300,60 @@ mod tests {
         let d = &g.dwarves[di];
         assert!(g.in_shelter(d.pos), "{} never got into the shelter: {:?}", d.name, d.pos);
         assert!(!Game::gate_tiles(base).any(|p| p == d.pos), "{} stopped on the gate at {:?}", d.name, d.pos);
+    }
+
+    /// A long siege doesn't end in thirst while there's drink: with every
+    /// drink outside the shelter, the overseer sets a larder in it and the
+    /// haulers fill it, and the sheltering drink from it all through a
+    /// siege of ten days.
+    #[test]
+    fn a_long_siege_does_not_end_in_thirst() {
+        let (mut g, mut o) = sheltered_fort();
+        g.creatures.retain(|_, c| !c.hostile());
+        let pop = g.alive_count();
+        // Every drink out by the wagon, under the sky, and plenty of it.
+        let e = g.embark;
+        let spot = (0..40).map(|i| e.offset(i % 5, -2 - i / 5, 0)).map(|p| Pos::new(p.x, p.y, g.world.surface_z(p.x, p.y))).find(|p| g.world.walkable(*p) && g.world.outside(*p)).expect("ground by the wagon");
+        let proto = g.items.values().find(|it| it.kind == ItemKind::Drink).cloned().expect("some drink");
+        let drinks: Vec<u32> = g.items.values().filter(|it| it.kind == ItemKind::Drink).map(|it| it.id).collect();
+        for id in &drinks {
+            g.items.remove(id);
+        }
+        for _ in 0..pop * 6 {
+            let id = g.new_id();
+            let mut it = proto.clone();
+            it.id = id;
+            it.pos = spot;
+            it.container = None;
+            it.claimed_by = None;
+            it.carried_by = None;
+            g.items.insert(id, it);
+        }
+        assert_eq!(g.shelter_supplies().0, 0);
+        // The overseer's day: a larder, and haulers to fill it.
+        g.ov_shelter(&mut o);
+        assert!(!g.larder_tiles().is_empty(), "no larder in the shelter");
+        assert!(g.larder_tiles().iter().all(|p| g.in_shelter(*p)));
+        for _ in 0..DAY * 3 {
+            g.step();
+        }
+        let (drink, _) = g.shelter_supplies();
+        assert!(drink >= pop * 3, "only {} drinks in the shelter for {} dwarves", drink, pop);
+        // Ten days shut in.
+        assert_eq!(g.toggle_civ_alert(), Ok(true));
+        let dead = g.annals.deaths.len();
+        let mut worst = 0;
+        for _ in 0..DAY * 10 {
+            g.step();
+            if g.tick % 100 == 0 {
+                worst = worst.max(g.dwarves.iter().filter(|d| d.alive && !d.soldier && !d.insane).map(|d| d.thirst).max().unwrap_or(0));
+            }
+        }
+        assert!(g.civ_alert);
+        let thirsty: Vec<&String> = g.annals.deaths[dead..].iter().filter(|d| d.cause == "thirst" || d.cause == "starvation").map(|d| &d.name).collect();
+        assert!(thirsty.is_empty(), "died of thirst or hunger in the shelter: {:?}", thirsty);
+        assert!(worst <= THIRSTY + 3000, "a sheltering dwarf went thirsty: {}", worst);
+        assert!(g.shelter_supplies().0 < drink, "nobody drank from the shelter's stores");
     }
 
     /// Where the drink and food lie in a grown fort: SEED, STYLE, DAYS.

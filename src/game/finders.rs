@@ -25,6 +25,8 @@ pub(super) const FINDERS: &[(&str, Finder)] = &[
     ("chop", |g, d| d.has(Labor::Woodcutting) && !g.outdoors_banned() && g.find_dig(d, true)),
     ("farm", |g, d| d.has(Labor::Farming) && (g.find_farm(d) || !g.outdoors_banned() && g.find_gather(d))),
     ("fish", |g, d| d.has(Labor::Fishing) && !g.outdoors_banned() && g.find_fishing(d)),
+    // Drink and meals into the shelter's larder (shelter.rs).
+    ("larder", |g, d| d.has(Labor::Hauling) && !d.specialist && g.find_larder_haul(d)),
     // Specialists don't haul; the depot and the dump come before the stockpiles.
     ("haul", |g, d| d.has(Labor::Hauling) && !d.specialist && (g.find_depot_haul(d) || g.find_dump_haul(d) || g.find_haul(d) || g.find_clean(d))),
 ];
