@@ -114,7 +114,8 @@ ruin; that's the fun of it.
 the camera tours the fort like a screensaver: to a fight (staying with the fighter until it
 ends), a siege and the gate it comes for, a beast of legend or a monster near the walls, a
 berserk dwarf, a rescue or first aid, a strange mood, migrants or a caravan arriving, a
-workshop or wall going up, a festival, the tavern, and in quiet times dwarves at the forge, the
+workshop or wall going up, a wedding (the couple) or a victory feast (the fighters), a
+festival, the tavern, and in quiet times dwarves at the forge, the
 mining face or the fields, or a wolf pack among the trees. It pans to a subject nearby and cuts
 to one far off or on another level, stays about nine seconds on each calm one, doesn't show the
 same thing twice running, and says what it's watching above the map. A fight cuts in on
@@ -649,6 +650,20 @@ gathers in the meeting hall or tavern (else a dining hall, else by the wagon), d
 from the stores and challenges each other at arm-wrestling (the stronger arm usually wins);
 the dwarf who downs the most mugs wins the drinking contest. Everyone who came remembers it
 fondly and has made merry. The top bar shows a festival while it lasts.
+
+**Stories with names.** A siege with blood spilt, a run of deaths to one kind of beast, or a
+great hunt gets a name once it's over, from where it broke and how it went ("the Battle of
+Copper Gate", "the Wolf Winter", "the Night of Red Knives"): it's announced, gets a spotlight
+card, a legend, a chronicle line and can name the year. The place where it broke is named for
+the deed done there ("Kolvar's Stand", "the Weeping Gate"); look shows the name, the deed and
+the year, and later fights there are named after it. A newborn may be named for one of the
+fallen the parents held dear, with the reason in the chronicle. Friends who marry are wed
+before the fort (in the temple, the great hall or under the sky), their closest friends bring
+gifts, a wedding feast follows, and a rival in love may turn up uninvited, to weep at the back
+or challenge the groom to a duel at dawn. When a siege is broken, the overseer calls a victory
+feast in its own voice ("We held. We always hold."), the whole fort cheers, and the dead are
+toasted by name. Names and chances come from a hash of the fort and the moment, never the
+game's dice (`stories.rs`).
 
 **Winter.** Except in deserts, swamps and by the sea, winter freezes the water under the
 open sky: ice holds still, can be walked across (by wildlife too) and can't be fished, but

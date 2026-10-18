@@ -60,5 +60,9 @@ impl Game {
         self.captives_after_siege(i);
         self.learn_from_siege(i);
         self.shelter_after_siege(i);
+        // Stories: the fight gets a name.
+        self.name_siege(i);
+        // ...and a broken one a victory feast.
+        self.victory_feast(i);
     }
 }

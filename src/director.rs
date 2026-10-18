@@ -53,6 +53,10 @@ pub enum Kind {
     Wildlife,
     /// Nothing else at all: someone going about their day.
     Idle,
+    /// A wedding and its feast (`stories.rs`).
+    Wedding,
+    /// The feast after a broken siege.
+    Feast,
 }
 
 impl Kind {
@@ -82,6 +86,8 @@ impl Kind {
             Kind::Hall => 28,
             Kind::Wildlife => 15,
             Kind::Idle => 5,
+            Kind::Wedding => 50,
+            Kind::Feast => 50,
         }
     }
 }
@@ -432,7 +438,10 @@ pub fn candidates(g: &Game) -> Vec<Subject> {
     }
 
     // Good times: a festival, the tavern.
-    if let Some(f) = &g.festival {
+    if let Some((id, wedding, what)) = g.occasion_sight() {
+        v.push(Subject { who: Who::Dwarf(id), kind: if wedding { Kind::Wedding } else { Kind::Feast }, what });
+    }
+    if let Some(f) = g.festival.as_ref().filter(|_| g.occasion_sight().is_none()) {
         let who = f.attended.iter().find(|id| g.dwarves.iter().any(|d| d.id == **id && d.alive)).map(|id| Who::Dwarf(*id)).or(f.venue.first().map(|p| Who::Spot(*p)));
         if let Some(who) = who {
             v.push(Subject { who, kind: Kind::Festival, what: format!("the {}", f.kind.name()) });

@@ -252,7 +252,7 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
   quarter and rebuilding in maturity.rs) · [ ] the atrium
   and the hub get statues and the monument · [ ] halls are named after heroes and events
   ("the Hall of the Unbeaten") and the names show in the look panel and the chronicle
-- **From the Bay 12 review:** [ ] Trophies of war ([CRF-01](ideas/economy.md)) · [ ] Named weapons ([CRF-02](ideas/economy.md)) · [ ] Inscriptions and maker's marks ([CRF-06](ideas/economy.md)) · [ ] Name creator ([CRF-08](ideas/economy.md)) · [ ] Jeweler and decorations ([CRF-13](ideas/economy.md)) · [ ] Gems in engravings, engraved built walls ([CRF-12](ideas/economy.md)) · [ ] Statues and figurines of things ([CRF-21](ideas/economy.md)) · [ ] Places named for what happened there ([WLD-02](ideas/world-and-overseer.md))
+- **From the Bay 12 review:** [ ] Trophies of war ([CRF-01](ideas/economy.md)) · [ ] Named weapons ([CRF-02](ideas/economy.md)) · [ ] Inscriptions and maker's marks ([CRF-06](ideas/economy.md)) · [ ] Name creator ([CRF-08](ideas/economy.md)) · [ ] Jeweler and decorations ([CRF-13](ideas/economy.md)) · [ ] Gems in engravings, engraved built walls ([CRF-12](ideas/economy.md)) · [ ] Statues and figurines of things ([CRF-21](ideas/economy.md)) · [x] (this commit) Places named for what happened there ([WLD-02](ideas/world-and-overseer.md))
 - **Done when:** a three-year fort has smoothed main halls, furnished bedrooms and named halls.
 
 #### O04 Defences in the plan (M)
@@ -288,7 +288,7 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O09 Legends worth telling (M)
 - **Why:** The fort's history should read like a saga in the overseer's voice: named battles, named places, remembered battlefields.
-- **Steps:** [ ] Named episodes and battles ([WLD-01](ideas/world-and-overseer.md)) · [ ] Old battlefields remembered ([WLD-12](ideas/world-and-overseer.md)) · [ ] Ages named by the world ([WLD-13](ideas/world-and-overseer.md)) · [ ] Legends that drift ([WLD-09](ideas/world-and-overseer.md)) · [ ] Forgotten lore ([WLD-18](ideas/world-and-overseer.md))
+- **Steps:** [x] (this commit) Named episodes and battles ([WLD-01](ideas/world-and-overseer.md)) · [ ] Old battlefields remembered ([WLD-12](ideas/world-and-overseer.md)) · [ ] Ages named by the world ([WLD-13](ideas/world-and-overseer.md)) · [ ] Legends that drift ([WLD-09](ideas/world-and-overseer.md)) · [ ] Forgotten lore ([WLD-18](ideas/world-and-overseer.md))
 - **Done when:** A siege goes into the chronicle under a name, and the place it broke is named after it.
 
 #### O10 A miner's craft (M)
@@ -332,7 +332,7 @@ Goal: the fort runs on its own politics and feelings. Dwarves remember, grieve, 
 
 #### C05 Family sagas (L)
 - **Why:** Births, weddings and deaths should be stories the chronicle can tell.
-- **Steps:** [ ] Named after heroes ([SOC-01](ideas/society.md)) · [ ] Weddings as events ([SOC-02](ideas/society.md)) · [ ] Orphans adopted ([SOC-13](ideas/society.md)) · [ ] Siblings, grandparents, heirs ([SOC-24](ideas/society.md)) · [ ] Mothers and babies ([SOC-25](ideas/society.md)) · [ ] Sibling rivalry and favourites ([SOC-23](ideas/society.md)) · [ ] Inheritance ([SOC-51](ideas/society.md)) · [ ] Heredity ([SOC-52](ideas/society.md)) · [ ] Coming-of-age rite ([SOC-12](ideas/society.md)) · [ ] Rebellious youth ([SOC-22](ideas/society.md))
+- **Steps:** [x] (this commit) Named after heroes ([SOC-01](ideas/society.md)) · [x] (this commit) Weddings as events ([SOC-02](ideas/society.md)) · [ ] Orphans adopted ([SOC-13](ideas/society.md)) · [ ] Siblings, grandparents, heirs ([SOC-24](ideas/society.md)) · [ ] Mothers and babies ([SOC-25](ideas/society.md)) · [ ] Sibling rivalry and favourites ([SOC-23](ideas/society.md)) · [ ] Inheritance ([SOC-51](ideas/society.md)) · [ ] Heredity ([SOC-52](ideas/society.md)) · [ ] Coming-of-age rite ([SOC-12](ideas/society.md)) · [ ] Rebellious youth ([SOC-22](ideas/society.md))
 - **Done when:** A child named after a fallen hero appears in the chronicle with the reason.
 
 #### C06 The council (L)
@@ -464,7 +464,7 @@ Goal: sieges are never the same twice. Invaders adapt and the fort adapts back; 
 
 #### A01 Sieges with surprises (M)
 - **Why:** Sieges come on the first day of a season and play out alike; they should vary, and the fort should answer each one.
-- **Steps:** [ ] Unpredictable arrival ([SIE-02](ideas/war.md)) · [ ] Ambush vs open siege ([SIE-42](ideas/war.md)) · [ ] Freeing the caged ([SIE-04](ideas/war.md)) · [ ] Victory cheer and feast ([SIE-03](ideas/war.md)) · [ ] Traps jammed with bodies ([SIE-19](ideas/war.md)) · [ ] Drowning the invaders ([SIE-20](ideas/war.md))
+- **Steps:** [ ] Unpredictable arrival ([SIE-02](ideas/war.md)) · [ ] Ambush vs open siege ([SIE-42](ideas/war.md)) · [ ] Freeing the caged ([SIE-04](ideas/war.md)) · [x] (this commit) Victory cheer and feast ([SIE-03](ideas/war.md)) · [ ] Traps jammed with bodies ([SIE-19](ideas/war.md)) · [ ] Drowning the invaders ([SIE-20](ideas/war.md))
 - **Done when:** Sieges arrive at varied times and from varied edges, and a broken siege lifts the fort's mood.
 
 #### A02 Blood and nerve (L)

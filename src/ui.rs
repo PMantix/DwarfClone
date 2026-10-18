@@ -828,6 +828,9 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
     if let Some(work) = g.work_at(p) {
         v.push(plain(format!("Part of {}", work), Color::Rgb(200, 200, 140)));
     }
+    if let Some(place) = g.story_place_at(p) {
+        v.push(plain(place, Color::Rgb(230, 200, 150)));
+    }
     if t.water > 0 {
         let what = if t.frozen { "Ice" } else { "Water" };
         v.push(plain(format!("{} {}/7", what, t.water), Color::Rgb(90, 160, 255)));
@@ -3564,6 +3567,7 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
     if t.revealed {
         keep += 1;
         keep += g.work_at(p).is_some() as usize;
+        keep += g.story_place_at(p).is_some() as usize;
         keep += (t.water > 0) as usize;
         keep += (t.magma > 0) as usize;
         keep += t.aquifer as usize;
