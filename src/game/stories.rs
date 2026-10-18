@@ -6,7 +6,9 @@
 //! Stand", "the Weeping Gate"), shown on look and in the legends.
 //! Children are named for the fallen (SOC-01), with the reason in the
 //! chronicle. Friends who marry are wed before the fort with a feast and
-//! gifts, and a jealous rival may turn up (SOC-02).
+//! gifts, and a jealous rival may turn up (SOC-02). A broken siege ends in
+//! a victory feast the overseer calls in its own voice, with the dead of
+//! the siege toasted by name (SIE-03).
 //!
 //! Names come from a hash of the fort and the moment, never the game's
 //! RNG, so naming things changes nothing else that happens.
@@ -171,6 +173,22 @@ fn list(names: &[String]) -> String {
         1 => names[0].clone(),
         n => format!("{} and {}", names[..n - 1].join(", "), names[n - 1]),
     }
+}
+
+/// What an overseer of trait `t` says calling a victory feast.
+fn feast_words(t: super::personality::Trait, h: u64, fort: &str) -> String {
+    use super::personality::Trait::*;
+    let pool: &[&str] = match t {
+        Cautious => &["Drink, but keep one eye on the hills.", "Eat well tonight; we mend the walls tomorrow."],
+        Bold => &["Let them come again, and we'll break them again!", "Ale for every blade that stood!"],
+        Vain => &["Let every caravan hear how {fort} stood!", "Bring out the fine mugs. They'll sing of this."],
+        Pious => &["The gods stood with us. Drink to them, and to our dead.", "A blessing on the hall, and on the fallen."],
+        Greedy => &["Open the good casks. Just this once.", "Eat, drink: it cost us dear enough."],
+        Sentimental => &["Drink to those who aren't here to drink with us.", "Hold each other close tonight."],
+        Stubborn => &["We held. We always hold.", "They broke on {fort}, as they always will."],
+        Cheerful => &["Out with the ale! Tonight we dance!", "Music! Food! We're alive!"],
+    };
+    pick(h, 2, pool).replace("{fort}", fort)
 }
 
 fn near(a: Pos, b: Pos, r: i32) -> bool {
@@ -511,6 +529,99 @@ impl Game {
         line.push('.');
         self.year_log.stories.push(line);
         self.count("stories.weddings", 1);
+    }
+
+    /// A siege has been broken (`on_siege_end`, after `name_siege`): the
+    /// overseer calls a victory feast in its own voice, the whole fort
+    /// cheers, and the dead of the siege are toasted by name.
+    pub(super) fn victory_feast(&mut self, i: usize) {
+        let Some(s) = self.annals.sieges.get(i).cloned() else { return };
+        let fought = s.foes_slain + s.foes_caught > 0 || s.outcome == "routed";
+        if s.outcome == "the fortress fell" || !fought || self.alive_count() < 2 {
+            return;
+        }
+        let tick = self.tick;
+        let h = hash(&self.fortress_name, s.tick ^ ((i as u64) << 24) ^ 0xfea57);
+        let fort = self.fortress_name.clone();
+        let battle = self.stories.episodes.iter().rev().find(|e| e.siege == Some(i)).map(|e| e.name.clone());
+        let what = match &battle {
+            Some(b) => format!("the victory feast after {}", b),
+            None => "the victory feast".to_string(),
+        };
+        // Called by the overseer, in its voice; or by the fort itself.
+        let caller = self.overseer.as_ref().map(|o| (o.name.clone(), o.traits.first().copied()));
+        let words = match caller.as_ref().and_then(|c| c.1) {
+            Some(t) => feast_words(t, h, &fort),
+            None => pick(h, 1, &["Drink! The day is ours!", "Tap the casks: we held!", "Ale for everyone who stood!"]).to_string(),
+        };
+        let call = match &caller {
+            Some((name, _)) if !name.is_empty() => format!("The siege is broken! {} calls a victory feast: \"{}\"", name, words),
+            _ => format!("The siege is broken! A victory feast: \"{}\"", words),
+        };
+        self.msg(&call, (255, 215, 60));
+        // Fort-wide cheer.
+        for d in self.dwarves.iter_mut().filter(|d| d.alive && !d.insane) {
+            d.think("cheered the breaking of the siege", -10, tick);
+        }
+        // Toasts to the dead, by name, from whoever held them dearest.
+        let dead: Vec<String> = self.annals.deaths.iter().filter(|n| n.siege == Some(i)).map(|n| n.name.clone()).collect();
+        let most = self.knob("story.toasts", 4.0) as usize;
+        let mut toasted = Vec::new();
+        for (n, name) in dead.iter().enumerate().take(most) {
+            let fallen = self.dwarves.iter().find(|d| &d.name == name).map(|d| (d.id, d.called()));
+            let called = fallen.as_ref().map_or(name.clone(), |f| f.1.clone());
+            let toaster = fallen.and_then(|(id, _)| {
+                self.dwarves
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, d)| d.alive && !d.insane && !d.is_child() && d.regard(id) > 0)
+                    .max_by_key(|(k, d)| (d.regard(id), usize::MAX - k))
+                    .map(|(k, _)| k)
+            });
+            let line = match toaster {
+                Some(k) => {
+                    let tn = self.dwarves[k].called();
+                    self.dwarves[k].think(&format!("drank to {}", first_name(&called)), -4, tick);
+                    let how = pick(h, 20 + n as u64, &["raises a mug to", "drinks to", "stands and toasts", "pours out a measure for"]);
+                    format!("{} {} {}.", tn, how, called)
+                }
+                None => format!("The hall drinks to {}.", called),
+            };
+            self.msg(&line, (255, 200, 140));
+            toasted.push(first_name(&called).to_string());
+        }
+        if dead.len() > most {
+            self.msg(&format!("...and to {} more who fell.", number(dead.len() - most)), (255, 200, 140));
+        }
+        // The feast itself.
+        let len = self.knob("story.feast_len", (DAY / 4) as f64) as u64;
+        if self.festival.is_none() {
+            self.start_festival(super::festivals::FestivalKind::Victory);
+            if let Some(f) = self.festival.as_mut().filter(|f| f.kind == super::festivals::FestivalKind::Victory) {
+                f.until = tick + len;
+            }
+        }
+        // The camera watches the fighters, those who slew most first.
+        let mut fighters: Vec<(u32, u32)> = self.dwarves.iter().filter(|d| d.alive && (d.soldier || d.kills > 0)).map(|d| (d.kills, d.id)).collect();
+        fighters.sort_by_key(|&(k, id)| (u32::MAX - k, id));
+        let mut who: Vec<u32> = fighters.into_iter().map(|w| w.1).collect();
+        let rest: Vec<u32> = self.dwarves.iter().filter(|d| d.alive && !who.contains(&d.id)).map(|d| d.id).take(3).collect();
+        who.extend(rest);
+        self.stories.occasion = Some(Occasion { what: what.clone(), who, wedding: false, until: tick + len });
+        // The chronicle and the legends.
+        let host = caller.as_ref().map(|c| c.0.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| fort.clone());
+        let mut line = format!("{} called {}", host, what);
+        if !toasted.is_empty() {
+            line.push_str(&format!(", and the fort drank to {}", list(&toasted)));
+        }
+        line.push('.');
+        self.legend(line.clone());
+        self.year_log.stories.push(line);
+        if let Some(mut o) = self.overseer.take() {
+            Self::note_ov(&mut o, tick, format!("Called {}.", what));
+            self.overseer = Some(o);
+        }
+        self.count("stories.feasts", 1);
     }
 
     fn veterans_near(&self, at: Pos, r: i32) -> Vec<u32> {
@@ -916,5 +1027,56 @@ mod tests {
         let p = g.open_patch(5, 5, 6).offset(2, 2, 0);
         assert_eq!(g.place_noun(p), "Field");
         assert!(g.place_words(p, 3).ends_with(" Field"));
+    }
+
+    #[test]
+    fn a_broken_siege_ends_in_a_victory_feast_with_toasts() {
+        let mut g = quiet(31);
+        g.set_overseer(Some(crate::game::Style::Steady));
+        let name = g.overseer.as_ref().unwrap().name.clone();
+        let fallen = g.dwarves[1].called();
+        fought_siege(&mut g, 1, 4);
+        let call = g.log.iter().find(|l| l.text.contains("calls a victory feast")).expect("no feast called");
+        assert!(call.text.contains(&name), "{}", call.text);
+        // Toasted by name.
+        assert!(g.log.iter().any(|l| l.text.contains(&format!("{}.", fallen)) && !l.text.contains("It will be")), "no toast to {}", fallen);
+        // The fort cheers.
+        assert!(g.dwarves.iter().filter(|d| d.alive).all(|d| d.thoughts.iter().any(|t| t.text == "cheered the breaking of the siege")));
+        let f = g.festival.as_ref().expect("a feast");
+        assert_eq!(f.kind, super::super::festivals::FestivalKind::Victory);
+        // In the chronicle, the legends and the overseer's notes, after the battle's name.
+        let battle = g.stories.episodes.last().unwrap().name.clone();
+        let line = g.year_log.stories.iter().find(|l| l.contains("victory feast")).expect("chronicle").clone();
+        assert!(line.contains(&battle) && line.contains(first_name(&fallen)), "{}", line);
+        assert!(g.overworld.events.iter().any(|e| e.text.contains("victory feast")), "not in the legends");
+        assert!(g.overseer.as_ref().unwrap().notes.iter().any(|n| n.1.contains("victory feast")));
+        // The camera watches a fighter.
+        let (who, wedding, what) = g.occasion_sight().expect("a subject");
+        assert!(!wedding && what.starts_with("the victory feast") && who == g.dwarves[0].id, "{} {}", who, what);
+        assert_eq!(g.annals.counters.get("stories.feasts"), Some(&1));
+    }
+
+    #[test]
+    fn no_feast_when_nobody_was_beaten() {
+        let mut g = quiet(5);
+        let n = g.neighbors.first().cloned().unwrap();
+        g.lay_siege_of(&n, 3, None);
+        let ids: Vec<u32> = g.creatures.values().filter(|c| c.siege).map(|c| c.id).collect();
+        for id in ids {
+            g.creatures.remove(&id);
+        }
+        g.annals_tick();
+        assert!(!g.log.iter().any(|l| l.text.contains("victory feast")));
+        assert!(g.stories.occasion.is_none());
+    }
+
+    #[test]
+    fn every_temper_has_feast_words() {
+        for t in crate::game::personality::Trait::ALL {
+            for h in 0..6 {
+                let w = feast_words(t, h, "Boatmurdered");
+                assert!(!w.is_empty() && !w.contains('{'), "{}", w);
+            }
+        }
     }
 }

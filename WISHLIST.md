@@ -443,7 +443,7 @@ Goal: sieges are never the same twice. Invaders adapt and the fort adapts back; 
 
 #### A01 Sieges with surprises (M)
 - **Why:** Sieges come on the first day of a season and play out alike; they should vary, and the fort should answer each one.
-- **Steps:** [ ] Unpredictable arrival ([SIE-02](ideas/war.md)) · [ ] Ambush vs open siege ([SIE-42](ideas/war.md)) · [ ] Freeing the caged ([SIE-04](ideas/war.md)) · [ ] Victory cheer and feast ([SIE-03](ideas/war.md)) · [ ] Traps jammed with bodies ([SIE-19](ideas/war.md)) · [ ] Drowning the invaders ([SIE-20](ideas/war.md))
+- **Steps:** [ ] Unpredictable arrival ([SIE-02](ideas/war.md)) · [ ] Ambush vs open siege ([SIE-42](ideas/war.md)) · [ ] Freeing the caged ([SIE-04](ideas/war.md)) · [x] (this commit) Victory cheer and feast ([SIE-03](ideas/war.md)) · [ ] Traps jammed with bodies ([SIE-19](ideas/war.md)) · [ ] Drowning the invaders ([SIE-20](ideas/war.md))
 - **Done when:** Sieges arrive at varied times and from varied edges, and a broken siege lifts the fort's mood.
 
 #### A02 Blood and nerve (L)
