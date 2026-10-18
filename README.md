@@ -129,6 +129,17 @@ narrow (80 columns) the faces are counted instead ("☺9 ☹2 ☠1"), and a clic
 the worst of them. The overseer looks down the same row once a season and notes it when a third
 of the faces are long, or the season has taken two or more (`game/moods.rs`, `ui/moodstrip.rs`).
 
+**Highlights.** The game films its big moments as they happen: every big-moment card (a siege, a
+dragon or a beast, something from the deep, a hero falling, an artifact, a monument, a cave-in...),
+every death and every wedding. Each clip is the ground around the moment (60×16 tiles, with its
+buildings, things lying about and blood) and three seconds of who moves where, with a caption.
+`h` opens the reel and plays them back (↑↓ picks one, Enter plays it again, `c` goes there); the
+fallen fort's page offers it too. A siege's clip is named when the siege ends ("The Battle of the
+Red Mud: the goblins routed, 9 slain, one dwarf lost"), and the first siege says so. At the turn
+of each year the overseer picks the moment of the year (★ on the reel, and a line in its notes).
+The reel keeps its 24 weightiest clips and is saved with the game (a few hundred KB at most);
+filming draws no dice, so it never changes what happens (`game/reel.rs`, `ui/highlights.rs`).
+
 Use Windows Terminal (or any truecolor + Unicode terminal) at 130x40 or larger.
 Press `?` in game for keys.
 
@@ -722,3 +733,4 @@ cargo test --release profile_year -- --ignored --nocapture
 | `path.rs` | A* and nearest-goal Dijkstra search |
 | `app.rs`, `ui.rs` | input modes and rendering |
 | `game/moods.rs`, `ui/moodstrip.rs` | the mood strip in the top bar |
+| `game/reel.rs`, `ui/highlights.rs` | the highlight reel: filming big moments, playing them back |

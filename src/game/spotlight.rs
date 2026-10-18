@@ -17,6 +17,8 @@ pub struct Spotlight {
 impl Game {
     /// Stop and look: something that matters has happened.
     pub(super) fn spotlight(&mut self, title: &str, text: &str, at: Option<Pos>, color: (u8, u8, u8)) {
+        // Every big moment goes on the highlight reel (reel.rs).
+        self.film(title, text, at);
         // A flurry of the same kind (a dozen undead rising) is one moment.
         if self.spotlights.iter().any(|s| s.title == title) {
             return;

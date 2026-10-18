@@ -91,6 +91,7 @@ mod larder;
 pub mod fortify;
 mod towers;
 pub mod moods;
+pub mod reel;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -460,6 +461,9 @@ pub struct Game {
     /// Blood, smoke and the last battlefield (`gore.rs`).
     #[serde(default)]
     pub gore: gore::Gore,
+    /// The highlight reel: the big moments, filmed (`reel.rs`).
+    #[serde(default)]
+    pub reel: reel::Reel,
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
@@ -580,6 +584,7 @@ impl Game {
             reach_cache: Default::default(),
             flames: Vec::new(),
             gore: Default::default(),
+            reel: Default::default(),
             festival: None,
             year_log: YearLog::default(),
             vault: None,

@@ -60,6 +60,8 @@ impl Game {
             self.shift_daily();
         }
         if tick % SEASON == 0 { self.season_turns(); }
+        // Interface flair: the highlight reel films its next frame.
+        if tick % reel::FRAME_TICKS == 1 { self.reel_tick(); }
     }
 
     /// The turn of a season: news, a new year, migrants, and whatever the

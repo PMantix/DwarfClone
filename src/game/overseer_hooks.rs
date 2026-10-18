@@ -24,6 +24,7 @@ impl Game {
         self.ov_fortify(o);
         // Interface flair: the row of faces.
         self.ov_mood_strip(o);
+        self.ov_reel(o);
         let _ = o;
     }
 
@@ -59,5 +60,7 @@ impl Game {
         // M1 (survival):
         self.captives_after_siege(i);
         self.learn_from_siege(i);
+        // Interface flair: the battle gets its name on the reel.
+        self.reel_siege_end(i);
     }
 }

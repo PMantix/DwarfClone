@@ -16,6 +16,7 @@ use ratatui::Frame;
 use std::collections::{HashMap, HashSet};
 
 mod health;
+mod highlights;
 mod moodstrip;
 
 const SIDEBAR_W: u16 = 38;
@@ -215,7 +216,7 @@ fn foliage(w: &World, p: Pos, year_frac: f32, cold: bool) -> Option<(char, Color
 }
 
 /// Appearance of a bare tile (no units, items or buildings).
-fn tile_look(w: &World, p: Pos) -> (char, Color, Color) {
+pub(crate) fn tile_look(w: &World, p: Pos) -> (char, Color, Color) {
     let t = w.t(p);
     if !t.revealed {
         return (' ', BLACK, BLACK);
@@ -1007,7 +1008,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
     let mut v: Vec<Line> = Vec::new();
     let title;
     match &app.mode {
-        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GrowMap { .. } | Mode::GameOver => {
+        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GrowMap { .. } | Mode::GameOver | Mode::Highlights { .. } => {
             title = "Main".to_string();
             v.extend(stocks(g));
             v.push(Line::default());
@@ -1916,6 +1917,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("n", "nobles, mandates, bedrooms, wealth"),
         k("c", "the chronicle: each year told as a story"),
         k("r", "reports: every past announcement, filtered"),
+        k("h", "highlights: the fort's big moments, replayed"),
         k("F3", "performance: frames per second, and where the time goes"),
         k("\\", "status, brain, reports, chronicle, legends: side pane or full screen"),
         k("M", "grow the map north, east, south or west"),
@@ -3119,6 +3121,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::GrowMap { n, e, s, w } => draw_grow(f, area, &app.game, (n, e, s, w)),
         Mode::Reports { filter, scroll } => draw_reports(f, area, &app.game, filter, scroll),
         Mode::BuildMenu => draw_build_menu(f, area),
+        Mode::Highlights { sel } => highlights::draw(f, area, app, sel),
         Mode::Help => {
             popup(f, area, 60, 48, " Help ", help_text());
         }
@@ -3140,7 +3143,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         _ => {}
     }
     // Full-screen views sit over everything else.
-    if matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GameOver) {
+    if matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GameOver | Mode::Highlights { .. }) {
         add_target(area, Target::Block);
     }
     if let Some(p) = pane {
@@ -3315,6 +3318,9 @@ fn draw_game_over(f: &mut Frame, area: Rect, g: &Game) {
     }
     keys.push(key_line("l", "Legends of the world", false));
     keys.push(key_line("r", "Every report", false));
+    if !g.reel.clips.is_empty() {
+        keys.push(key_line("h", "The highlight reel", false));
+    }
     keys.push(key_line("w", "Look upon the ruins", false));
     keys.push(key_line("t", "Return to the title (the ruin is saved)", false));
     v.extend(keys);
