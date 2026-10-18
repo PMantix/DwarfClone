@@ -342,10 +342,13 @@ impl Game {
         if t.kind.solid() && (crate::geom::DIRS4.iter().any(|&(dx, dy)| wet(p.offset(dx, dy, 0))) || wet(p.up())) {
             return false;
         }
+        // (Not through a cave's open air, seen or not: a hall that breaks
+        // into one is a drop nobody walks across, and every room past it
+        // is out of reach.)
         if t.kind.solid() {
             t.kind == TileKind::Wall && t.mat.diggable() && t.built_from.is_none() && t.mat != Mat::Bedrock
         } else {
-            t.kind.has_floor() || t.kind == TileKind::Open && !t.revealed
+            t.kind.has_floor()
         }
     }
 
