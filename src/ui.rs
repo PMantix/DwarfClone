@@ -4229,6 +4229,7 @@ fn draw_brain(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
         let shown = if val <= -8.0 { "blocked".to_string() } else { format!("{}{:.1}", sign, val.abs()) };
         v.push(Line::from(vec![Span::styled(format!(" {:<11}", s.name()), Style::default().fg(TEXT)), Span::styled(shown, Style::default().fg(col))]));
     }
+    v.extend(g.lesson_lines().into_iter().map(|l| plain(l, Color::Rgb(150, 210, 255))));
     v.push(Line::default());
     let n = o.nudge(chosen);
     let bar: String = (-3..=3).map(|i| if i == 0 { '│' } else if (n > 0 && i > 0 && i <= n) || (n < 0 && i < 0 && i >= n) { '●' } else { '·' }).collect();

@@ -36,6 +36,7 @@ impl Game {
         if tick % 10 == 0 { self.grow_farms(); }
         // M1 (survival):
         if tick % 150 == 77 { self.doctor_check(); }
+        if tick % 50 == 35 { self.watch_siege(); }
     }
 
     /// After the dwarves and creatures have moved: wildlife, the day's

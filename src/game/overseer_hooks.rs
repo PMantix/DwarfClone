@@ -16,6 +16,7 @@ impl Game {
         self.ov_readiness(o);
         self.ov_water(o);
         self.ov_hospital(o);
+        self.ov_lessons(o);
         let _ = o;
     }
 
@@ -39,6 +40,7 @@ impl Game {
         senses.extend(self.prowler_sense(o));
         senses.push((Sense::Wounded, self.wounded_sense(), vec![(Ambition::Provision, 0.6), (Ambition::Venture, -1.5)]));
         senses.extend(self.unarmed_sense(o));
+        senses.extend(self.lesson_sense(o));
         let _ = o;
         senses
     }
@@ -47,5 +49,6 @@ impl Game {
     pub(super) fn on_siege_end(&mut self, i: usize) {
         // M1 (survival):
         self.captives_after_siege(i);
+        self.learn_from_siege(i);
     }
 }

@@ -462,8 +462,6 @@ impl Game {
     fn pursue(&mut self, o: &mut Overseer, a: Ambition) {
         let tick = self.tick;
         let e = self.embark;
-        let base = o.base.unwrap();
-        let top = o.top.unwrap();
         match a {
             Ambition::Provision => {
                 let k = o.done.iter().filter(|d| d.starts_with("farm")).count() as i32;
@@ -485,38 +483,8 @@ impl Game {
                 }
             }
             Ambition::Fortify => {
-                // Stone-fall traps further down the corridor (boulders are plenty).
-                if !o.did("stonetraps") && self.stock_of(ItemKind::Mechanism) >= 2 && self.stock_of(ItemKind::Boulder) >= 2 {
-                    let mut n = 0;
-                    for dx in 10..14 {
-                        for dy in 0..2 {
-                            if self.place_building(BuildingKind::StoneTrap, base.offset(dx, dy, 0)) {
-                                n += 1;
-                            }
-                        }
-                    }
-                    if n > 0 {
-                        o.done.push("stonetraps".into());
-                        Self::note_ov(o, tick, format!("Set {} stone-fall traps deeper in the corridor.", n));
-                    }
-                }
-                // A walled yard round the top of the stair, with a door in it.
-                if !o.did("yard") {
-                    let r = 3;
-                    let mut n = 0;
-                    for (a, b) in [
-                        (top.offset(-r, -r, 0), top.offset(r, -r, 0)),
-                        (top.offset(-r, r, 0), top.offset(r, r, 0)),
-                        (top.offset(r, -r, 0), top.offset(r, r, 0)),
-                        (top.offset(-r, -r, 0), top.offset(-r, -1, 0)),
-                        (top.offset(-r, 1, 0), top.offset(-r, r, 0)),
-                    ] {
-                        n += self.plan_constructions(a, b, super::ConstructKind::Wall, super::BuildMat::Any);
-                    }
-                    self.place_building(BuildingKind::Door, top.offset(-r, 0, 0));
-                    o.done.push("yard".into());
-                    Self::note_ov(o, tick, format!("Planned a walled yard round the stair ({} wall sections) with a gate.", n));
-                }
+                self.set_stone_traps(o);
+                self.plan_yard(o);
             }
             Ambition::Muster => {
                 if self.squads.len() < 2 && self.dwarves.iter().filter(|d| d.alive && d.soldier).count() >= 6 {
@@ -552,6 +520,46 @@ impl Game {
                 }
                 self.ov_detail(o, true);
             }
+        }
+    }
+
+    /// Stone-fall traps further down the corridor (boulders are plenty), once.
+    pub(super) fn set_stone_traps(&mut self, o: &mut Overseer) {
+        let base = o.base.unwrap();
+        if !o.did("stonetraps") && self.stock_of(ItemKind::Mechanism) >= 2 && self.stock_of(ItemKind::Boulder) >= 2 {
+            let mut n = 0;
+            for dx in 10..14 {
+                for dy in 0..2 {
+                    if self.place_building(BuildingKind::StoneTrap, base.offset(dx, dy, 0)) {
+                        n += 1;
+                    }
+                }
+            }
+            if n > 0 {
+                o.done.push("stonetraps".into());
+                Self::note_ov(o, self.tick, format!("Set {} stone-fall traps deeper in the corridor.", n));
+            }
+        }
+    }
+
+    /// A walled yard round the top of the stair, with a door in it, once.
+    pub(super) fn plan_yard(&mut self, o: &mut Overseer) {
+        let top = o.top.unwrap();
+        if !o.did("yard") {
+            let r = 3;
+            let mut n = 0;
+            for (a, b) in [
+                (top.offset(-r, -r, 0), top.offset(r, -r, 0)),
+                (top.offset(-r, r, 0), top.offset(r, r, 0)),
+                (top.offset(r, -r, 0), top.offset(r, r, 0)),
+                (top.offset(-r, -r, 0), top.offset(-r, -1, 0)),
+                (top.offset(-r, 1, 0), top.offset(-r, r, 0)),
+            ] {
+                n += self.plan_constructions(a, b, super::ConstructKind::Wall, super::BuildMat::Any);
+            }
+            self.place_building(BuildingKind::Door, top.offset(-r, 0, 0));
+            o.done.push("yard".into());
+            Self::note_ov(o, self.tick, format!("Planned a walled yard round the stair ({} wall sections) with a gate.", n));
         }
     }
 

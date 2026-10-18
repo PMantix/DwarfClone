@@ -146,6 +146,7 @@ impl Game {
         let siege = self.annals.sieges.iter().rposition(|s| s.ended.is_none());
         if let Some(i) = siege {
             self.annals.sieges[i].dwarves_lost += 1;
+            self.watch_death(i, d, &cause);
         }
         let sheltered = self.civ_alert
             && self
