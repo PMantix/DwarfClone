@@ -1564,7 +1564,7 @@ impl Game {
         // While food is short, the field hands stay in the fields (larder.rs).
         let hands = self.field_hands();
         for (labor, want) in need {
-            let have = self.dwarves.iter().filter(|d| d.alive && !d.is_child() && !d.soldier && d.has(labor)).count();
+            let have = self.dwarves.iter().filter(|d| d.alive && !d.is_child() && !d.soldier && !d.insane && d.has(labor)).count();
             if have >= want {
                 continue;
             }
