@@ -90,6 +90,7 @@ mod hunts;
 mod larder;
 pub mod fortify;
 mod towers;
+mod shelter;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -447,6 +448,9 @@ pub struct Game {
     /// What the overseer is seeing of the siege now on (`lessons.rs`).
     #[serde(default)]
     pub siege_watch: Option<lessons::SiegeWatch>,
+    /// What keeps the shelter safe and stocked (`shelter.rs`).
+    #[serde(default)]
+    pub shelter: shelter::Shelter,
     /// The overseer's hunt for prowling beasts (`hunts.rs`).
     #[serde(default)]
     pub hunts: hunts::Hunts,
@@ -603,6 +607,7 @@ impl Game {
             bleed_params: Default::default(),
             waterworks: Default::default(),
             siege_watch: None,
+            shelter: Default::default(),
             hunts: Default::default(),
             chronicle_ready: false,
             creatures: BTreeMap::new(),
