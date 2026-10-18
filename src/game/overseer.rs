@@ -1047,9 +1047,15 @@ impl Game {
         // when it comes near.
         // (An army the scouts saw coming counts once it's near.)
         let coming = self.incoming.as_ref().map_or(false, |i| self.tick + 400 >= i.0);
+        // (Nor one walled up near it, in a cavern pocket or by a sunken
+        // pool, with no way to the stair outside or to the halls: sheltering
+        // from that would last until the fort died of thirst.)
         let danger = coming
             || self.creatures.values().any(|c| {
-                c.alive && c.hostile() && !c.sneaking && ((c.siege && !c.legendary()) || ((c.siege || c.legendary()) && near_fort(c.pos)))
+                c.alive
+                    && c.hostile()
+                    && !c.sneaking
+                    && ((c.siege && !c.legendary()) || ((c.siege || c.legendary()) && near_fort(c.pos) && (self.can_reach(c, top, 20000) || self.can_reach(c, base, 20000))))
             });
         if danger != self.alert {
             self.alert = danger;
@@ -2014,6 +2020,32 @@ pub fn run_trial(seed: u64, style: Style, years: u64, knobs: &Knobs) -> Trial {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A cave horror walled up in a pocket of rock beside the halls sounds
+    /// no alarm (the fort would shelter from it until it died of thirst);
+    /// the same horror by the stair outside does.
+    #[test]
+    fn a_walled_up_horror_raises_no_alarm() {
+        let mut g = trial_game(5000, Style::Steady, 30);
+        g.creatures.retain(|_, c| c.tame);
+        let mut o = g.overseer.take().unwrap();
+        let (top, base) = (o.top.unwrap(), o.base.unwrap());
+        let sealed = |g: &Game, p: Pos| (-1..=1).all(|dx| (-1..=1).all(|dy| (-1..=1).all(|dz| g.world.in_bounds(p.offset(dx, dy, dz)) && g.world.solid(p.offset(dx, dy, dz)))));
+        let pocket = (8..25)
+            .flat_map(|r| (-r..=r).flat_map(move |dy| (-r..=r).map(move |dx| base.offset(dx, dy, -1))))
+            .find(|&p| sealed(&g, p))
+            .expect("solid rock near the halls");
+        g.world.t_mut(pocket).kind = TileKind::Floor;
+        g.dig_version += 1;
+        let horror = g.make_cave_horror(pocket);
+        g.ov_alert(&mut o);
+        assert!(!g.alert, "a horror shut in the rock at {:?} (base {:?}) raised the alarm", pocket, base);
+        // Let out by the stair outside, it does.
+        let out = (-2..=2).flat_map(|dy| (-2..=2).map(move |dx| top.offset(dx, dy, 0))).find(|&p| p != top && g.world.walkable(p)).expect("ground by the stair");
+        g.creatures.get_mut(&horror).unwrap().pos = out;
+        g.ov_alert(&mut o);
+        assert!(g.alert, "a horror at the stair raised no alarm");
+    }
 
     /// New fields go to each of the eight spots at most once: a spot that
     /// takes no field is put aside, the fields made are counted, and the
