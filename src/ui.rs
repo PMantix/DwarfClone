@@ -3958,7 +3958,10 @@ fn draw_title(f: &mut Frame, app: &App, sel: usize) {
     let area = f.size();
     let t = crate::title::now();
     let bw = BANNER[0].chars().count() as i32;
-    let keep = Rect::new((((area.width as i32 - bw).max(0) / 2) as u16).saturating_sub(1), 0, bw as u16 + 2, 8).intersection(Rect::new(0, 0, area.width, area.height));
+    // The banner's rows stay free of scenery; the tagline row below is
+    // written over whatever is there.
+    let keep = Rect::new((((area.width as i32 - bw).max(0) / 2) as u16).saturating_sub(1), 0, bw as u16 + 2, 6).intersection(Rect::new(0, 0, area.width, area.height));
+    crate::title::start(&app.save_dir);
     let sky = crate::title::draw(f.buffer_mut(), area, t, keep);
     // The name across the sky, with a glint passing over it.
     let bx = area.x as i32 + (area.width as i32 - bw).max(0) / 2;
@@ -3980,11 +3983,21 @@ fn draw_title(f: &mut Frame, app: &App, sel: usize) {
             buf.get_mut(x as u16, y).set_char(ch).set_fg(rgb(c)).set_style(Style::default().add_modifier(Modifier::BOLD));
         }
     }
-    let tag = "a fortress in the deep places of the world";
+    let tag = crate::title::tagline(t);
     let ty = area.y + 6;
     if ty < area.y + sky.saturating_sub(1).max(6) {
-        let tx = area.x + area.width.saturating_sub(tag.len() as u16) / 2;
-        buf.set_string(tx, ty, tag, Style::default().fg(Color::Rgb(170, 160, 200)));
+        let n = tag.chars().count() as u16;
+        let tx = area.x + area.width.saturating_sub(n) / 2;
+        // Shade the scenery behind it so it reads over snow or daylight.
+        for x in tx.saturating_sub(1)..(tx + n + 1).min(area.x + area.width) {
+            let c = buf.get_mut(x, ty);
+            let bg = match c.bg {
+                Color::Rgb(r, g, b) => Color::Rgb(r / 3, g / 3, b / 3),
+                _ => Color::Rgb(12, 12, 20),
+            };
+            c.set_char(' ').set_bg(bg);
+        }
+        buf.set_string(tx, ty, tag, Style::default().fg(Color::Rgb(190, 180, 220)));
     }
 
     let saves = app.saves();
@@ -4017,8 +4030,7 @@ fn draw_title(f: &mut Frame, app: &App, sel: usize) {
     }
     v.push(Line::default());
     // A line of lore, typed out and turned over every few seconds.
-    let n = crate::title::LINES.len() as u64;
-    let line = crate::title::LINES[((t / 240) % n) as usize];
+    let line = crate::title::tip(t);
     let typed: String = line.chars().take(((t % 240) as usize) * 2 / 3).collect();
     let cursor = if typed.len() < line.len() && (t / 8) % 2 == 0 { "▌" } else { " " };
     v.push(plain(format!("{:<60}", format!("{}{}", typed, cursor)), Color::Rgb(200, 180, 120)));

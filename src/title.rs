@@ -1,12 +1,25 @@
-//! The title screen's living backdrop: a mountain under a night sky that
-//! turns through the seasons, the fortress dug into it with its dwarves at
-//! work, and the magma sea glowing far below.
+//! The title screen's living backdrops. Each launch picks one of several
+//! scenes (never the one shown last time) and a seed that varies it: the
+//! lie of the land, the hour, the weather, who turns up. Left open long
+//! enough, the screen dissolves into another scene.
+
+mod caravan;
+mod caverns;
+mod dragon;
+mod fortress;
+mod ruins;
+#[cfg(test)]
+mod snapshot;
+mod siege;
+mod tavern;
+mod winter;
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
+use std::path::Path;
 use std::sync::OnceLock;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 /// Frames (about 30 a second) since the title first showed.
 pub fn now() -> u64 {
@@ -14,7 +27,7 @@ pub fn now() -> u64 {
     (START.get_or_init(Instant::now).elapsed().as_millis() / 33) as u64
 }
 
-/// Frames per season of the backdrop's little year.
+/// Frames per season of the fortress backdrop's little year.
 pub const SEASON_FRAMES: u64 = 900;
 
 /// Lines that turn over under the title menu.
@@ -41,6 +54,193 @@ pub const LINES: [&str; 20] = [
     "The deeper you dig, the stranger it gets.",
 ];
 
+/// A backdrop: how it's drawn and what's said under the banner.
+struct Scene {
+    #[cfg_attr(not(test), allow(dead_code))]
+    name: &'static str,
+    draw: fn(&mut Canvas),
+    taglines: &'static [&'static str],
+}
+
+const SCENES: [Scene; 8] = [
+    Scene { name: "fortress", draw: fortress::draw, taglines: fortress::TAGLINES },
+    Scene { name: "siege", draw: siege::draw, taglines: siege::TAGLINES },
+    Scene { name: "dragon", draw: dragon::draw, taglines: dragon::TAGLINES },
+    Scene { name: "caravan", draw: caravan::draw, taglines: caravan::TAGLINES },
+    Scene { name: "caverns", draw: caverns::draw, taglines: caverns::TAGLINES },
+    Scene { name: "tavern", draw: tavern::draw, taglines: tavern::TAGLINES },
+    Scene { name: "winter", draw: winter::draw, taglines: winter::TAGLINES },
+    Scene { name: "ruins", draw: ruins::draw, taglines: ruins::TAGLINES },
+];
+
+/// How many scenes there are to choose from.
+pub const SCENE_COUNT: usize = SCENES.len();
+
+/// Frames a scene holds the screen before the next dissolves in (~2.5 min).
+pub const HOLD: u64 = 4500;
+/// Frames the dissolve takes.
+const FADE: u64 = 75;
+
+/// Which scene is showing, and the seed that varies it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Pick {
+    pub scene: usize,
+    pub seed: u64,
+}
+
+fn splitmix(z: u64) -> u64 {
+    let mut z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+/// A scene for this seed, never `last`.
+pub fn choose(seed: u64, last: Option<usize>) -> usize {
+    let n = SCENE_COUNT as u64;
+    match last.filter(|&l| l < SCENE_COUNT) {
+        Some(l) => {
+            let k = (splitmix(seed) % (n - 1)) as usize;
+            if k >= l {
+                k + 1
+            } else {
+                k
+            }
+        }
+        None => (splitmix(seed) % n) as usize,
+    }
+}
+
+static PICK: OnceLock<Pick> = OnceLock::new();
+const MEMO: &str = ".title";
+
+fn clock_seed() -> u64 {
+    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0);
+    splitmix(nanos ^ ((std::process::id() as u64) << 32))
+}
+
+/// The scene shown last time, from the little note in the saves folder.
+fn recall(dir: &Path) -> Option<usize> {
+    std::fs::read_to_string(dir.join(MEMO)).ok()?.trim().parse().ok()
+}
+
+fn remember(dir: &Path, scene: usize) {
+    let _ = std::fs::create_dir_all(dir);
+    let _ = std::fs::write(dir.join(MEMO), scene.to_string());
+}
+
+/// Choose this launch's scene (once): a fresh seed from the clock, and any
+/// scene but the one noted in `dir` from last time. Failures to read or
+/// write the note are shrugged off.
+pub fn start(dir: &Path) -> Pick {
+    *PICK.get_or_init(|| {
+        let seed = clock_seed();
+        let last = if cfg!(test) { None } else { recall(dir) };
+        let p = Pick { scene: choose(seed, last), seed };
+        if !cfg!(test) {
+            remember(dir, p.scene);
+        }
+        p
+    })
+}
+
+fn pick() -> Pick {
+    *PICK.get_or_init(|| {
+        let seed = clock_seed();
+        Pick { scene: choose(seed, None), seed }
+    })
+}
+
+/// The scene that follows `cur` as the `i`th change of a launch.
+fn successor(base: u64, cur: Pick, i: u64) -> Pick {
+    let seed = splitmix(base ^ i.wrapping_mul(0xD6E8_FEB8_6659_FD93));
+    Pick { scene: choose(seed, Some(cur.scene)), seed }
+}
+
+/// What shows at frame `t` of a launch that began with `p`: the scene, and,
+/// while it gives way, the one coming in and how far it has got (0..1).
+pub fn showing(p: Pick, t: u64) -> (Pick, Option<(Pick, f32)>) {
+    let k = t / HOLD;
+    let mut cur = p;
+    for i in 1..=k {
+        cur = successor(p.seed, cur, i);
+    }
+    let into = t % HOLD;
+    if into >= HOLD - FADE {
+        let f = (into - (HOLD - FADE)) as f32 / FADE as f32;
+        (cur, Some((successor(p.seed, cur, k + 1), f)))
+    } else {
+        (cur, None)
+    }
+}
+
+/// How many rows of sky every scene keeps above the menu.
+pub fn sky_height(h: u16) -> u16 {
+    let h = h as i32;
+    (h * 2 / 5).max(9).min((h - 6).max(1)) as u16
+}
+
+/// Paint the backdrop over all of `area` at frame `t`, leaving `keep`
+/// (relative to `area`) free of glyphs for the title. Returns the height
+/// of the sky, so the caller can lay the menu out beneath it.
+pub fn draw(buf: &mut Buffer, area: Rect, t: u64, keep: Rect) -> u16 {
+    draw_pick(buf, area, t, keep, pick())
+}
+
+/// As [`draw`], for a launch that began with `p`.
+pub fn draw_pick(buf: &mut Buffer, area: Rect, t: u64, keep: Rect, p: Pick) -> u16 {
+    let (cur, next) = showing(p, t);
+    paint(buf, area, t, keep, cur);
+    if let Some((n, f)) = next {
+        let mut other = Buffer::empty(area);
+        paint(&mut other, area, t, keep, n);
+        // A dissolve that drifts down the screen.
+        for y in 0..area.height {
+            for x in 0..area.width {
+                let r = (hash(x as i32, y as i32) % 1000) as f32 / 1000.0;
+                let order = r * 0.7 + y as f32 / area.height.max(1) as f32 * 0.3;
+                if order < f {
+                    let (ax, ay) = (area.x + x, area.y + y);
+                    *buf.get_mut(ax, ay) = other.get(ax, ay).clone();
+                }
+            }
+        }
+    }
+    sky_height(area.height)
+}
+
+fn paint(buf: &mut Buffer, area: Rect, t: u64, keep: Rect, p: Pick) {
+    let flip = roll(p.seed, 9999) % 2 == 1;
+    let mut cv = Canvas { buf, area, clip: keep, t, seed: p.seed, sky: sky_height(area.height) as i32, flip };
+    (SCENES[p.scene % SCENE_COUNT].draw)(&mut cv);
+}
+
+fn tagline_of(p: Pick) -> &'static str {
+    let l = SCENES[p.scene % SCENE_COUNT].taglines;
+    l[(splitmix(p.seed ^ 0x7A6) % l.len() as u64) as usize]
+}
+
+/// The line under the banner: it belongs to the scene on show.
+pub fn tagline(t: u64) -> &'static str {
+    let (cur, next) = showing(pick(), t);
+    match next {
+        Some((n, f)) if f > 0.5 => tagline_of(n),
+        _ => tagline_of(cur),
+    }
+}
+
+/// The tip turning over under the menu at frame `t`, starting somewhere
+/// different each launch.
+pub fn tip(t: u64) -> &'static str {
+    let off = splitmix(pick().seed ^ 0x71B) % LINES.len() as u64;
+    LINES[((t / 240 + off) % LINES.len() as u64) as usize]
+}
+
+// ---------------------------------------------------------------------------
+// Drawing helpers shared by the scenes.
+
+type Rgb = (u8, u8, u8);
+
 fn hash(x: i32, y: i32) -> u32 {
     let mut h = (x as u32).wrapping_mul(0x9E37_79B1) ^ (y as u32).wrapping_mul(0x85EB_CA77);
     h ^= h >> 15;
@@ -48,10 +248,23 @@ fn hash(x: i32, y: i32) -> u32 {
     h ^ (h >> 12)
 }
 
-fn mix(a: (u8, u8, u8), b: (u8, u8, u8), f: f32) -> Color {
+/// A number from the seed, one per `k`.
+fn roll(seed: u64, k: u32) -> u32 {
+    (splitmix(seed ^ (k as u64).wrapping_mul(0xA24B_AED4_963E_E407)) >> 16) as u32
+}
+
+fn rgb(c: Rgb) -> Color {
+    Color::Rgb(c.0, c.1, c.2)
+}
+
+fn lerp(a: Rgb, b: Rgb, f: f32) -> Rgb {
     let f = f.clamp(0.0, 1.0);
     let l = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * f) as u8;
-    Color::Rgb(l(a.0, b.0), l(a.1, b.1), l(a.2, b.2))
+    (l(a.0, b.0), l(a.1, b.1), l(a.2, b.2))
+}
+
+fn mix(a: Rgb, b: Rgb, f: f32) -> Color {
+    rgb(lerp(a, b, f))
 }
 
 /// Back and forth between `a` and `b`, one step every `every` frames.
@@ -61,253 +274,450 @@ fn pingpong(t: u64, every: u64, a: i32, b: i32) -> i32 {
     a + if k < span { k as i32 } else { (2 * span - k) as i32 }
 }
 
+/// A mountain-ish skyline height in 0..1 at column `x`, shaped by the seed.
+fn ridge(x: i32, w: i32, seed: u64, salt: u32) -> f32 {
+    let fx = x as f32 / w.max(1) as f32;
+    let p = |k: u32| (roll(seed, salt + k) % 628) as f32 / 100.0;
+    let r = (fx * 3.1 + p(0)).sin() * 0.45 + (fx * 9.0 + p(1)).sin() * 0.22 + (fx * 23.0 + p(2)).sin() * 0.1;
+    ((r + 0.5) / 1.25).clamp(0.0, 1.0)
+}
+
+/// Pointed summits, 0..1 at column `x`: `n` seeded peaks with ragged
+/// flanks.
+fn peaks(x: i32, w: i32, seed: u64, salt: u32, n: u32) -> f32 {
+    let wf = w.max(1) as f32;
+    let mut m: f32 = 0.0;
+    for k in 0..n {
+        let r = |j: u32| (roll(seed, salt + k * 5 + j) % 1000) as f32 / 1000.0;
+        let px = (r(0) * 1.2 - 0.1) * wf;
+        let height = 0.45 + r(1) * 0.55;
+        let half = wf * (0.1 + r(2) * 0.18) + 3.0;
+        m = m.max(height * (1.0 - (x as f32 - px).abs() / half));
+    }
+    let jag = (hash(x, salt as i32) % 100) as f32 / 100.0 - 0.5;
+    (m + jag * 0.06).clamp(0.0, 1.0)
+}
+
+/// The cells from `a` to `b` (both included), one step at a time.
+fn line(a: (i32, i32), b: (i32, i32)) -> Vec<(i32, i32)> {
+    let (mut x, mut y) = a;
+    let (dx, dy) = ((b.0 - x).abs(), -(b.1 - y).abs());
+    let (sx, sy) = (if x < b.0 { 1 } else { -1 }, if y < b.1 { 1 } else { -1 });
+    let mut err = dx + dy;
+    let mut v = vec![(x, y)];
+    while (x, y) != b {
+        let e2 = 2 * err;
+        if e2 >= dy {
+            err += dy;
+            x += sx;
+        }
+        if e2 <= dx {
+            err += dx;
+            y += sy;
+        }
+        v.push((x, y));
+    }
+    v
+}
+
 struct Canvas<'a> {
     buf: &'a mut Buffer,
     area: Rect,
+    /// No glyphs here (the banner's place); colours still show through.
+    clip: Rect,
+    t: u64,
+    seed: u64,
+    sky: i32,
+    /// Seen in a mirror: every scene can face either way.
+    flip: bool,
+}
+
+/// A glyph as it looks in a mirror.
+fn mirrored(ch: char) -> char {
+    match ch {
+        '/' => '\\',
+        '\\' => '/',
+        '►' => '◄',
+        '◄' => '►',
+        '▶' => '◀',
+        '◀' => '▶',
+        '╜' => '╙',
+        '╙' => '╜',
+        '«' => '»',
+        '»' => '«',
+        '▌' => '▐',
+        '▐' => '▌',
+        '(' => ')',
+        ')' => '(',
+        '╲' => '╱',
+        '╱' => '╲',
+        c => c,
+    }
 }
 
 impl Canvas<'_> {
+    fn w(&self) -> i32 {
+        self.area.width as i32
+    }
+
+    fn h(&self) -> i32 {
+        self.area.height as i32
+    }
+
+    fn roll(&self, k: u32) -> u32 {
+        roll(self.seed, k)
+    }
+
+    /// A number from the seed to stir into layout hashes.
+    fn salt(&self) -> i32 {
+        (self.roll(777) % 100_003) as i32
+    }
+
+    /// Where column `x` lands on screen.
+    fn col(&self, x: i32) -> i32 {
+        if self.flip {
+            self.w() - 1 - x
+        } else {
+            x
+        }
+    }
+
+    fn inside(&self, x: i32, y: i32) -> bool {
+        x >= 0 && y >= 0 && x < self.w() && y < self.h()
+    }
+
+    fn clipped(&self, x: i32, y: i32) -> bool {
+        let c = self.clip;
+        x >= c.x as i32 && x < (c.x + c.width) as i32 && y >= c.y as i32 && y < (c.y + c.height) as i32
+    }
+
     fn put(&mut self, x: i32, y: i32, ch: char, fg: Color, bg: Option<Color>) {
-        if x < 0 || y < 0 || x >= self.area.width as i32 || y >= self.area.height as i32 {
+        if !self.inside(x, y) {
             return;
         }
+        let x = self.col(x);
+        let ch = if self.flip { mirrored(ch) } else { ch };
+        let clipped = self.clipped(x, y);
         let c = self.buf.get_mut(self.area.x + x as u16, self.area.y + y as u16);
+        if clipped {
+            if let Some(bg) = bg {
+                c.set_char(' ').set_bg(bg);
+            }
+            return;
+        }
         c.set_char(ch).set_fg(fg);
         if let Some(bg) = bg {
             c.set_bg(bg);
         }
     }
-}
 
-/// Paint the backdrop over all of `area` at frame `t`, leaving the sky
-/// in `keep` (relative to `area`) clear of stars and clouds for the title.
-/// Returns the height of the sky, so the caller can lay the menu out
-/// beneath it.
-pub fn draw(buf: &mut Buffer, area: Rect, t: u64, keep: Rect) -> u16 {
-    let (w, h) = (area.width as i32, area.height as i32);
-    let mut cv = Canvas { buf, area };
-    let kept = |x: i32, y: i32| {
-        x >= keep.x as i32 && x < (keep.x + keep.width) as i32 && y >= keep.y as i32 && y < (keep.y + keep.height) as i32
-    };
-    let sky_h = (h * 2 / 5).max(9).min((h - 6).max(1));
-    let magma_top = h - 3;
-    let season = (t / SEASON_FRAMES) % 4;
+    /// A glyph over whatever colour is already there.
+    fn glyph(&mut self, x: i32, y: i32, ch: char, fg: Color) {
+        self.put(x, y, ch, fg, None);
+    }
 
-    // The mountain's skyline: peaks rise towards the middle-right.
-    let rise = (sky_h - 7).max(1) as f32;
-    let surf: Vec<i32> = (0..w)
-        .map(|x| {
-            let fx = x as f32 / w.max(1) as f32;
-            let ridge = (fx * 3.1 + 0.4).sin() * 0.45 + (fx * 9.0).sin() * 0.22 + (fx * 23.0 + 1.3).sin() * 0.1;
-            let m = ((ridge + 0.5) / 1.25).clamp(0.0, 1.0);
-            sky_h - 1 - (m * rise) as i32
-        })
-        .collect();
+    /// Fill a cell with colour only.
+    fn fill(&mut self, x: i32, y: i32, bg: Color) {
+        self.put(x, y, ' ', Color::Black, Some(bg));
+    }
 
-    // Sky, stars and moon.
-    let rock_bg = Color::Rgb(26, 22, 20);
-    for y in 0..h {
-        for x in 0..w {
-            if y < surf[x as usize] {
-                let f = y as f32 / sky_h.max(1) as f32;
-                let bg = mix((6, 8, 26), (44, 28, 58), f);
-                let hs = hash(x * 7, y * 13);
-                let (ch, fg) = if hs % 53 == 0 && y < sky_h - 3 && !kept(x, y) {
+    /// Recolour a cell's background, keeping its glyph.
+    fn tint(&mut self, x: i32, y: i32, bg: Color) {
+        if self.inside(x, y) {
+            let x = self.col(x);
+            self.buf.get_mut(self.area.x + x as u16, self.area.y + y as u16).set_bg(bg);
+        }
+    }
+
+    /// The background colour already at a cell.
+    fn bg_at(&self, x: i32, y: i32) -> Rgb {
+        if !self.inside(x, y) {
+            return (0, 0, 0);
+        }
+        let x = self.col(x);
+        match self.buf.get(self.area.x + x as u16, self.area.y + y as u16).bg {
+            Color::Rgb(r, g, b) => (r, g, b),
+            _ => (0, 0, 0),
+        }
+    }
+
+    /// Rows of text drawn over the scene, spaces left see-through.
+    fn sprite(&mut self, x: i32, y: i32, rows: &[&str], fg: Color) {
+        for (dy, r) in rows.iter().enumerate() {
+            for (dx, ch) in r.chars().enumerate() {
+                if ch != ' ' {
+                    self.glyph(x + dx as i32, y + dy as i32, ch, fg);
+                }
+            }
+        }
+    }
+
+    /// A vertical gradient over rows `0..rows`.
+    fn sky_fill(&mut self, rows: i32, top: Rgb, bottom: Rgb) {
+        for y in 0..rows.min(self.h()) {
+            let bg = mix(top, bottom, y as f32 / rows.max(1) as f32);
+            for x in 0..self.w() {
+                self.fill(x, y, bg);
+            }
+        }
+    }
+
+    /// Twinkling stars over rows `0..rows`, one cell in `every`.
+    fn stars(&mut self, rows: i32, every: u32) {
+        let t = self.t;
+        for y in 0..rows.min(self.h()) {
+            for x in 0..self.w() {
+                let hs = hash(x * 7 + 3, y * 13 + 1);
+                if hs % every.max(2) == 0 {
                     let twinkle = (t / 6 + hs as u64 / 53) % 23 == 0;
-                    (if twinkle { '+' } else { '·' }, if twinkle { Color::Rgb(255, 255, 230) } else { Color::Rgb(150, 150, 190) })
-                } else {
-                    (' ', Color::Black)
-                };
-                cv.put(x, y, ch, fg, Some(bg));
-            } else if y >= magma_top {
-                // The magma sea, breathing.
-                let wave = ((x as f32 * 0.35 + t as f32 * 0.08).sin() + (x as f32 * 0.11 - t as f32 * 0.05).sin()) * 0.25 + 0.5;
-                let bubble = hash(x, (t / 9) as i32 + y * 31) % 97 == 0;
-                let (ch, fg) = if bubble {
-                    ('°', Color::Rgb(255, 240, 120))
-                } else {
-                    (if (x + (t / 12) as i32) % 3 == 0 { '~' } else { '≈' }, mix((200, 40, 0), (255, 190, 50), wave))
-                };
-                cv.put(x, y, ch, fg, Some(mix((70, 10, 0), (130, 30, 0), wave)));
-            } else {
-                // Rock, with veins and gems that catch the light.
-                let hs = hash(x * 3 + 1, y * 5 + 2);
-                let deep = (y - sky_h).max(0) as f32 / (magma_top - sky_h).max(1) as f32;
-                let heat = if y >= magma_top - 2 { 0.25 } else { 0.0 };
-                let bg = mix((26, 22, 20), (60, 18, 8), deep * deep * 0.6 + heat);
-                let (ch, fg) = match hs % 41 {
-                    0 => ('☼', if (t / 5 + hs as u64) % 37 == 0 { Color::Rgb(255, 255, 255) } else { Color::Rgb(90, 200, 220) }),
-                    1 | 2 => ('░', Color::Rgb(70, 60, 55)),
-                    3 => ('£', Color::Rgb(150, 110, 60)),
-                    _ => (' ', Color::Black),
-                };
-                cv.put(x, y, ch, fg, Some(bg));
+                    let (ch, fg) = if twinkle { ('+', (255, 255, 230)) } else { ('·', (150, 150, 190)) };
+                    self.glyph(x, y, ch, rgb(fg));
+                }
             }
         }
     }
-    let moon_x = w * 5 / 6;
-    if surf.get(moon_x as usize).map_or(false, |&s| s > 3) && !kept(moon_x, 2) {
-        cv.put(moon_x, 2, '●', Color::Rgb(245, 240, 210), None);
-    }
-
-    // Drifting clouds.
-    for k in 0..3i32 {
-        let len = 6 + (hash(k, 9) % 6) as i32;
-        let y = 1 + (hash(k, 3) % 4) as i32;
-        let x0 = ((hash(k, 5) as u64 + t / (14 + k as u64 * 5)) % (w as u64 + len as u64 + 10)) as i32 - len - 5;
-        for i in 0..len {
-            let x = x0 + i;
-            if x >= 0 && x < w && y < surf[x as usize] && !kept(x, y) {
-                let edge = i == 0 || i == len - 1;
-                cv.put(x, y, if edge { '▄' } else { '█' }, Color::Rgb(55, 50, 80), None);
-            }
-        }
-    }
-
-    // The mountainside: a snowy crest, trees on the lower slopes in the
-    // colours of the season.
-    let tree_col = |x: i32| -> Color {
-        let hs = hash(x, 77);
-        match season {
-            0 if hs % 3 == 0 => Color::Rgb(255, 175, 205),
-            0 => Color::Rgb(150, 215, 110),
-            1 => Color::Rgb(40, 170, 50),
-            2 => [Color::Rgb(235, 205, 60), Color::Rgb(235, 135, 40), Color::Rgb(205, 60, 40)][(hs % 3) as usize],
-            _ => Color::Rgb(125, 95, 70),
-        }
-    };
-    for x in 0..w {
-        let s = surf[x as usize];
-        let high = s < sky_h - 1 - (rise * 0.55) as i32;
-        let snowy = high || season == 3;
-        cv.put(x, s, '▲', if snowy { Color::Rgb(235, 240, 250) } else { Color::Rgb(120, 110, 100) }, Some(rock_bg));
-        if !high && hash(x, 41) % 3 == 0 && s > 0 {
-            let ch = if hash(x, 43) % 4 == 0 { '♠' } else { '♣' };
-            let col = if ch == '♠' { Color::Rgb(30, 120, 60) } else { tree_col(x) };
-            cv.put(x, s - 1, ch, col, None);
-        }
-    }
-
-    // What the season brings down from the sky.
-    for k in 0..(w / 3).max(4) {
-        let speed = 3 + (k % 3) as u64;
-        let x = ((hash(k, 1) as u64 + t / (speed * 3)) % w.max(1) as u64) as i32;
-        let y = ((hash(k, 2) as u64 + t / speed) % sky_h.max(1) as u64) as i32;
-        if y >= surf[x as usize] || kept(x, y) {
-            continue;
-        }
-        let (ch, fg) = match season {
-            0 => ('·', Color::Rgb(255, 190, 215)),
-            1 if (t / 8 + k as u64) % 5 == 0 => ('·', Color::Rgb(230, 255, 120)),
-            1 => continue,
-            2 => ([',', '\'', '`'][(k % 3) as usize], [Color::Rgb(235, 135, 40), Color::Rgb(205, 60, 40), Color::Rgb(235, 205, 60)][(k % 3) as usize]),
-            _ => ('*', Color::Rgb(240, 240, 255)),
-        };
-        cv.put(x, y, ch, fg, None);
-    }
-
-    // The fortress: two halls joined by a stair, a forge with its chimney,
-    // a miner at the face.
-    let floor_bg = Color::Rgb(10, 9, 9);
-    let t1 = sky_h + 2;
-    let t2 = (sky_h + (magma_top - sky_h) * 3 / 5).max(t1 + 3);
-    if t2 >= magma_top - 1 || w < 30 {
-        return sky_h as u16;
-    }
-    let (a1, b1) = (3, w - 4);
-    let (a2, b2) = (6, w - 9);
-    for (row, a, b) in [(t1, a1, b1), (t2, a2, b2)] {
-        for x in a..=b {
-            cv.put(x, row, '.', Color::Rgb(70, 64, 58), Some(floor_bg));
-        }
-    }
-    let sx = w * 3 / 4;
-    let top = surf[sx as usize];
-    for y in top..=t2 {
-        let ch = if y == top { '>' } else if y == t2 { '<' } else { 'X' };
-        cv.put(sx, y, ch, Color::Rgb(160, 150, 140), Some(floor_bg));
-    }
-    // The forge glows; smoke climbs its chimney and out over the slope.
-    let fx = a1 + 3;
-    for x in a1..a1 + 6 {
-        let hs = hash(x, (t / 3) as i32);
-        let fire = [Color::Rgb(255, 220, 80), Color::Rgb(255, 140, 30), Color::Rgb(220, 60, 20)][(hs % 3) as usize];
-        cv.put(x, t1 - 1, if hs % 2 == 0 { '≈' } else { '~' }, fire, Some(Color::Rgb(60, 15, 0)));
-    }
-    let chimney_top = surf[fx as usize];
-    for y in chimney_top + 1..t1 - 1 {
-        cv.put(fx, y, '│', Color::Rgb(90, 80, 75), Some(floor_bg));
-    }
-    for k in 0..6i32 {
-        let age = ((t / 7) as i32 + k * 4) % 24;
-        let y = chimney_top - 1 - age / 3;
-        let x = fx + (age / 5) + ((hash(k, age) % 3) as i32 - 1) * (age / 12);
-        if y >= 0 && y < surf.get(x.max(0) as usize).copied().unwrap_or(0) {
-            let fade = 1.0 - age as f32 / 24.0;
-            cv.put(x, y, if age < 10 { '░' } else { '·' }, mix((40, 36, 50), (150, 145, 150), fade), None);
-        }
-    }
-    if (t / 4) % 5 == 0 {
-        cv.put(a1 + 7, t1 - 1, '*', Color::Rgb(255, 255, 160), None);
-    }
-    // A dining table or two on the lower hall.
-    for x in [a2 + 3, a2 + 6, a2 + 9] {
-        cv.put(x, t2, '╥', Color::Rgb(170, 120, 70), Some(floor_bg));
-    }
-    // The miner hacks at the face; chips fly.
-    cv.put(b2 + 1, t2, '█', Color::Rgb(110, 100, 95), Some(rock_bg));
-    cv.put(b2, t2, '☺', Color::Rgb(255, 215, 60), Some(floor_bg));
-    if (t / 5) % 3 == 0 {
-        cv.put(b2 + 1, t2 - 1, '*', Color::Rgb(255, 255, 200), None);
-    }
-
-    // Dwarves going about their business.
-    let walkers = [
-        (t1, a1 + 7, b1, 5u64, 0u64, (120, 200, 255)),
-        (t1, a1 + 9, b1 - 4, 7, 40, (255, 150, 120)),
-        (t1, a1 + 6, sx, 6, 90, (160, 255, 150)),
-        (t2, a2 + 1, b2 - 1, 6, 15, (230, 180, 255)),
-        (t2, a2 + 1, sx, 9, 60, (255, 230, 140)),
-    ];
-    for (row, a, b, every, off, col) in walkers {
-        let x = pingpong(t + off * every, every, a, b);
-        cv.put(x, row, '☺', Color::Rgb(col.0, col.1, col.2), None);
-    }
-    let climber = pingpong(t + 33, 10, top + 1, t2 - 1);
-    cv.put(sx, climber, '☺', Color::Rgb(200, 220, 255), None);
-
-    // Something waits in a pocket of the deep caverns.
-    let (cx, cy) = (w / 7, t2 + 2);
-    if cy < magma_top - 1 {
-        for dx in -3..=3 {
-            cv.put(cx + dx, cy, ' ', Color::Black, Some(Color::Rgb(4, 3, 6)));
-        }
-        let blink = (t / 30) % 13;
-        if blink >= 4 && blink != 9 {
-            cv.put(cx - 1 + ((t / 120) % 3) as i32, cy, '•', Color::Rgb(255, 40, 40), None);
-            cv.put(cx + 1 + ((t / 120) % 3) as i32, cy, '•', Color::Rgb(255, 40, 40), None);
-        }
-    }
-    sky_h as u16
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    const SIZES: [(u16, u16); 3] = [(20, 8), (80, 24), (200, 60)];
+
+    /// The banner's place as the title screen lays it out.
+    fn keep(w: u16) -> Rect {
+        let bw = 54u16;
+        Rect::new((w.saturating_sub(bw) / 2).saturating_sub(1), 0, bw + 2, 6).intersection(Rect::new(0, 0, w, 60))
+    }
+
+    fn render(scene: usize, seed: u64, w: u16, h: u16, t: u64) -> Buffer {
+        let area = Rect::new(0, 0, w, h);
+        let mut b = Buffer::empty(area);
+        let sky = draw_pick(&mut b, area, t, keep(w), Pick { scene, seed });
+        assert!(sky < h.max(2), "sky {} on {}x{}", sky, w, h);
+        b
+    }
+
+    fn text(b: &Buffer) -> String {
+        let w = b.area.width as usize;
+        let mut s = String::new();
+        for (i, c) in b.content.iter().enumerate() {
+            if i > 0 && i % w == 0 {
+                s.push('\n');
+            }
+            s.push_str(c.symbol());
+        }
+        s
+    }
+
     #[test]
-    fn the_backdrop_moves_and_fits_any_screen() {
-        for (w, h) in [(20u16, 8u16), (80, 24), (200, 60)] {
-            let area = Rect::new(0, 0, w, h);
-            let mut a = Buffer::empty(area);
+    fn every_scene_fits_any_screen_and_moves() {
+        for scene in 0..SCENE_COUNT {
+            for seed in [1u64, 77, 123_456_789] {
+                for (w, h) in SIZES {
+                    for t in [0u64, 100, 4000] {
+                        render(scene, seed, w, h, t);
+                    }
+                    if w >= 80 {
+                        let a = render(scene, seed, w, h, 100);
+                        let b = render(scene, seed, w, h, 160);
+                        assert_ne!(a, b, "{} should animate at {}x{}", SCENES[scene].name, w, h);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tiny_and_odd_screens_never_crash() {
+        for scene in 0..SCENE_COUNT {
+            for (w, h) in [(1u16, 1u16), (3, 2), (9, 4), (30, 10), (41, 13), (57, 70), (300, 9)] {
+                for t in [0u64, 999, 7777] {
+                    render(scene, 5, w, h, t);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_banner_stays_clear() {
+        for scene in 0..SCENE_COUNT {
+            for seed in [3u64, 99, 2024] {
+                for (w, h) in SIZES {
+                    let k = keep(w);
+                    for t in [0u64, 37, 250, 1111] {
+                        let b = render(scene, seed, w, h, t);
+                        for y in k.y..(k.y + k.height).min(h) {
+                            for x in k.x..k.x + k.width {
+                                let s = b.get(x, y).symbol();
+                                assert_eq!(s, " ", "{} drew {:?} at {},{} on {}x{}", SCENES[scene].name, s, x, y, w, h);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_fortress_keeps_its_dwarves_and_magma() {
+        for seed in [1u64, 5, 9] {
+            let s = text(&render(0, seed, 80, 24, 100));
+            assert!(s.contains('☺') && s.contains('≈'));
+        }
+    }
+
+    #[test]
+    fn the_picker_never_repeats_itself() {
+        for seed in 0..500u64 {
+            for last in 0..SCENE_COUNT {
+                let s = choose(seed, Some(last));
+                assert!(s < SCENE_COUNT && s != last);
+            }
+            assert!(choose(seed, None) < SCENE_COUNT);
+            assert!(choose(seed, Some(99)) < SCENE_COUNT);
+        }
+        // And over many launches every scene turns up.
+        let mut seen = [false; SCENE_COUNT];
+        let mut last = None;
+        for seed in 0..200u64 {
+            let s = choose(splitmix(seed), last);
+            seen[s] = true;
+            last = Some(s);
+        }
+        assert!(seen.iter().all(|&s| s));
+    }
+
+    #[test]
+    fn the_seed_varies_each_scene() {
+        for scene in 0..SCENE_COUNT {
+            let frames: Vec<Buffer> = (0..6u64).map(|k| render(scene, splitmix(k + 10), 120, 40, 50)).collect();
+            assert!(frames.iter().skip(1).any(|b| *b != frames[0]), "{} looks the same every launch", SCENES[scene].name);
+        }
+    }
+
+    #[test]
+    fn a_long_stay_moves_on_to_another_scene() {
+        let p = Pick { scene: 2, seed: 42 };
+        let (a, none) = showing(p, 10);
+        assert_eq!(a, p);
+        assert!(none.is_none());
+        let (_, fading) = showing(p, HOLD - 10);
+        let (n, f) = fading.expect("a dissolve near the end of the hold");
+        assert!(n.scene != p.scene && f > 0.5);
+        assert_eq!(showing(p, HOLD + 5).0, n);
+        let area = Rect::new(0, 0, 80, 24);
+        let mut b = Buffer::empty(area);
+        draw_pick(&mut b, area, HOLD - 30, keep(80), p);
+    }
+
+    #[test]
+    fn remembering_the_last_scene() {
+        let dir = std::env::temp_dir().join(format!("dwarfclone-title-{}", std::process::id()));
+        assert_eq!(recall(&dir), None);
+        remember(&dir, 5);
+        assert_eq!(recall(&dir), Some(5));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn taglines_are_there_and_fit() {
+        for s in SCENES.iter() {
+            assert!(!s.taglines.is_empty());
+            for l in s.taglines {
+                assert!(l.chars().count() <= 54, "{:?} is too long", l);
+            }
+        }
+        assert!(!tagline(0).is_empty() && !tip(0).is_empty());
+    }
+
+    /// Pictures of every scene with the title laid over them roughly as
+    /// the title screen does, in target/title/:
+    /// `cargo test --release picture_the_scenes -- --ignored` (SIZE=WxH, FRAME=n).
+    #[test]
+    #[ignore]
+    fn picture_the_scenes() {
+        let (w, h) = std::env::var("SIZE")
+            .ok()
+            .and_then(|s| {
+                let (a, b) = s.split_once('x')?;
+                Some((a.parse().ok()?, b.parse().ok()?))
+            })
+            .unwrap_or((120u16, 40u16));
+        let t: u64 = std::env::var("FRAME").ok().and_then(|s| s.parse().ok()).unwrap_or(333);
+        // Contact sheets too, when they fit in one buffer.
+        let sheet = (w as u32 * 2 + 1) * (h as u32 * 4 + 3) <= u16::MAX as u32;
+        let mut sheets: Vec<Buffer> = (0..if sheet { 3 } else { 0 }).map(|_| Buffer::empty(Rect::new(0, 0, w * 2 + 1, h * 4 + 3))).collect();
+        for scene in 0..SCENE_COUNT {
+            for (k, seed) in [11u64, 12, 13].into_iter().enumerate() {
+                let mut b = render(scene, seed, w, h, t);
+                let gold = Color::Rgb(250, 200, 80);
+                let name = "D W A R F    C L O N E";
+                let x0 = w.saturating_sub(name.len() as u16) / 2;
+                for row in 1..5u16.min(h) {
+                    b.set_string(x0, row, name, ratatui::style::Style::default().fg(gold));
+                }
+                let sky = sky_height(h);
+                let (mw, mh) = (66u16.min(w), 12u16);
+                let top = (sky + 1).min(h.saturating_sub(mh));
+                let r = Rect::new((w - mw) / 2, top, mw, mh.min(h)).intersection(b.area);
+                for y in r.y..r.y + r.height {
+                    for x in r.x..r.x + r.width {
+                        b.get_mut(x, y).set_char(' ').set_bg(Color::Rgb(12, 12, 20));
+                    }
+                }
+                let path = std::path::PathBuf::from(format!("target/title/{}-{}-{}x{}-t{}.png", SCENES[scene].name, seed, w, h, t));
+                snapshot::save(&b, &path);
+                let (ox, oy) = ((scene as u16 % 2) * (w + 1), (scene as u16 / 2) * (h + 1));
+                if !sheet {
+                    continue;
+                }
+                for y in 0..h {
+                    for x in 0..w {
+                        *sheets[k].get_mut(ox + x, oy + y) = b.get(x, y).clone();
+                    }
+                }
+            }
+        }
+        for (k, sheet) in sheets.iter().enumerate() {
+            snapshot::save(sheet, &std::path::PathBuf::from(format!("target/title/sheet-{}-{}x{}-t{}.png", k, w, h, t)));
+        }
+    }
+
+    /// How long a frame of each scene takes at 200x60, plain and mid-dissolve.
+    #[test]
+    #[ignore]
+    fn scene_frame_times() {
+        let area = Rect::new(0, 0, 200, 60);
+        for scene in 0..SCENE_COUNT {
             let mut b = Buffer::empty(area);
-            let sky = draw(&mut a, area, 100, Rect::default());
-            draw(&mut b, area, 160, Rect::default());
-            assert!(sky < h);
-            if w >= 80 {
-                assert_ne!(a, b, "{}x{} should animate", w, h);
-                let text: String = a.content.iter().map(|c| c.symbol().to_string()).collect();
-                assert!(text.contains('☺') && text.contains('≈'), "dwarves and magma on {}x{}", w, h);
+            let t0 = std::time::Instant::now();
+            for t in 0..30u64 {
+                draw_pick(&mut b, area, 100 + t, keep(200), Pick { scene, seed: 7 });
+            }
+            let plain = t0.elapsed().as_secs_f64() * 1000.0 / 30.0;
+            let t0 = std::time::Instant::now();
+            for t in 0..30u64 {
+                draw_pick(&mut b, area, HOLD - 40 + t, keep(200), Pick { scene, seed: 7 });
+            }
+            let fading = t0.elapsed().as_secs_f64() * 1000.0 / 30.0;
+            println!("{:<9} {:>6.2} ms  {:>6.2} ms dissolving", SCENES[scene].name, plain, fading);
+        }
+    }
+
+    /// `cargo test --release show_the_scenes -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn show_the_scenes() {
+        let only: Option<usize> = std::env::var("SCENE").ok().and_then(|s| s.parse().ok());
+        let t: u64 = std::env::var("FRAME").ok().and_then(|s| s.parse().ok()).unwrap_or(333);
+        for scene in 0..SCENE_COUNT {
+            if only.map_or(false, |o| o != scene) {
+                continue;
+            }
+            for seed in [11u64, 12] {
+                println!("=== {} (seed {}) ===", SCENES[scene].name, seed);
+                println!("{}", text(&render(scene, seed, 120, 40, t)));
             }
         }
     }
