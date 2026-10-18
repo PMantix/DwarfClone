@@ -943,4 +943,104 @@ mod tests {
         let old = crate::world::generate(42, &p);
         assert!(old.tiles == plain.tiles);
     }
+
+    /// What the top of a column looks like, in plain ASCII: `~` deep water,
+    /// `-` shallows, `#` ice, `T` tree, `"` shrub, `,` grass, `:` bare soil,
+    /// `.` sand, `n` bare rock, `*` snow, `W` rock standing up, `M` magma,
+    /// ` ` a drop.
+    pub(crate) fn cover_char(w: &World, x: i32, y: i32) -> char {
+        let s = w.surface_z(x, y);
+        let mut p = Pos::new(x, y, s);
+        while p.z + 1 < w.d && w.t(p.up()).water > 0 {
+            p = p.up();
+        }
+        let t = w.t(p);
+        if t.frozen {
+            return '#';
+        }
+        if t.magma > 0 {
+            return 'M';
+        }
+        if t.water > 3 || p.z > s {
+            return '~';
+        }
+        if t.water > 0 {
+            return '-';
+        }
+        match t.kind {
+            TileKind::Tree => 'T',
+            TileKind::Shrub => '"',
+            TileKind::Wall => 'W',
+            TileKind::Open => ' ',
+            _ if t.snow => '*',
+            _ => match t.mat {
+                Mat::Grass => ',',
+                Mat::Sand => '.',
+                Mat::Loam | Mat::Clay => ':',
+                _ => 'n',
+            },
+        }
+    }
+
+    /// The surface height as one character: 0-9 then a-z, counted up from
+    /// the lowest column.
+    pub(crate) fn height_char(w: &World, x: i32, y: i32, lo: i32) -> char {
+        let v = (w.surface_z(x, y) - lo).clamp(0, 35) as u32;
+        std::char::from_digit(v, 36).unwrap()
+    }
+
+    /// The sites `show_sites` draws: (label, test on a world cell).
+    pub(crate) fn pick_sites(ow: &crate::overworld::Overworld, seed: u64) -> Vec<(&'static str, i32, i32)> {
+        use crate::overworld::Biome as B;
+        let cells: Vec<(i32, i32)> = (2..ow.h - 3).flat_map(|y| (2..ow.w - 3).map(move |x| (x, y))).filter(|&(x, y)| ow.embarkable(x, y)).collect();
+        let same_round = |x: i32, y: i32| [(1, 0), (0, 1), (1, 1)].iter().all(|&(dx, dy)| ow.cell(x + dx, y + dy).biome == ow.cell(x, y).biome);
+        let sea_next = |x: i32, y: i32| [(1, 0), (0, 1)].iter().any(|&(dx, dy)| ow.cell(x + dx, y + dy).biome == B::Ocean);
+        let feats = |x: i32, y: i32| ow.site_features(seed, x, y);
+        let tests: Vec<(&'static str, Box<dyn Fn(i32, i32) -> bool>)> = vec![
+            ("plains (grassland)", Box::new(move |x, y| ow.cell(x, y).biome == B::Grassland && same_round(x, y) && feats(x, y) & (feat::RIVER | feat::MESAS | feat::CHASM) == 0)),
+            ("rolling hills", Box::new(move |x, y| ow.cell(x, y).biome == B::Hills && same_round(x, y) && feats(x, y) & (feat::MESAS | feat::CHASM) == 0)),
+            ("mountains", Box::new(move |x, y| ow.cell(x, y).biome == B::Mountain && feats(x, y) & feat::PEAKS != 0 && feats(x, y) & feat::CHASM == 0)),
+            ("forest with a river", Box::new(move |x, y| ow.cell(x, y).biome == B::Forest && ow.cell(x, y).river != 0 && same_round(x, y))),
+            ("coast", Box::new(move |x, y| matches!(ow.cell(x, y).biome, B::Grassland | B::Forest | B::Hills) && sea_next(x, y))),
+            ("swamp", Box::new(move |x, y| ow.cell(x, y).biome == B::Swamp)),
+            ("desert", Box::new(move |x, y| ow.cell(x, y).biome == B::Desert)),
+            ("badlands", Box::new(move |x, y| ow.cell(x, y).biome == B::Badlands)),
+        ];
+        tests.iter().filter_map(|(name, f)| cells.iter().find(|&&(x, y)| f(x, y)).map(|&(x, y)| (*name, x, y))).collect()
+    }
+
+    /// Draw a handful of sites (cover, then heights), every second row,
+    /// from world 42 or the next world that has one:
+    /// `cargo test --release show_sites -- --ignored --nocapture` (SITE=name for one).
+    #[test]
+    #[ignore]
+    fn show_sites() {
+        let only = std::env::var("SITE").ok();
+        let mut shown: Vec<&str> = Vec::new();
+        for seed in [42u64, 7, 5, 11, 13] {
+        let ow = crate::overworld::Overworld::generate(seed);
+        for (name, sx, sy) in pick_sites(&ow, seed) {
+            if shown.contains(&name) || only.as_deref().map_or(false, |o| !name.contains(o)) {
+                continue;
+            }
+            shown.push(name);
+            let params = ow.embark_params(seed, sx, sy, MapSize::MEDIUM);
+            let t0 = std::time::Instant::now();
+            let w = crate::world::generate(seed ^ ((sx as u64) << 20) ^ ((sy as u64) << 40), &params);
+            let ms = t0.elapsed().as_secs_f64() * 1000.0;
+            let lo = (0..w.h).flat_map(|y| (0..w.w).map(move |x| (x, y))).map(|(x, y)| w.surface_z(x, y)).min().unwrap();
+            let hi = (0..w.h).flat_map(|y| (0..w.w).map(move |x| (x, y))).map(|(x, y)| w.surface_z(x, y)).max().unwrap();
+            println!("== {} at ({}, {}): {:?}, features {:?}, river links {}, z {}..{}, {:.0} ms", name, sx, sy, params.biome, feature_names(params.features), params.river, lo, hi, ms);
+            for y in (0..w.h).step_by(2) {
+                let cover: String = (0..w.w).map(|x| cover_char(&w, x, y)).collect();
+                println!("  {}", cover);
+            }
+            println!("  -- heights (0 = z {})", lo);
+            for y in (0..w.h).step_by(2) {
+                let hts: String = (0..w.w).map(|x| height_char(&w, x, y, lo)).collect();
+                println!("  {}", hts);
+            }
+        }
+        }
+    }
 }
