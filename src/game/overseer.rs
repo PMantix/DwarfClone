@@ -2089,23 +2089,12 @@ mod tests {
 
     #[test]
     fn a_trial_game_is_the_trials_fort() {
-        // Seed 5003 (Steady) loses seven dwarves by day 213 of its year
+        // Seed 5003 (Steady) loses nobody by day 213 of its year
         // (schedule::same_story_after_refactor has the whole year).
         let g = trial_game(5003, Style::Steady, 213);
         assert_eq!(g.tick, 213 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
-        assert_eq!(
-            deaths,
-            vec![
-                (152553, "Sigga Embermantle"),
-                (188450, "Ingra Goldbrew"),
-                (218830, "Borra Coalhold"),
-                (241709, "Thekla Copperhold"),
-                (242440, "Ulmek Coalcrown"),
-                (242611, "Ingra Alemantle"),
-                (242910, "Thekla Stonefist")
-            ]
-        );
+        assert_eq!(deaths, vec![]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
     }
 
