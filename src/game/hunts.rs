@@ -149,6 +149,23 @@ impl Game {
         }
     }
 
+    /// The birds have gone quiet near a dwarf at `at` (wildlife.rs): an
+    /// overseer who isn't reckless reads it as a prowler coming, and work
+    /// outdoors waits a while (knob hunt.ban) when it's near the fort.
+    pub(super) fn heed_quiet_woods(&mut self, at: Pos) {
+        let Some(mut o) = self.overseer.take() else { return };
+        let r = self.knob("hunt.ban_range", 20.0) as i32 * 2;
+        let home = o.top.unwrap_or(self.embark);
+        if o.style != Style::Reckless && (at.x - home.x).abs() <= r && (at.y - home.y).abs() <= r {
+            if !self.outdoors_banned() {
+                self.count("outdoor_bans", 1);
+                Self::note_ov(&mut o, self.tick, "The woods went quiet: kept the work indoors.".to_string());
+            }
+            self.hunts.outdoor_ban_until = self.hunts.outdoor_ban_until.max(self.tick + self.knob("hunt.ban", 300.0) as u64);
+        }
+        self.overseer = Some(o);
+    }
+
     /// A soldier fit to go hunting: here, on their feet, unhurt and armed.
     fn fit_to_hunt(&self, d: &Dwarf) -> bool {
         d.alive

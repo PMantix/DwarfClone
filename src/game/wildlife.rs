@@ -139,6 +139,7 @@ impl Game {
             let followed = c.pack != 0 && self.creatures.values().any(|o| o.pack == c.pack && o.stalk == Some(id));
             if c.stalk.is_none() && !followed {
                 self.count("stalks", 1);
+                self.woods_fall_quiet(c.pos);
                 let who = self.dwarves.iter().find(|d| d.id == id).map_or(String::new(), |d| d.name.clone());
                 let what = if pack > 1.0 { format!("The {}", info.plural) } else { format!("A {}", info.name) };
                 let verb = if pack > 1.0 { "shadow" } else { "shadows" };
@@ -148,6 +149,40 @@ impl Game {
             c.stalk = Some(id);
         }
         self.shadow(c, pos);
+    }
+
+    /// Silent woods (CRE-22): a beast at `at` has taken up a trail, and the
+    /// birds about it go quiet. Grown dwarves under the sky within 15 notice
+    /// and grow uneasy; the nearest is named. An overseer takes it as warning
+    /// that something prowls, before anyone has seen it (`heed_quiet_woods`).
+    pub(super) fn woods_fall_quiet(&mut self, at: Pos) {
+        let r = self.knob("wild.quiet_range", 15.0) as i32;
+        let mut heard: Vec<usize> = (0..self.dwarves.len())
+            .filter(|&i| {
+                let d = &self.dwarves[i];
+                d.alive && !d.is_child() && self.world.outside(d.pos) && (d.pos.x - at.x).abs() <= r && (d.pos.y - at.y).abs() <= r && (d.pos.z - at.z).abs() <= 3
+            })
+            .collect();
+        if heard.is_empty() {
+            return;
+        }
+        heard.sort_by_key(|&i| (dist2(self.dwarves[i].pos, at), self.dwarves[i].id));
+        let d = &self.dwarves[heard[0]];
+        let calling = match d.task {
+            Task::Dig { target, .. } if self.world.t(target).kind == TileKind::Tree => "woodcutter".to_string(),
+            Task::Gather { .. } => "gatherer".to_string(),
+            Task::Fish { .. } => "fisher".to_string(),
+            _ => d.profession().to_lowercase(),
+        };
+        let first = d.name.split(' ').next().unwrap_or("someone").to_string();
+        let near_pos = d.pos;
+        self.count("quiet_woods", 1);
+        self.msg(&format!("The birds have gone quiet near the {} {}.", calling, first), (200, 200, 150));
+        let tick = self.tick;
+        for i in heard {
+            self.dwarves[i].think("felt uneasy as the birds went quiet", 3, tick);
+        }
+        self.heed_quiet_woods(near_pos);
     }
 
     /// Keep `aggro + 3 .. aggro + 6` tiles off the stalked dwarf at `prey`.
@@ -636,6 +671,41 @@ mod tests {
         c.path.clear();
         hold(&mut g, 100, |_| {});
         assert!(apart(g.creatures[&wolf].pos, fire) >= 7, "burned, it still sits at {:?}", g.creatures[&wolf].pos);
+    }
+
+    /// A pack takes up the trail of a woodcutter and a friend working
+    /// together under the sky: the birds go quiet, told once, and those
+    /// about grow uneasy. An overseer keeps the work indoors.
+    #[test]
+    fn the_woods_go_quiet_when_something_stalks() {
+        let (mut g, a, squad, woodcutter) = meadow(4);
+        g.dwarves[3].held = None;
+        let friend = squad[0];
+        if let Some(d) = g.dwarves.iter_mut().find(|d| d.id == friend) {
+            d.soldier = false;
+            d.held = None;
+            d.pos = a.offset(14, 0, 0);
+        }
+        assert!(g.world.outside(a.offset(15, 0, 0)), "the meadow is under the sky");
+        let wolves = [g.spawn_creature(Species::Wolf, a.offset(22, 0, 0), u64::MAX), g.spawn_creature(Species::Wolf, a.offset(22, 1, 0), u64::MAX)];
+        for w in wolves {
+            g.creatures.get_mut(&w).unwrap().pack = wolves[0];
+        }
+        hold(&mut g, 200, |_| {});
+        let quiet: Vec<&str> = g.log.iter().filter(|l| l.text.contains("gone quiet")).map(|l| l.text.as_str()).collect();
+        assert_eq!(quiet.len(), 1, "{:?}", quiet);
+        assert!(quiet[0].starts_with("The birds have gone quiet near the "), "{}", quiet[0]);
+        assert_eq!(g.annals.counters.get("quiet_woods"), Some(&1));
+        for id in [woodcutter, friend] {
+            assert!(dwarf(&g, id).thoughts.iter().any(|t| t.text.contains("birds went quiet")));
+        }
+        // The overseer takes the hint when it's near the fort.
+        g.set_overseer(Some(Style::Steady));
+        assert!(!g.outdoors_banned());
+        let home = g.embark;
+        g.heed_quiet_woods(home);
+        assert!(g.outdoors_banned());
+        assert!(g.overseer.as_ref().unwrap().notes.iter().any(|n| n.1.contains("woods went quiet")));
     }
 
     #[test]
