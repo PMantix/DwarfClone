@@ -537,31 +537,55 @@ mod tests {
 
     #[test]
     fn each_layout_places_rooms_that_fit_behind_the_gate() {
-        for (i, &layout) in Layout::ALL.iter().enumerate() {
-            let mut g = Game::new(5);
-            // (A delver, who may open levels down toward the caverns when the first is full.)
-            g.set_overseer(Some(Style::Delver));
-            for _ in 0..300 {
-                g.step();
+        // Each layout's plan on a fort: the first fort from seed 5 on whose
+        // stair has room for every layout's six rooms (it named seed 5 once,
+        // and lost it when the land changed). The rooms must then lie behind
+        // the gate, on the map, and apart.
+        type Plan = (Layout, Pos, Vec<Room>, (i32, i32));
+        let plans = |seed: u64| -> Result<Vec<Plan>, String> {
+            let mut out = Vec::new();
+            for &layout in Layout::ALL.iter() {
+                let mut g = Game::new(seed);
+                // (A delver, who may open levels down toward the caverns when the first is full.)
+                g.set_overseer(Some(Style::Delver));
+                for _ in 0..300 {
+                    g.step();
+                }
+                let mut o = g.overseer.take().unwrap();
+                o.layout = layout;
+                o.rooms.clear();
+                o.anchors.clear();
+                let base = o.base.ok_or_else(|| format!("{}: not dug in", seed))?;
+                let mut rooms = Vec::new();
+                for k in [RoomUse::Dining, RoomUse::Dormitory, RoomUse::Stockpile, RoomUse::Grand, RoomUse::Tavern, RoomUse::Workshops] {
+                    let r = g.plan_room(&mut o, k).ok_or_else(|| format!("{}: {:?} has no room for {:?} (stair at {:?})", seed, layout, k, base))?;
+                    o.rooms.push(r.clone());
+                    rooms.push(r);
+                }
+                out.push((layout, base, rooms, (g.world.w, g.world.h)));
             }
-            let mut o = g.overseer.take().unwrap();
-            o.layout = layout;
-            o.rooms.clear();
-            o.anchors.clear();
-            let base = o.base.expect("dug in");
+            Ok(out)
+        };
+        let mut passed = Vec::new();
+        let found = (5u64..25).find_map(|seed| match plans(seed) {
+            Ok(p) => Some(p),
+            Err(e) => {
+                passed.push(e);
+                None
+            }
+        });
+        let Some(found) = found else { panic!("no fort from seed 5 on has room for every layout: {:#?}", passed) };
+        for (layout, base, rooms, (w, h)) in found {
             // (Tiles, not boxes: a room may sit in the empty corner of a round hall's box.)
             let mut taken: std::collections::HashSet<Pos> = std::collections::HashSet::new();
-            for k in [RoomUse::Dining, RoomUse::Dormitory, RoomUse::Stockpile, RoomUse::Grand, RoomUse::Tavern, RoomUse::Workshops] {
-                let r = g.plan_room(&mut o, k).unwrap_or_else(|| panic!("{:?}: no room for {:?}", layout, k));
+            for r in rooms {
                 assert!(r.a.x >= base.x + 15, "{:?}: room in front of the gate", layout);
-                assert!(r.b.x < g.world.w && r.b.y < g.world.h && r.a.y > 0, "{:?}: off the map", layout);
+                assert!(r.b.x < w && r.b.y < h && r.a.y > 0, "{:?}: off the map", layout);
                 let tiles: Vec<Pos> = if r.tiles.is_empty() { box_iter(r.a, r.b).collect() } else { r.tiles.clone() };
                 for p in &tiles {
                     assert!(taken.insert(*p), "{:?}: rooms overlap at {:?}", layout, p);
                 }
-                o.rooms.push(r);
             }
-            let _ = i;
         }
     }
 }

@@ -55,31 +55,28 @@ fn centre(cx: &Ctx, rx: i32, ry: i32) -> (f32, f32) {
     ((rx * TILE) as f32 + TILE as f32 / 2.0 - 0.5 - bx as f32, (ry * TILE) as f32 + TILE as f32 / 2.0 - 0.5 - by as f32)
 }
 
-/// The mapping for this map: water (if any) at the sea's level, the land
-/// rising a level for every seven units of elevation, pressed flatter only
-/// if it wouldn't fit under the sky.
+/// The mapping for this map: the land's middle height at the map's middle
+/// level (where the old relief stood it, well above the caverns), rising a
+/// level for every seven units of elevation, pressed flatter only if it
+/// wouldn't fit under the sky (or, with no water to run down to, above the
+/// lowest level). Water stands at the map's sea level whatever its world
+/// height; the land eases down to it in beaches or meets it in cliffs.
 pub fn zmap(cx: &Ctx, rt: &RegionTiles) -> ZMap {
     let mut land: Vec<f32> = Vec::new();
-    let mut water: Vec<(f32, usize)> = Vec::new();
+    let mut wet = false;
     for y in (0..cx.h).step_by(TILE as usize) {
         for x in (0..cx.w).step_by(TILE as usize) {
             let i = tile_of(cx, rt, x, y);
             if rt.water[i] == LAND {
                 land.push(rt.elev[i]);
             } else {
-                match water.iter_mut().find(|w| (w.0 - rt.level[i]).abs() < 0.5) {
-                    Some(w) => w.1 += 1,
-                    None => water.push((rt.level[i], 1)),
-                }
+                wet = true;
             }
         }
     }
     land.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let (e_ref, base) = match water.iter().max_by_key(|w| w.1) {
-        Some(w) => (w.0, cx.sea as f32),
-        None if !land.is_empty() => (land[land.len() / 2], cx.mid as f32),
-        None => (0.0, cx.mid as f32),
-    };
+    let base = cx.mid as f32;
+    let e_ref = if land.is_empty() { 0.0 } else { land[land.len() / 2] };
     let mut k = 0.15f32;
     if let (Some(&lo), Some(&hi)) = (land.first(), land.last()) {
         let up = (cx.top - 3) as f32 - base;
@@ -87,7 +84,7 @@ pub fn zmap(cx: &Ctx, rt: &RegionTiles) -> ZMap {
             k = k.min(up / (hi - e_ref));
         }
         let down = base - (cx.lo + 1) as f32;
-        if lo < e_ref && water.is_empty() {
+        if lo < e_ref && !wet {
             k = k.min(down / (e_ref - lo));
         }
     }

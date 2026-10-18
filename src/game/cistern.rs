@@ -747,7 +747,7 @@ mod tests {
     /// the drop; a lever up by the wagon linked to the gate.
     fn carved_cistern(g: &mut Game) -> CisternPlan {
         let e = g.embark;
-        let solid_block = |g: &Game, c: Pos| (-8..=4).all(|dx| (-3..=4).all(|dy| (-2..=2).all(|dz| g.world.solid(c.offset(dx, dy, dz)))));
+        let solid_block = |g: &Game, c: Pos| (-11..=4).all(|dx| (-3..=4).all(|dy| (-2..=2).all(|dz| g.world.solid(c.offset(dx, dy, dz)) && !g.world.t(c.offset(dx, dy, dz)).aquifer)));
         let (w, h) = (g.world.w, g.world.h);
         let spots: Vec<Pos> = (3..e.z - 4).rev().flat_map(|z| (6..h - 6).flat_map(move |y| (10..w - 6).map(move |x| Pos::new(x, y, z)))).collect();
         let c = spots.into_iter().find(|&c| (c.x + c.y) % 3 == 0 && solid_block(g, c)).expect("solid rock for a cistern");
@@ -758,8 +758,9 @@ mod tests {
             t.revealed = true;
             t.dug = true;
         };
-        // The pool, 6 by 3, full; the breach already broken through.
-        for dx in -7..=-2 {
+        // The pool, 9 by 3, full (water enough to fill the chamber whenever
+        // the lever is pulled); the breach already broken through.
+        for dx in -10..=-2 {
             for dy in -1..=1 {
                 open(g, c.offset(dx, dy, 0), TileKind::Floor, 7);
             }

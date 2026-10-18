@@ -571,7 +571,8 @@ fn fit(hg: &mut Grid, sea: &[bool], shore: &[f32], cx: &Ctx, mapped: bool) {
     let high = *land.last().unwrap();
     let lo_w = if any_sea { cx.sea as f32 + 1.0 } else { cx.lo as f32 + 1.0 };
     let hi_w = (cx.top - 2) as f32;
-    // Land from region tiles comes already fitted (see `region::zmap`).
+    // Land from region tiles comes already fitted (see `region::zmap`),
+    // but for easing onto the shore.
     let lift = if mapped { 0.0 } else { (lo_w - low).max(0.0) };
     let high = high + lift;
     let k = if high > hi_w && !mapped { (hi_w - lo_w) / (high - lo_w) } else { 1.0 };
