@@ -129,7 +129,9 @@ impl Game {
         let ids: Vec<u32> = self.creatures.values().filter(|c| c.alive && c.pos == p && !c.breathes_fire).map(|c| c.id).collect();
         for id in ids {
             let part = self.creatures[&id].body.pick_part(&mut self.rng);
-            self.creatures.get_mut(&id).unwrap().body.wound(part, 2, false);
+            let c = self.creatures.get_mut(&id).unwrap();
+            c.body.wound(part, 2, false);
+            c.fears_fire = true;
         }
         let burnt: Vec<u32> = self.items.values().filter(|it| it.pos == p && it.carried_by.is_none() && !it.mat.fireproof()).map(|it| it.id).collect();
         for id in &burnt {

@@ -643,6 +643,16 @@ pub struct Creature {
     /// Another creature it is fighting (or hunting): see `game::combat`.
     #[serde(default)]
     pub foe: Option<u32>,
+    /// Burned once, it keeps well clear of flames (`game::wildlife`).
+    #[serde(default)]
+    pub fears_fire: bool,
+    /// The lair it came out of and goes home to (`game::lairs`).
+    #[serde(default)]
+    pub lair: Option<u32>,
+    /// No way back to its lair: it leaves by the map's edge instead, and
+    /// is back in the lair's numbers once gone (`game::lairs`).
+    #[serde(default)]
+    pub lost_home: bool,
 }
 
 fn yes() -> bool {
@@ -691,6 +701,9 @@ impl Creature {
             stalk: None,
             wary_until: 0,
             foe: None,
+            fears_fire: false,
+            lair: None,
+            lost_home: false,
         }
     }
 

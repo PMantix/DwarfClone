@@ -41,6 +41,12 @@ impl Game {
         if !self.necro_rolled {
             self.place_necromancer();
         }
+        // Older forts have no lairs about them yet (lairs.rs): roll them
+        // from the site itself, leaving the game's own dice alone.
+        if self.lairs.is_empty() {
+            let seed = ((self.site.0 as u64) << 40) ^ ((self.site.1 as u64) << 20) ^ ((self.embark.x as u64) << 8) ^ self.embark.y as u64;
+            self.make_lairs(seed);
+        }
     }
 
     pub(super) fn place_vault(&mut self) {

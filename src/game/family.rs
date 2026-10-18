@@ -333,8 +333,15 @@ mod tests {
     fn an_unburied_dwarf_rises_as_a_ghost() {
         let mut g = quiet(81);
         let name = kill_first(&mut g);
-        run_days(&mut g, GHOST_DAYS + 12);
-        assert!(g.dwarves[0].ghost, "no ghost of {} after {} days", name, GHOST_DAYS + 12);
+        run_days(&mut g, GHOST_DAYS);
+        // Each day after that it may rise (35%): give it up to 40 days.
+        for _ in 0..40 {
+            if g.dwarves[0].ghost {
+                break;
+            }
+            run_days(&mut g, 1);
+        }
+        assert!(g.dwarves[0].ghost, "no ghost of {} after {} days", name, GHOST_DAYS + 40);
         // It haunts the living.
         let text = format!("was haunted by the ghost of {}", name);
         assert!(g.dwarves.iter().any(|d| d.thoughts.iter().any(|t| t.text == text)), "the ghost scared nobody");

@@ -86,6 +86,7 @@ impl Game {
         self.maybe_strange_mood();
         self.word_season();
         // M1 (survival), seasonal:
+        self.lairs_season(season);
     }
 
     /// Each living dwarf, every tick, just after their wounds have bled (and
@@ -110,7 +111,18 @@ mod tests {
     fn same_story_after_refactor() {
         let t = run_trial(5003, Style::Steady, 1, &Knobs::default());
         let deaths: Vec<(u64, &str, &str)> = t.deaths.iter().map(|d| (d.tick, d.name.as_str(), d.cause.as_str())).collect();
-        assert_eq!(deaths, vec![]);
+        assert_eq!(
+            deaths,
+            vec![
+                (303947, "Dorna Stonebeard", "struck down"),
+                (355583, "Ingra Frostbrew", "struck down"),
+                (355679, "Grenda Granitesong", "struck down"),
+                (358032, "Borra Coalhelm", "struck down"),
+                (358072, "Dorna Copperfist", "struck down"),
+                (360785, "Borra Embergrip", "struck down"),
+                (361374, "Runa Graniteforge", "struck down")
+            ]
+        );
         let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
         assert_eq!(sieges, vec![]);
         assert_eq!((t.alive, t.peak_wealth, t.story.len()), (18, 38894, 25));

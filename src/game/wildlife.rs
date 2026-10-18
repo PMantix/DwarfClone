@@ -38,11 +38,14 @@ impl Game {
         }
     }
 
+    /// Once a day: a dwarf may come upon a lair, and the wild may come
+    /// calling, from a lair that has beasts at home (or, for those with
+    /// none, from the map's edge). A land hunted out sends nothing.
     pub(super) fn wildlife(&mut self) {
+        self.come_upon_lairs();
         if !self.rng.chance(self.knob("wildlife.chance", 0.18)) {
             return;
         }
-        let Some(entry) = self.edge_entry() else { return };
         self.count("wildlife.visits", 1);
         let roll = self.rng.f64();
         let tame = 1.0 - self.savagery.clamp(0.05, 0.9) * 0.7;
@@ -58,11 +61,25 @@ impl Game {
         if self.evil && species.info().aggro > 0 && self.rng.chance(0.5) {
             species = Species::Husk;
         }
+        let Some(from) = self.lair_sends(species, n as u32) else {
+            self.count("wildlife.none", 1);
+            return;
+        };
+        let (entry, n, lair) = match from {
+            Some((i, n)) => (self.lairs[i].pos, n as i32, Some(i as u32)),
+            None => match self.edge_entry() {
+                Some(p) => (p, n, None),
+                None => return,
+            },
+        };
         let stay = DAY * self.rng.range(2, 5) as u64;
         let mut pack = 0;
         for _ in 0..n {
             let p = self.spot_near(entry, 2);
             let id = self.spawn_creature(species, p, stay);
+            if let Some(c) = self.creatures.get_mut(&id) {
+                c.lair = lair;
+            }
             // Those that came together hunt together.
             if n > 1 {
                 if pack == 0 {
@@ -77,7 +94,11 @@ impl Game {
         if info.aggro > 0 {
             let a = if info.name.starts_with(|c: char| "aeiou".contains(c)) { "An" } else { "A" };
             let what = if n > 1 { format!("A pack of {}", info.plural) } else { format!("{} {}", a, info.name) };
-            self.msg(&format!("{} has been spotted nearby.", what), (255, 170, 80));
+            let from = match lair.map(|i| &self.lairs[i as usize]) {
+                Some(l) if l.found => format!(", out of {}", l.name),
+                _ => String::new(),
+            };
+            self.msg(&format!("{} has been spotted nearby{}.", what, from), (255, 170, 80));
         }
     }
 
@@ -104,6 +125,8 @@ impl Game {
         // In the last quarter of the day it takes more chances.
         let night = self.tick % DAY >= DAY * 3 / 4;
         let nerve = self.knob("wild.nerve", 1.5) * if night { self.knob("wild.night", 0.5) } else { 1.0 };
+        // With the grazing grounds emptied, hunger makes it bolder.
+        let nerve = nerve * if self.prey_scarce() { self.knob("wild.hungry", 0.7) } else { 1.0 };
         // Everyone in sight (and the one it follows, a little further), the
         // weakest (then the nearest) first.
         let mut prey: Vec<(f64, f64, u32, Pos)> = self
@@ -139,6 +162,7 @@ impl Game {
             let followed = c.pack != 0 && self.creatures.values().any(|o| o.pack == c.pack && o.stalk == Some(id));
             if c.stalk.is_none() && !followed {
                 self.count("stalks", 1);
+                self.woods_fall_quiet(c.pos);
                 let who = self.dwarves.iter().find(|d| d.id == id).map_or(String::new(), |d| d.name.clone());
                 let what = if pack > 1.0 { format!("The {}", info.plural) } else { format!("A {}", info.name) };
                 let verb = if pack > 1.0 { "shadow" } else { "shadows" };
@@ -148,6 +172,40 @@ impl Game {
             c.stalk = Some(id);
         }
         self.shadow(c, pos);
+    }
+
+    /// Silent woods (CRE-22): a beast at `at` has taken up a trail, and the
+    /// birds about it go quiet. Grown dwarves under the sky within 15 notice
+    /// and grow uneasy; the nearest is named. An overseer takes it as warning
+    /// that something prowls, before anyone has seen it (`heed_quiet_woods`).
+    pub(super) fn woods_fall_quiet(&mut self, at: Pos) {
+        let r = self.knob("wild.quiet_range", 15.0) as i32;
+        let mut heard: Vec<usize> = (0..self.dwarves.len())
+            .filter(|&i| {
+                let d = &self.dwarves[i];
+                d.alive && !d.is_child() && self.world.outside(d.pos) && (d.pos.x - at.x).abs() <= r && (d.pos.y - at.y).abs() <= r && (d.pos.z - at.z).abs() <= 3
+            })
+            .collect();
+        if heard.is_empty() {
+            return;
+        }
+        heard.sort_by_key(|&i| (dist2(self.dwarves[i].pos, at), self.dwarves[i].id));
+        let d = &self.dwarves[heard[0]];
+        let calling = match d.task {
+            Task::Dig { target, .. } if self.world.t(target).kind == TileKind::Tree => "woodcutter".to_string(),
+            Task::Gather { .. } => "gatherer".to_string(),
+            Task::Fish { .. } => "fisher".to_string(),
+            _ => d.profession().to_lowercase(),
+        };
+        let first = d.name.split(' ').next().unwrap_or("someone").to_string();
+        let near_pos = d.pos;
+        self.count("quiet_woods", 1);
+        self.msg(&format!("The birds have gone quiet near the {} {}.", calling, first), (200, 200, 150));
+        let tick = self.tick;
+        for i in heard {
+            self.dwarves[i].think("felt uneasy as the birds went quiet", 3, tick);
+        }
+        self.heed_quiet_woods(near_pos);
     }
 
     /// Keep `aggro + 3 .. aggro + 6` tiles off the stalked dwarf at `prey`.
@@ -185,6 +243,7 @@ impl Game {
     /// real wound (a quarter of a part) sends a wild beast off for a while,
     /// and while it's wary it doesn't turn on whoever hits it.
     pub(super) fn wild_nerve(&mut self, c: &mut Creature) {
+        self.shun_fire(c);
         if c.leaving || !c.hostile() || !has_sense(c) {
             return;
         }
@@ -199,6 +258,89 @@ impl Game {
             c.foe = None;
             c.path.clear();
             c.think_cd = 0;
+        }
+    }
+
+    /// A wild beast has just struck the dwarf at `di` (`creature_tick`). With
+    /// two or more grown dwarves on their feet within 3 of them, they stand
+    /// together: at each swing it may lose its nerve (knob wild.together,
+    /// 0.3 for each friend past the first) and back off, wary, as if hurt.
+    pub(super) fn stand_together(&mut self, c: &mut Creature, di: usize) {
+        if !has_sense(c) || c.leaving || c.target.is_none() {
+            return;
+        }
+        let Some(d) = self.dwarves.get(di).filter(|d| d.alive) else { return };
+        let (at, victim) = (d.pos, d.id);
+        let mut allies: Vec<usize> = (0..self.dwarves.len())
+            .filter(|&i| {
+                let o = &self.dwarves[i];
+                o.alive && o.id != victim && !o.is_child() && !o.body.unconscious() && near(o.pos, at, 3)
+            })
+            .collect();
+        if allies.len() < 2 || !self.rng.chance(self.knob("wild.together", 0.3) * (allies.len() - 1) as f64) {
+            return;
+        }
+        c.wary_until = self.tick + self.knob("wild.wary", 200.0) as u64;
+        c.target = None;
+        c.stalk = None;
+        c.foe = None;
+        c.path.clear();
+        c.think_cd = 0;
+        self.count("wild.driven_off", 1);
+        allies.sort_by_key(|&i| dist2(self.dwarves[i].pos, at));
+        allies.insert(0, di);
+        let first = |g: &Game, i: usize| g.dwarves[i].name.split(' ').next().unwrap_or("someone").to_string();
+        let names: Vec<String> = allies.iter().take(3).map(|&i| first(self, i)).collect();
+        let who = if allies.len() > 3 { format!("{}, {}, {} and the others", names[0], names[1], names[2]) } else { format!("{}, {} and {}", names[0], names[1], names[2]) };
+        let name = c.name().to_string();
+        self.msg(&format!("{} stand together, and the {} backs off.", who, name), (160, 230, 160));
+        let tick = self.tick;
+        for i in allies {
+            self.dwarves[i].think(&format!("stood together against a {}", name), -3, tick);
+        }
+    }
+
+    /// Flames scare the wild (every 5 ticks, from `wild_nerve`): a beast
+    /// within 2 of a burning tile or a dragon's breath runs from it, and one
+    /// that has been burned (`fears_fire`) keeps 6 off (knob wild.fire_fear).
+    fn shun_fire(&mut self, c: &mut Creature) {
+        if c.leaving || !has_sense(c) || (self.tick + c.id as u64) % 5 != 0 {
+            return;
+        }
+        let burning = self.fire_cells.as_ref().map_or(false, |v| !v.is_empty());
+        if !burning && self.flames.is_empty() {
+            return;
+        }
+        let r = if c.fears_fire { self.knob("wild.fire_fear", 6.0) as i32 } else { 2 };
+        let tick = self.tick;
+        let w = &self.world;
+        let fires: Vec<Pos> = self
+            .fire_cells
+            .iter()
+            .flatten()
+            .map(|&i| w.pos_of(i))
+            .chain(self.flames.iter().filter(|&&(_, t)| t + 12 > tick).map(|&(p, _)| p))
+            .filter(|&p| near(p, c.pos, r + 2))
+            .collect();
+        if !fires.iter().any(|&p| near(p, c.pos, r)) {
+            return;
+        }
+        let was = c.target.is_some() || c.stalk.is_some() || c.foe.is_some();
+        c.target = None;
+        c.stalk = None;
+        c.foe = None;
+        c.think_cd = 30;
+        let clear = |q: Pos| fires.iter().all(|&p| !near(p, q, r + 1));
+        if !c.path.first().map_or(false, |&q| clear(q)) {
+            c.path.clear();
+            if let Some((_, path)) = path::search(w, c.pos, 900, c.mover(), |q| clear(q) && w.t(q).fire == 0) {
+                c.path = path.into_iter().rev().collect();
+            }
+        }
+        if was {
+            self.count("wild.fire_fled", 1);
+            let name = c.species.info().name;
+            self.warn(&format!("fire_fear:{}", name), &format!("The {} shies from the flames.", name), (255, 190, 110));
         }
     }
 
@@ -300,8 +442,11 @@ impl Game {
     /// What a wild beast is up to, for its card: shadowing someone, or
     /// keeping off with a wound.
     pub fn wild_mood(&self, c: &Creature) -> Option<String> {
-        if c.leaving || !c.alive {
+        if !c.alive {
             return None;
+        }
+        if c.leaving {
+            return self.lair_of(c).filter(|l| l.found).map(|l| format!("Making for {}", l.name));
         }
         if c.wary_until > self.tick {
             return Some("Wounded and wary: keeping its distance".into());
@@ -495,6 +640,98 @@ mod tests {
         let mut went = false;
         hold(&mut g, 150, |g| went |= wolves.iter().any(|w| g.creatures[w].target == Some(woodcutter)));
         assert!(went, "they strike once the woodcutter is alone");
+    }
+
+    /// Three empty-handed dwarves side by side, a wolf at the middle one's
+    /// throat: they stand together and it backs off. A lone dwarf gets no
+    /// such luck.
+    #[test]
+    fn three_dwarves_together_drive_off_a_wolf() {
+        for seed in [2, 3, 4] {
+            let (mut g, a, squad, woodcutter) = meadow(seed);
+            for d in g.dwarves.iter_mut() {
+                d.soldier = false;
+                d.held = None;
+            }
+            let wolf = g.spawn_creature(Species::Wolf, a.offset(1, 0, 0), u64::MAX);
+            g.creatures.get_mut(&wolf).unwrap().target = Some(squad[1]);
+            let mut backed = 0;
+            hold(&mut g, 300, |g| {
+                if backed == 0 && g.creatures[&wolf].wary_until > 0 {
+                    backed = g.tick;
+                }
+            });
+            let c = &g.creatures[&wolf];
+            assert!(backed > 0, "seed {}: the wolf never backed off", seed);
+            assert!(c.target.is_none() && !c.leaving, "seed {}: wary, not gone", seed);
+            assert!(g.log.iter().any(|l| l.text.contains("stand together, and the wolf backs off.")), "seed {}", seed);
+            assert_eq!(g.annals.counters.get("wild.driven_off"), Some(&1));
+            assert!(squad.iter().all(|&id| dwarf(&g, id).alive), "seed {}: nobody died", seed);
+            assert!(dwarf(&g, squad[0]).thoughts.iter().any(|t| t.text.contains("stood together")));
+            // A lone dwarf isn't so lucky.
+            let lone = g.spawn_creature(Species::Wolf, dwarf(&g, woodcutter).pos.offset(1, 0, 0), u64::MAX);
+            g.creatures.get_mut(&lone).unwrap().target = Some(woodcutter);
+            hold(&mut g, 60, |_| {});
+            assert_eq!(g.creatures[&lone].wary_until, 0, "seed {}: the lone woodcutter drove it off", seed);
+        }
+    }
+
+    /// Fire: a wolf beside a burning tree runs from it; one that has been
+    /// burned keeps well clear.
+    #[test]
+    fn wild_things_fear_fire() {
+        let (mut g, a, _, woodcutter) = meadow(2);
+        let fire = a.offset(12, 0, 0);
+        g.world.t_mut(fire).fire = 20;
+        g.fire_cells = Some(vec![g.world.idx(fire)]);
+        let wolf = g.spawn_creature(Species::Wolf, fire.offset(1, 1, 0), u64::MAX);
+        g.creatures.get_mut(&wolf).unwrap().target = Some(woodcutter);
+        hold(&mut g, 40, |_| {});
+        let c = &g.creatures[&wolf];
+        assert!(apart(c.pos, fire) >= 3, "it stays by the fire at {:?}", c.pos);
+        assert!(g.log.iter().any(|l| l.text.contains("The wolf shies from the flames.")));
+        // Burned once, it won't come within 6.
+        let c = g.creatures.get_mut(&wolf).unwrap();
+        c.fears_fire = true;
+        c.pos = fire.offset(4, 0, 0);
+        c.path.clear();
+        hold(&mut g, 100, |_| {});
+        assert!(apart(g.creatures[&wolf].pos, fire) >= 7, "burned, it still sits at {:?}", g.creatures[&wolf].pos);
+    }
+
+    /// A pack takes up the trail of a woodcutter and a friend working
+    /// together under the sky: the birds go quiet, told once, and those
+    /// about grow uneasy. An overseer keeps the work indoors.
+    #[test]
+    fn the_woods_go_quiet_when_something_stalks() {
+        let (mut g, a, squad, woodcutter) = meadow(4);
+        g.dwarves[3].held = None;
+        let friend = squad[0];
+        if let Some(d) = g.dwarves.iter_mut().find(|d| d.id == friend) {
+            d.soldier = false;
+            d.held = None;
+            d.pos = a.offset(14, 0, 0);
+        }
+        assert!(g.world.outside(a.offset(15, 0, 0)), "the meadow is under the sky");
+        let wolves = [g.spawn_creature(Species::Wolf, a.offset(22, 0, 0), u64::MAX), g.spawn_creature(Species::Wolf, a.offset(22, 1, 0), u64::MAX)];
+        for w in wolves {
+            g.creatures.get_mut(&w).unwrap().pack = wolves[0];
+        }
+        hold(&mut g, 200, |_| {});
+        let quiet: Vec<&str> = g.log.iter().filter(|l| l.text.contains("gone quiet")).map(|l| l.text.as_str()).collect();
+        assert_eq!(quiet.len(), 1, "{:?}", quiet);
+        assert!(quiet[0].starts_with("The birds have gone quiet near the "), "{}", quiet[0]);
+        assert_eq!(g.annals.counters.get("quiet_woods"), Some(&1));
+        for id in [woodcutter, friend] {
+            assert!(dwarf(&g, id).thoughts.iter().any(|t| t.text.contains("birds went quiet")));
+        }
+        // The overseer takes the hint when it's near the fort.
+        g.set_overseer(Some(Style::Steady));
+        assert!(!g.outdoors_banned());
+        let home = g.embark;
+        g.heed_quiet_woods(home);
+        assert!(g.outdoors_banned());
+        assert!(g.overseer.as_ref().unwrap().notes.iter().any(|n| n.1.contains("woods went quiet")));
     }
 
     #[test]

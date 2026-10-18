@@ -1315,7 +1315,7 @@ impl Game {
             self.dragon_hoard(&c);
         }
         self.pet_died(&c);
-        self.pack_breaks(&c);
+        self.wild_death(&c);
         if let Some(f) = c.figure {
             let label = c.title();
             let kind = self.overworld.figures.get(f as usize).map_or("beast".to_string(), |x| x.kind.clone());
@@ -1442,6 +1442,9 @@ impl Game {
             c.path.clear();
         }
         if c.leaving {
+            if let Some(stay) = self.go_home(c) {
+                return stay;
+            }
             let p = c.pos;
             if (p.x == 0 || p.y == 0 || p.x == self.world.w - 1 || p.y == self.world.h - 1) && self.world.outside(p) {
                 for id in c.weapon.iter().chain(c.armor.iter()) {
@@ -1449,6 +1452,10 @@ impl Game {
                 }
                 if let Some(it) = c.loot.and_then(|id| self.items.remove(&id)) {
                     self.msg(&format!("A thief has made off with {}!", it.name()), (255, 120, 90));
+                }
+                // A beast cut off from its lair goes round to it (lairs.rs).
+                if let Some(l) = c.lair.and_then(|i| self.lairs.get_mut(i as usize)) {
+                    l.pop = (l.pop + 1).min(l.cap);
                 }
                 return false;
             }
@@ -1508,6 +1515,7 @@ impl Game {
                 if c.attack_cd == 0 {
                     c.attack_cd = info.attack_delay + c.body.limp();
                     self.creature_attack(c, di);
+                    self.stand_together(c, di);
                 }
                 return true;
             }

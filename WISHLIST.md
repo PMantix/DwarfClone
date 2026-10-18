@@ -183,7 +183,7 @@ style survive three years, and every style still loses forts in memorable ways.
 
 #### S08 Wild things with sense (L)
 - **Why:** Wolves and other wildlife charge whole squads like berserkers; real predators pick off stragglers and break off when hurt.
-- **Steps:** [ ] Predator discretion ([CRE-01](ideas/myth-and-depths.md)) · [ ] Fire and intimidation ([CRE-02](ideas/myth-and-depths.md)) · [ ] Wary once wounded ([CRE-03](ideas/myth-and-depths.md)) · [ ] Stalking predators ([CRE-15](ideas/myth-and-depths.md)) · [ ] Silent woods ([CRE-22](ideas/myth-and-depths.md)) · [ ] Wildlife from lairs ([CRE-23](ideas/myth-and-depths.md)) · [ ] Living populations ([CRE-29](ideas/myth-and-depths.md))
+- **Steps:** [ ] Predator discretion ([CRE-01](ideas/myth-and-depths.md)) · [x] Fire and intimidation ([CRE-02](ideas/myth-and-depths.md)) · [ ] Wary once wounded ([CRE-03](ideas/myth-and-depths.md)) · [ ] Stalking predators ([CRE-15](ideas/myth-and-depths.md)) · [x] Silent woods ([CRE-22](ideas/myth-and-depths.md)) · [x] Wildlife from lairs ([CRE-23](ideas/myth-and-depths.md)) · [x] Living populations ([CRE-29](ideas/myth-and-depths.md))
 - **Done when:** Deaths to wildlife halve in the batch, and a wolf pack shadows a lone woodcutter rather than a squad.
 
 #### S09 Madness that mends (S)

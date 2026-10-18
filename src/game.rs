@@ -87,6 +87,7 @@ pub mod gore;
 mod melee;
 mod archery;
 mod hunts;
+mod lairs;
 mod larder;
 pub mod fortify;
 mod towers;
@@ -454,6 +455,9 @@ pub struct Game {
     /// The overseer's hunt for prowling beasts (`hunts.rs`).
     #[serde(default)]
     pub hunts: hunts::Hunts,
+    /// Dens, lairs and grazing grounds the wild come from (`lairs.rs`).
+    #[serde(default)]
+    pub lairs: Vec<lairs::Lair>,
     /// A new page has been written and should be shown.
     #[serde(skip)]
     pub chronicle_ready: bool,
@@ -525,6 +529,7 @@ impl Game {
         g.bring_animals(embark, &loadout.animal_list());
         g.place_vault();
         g.place_necromancer();
+        g.make_lairs(seed);
         report("Strike the earth!", 1.0);
         g
     }
@@ -609,6 +614,7 @@ impl Game {
             siege_watch: None,
             shelter: Default::default(),
             hunts: Default::default(),
+            lairs: Vec::new(),
             chronicle_ready: false,
             creatures: BTreeMap::new(),
             station: None,
