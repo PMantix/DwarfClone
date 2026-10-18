@@ -3656,8 +3656,11 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
             if let Some(n) = g.necromancer.as_ref().filter(|n| n.known && n.alive) {
                 v.push(plain(format!("The necromancer {} dwells in {}. Bury your dead.", n.name, n.tower), Color::Rgb(190, 120, 230)));
             }
+            // Long lines (a sign, the thing's look): wrapped to fit an 80-column screen.
             for l in g.haunt_lines() {
-                v.push(plain(l, Color::Rgb(200, 170, 230)));
+                for (i, part) in wrap_words(&l, 68).into_iter().enumerate() {
+                    v.push(plain(if i == 0 { part } else { format!("  {}", part) }, Color::Rgb(200, 170, 230)));
+                }
             }
             v.push(Line::default());
 

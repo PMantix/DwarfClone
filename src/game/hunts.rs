@@ -216,7 +216,7 @@ impl Game {
     }
 
     /// The squad's members fit to hunt, and how many of them are kit-ready.
-    fn hunters(&self, s: usize) -> (Vec<u32>, usize) {
+    pub(super) fn hunters(&self, s: usize) -> (Vec<u32>, usize) {
         let fit: Vec<u32> = self.squads[s].members.iter().copied().filter(|&id| self.dwarves.iter().any(|d| d.id == id && self.fit_to_hunt(d))).collect();
         let ready = fit.iter().filter(|&&id| self.kit_ready(id)).count();
         (fit, ready)

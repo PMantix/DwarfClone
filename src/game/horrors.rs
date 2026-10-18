@@ -399,7 +399,7 @@ impl Game {
     /// careless and rot, and the held come free.
     pub(super) fn horrors_tick(&mut self) {
         let h = &self.horrors;
-        if h.gifts.is_empty() && h.webs.is_empty() && h.held.is_empty() && h.venom.is_empty() {
+        if h.gifts.is_empty() && h.webs.is_empty() && h.held.is_empty() && h.venom.is_empty() && h.kin.is_empty() {
             return;
         }
         self.bane_tick();
@@ -407,6 +407,9 @@ impl Game {
         // The dead and the departed keep no powers.
         let creatures = &self.creatures;
         self.horrors.gifts.retain(|id, _| creatures.get(id).map_or(false, |c| c.alive));
+        // Nor do merchants gone home or soldiers fled off the map stay kin
+        // (the fallen are dropped as they die, in kin_died).
+        self.horrors.kin.retain(|id, _| creatures.contains_key(id));
         self.regrowth();
         self.venom_doses();
         // Webs: rot away, or catch whoever walks into them.

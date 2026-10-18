@@ -47,7 +47,9 @@ impl Game {
     }
 
     /// One of a made people's soldiers, just spawned: their own size and
-    /// look, and their maker's gift.
+    /// look, and for the leader and about a third of the rest (knob
+    /// kin.gifted), their maker's gift: a whole army breathing fire or
+    /// roaring would be too much for a young fort.
     pub(super) fn dress_kin(&mut self, id: u32, civ: u32, leads: bool) {
         let Some(m) = self.made(civ).cloned() else { return };
         let known = self.horrors.kin_known.iter().filter(|k| k.0 == civ).map(|k| k.1).collect::<Vec<Power>>();
@@ -62,6 +64,9 @@ impl Game {
         }
         self.horrors.kin.insert(id, civ);
         let mut rng = self.horror_rng(id, 0x6B1D);
+        if !leads && !rng.chance(self.knob("kin.gifted", 0.34)) {
+            return;
+        }
         self.gift_powers(id, vec![m.power], &mut rng);
         if let Some(g) = self.horrors.gifts.get_mut(&id) {
             g.known = known;
@@ -114,8 +119,9 @@ impl Game {
         }
     }
 
-    /// In the dead of winter, when nobody else comes, a made people at
-    /// peace with us sends traders.
+    /// In the dead of winter, when nobody else comes, a made people given
+    /// to trade and at peace with us sends traders (the wary keep to
+    /// themselves).
     pub(super) fn kin_caravan(&mut self, season: u64) {
         if season != 3 || self.caravan.is_some() {
             return;
@@ -124,7 +130,7 @@ impl Game {
             .neighbors
             .iter()
             .filter(|n| n.dist <= 30 && !self.at_war_with(n))
-            .find(|n| self.made(n.civ).map_or(false, |m| m.temper != Temper::Warlike))
+            .find(|n| self.made(n.civ).map_or(false, |m| m.temper == Temper::Mercantile))
             .cloned();
         let Some(n) = pick else { return };
         let m = self.made(n.civ).cloned().unwrap();
@@ -220,11 +226,17 @@ mod tests {
         g.lay_siege_of(&n, 5, None);
         let army: Vec<&Creature> = g.creatures.values().filter(|c| c.siege).collect();
         assert_eq!(army.len(), 5);
+        // The leader and some of the rest carry the gift, not all of them.
+        let gifted: Vec<u32> = army.iter().filter(|c| g.horrors.gifts.contains_key(&c.id)).map(|c| c.id).collect();
+        assert!(army.iter().filter(|c| c.general.is_some()).all(|c| gifted.contains(&c.id)));
+        assert!(!gifted.is_empty() && gifted.len() < army.len(), "{} of {} gifted", gifted.len(), army.len());
         assert!(army.iter().all(|c| c.species == Species::Spawn));
         // Their own look and their maker's gift.
         for c in &army {
             assert_eq!(g.kin_look(c), Some((m.glyph, m.color)));
-            assert_eq!(g.horrors.gifts[&c.id].powers, vec![m.power]);
+            if let Some(gift) = g.horrors.gifts.get(&c.id) {
+                assert_eq!(gift.powers, vec![m.power]);
+            }
         }
         assert!(army.iter().any(|c| c.label.as_deref() == Some(&format!("the {}", m.singular))));
         // Told by their own name.
@@ -232,19 +244,19 @@ mod tests {
         assert_eq!(g.annals.sieges.last().unwrap().foe, m.plural);
         // When one shows the gift, the fort knows it of them all.
         let ids: Vec<u32> = army.iter().map(|c| c.id).collect();
-        let first = ids[0];
+        let first = gifted[0];
         let title = g.kin_of(first).unwrap().1;
         g.learn_power(first, &title, m.power);
-        assert!(ids.iter().all(|id| g.horrors.gifts[id].known.contains(&m.power)));
+        assert!(gifted.iter().all(|id| g.horrors.gifts[id].known.contains(&m.power)));
         assert!(g.overworld.events.iter().any(|e| e.text.contains(&format!("every one of the {}", m.plural))));
         // Those slain leave bodies with their name.
-        let mut c = g.creatures.remove(&ids[1]).unwrap();
+        let mut c = g.creatures.remove(&ids[if ids[0] == first { 1 } else { 0 }]).unwrap();
         c.body.dead = true;
         g.creature_died(c);
         assert!(g.items.values().any(|it| it.kind == ItemKind::Corpse && it.label.as_deref() == Some(m.singular.as_str())));
         // The next army comes already known.
         g.lay_siege_of(&n, 2, None);
-        let fresh = g.creatures.values().filter(|c| c.siege && !ids.contains(&c.id)).map(|c| c.id).next().unwrap();
+        let fresh = g.creatures.values().filter(|c| c.siege && !ids.contains(&c.id) && g.horrors.gifts.contains_key(&c.id)).map(|c| c.id).next().unwrap();
         assert!(g.horrors.gifts[&fresh].known.contains(&m.power));
     }
 
@@ -281,9 +293,25 @@ mod tests {
         let merchants = car.merchants.clone();
         assert!(merchants.iter().all(|id| g.creatures[id].label.as_deref().unwrap().contains(&m.singular)));
         assert!(g.spotlights.iter().any(|s| s.title == "Strange traders"));
-        // A warlike people never trades.
-        let (mut g2, _) = with_kin(Temper::Warlike);
-        g2.kin_caravan(3);
-        assert!(g2.caravan.is_none());
+        // A warlike people never trades, nor does a wary one.
+        for t in [Temper::Warlike, Temper::Wary] {
+            let (mut g2, _) = with_kin(t);
+            g2.kin_caravan(3);
+            assert!(g2.caravan.is_none(), "{:?} traded", t);
+            assert!(!g2.log.iter().any(|l| l.text.contains("came out of the snow")));
+        }
+    }
+
+    #[test]
+    fn kin_who_leave_the_map_are_forgotten() {
+        let (mut g, n) = with_kin(Temper::Warlike);
+        g.lay_siege_of(&n, 3, None);
+        let ids: Vec<u32> = g.creatures.values().filter(|c| c.siege).map(|c| c.id).collect();
+        assert!(ids.iter().all(|id| g.horrors.kin.contains_key(id)));
+        // One flees off the map (gone without dying).
+        g.creatures.remove(&ids[0]);
+        g.horrors_tick();
+        assert!(!g.horrors.kin.contains_key(&ids[0]));
+        assert!(g.horrors.kin.contains_key(&ids[1]));
     }
 }

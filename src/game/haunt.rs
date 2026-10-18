@@ -197,7 +197,9 @@ impl Game {
         let name = cap(&(0..n).map(|_| *r.pick(&SYL)).collect::<String>());
         let look = format!("A {} {} of {} with {}.", r.pick(&SIZE), r.pick(&SHAPE), r.pick(&STUFF), r.pick(&MARK));
         let powers = pick_powers(&mut r, &look, 1, 2);
-        let bane = *r.pick(&Bane::ALL);
+        // A fire-breather that feared fire would sear itself on its own breath.
+        let banes: Vec<Bane> = Bane::ALL.into_iter().filter(|b| *b != Bane::Fire || !powers.contains(&Power::Fire)).collect();
+        let bane = *r.pick(&banes);
         let lair = self.haunt_lair(&mut r);
         Haunt { nickname, name, look, powers, bane, lair, stage: Stage::Signs, began: 0, since: 0, signs: Vec::new(), investigator: None, clues: 0, creature: None, armed: false, squad: None, heard: 0, burnt: false }
     }
@@ -260,11 +262,14 @@ impl Game {
                 }
             }
             Stage::Known => {
+                // Gold or wood may have come in since.
+                self.arm_against_haunt(false);
                 if self.tick > h.since + (self.knob("haunt.comes", 12.0) * DAY as f64) as u64 {
                     self.haunt_comes();
                 }
             }
             Stage::Hunted => {
+                self.arm_against_haunt(false);
                 // Not found in three days: it turns on the fort.
                 if self.tick > h.since + (self.knob("haunt.hunt_days", 3.0) * DAY as f64) as u64 {
                     self.haunt_comes();
@@ -379,8 +384,9 @@ impl Game {
         }
     }
 
-    /// Its bane and lair are known: told, written in the legends, and the
-    /// hunters armed with it if the fort can.
+    /// Its bane and lair are known: told, written in the legends, the
+    /// hunters armed with it if the fort can, and (in a player's fort) the
+    /// thing itself seen at its lair.
     pub(super) fn haunt_found_out(&mut self, by: Option<u32>) {
         let Some(h) = self.horrors.haunt.clone() else { return };
         if h.stage >= Stage::Known {
@@ -403,13 +409,20 @@ impl Game {
         self.spotlight("The thing in the night", &text, Some(h.lair), (230, 200, 120));
         let by_whom = who.unwrap_or_else(|| "The dwarves".to_string());
         self.legend(format!("{} of {} learned that {}, {}, could not bear {}.", by_whom, fort, cap(&h.nickname), h.name, h.bane.name()));
-        self.arm_against_haunt();
+        self.arm_against_haunt(true);
+        // With no overseer to send the hunters, the player may: it shows
+        // itself at its lair, where a squad can be ordered to kill it.
+        if self.overseer.is_none() {
+            self.haunt_creature(false);
+        }
     }
 
     /// The fort readies the bane for the hunters: gold from the stocks, wood
-    /// for torches, running water from the map, a copy of an engraving.
-    fn arm_against_haunt(&mut self) {
-        let Some(bane) = self.horrors.haunt.as_ref().map(|h| h.bane) else { return };
+    /// for torches, water from a running stream, a copy of an engraving it
+    /// has seen. Tried when the bane is found (`loud`: told either way) and
+    /// each day after until it works (told only then).
+    pub(super) fn arm_against_haunt(&mut self, loud: bool) {
+        let Some(bane) = self.horrors.haunt.as_ref().filter(|h| !h.armed).map(|h| h.bane) else { return };
         let free = |it: &Item| it.carried_by.is_none() && it.claimed_by.is_none() && it.container.is_none();
         let ready = match bane {
             Bane::Gold => {
@@ -420,8 +433,9 @@ impl Game {
                 let id = self.items.values().find(|it| free(it) && it.kind == ItemKind::Log).map(|it| it.id);
                 id.map(|id| self.items.remove(&id)).is_some()
             }
-            Bane::RunningWater => self.world.tiles.iter().any(|t| t.water > 0 && !t.frozen),
-            Bane::Engraving => self.world.tiles.iter().any(|t| t.smooth >= 2),
+            // A river or brook, not a pond or a puddle.
+            Bane::RunningWater => self.world.river_beds.iter().any(|&(p, _)| self.world.get(p).map_or(false, |t| t.water > 0 && !t.frozen)),
+            Bane::Engraving => self.world.tiles.iter().any(|t| t.smooth >= 2 && t.revealed),
         };
         let nick = self.horrors.haunt.as_ref().map(|h| h.nickname.clone()).unwrap_or_default();
         if ready {
@@ -429,7 +443,7 @@ impl Game {
                 h.armed = true;
             }
             self.msg(&format!("Against {}, the fort {}.", nick, bane.armed_text()), (230, 200, 120));
-        } else {
+        } else if loud {
             self.msg(&format!("The fort cannot arm itself against {}: {}.", nick, bane.lacking()), (240, 170, 110));
         }
     }
@@ -564,8 +578,9 @@ impl Game {
         if !self.creatures.get(&cid).map_or(false, |c| c.alive) {
             return;
         }
-        let (_, fit, _, _) = self.best_hunters().filter(|b| b.0 == s).unwrap_or((s, Vec::new(), 0, 0));
-        let fit: Vec<u32> = fit.into_iter().filter(|id| self.squads[s].members.contains(id)).collect();
+        // Its own fit members, whether or not another squad would now be
+        // the better pick.
+        let (fit, _) = self.hunters(s);
         if fit.is_empty() {
             let squad = self.squads[s].name.clone();
             self.squads[s].order = SquadOrder::Train;
@@ -923,6 +938,80 @@ mod tests {
         g.horrors.haunt.as_mut().unwrap().armed = true;
         overseer_round(&mut g);
         assert_eq!(g.horrors.haunt.as_ref().unwrap().stage, Stage::Hunted);
+    }
+
+    #[test]
+    fn a_second_squad_does_not_call_the_hunters_home() {
+        // Two go out; then a bigger squad is raised at home.
+        let mut g = known(81, vec![Trait::Bold], 2);
+        g.haunt_found_out(None);
+        overseer_round(&mut g);
+        let h = g.horrors.haunt.clone().unwrap();
+        assert_eq!(h.stage, Stage::Hunted);
+        let cid = h.creature.unwrap();
+        let hunting = g.squads.iter().position(|s| s.order == SquadOrder::Kill(cid)).unwrap();
+        let busy: Vec<u32> = g.squads[hunting].members.clone();
+        let more: Vec<u32> = g.dwarves.iter().filter(|d| d.alive && !d.is_child() && !busy.contains(&d.id)).take(3).map(|d| d.id).collect();
+        assert_eq!(more.len(), 3);
+        let s2 = g.new_squad();
+        for &id in &more {
+            g.set_squad_member(s2, id, true);
+            let at = g.dwarves.iter().find(|d| d.id == id).unwrap().pos;
+            let axe = g.spawn_item(ItemKind::Axe, Mat::Iron, at);
+            g.items.get_mut(&axe).unwrap().carried_by = Some(id);
+            g.dwarves.iter_mut().find(|d| d.id == id).unwrap().held = Some(axe);
+        }
+        assert_ne!(g.best_hunters().unwrap().0, hunting, "the new squad should outrank the hunters");
+        overseer_round(&mut g);
+        assert_eq!(g.horrors.haunt.as_ref().unwrap().stage, Stage::Hunted);
+        assert_eq!(g.squads[hunting].order, SquadOrder::Kill(cid));
+        assert!(!g.creatures[&cid].siege);
+    }
+
+    #[test]
+    fn the_fort_arms_itself_when_the_bane_comes_to_hand() {
+        let mut g = haunted(81);
+        g.horrors.haunt.as_mut().unwrap().bane = Bane::Gold;
+        g.items.retain(|_, it| !matches!(it.mat, Mat::Gold | Mat::NativeGold));
+        g.haunt_found_out(None);
+        assert!(!g.horrors.haunt.as_ref().unwrap().armed);
+        let at = g.dwarves[0].pos;
+        g.spawn_item(ItemKind::Bar, Mat::Gold, at);
+        days(&mut g, 1);
+        assert!(g.horrors.haunt.as_ref().unwrap().armed, "the gold that came in was never used");
+        // A still pond is not running water.
+        let mut g = haunted(81);
+        g.horrors.haunt.as_mut().unwrap().bane = Bane::RunningWater;
+        g.world.river_beds.clear();
+        g.world.t_mut(g.embark).water = 7;
+        g.haunt_found_out(None);
+        assert!(!g.horrors.haunt.as_ref().unwrap().armed);
+    }
+
+    #[test]
+    fn in_a_players_fort_it_shows_itself_at_its_lair_once_known() {
+        let mut g = haunted(81);
+        assert!(g.overseer.is_none());
+        g.haunt_found_out(None);
+        let h = g.horrors.haunt.clone().unwrap();
+        let id = h.creature.expect("not on the map for the player to hunt");
+        let c = &g.creatures[&id];
+        assert!(c.alive && !c.siege);
+        assert_eq!(h.stage, Stage::Known);
+        // An overseer's fort waits for the overseer to send the hunt.
+        let mut g = known(81, vec![Trait::Cautious], 3);
+        g.haunt_found_out(None);
+        assert!(g.horrors.haunt.as_ref().unwrap().creature.is_none());
+    }
+
+    #[test]
+    fn a_fire_breather_never_fears_fire() {
+        let mut g = Game::new(81);
+        for seed in 0..2000 {
+            g.overworld.seed = seed;
+            let h = g.make_haunt();
+            assert!(!(h.bane == Bane::Fire && h.powers.contains(&Power::Fire)), "seed {}", seed);
+        }
     }
 
     #[test]
