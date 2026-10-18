@@ -27,7 +27,8 @@ called and the bridge raised, and how it ended. `--story` prints each fort's tim
 it digs in, builds workshops and halls, keeps stocks with work orders, fills posts, sets
 labors, raises and arms a squad, hangs a gate with a drawbridge on a lever and a corridor of
 cage traps, shelters everyone when an army comes, mines, trades, and (by style) engraves,
-raises a monument, sinks shafts or sends expeditions. Styles: Steady, Builder, Delver,
+raises a monument, sinks shafts or sends expeditions. As the fort grows it walls its fields and
+raises towers (see **Walls and towers** below). Styles: Steady, Builder, Delver,
 Warlord and Reckless. It works through *ambitions*, a season or so at a time, chosen by its
 style's leanings and the fortress's troubles (hungry forts provision, besieged ones fortify and
 muster): Provision (fields, fishing, hunting), Fortify (stone-fall traps, a walled yard round
@@ -561,6 +562,31 @@ whoever it is, everyone is proud, a dedication feast begins, the year is named f
 it's worth a fortune. Dwarves who pass it stop to admire it. (The build menu is now a
 two-column list, so every building fits on screen.)
 
+**Walls and towers.** A grown fortress walls itself in, a stretch and a storey at a time,
+with stone its miners cut (from outcrops above ground first, the shortest haul), else blocks, else
+timber. Once the gate's drawbridge works and the fort has people and some wealth (or has seen an
+army), the overseer lays out a **curtain wall** round the stair, the fields and the workshops by
+the wagon, its gate in the middle of one side between two **gate towers** (5×5, two storeys and a
+platform behind fortifications); after the walls come battlements along their tops, a walkway
+behind them that runs out of the gate towers' first storeys, and an arch over the gate; at last a
+**drawbridge** in the gate on a lever in a gate tower, which rises when the gate below is barred.
+The gate itself is never built over, so an army always has a way in to the gate below. Then
+**watchtowers** at the corners (the one on the highest ground first, more with more dwarves and
+every siege). Warlords, the cautious, an overseer set on fortifying, or one that lost dwarves
+under the open sky start sooner; the reckless never do. On land too broken for a curtain, a lone
+watchtower goes up on the high ground. In peace a soldier keeps **watch** from a watchtower's top:
+a manned watchtower sees an army half a day sooner ("The watch on the North-West Watchtower
+sees..."). In an alert the marksdwarves hold the gate towers' tops and **shoot down** over the
+battlements at anything under the open sky below (a level of height adds a tile of range); the
+towers' doors are barred when the enemy comes close, once the archers are up. A vain, pious or
+greedy overseer (or a Builder, or anyone in a very rich fort) raises a **wizard's tower**, five
+storeys with a walled, windowed and roofed **laboratory** at the top ("the Spire of Urist", "the
+Star Tower", "the Counting Tower"), where dwarves with a need to learn go to study. A rich fort
+with its walls done adds **grand works**: the Great Portico (pillars and a roof over the stair)
+and pillars round the monument. `k` names what a tile is part of ("Part of the North-West
+Watchtower"), the director's camera visits the watch and the works going up, and the overseer
+notes each step in its own voice.
+
 **Rot and miasma.** Corpses and carcasses left lying about rot. After five days they stink:
 under the open sky the smell blows away, but underground it gathers as miasma (a purple haze)
 that drifts through open halls (not past locked doors), thins slowly, and sickens every dwarf
@@ -591,7 +617,8 @@ a fine source for a well.
 **Squads.** The military screen (`m`) forms named squads, gives them uniforms (weapon type,
 armor) and orders: train, hold a station, or kill a chosen creature. Soldiers train in the
 barracks zone and learn faster sparring together. Crossbows and bolts come from the
-carpenter; marksdwarves shoot from up to ten tiles, through fortifications.
+carpenter; marksdwarves shoot from up to ten tiles, through fortifications, and further down
+from a tower.
 
 **Traps & levers.** A mechanic makes mechanisms from stone. Cage traps catch whatever
 steps on them, weapon traps cut it up, stone-fall traps drop a boulder. Levers (`q`, then `k`
@@ -647,6 +674,7 @@ cargo test --release profile_year -- --ignored --nocapture
 | `game/melee.rs`, `game/gore.rs` | close quarters, creature feuds; blood, smoke, severed parts |
 | `game/psyche.rs` | relationships, rooms, nobles, mandates, moods, insanity |
 | `game/trade.rs` | caravans, depot, bartering |
+| `game/fortify.rs`, `game/towers.rs` | the curtain wall, towers and grand works outside; the watch, tower stations, shooting down |
 | `dwarf.rs`, `body.rs`, `creature.rs` | units |
 | `buildings.rs`, `items.rs`, `material.rs` | data definitions and recipes |
 | `path.rs` | A* and nearest-goal Dijkstra search |

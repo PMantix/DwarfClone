@@ -6,7 +6,7 @@
 //! metal crossbows and posts it back from the gate with a clear shot.
 
 use super::combat::{adjacent, dist2, near};
-use super::military::{UniformWeapon, RANGE};
+use super::military::UniformWeapon;
 use super::overseer::Overseer;
 use super::*;
 use crate::material::Mat;
@@ -125,13 +125,17 @@ impl Game {
         let mark = self
             .creatures
             .values()
-            .filter(|c| c.hostile() && !c.sneaking && self.creature_active(c) && gap(c.pos, d.pos) <= RANGE)
-            .filter(|c| self.clear_shot(d.pos, c.pos))
+            .filter(|c| c.hostile() && !c.sneaking && self.creature_active(c) && Self::in_range(d.pos, c.pos))
+            .filter(|c| self.sight(d.pos, c.pos))
             .min_by_key(|c| (dist2(c.pos, d.pos), c.id))
             .map(|c| c.id);
         if let Some(cid) = mark {
+            let below = self.creatures.get(&cid).map_or(false, |c| c.pos.z < d.pos.z);
             if self.try_shoot(d, cid) {
                 self.count("archer.from_post", 1);
+                if below {
+                    self.count("archer.from_tower", 1);
+                }
             }
         }
     }
@@ -141,6 +145,10 @@ impl Game {
     /// (from behind a fortification if one stands in the line). None for
     /// any other squad, or when no such spot is dug.
     pub(super) fn archer_station(&self, squad: usize, base: Pos) -> Option<Pos> {
+        // A tower over the curtain's gate, if one is ready (towers.rs).
+        if let Some(st) = self.tower_station(squad) {
+            return Some(st);
+        }
         if squad == 0 || self.squads.get(squad).map_or(true, |s| s.weapon != UniformWeapon::Crossbow) {
             return None;
         }

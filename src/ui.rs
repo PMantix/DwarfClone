@@ -822,6 +822,9 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
         k => format!("{} {}", t.mat.name(), k.name()),
     };
     v.push(plain(desc, t.mat.color()));
+    if let Some(work) = g.work_at(p) {
+        v.push(plain(format!("Part of {}", work), Color::Rgb(200, 200, 140)));
+    }
     if t.water > 0 {
         let what = if t.frozen { "Ice" } else { "Water" };
         v.push(plain(format!("{} {}/7", what, t.water), Color::Rgb(90, 160, 255)));

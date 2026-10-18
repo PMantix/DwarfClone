@@ -9,6 +9,7 @@ fn zone_need(kind: ZoneKind) -> Option<NeedKind> {
     match kind {
         ZoneKind::Temple => Some(NeedKind::Pray),
         ZoneKind::Tavern => Some(NeedKind::Party),
+        ZoneKind::Laboratory => Some(NeedKind::Learn),
         _ => None,
     }
 }
@@ -54,7 +55,7 @@ impl Game {
     /// The leisure zone a dwarf most wants to visit, if its need is below
     /// `below` and such a zone exists.
     fn wanted_zone(&self, d: &Dwarf, below: i32) -> Option<ZoneKind> {
-        [ZoneKind::Temple, ZoneKind::Tavern]
+        [ZoneKind::Temple, ZoneKind::Tavern, ZoneKind::Laboratory]
             .into_iter()
             .filter_map(|z| {
                 let n = d.need(zone_need(z)?)?;

@@ -18,6 +18,8 @@ impl Game {
         self.ov_larder(o);
         self.ov_hospital(o);
         self.ov_lessons(o);
+        // The outside and the grand works:
+        self.ov_fortify(o);
         let _ = o;
     }
 
@@ -29,6 +31,7 @@ impl Game {
         self.ov_cistern_gate(o);
         self.ov_rescue(o);
         self.ov_hunts(o);
+        self.ov_towers_alert(o);
         let _ = o;
     }
 

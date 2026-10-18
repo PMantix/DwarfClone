@@ -164,6 +164,12 @@ impl Game {
             ConstructKind::StairUp | ConstructKind::StairDown | ConstructKind::StairUD => {
                 t.zone == 0 && (matches!(t.kind, TileKind::Floor | TileKind::Shrub) || (t.kind == TileKind::Open && self.supported(p)))
             }
+            // Walls and fortifications also go up on top of a wall, or out
+            // over open space beside something to build against (a tower's
+            // next storey, battlements along a wall top).
+            ConstructKind::Wall | ConstructKind::Fortification => {
+                t.zone == 0 && (matches!(t.kind, TileKind::Floor | TileKind::Shrub) || (t.kind == TileKind::Open && self.supported(p)))
+            }
             _ => t.zone == 0 && matches!(t.kind, TileKind::Floor | TileKind::Shrub),
         }
     }
@@ -256,9 +262,13 @@ impl Game {
         false
     }
 
-    /// A walkable tile beside `target` (same level) that a dwarf at `from` can reach.
+    /// A walkable tile beside `target` that a dwarf at `from` can reach: on
+    /// the same level, or one level down (beside it or right under it), so a
+    /// tower's next storey, a wall top or a roof can be built from below.
     fn stand_for(&self, from: Pos, target: Pos) -> Option<Pos> {
-        let goal = |p: Pos| p != target && p.z == target.z && (p.x - target.x).abs() <= 1 && (p.y - target.y).abs() <= 1;
+        let goal = |p: Pos| {
+            p != target && (p.z == target.z || p.z == target.z - 1) && (p.x - target.x).abs() <= 1 && (p.y - target.y).abs() <= 1
+        };
         if goal(from) {
             return Some(from);
         }
