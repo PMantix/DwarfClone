@@ -177,7 +177,7 @@ impl Game {
             if let Some(z) = free {
                 w.lab = z;
                 w.content = (w.content + 30).min(100);
-                let place = self.work_at(self.zones[&z].tiles[0]).unwrap_or_else(|| "the laboratory".into());
+                let place = self.zones.get(&z).and_then(|zn| zn.tiles.first().copied()).and_then(|p| self.work_at(p)).unwrap_or_else(|| "the laboratory".into());
                 self.msg(&format!("{} has claimed {} and set up their instruments.", called, place), (200, 170, 255));
                 self.legend(format!("{} took {} in {} for a laboratory.", called, place, fort));
             } else if (tick / DAY) % 7 == 0 {

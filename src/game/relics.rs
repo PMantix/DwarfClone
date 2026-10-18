@@ -203,7 +203,10 @@ impl Game {
                     }
                 }
                 Power::Lantern => {
-                    let near: Vec<u32> = self.creatures.values().filter(|c| cave_thing(c) && reach(c.pos, at, LANTERN_R)).map(|c| c.id).collect();
+                    // Already shrinking away (on its way, or lately found no
+                    // way out): no need to search it a path again so soon.
+                    let fleeing = |c: &crate::creature::Creature| c.wary_until > tick && c.target.is_none() && c.stalk.is_none() && (!c.path.is_empty() || c.wary_until > tick + DAY / 2 - 200);
+                    let near: Vec<u32> = self.creatures.values().filter(|c| cave_thing(c) && reach(c.pos, at, LANTERN_R) && !fleeing(c)).map(|c| c.id).collect();
                     for id in near {
                         let Some(mut c) = self.creatures.remove(&id) else { continue };
                         c.target = None;

@@ -211,7 +211,7 @@ impl Game {
             ItemKind::Meat => d.think("ate some roasted meat", -4, tick),
             ItemKind::Fish => {
                 d.think("ate a grilled fish", -4, tick);
-                self.taboo_broken(crate::worldgen::myth::Taboo::EatingFish, Some((d.id, d.name.clone())));
+                self.taboo_broken(crate::worldgen::myth::Taboo::EatingFish, Some(&*d));
             }
             _ => {
                 let plant = mat.crop().map_or("stoutcaps", |c| c.plant);

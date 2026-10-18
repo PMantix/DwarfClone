@@ -2805,6 +2805,8 @@ fn draw_legends(f: &mut Frame, area: Rect, ow: &Overworld, tab: usize, scroll: u
     let h = area.height.saturating_sub(4);
     let r = Rect::new(area.x + (area.width - w) / 2, area.y + 2, w, h);
     let lines = legends_lines(ow, tab);
+    // The gods' myths run long: wrap them to the window.
+    let lines = if tab == 5 { wrap_lines(lines, w.saturating_sub(2) as usize) } else { lines };
     let visible = h.saturating_sub(4) as usize;
     let max = lines.len().saturating_sub(visible);
     let scroll = scroll.min(max);
@@ -3237,6 +3239,61 @@ fn draw_spotlight(f: &mut Frame, map: Rect, s: &crate::game::spotlight::Spotligh
         ),
         r,
     );
+}
+
+/// Wrap any line wider than `w` onto more lines, at spaces, keeping each
+/// span's style and the line's indent (plus two) on the lines after.
+/// Lines that fit are left as they are, columns and all.
+fn wrap_lines(lines: Vec<Line<'static>>, w: usize) -> Vec<Line<'static>> {
+    let mut out = Vec::new();
+    for line in lines {
+        if line.width() <= w || w < 8 {
+            out.push(line);
+            continue;
+        }
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        let indent = (text.chars().take_while(|c| *c == ' ').count() + 2).min(w / 2);
+        // Each piece: a word and the spaces after it, in its span's style.
+        let mut pieces: Vec<(String, Style)> = Vec::new();
+        for sp in &line.spans {
+            let mut cur = String::new();
+            let mut gap = false;
+            for ch in sp.content.chars() {
+                if ch != ' ' && gap {
+                    pieces.push((std::mem::take(&mut cur), sp.style));
+                    gap = false;
+                }
+                gap |= ch == ' ';
+                cur.push(ch);
+            }
+            if !cur.is_empty() {
+                pieces.push((cur, sp.style));
+            }
+        }
+        let mut row: Vec<Span<'static>> = Vec::new();
+        let mut used = 0;
+        let mut fresh = false;
+        for (piece, st) in pieces {
+            let word = piece.trim_end().chars().count();
+            if used > indent && used + word > w {
+                if let Some(last) = row.last_mut() {
+                    last.content = last.content.trim_end().to_string().into();
+                }
+                out.push(Line::from(std::mem::take(&mut row)));
+                row.push(Span::raw(" ".repeat(indent)));
+                used = indent;
+                fresh = true;
+            }
+            let piece = if fresh { piece.trim_start().to_string() } else { piece };
+            fresh = false;
+            used += piece.chars().count();
+            row.push(Span::styled(piece, st));
+        }
+        if !row.is_empty() {
+            out.push(Line::from(row));
+        }
+    }
+    out
 }
 
 /// Split text into lines of at most `w` characters, on spaces.
@@ -4016,6 +4073,8 @@ fn draw_status(f: &mut Frame, area: Rect, g: &Game, tab: usize, scroll: usize) {
     let h = area.height.saturating_sub(4);
     let r = Rect::new(area.x + (area.width - w) / 2, area.y + 2, w, h);
     let lines = status_lines(g, tab);
+    // The overview's omens, wizard and the like run long: wrap them.
+    let lines = if tab == 0 { wrap_lines(lines, w.saturating_sub(2) as usize) } else { lines };
     let visible = h.saturating_sub(4) as usize;
     let scroll = scroll.min(lines.len().saturating_sub(visible));
     let names = ["1 Overview", "2 Stocks", "3 Health", "4 Dwarves", "5 Gossip"];
@@ -5850,6 +5909,23 @@ mod tests {
         assert!(app.game.tick >= tick);
         check(&mut app, &name);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn long_lines_wrap_with_their_styles_and_short_ones_stay() {
+        let st = Style::default().fg(KEY);
+        let short = Line::from(vec![Span::raw(format!("{:<10}", "col")), Span::raw("x")]);
+        let long = Line::from(vec![Span::raw("   An omen hangs over the fort: "), Span::styled("the birds fled the land in great flocks, all one way", st)]);
+        let out = wrap_lines(vec![short.clone(), long], 30);
+        assert_eq!(out[0], short);
+        assert!(out.len() >= 4);
+        for l in &out {
+            assert!(l.width() <= 30, "{:?}", l);
+        }
+        let text: String = out[1..].iter().map(|l| l.spans.iter().map(|s| s.content.trim().to_string()).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ")).collect::<Vec<_>>().join(" ");
+        assert_eq!(text, "An omen hangs over the fort: the birds fled the land in great flocks, all one way");
+        assert!(out[2].spans[0].content == "     ", "continuations are indented");
+        assert!(out.last().unwrap().spans.iter().any(|s| s.style == st));
     }
 
     #[test]

@@ -100,12 +100,16 @@ fn deed(t: Taboo) -> &'static str {
 impl Game {
     /// Someone has broken a taboo (`who` did it, if anyone). The gods of the
     /// fortress who forbid it grow angry; their devout are scandalised.
-    pub(super) fn taboo_broken(&mut self, taboo: Taboo, who: Option<(u32, String)>) {
+    /// `who` is passed in rather than looked up: the culprit is usually out
+    /// of `self.dwarves` for their own turn (`update_dwarf`).
+    pub(super) fn taboo_broken(&mut self, taboo: Taboo, who: Option<&Dwarf>) {
+        let who: Option<(u32, String, Pos)> = who.filter(|d| d.alive).map(|d| (d.id, d.name.clone(), d.pos));
+        let culprit_id = who.as_ref().map(|w| w.0);
         let gods: Vec<u32> = self
             .fort_gods()
             .into_iter()
             .filter(|&g| self.god(g).map_or(false, |god| god.taboo == taboo))
-            .filter(|&g| self.magic.patrons.iter().any(|(d, p)| p.0 == g && self.dwarves.iter().any(|x| x.id == *d && x.alive)))
+            .filter(|&g| self.magic.patrons.iter().any(|(d, p)| p.0 == g && (Some(*d) == culprit_id || self.dwarves.iter().any(|x| x.id == *d && x.alive))))
             .collect();
         if gods.is_empty() {
             return;
@@ -121,7 +125,7 @@ impl Game {
         for g in gods {
             let god = self.god(g).unwrap().clone();
             let scandal = format!("was scandalised that {} {}, which {} forbids", culprit, deed(taboo), god.name);
-            for d in self.dwarves.iter_mut().filter(|d| d.alive && Some(d.id) != who.as_ref().map(|w| w.0)) {
+            for d in self.dwarves.iter_mut().filter(|d| d.alive && Some(d.id) != culprit_id) {
                 let Some(&(pg, dev)) = self.magic.patrons.get(&d.id) else { continue };
                 if pg != g || dev < 2 || d.thoughts.iter().any(|t| t.text.starts_with("was scandalised") && tick < t.tick + DAY) {
                     continue;
@@ -138,9 +142,24 @@ impl Game {
         }
     }
 
-    /// A woodcutter has felled a living tree.
+    /// A woodcutter has felled a living tree. A day of felling is one
+    /// offence (noticed once every two days), not one per tree, or a
+    /// woodcutting fort would anger a god of the forest without end.
     pub(super) fn tree_felled(&mut self, d: &Dwarf, _at: Pos) {
-        self.taboo_broken(Taboo::FellingTrees, Some((d.id, d.name.clone())));
+        if self.magic.felled_seen > 0 && self.tick < self.magic.felled_seen + DAY * 2 {
+            return;
+        }
+        self.magic.felled_seen = self.tick.max(1);
+        self.taboo_broken(Taboo::FellingTrees, Some(d));
+    }
+
+    /// For the overseer: how few logs in store before it sends the
+    /// woodcutters out. A chief god who forbids felling makes it frugal.
+    pub(super) fn ov_wood_floor(&self) -> usize {
+        match self.chief_god().and_then(|g| self.god(g)) {
+            Some(god) if god.taboo == Taboo::FellingTrees => 2,
+            _ => 6,
+        }
     }
 
     /// Blood on a temple floor (from `bleed_on`): noticed once a half day.
@@ -154,18 +173,18 @@ impl Game {
 
     /// A god's patience runs out: the culprit (else whoever last did it) is
     /// cursed for a season, and everyone feels it.
-    fn divine_curse(&mut self, g: u32, taboo: Taboo, who: Option<(u32, String)>) {
+    fn divine_curse(&mut self, g: u32, taboo: Taboo, who: Option<(u32, String, Pos)>) {
         let god = self.god(g).unwrap().clone();
         let tick = self.tick;
         let fort = self.fortress_name.clone();
         let sight = OmenKind::Wrath.sight(&fort);
-        match who.filter(|w| self.dwarves.iter().any(|d| d.id == w.0 && d.alive)) {
-            Some((id, name)) => {
+        match who {
+            Some((id, name, at)) => {
                 self.magic.curses.retain(|c| c.dwarf != id);
                 self.magic.curses.push(Curse { dwarf: id, god: g, until: tick + SEASON, why: taboo });
                 let text = format!("{} is angered! {} {}, and {} has cursed {} for it. Only prayer at {}'s temple will lift it.", god.called(), cap(&sight), god.name, god.name, name, god.name);
                 self.msg(&text, (255, 140, 90));
-                self.spotlight("The wrath of a god", &text, self.dwarves.iter().find(|d| d.id == id).map(|d| d.pos), (255, 140, 90));
+                self.spotlight("The wrath of a god", &text, Some(at), (255, 140, 90));
                 self.magic.year.push(format!("{} cursed {} for {}.", god.called(), name, taboo.name()));
                 self.legend(format!("{} cursed {} of {} for {}.", god.called(), name, fort, taboo.name()));
                 self.count("magic.curses", 1);
@@ -289,6 +308,14 @@ impl Game {
         if self.tick < o.due {
             return;
         }
+        // The army foretold is still to march (the scouts' warning stands):
+        // the omen waits on it rather than come to nothing just before.
+        if o.kind == OmenKind::FleeingBirds && self.siege_warned && self.incoming.is_none() && self.tick < o.seen + YEAR {
+            if let Some(om) = self.magic.omen.as_mut() {
+                om.due = self.tick + DAY * 7;
+            }
+            return;
+        }
         self.magic.omen = None;
         let mut rng = self.mrng();
         let came = match o.kind {
@@ -376,6 +403,10 @@ impl Game {
         }
         let Some(chief) = self.chief_god() else { return };
         let Some(god) = self.god(chief).cloned() else { return };
+        if god.taboo == Taboo::FellingTrees && !o.did("treetaboo") {
+            o.done.push("treetaboo".into());
+            Self::note_ov(o, tick, format!("{} forbids felling living trees: we cut only the wood we cannot do without.", god.called()));
+        }
         if god.taboo != Taboo::EatingFish || self.food_per_head() < 4.0 {
             return;
         }
@@ -430,21 +461,21 @@ mod tests {
     fn breaking_a_taboo_scandalises_the_devout_and_angers_the_god() {
         let mut g = faithful();
         let gid = all_follow(&mut g, Taboo::EatingFish);
-        let who = (g.dwarves[0].id, g.dwarves[0].name.clone());
-        g.taboo_broken(Taboo::EatingFish, Some(who.clone()));
+        let who = g.dwarves[0].clone();
+        g.taboo_broken(Taboo::EatingFish, Some(&who));
         assert!(g.dwarves[1].thoughts.iter().any(|t| t.text.starts_with("was scandalised that") && t.text.contains("ate a fish")));
         assert!(!g.dwarves[0].thoughts.iter().any(|t| t.text.starts_with("was scandalised")), "the culprit isn't scandalised at themself");
         assert_eq!(g.magic.wrath[&gid], 2);
         // A different taboo means nothing to this god.
-        g.taboo_broken(Taboo::FellingTrees, Some(who.clone()));
+        g.taboo_broken(Taboo::FellingTrees, Some(&who));
         assert_eq!(g.magic.wrath[&gid], 2);
         // Again and again: the god curses the culprit.
         for _ in 0..5 {
-            g.taboo_broken(Taboo::EatingFish, Some(who.clone()));
+            g.taboo_broken(Taboo::EatingFish, Some(&who));
         }
         assert_eq!(g.magic.curses.len(), 1);
-        assert_eq!(g.magic.curses[0].dwarf, who.0);
-        assert!(g.curse_line(who.0).unwrap().contains("eating fish"));
+        assert_eq!(g.magic.curses[0].dwarf, who.id);
+        assert!(g.curse_line(who.id).unwrap().contains("eating fish"));
         assert!(g.spotlights.iter().any(|s| s.title == "The wrath of a god"));
         let f0 = g.dwarves[0].fatigue;
         g.curses_daily();
@@ -460,6 +491,33 @@ mod tests {
         g.dwarves[0] = d;
         assert!(g.magic.curses.is_empty());
         assert!(g.log.iter().any(|l| l.text.contains("has atoned before")));
+    }
+
+    #[test]
+    fn a_woodcutter_at_work_is_cursed_by_a_god_of_the_forest() {
+        // Through the dwarf's own turn (taken out of `dwarves` the while).
+        let mut g = faithful();
+        let gid = all_follow(&mut g, Taboo::FellingTrees);
+        g.magic.wrath.insert(gid, g.knob("magic.wrath", 12.0) as u32 - 1);
+        let ids: Vec<u32> = g.dwarves.iter().map(|d| d.id).collect();
+        for id in ids {
+            g.set_labor(id, crate::dwarf::Labor::Woodcutting, true);
+        }
+        let e = g.embark;
+        assert!(g.designate(e.offset(-30, -30, -2), e.offset(30, 30, 2), Desig::Chop) > 0, "no trees to fell");
+        let mut t = 0;
+        while g.magic.curses.is_empty() && t < DAY * 3 {
+            g.step();
+            t += 1;
+        }
+        assert_eq!(g.magic.curses.len(), 1, "no curse in {} ticks", t);
+        let c = g.magic.curses[0].clone();
+        assert_eq!((c.god, c.why), (gid, Taboo::FellingTrees));
+        assert!(g.dwarves.iter().any(|d| d.id == c.dwarf && d.alive));
+        assert!(g.curse_line(c.dwarf).is_some());
+        assert!(g.spotlights.iter().any(|s| s.title == "The wrath of a god"));
+        // The overseer's woodcutters go out only when wood is short.
+        assert_eq!(g.ov_wood_floor(), 2);
     }
 
     #[test]
@@ -529,6 +587,23 @@ mod tests {
         let c = g.chronicles.last().unwrap();
         assert!(c.lines.iter().any(|l| l.contains("the birds fled the land")), "{:?}", c.lines);
         assert!(g.magic.year.is_empty());
+    }
+
+    #[test]
+    fn the_fleeing_birds_wait_on_the_army_they_foretell() {
+        let mut g = faithful();
+        g.tick = SEASON * 3;
+        g.see_omen(OmenKind::FleeingBirds, g.tick + DAY);
+        g.tick += DAY;
+        g.omens_daily();
+        let o = g.magic.omen.clone().expect("the army has yet to march: the omen stands");
+        assert!(o.due > g.tick);
+        assert!(!g.log.iter().any(|l| l.text.contains("came to nothing")));
+        // Once the warning is spent and no army came, it comes to nothing.
+        g.siege_warned = false;
+        g.tick = o.due;
+        g.omens_daily();
+        assert!(g.magic.omen.is_none());
     }
 
     #[test]

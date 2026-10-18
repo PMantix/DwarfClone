@@ -32,6 +32,9 @@ pub struct Magic {
     /// When blood was last found on a temple floor.
     #[serde(default)]
     pub blood_seen: u64,
+    /// When a felled tree last counted against a god of the forest.
+    #[serde(default)]
+    pub felled_seen: u64,
     /// The resident wizard (`wizard.rs`).
     #[serde(default)]
     pub wizard: Option<super::wizard::Wizard>,
