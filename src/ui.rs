@@ -19,6 +19,7 @@ mod health;
 mod highlights;
 mod life;
 mod moodstrip;
+mod ambient;
 
 const SIDEBAR_W: u16 = 38;
 
@@ -674,6 +675,8 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
             cell.set_char(ch).set_fg(fg).set_bg(bg);
         }
     }
+    // Rain, snow, leaves, fireflies and dust in the air (src/ui/ambient.rs).
+    ambient::draw(f, app, inner);
 }
 
 fn key_line<'a>(k: &str, desc: &str, active: bool) -> Line<'a> {
@@ -3208,9 +3211,10 @@ fn draw_perf(f: &mut Frame, area: Rect, p: &crate::app::PerfShown) {
         ]),
         plain(format!(" {:.0} ticks/s · slowest tick {:.1} ms · {:.0} path searches/s ({:.0}k nodes)", p.tps, p.parts[5], p.paths, p.nodes / 1000.0), MUTED),
         plain(format!(" sim: {}", parts.iter().map(|(i, v)| format!("{} {:.1}", names[*i], v)).collect::<Vec<_>>().join(" · ")), MUTED),
+        plain(format!(" {}", ambient::perf_note()), MUTED),
     ];
     let w = 80.min(area.width);
-    let r = Rect::new(area.x + area.width - w, area.y + 1, w, 5);
+    let r = Rect::new(area.x + area.width - w, area.y + 1, w, 6.min(area.height.saturating_sub(1)));
     f.render_widget(Clear, r);
     f.render_widget(
         Paragraph::new(lines).style(Style::default().bg(Color::Rgb(10, 10, 16))).block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(MUTED)).title(Span::styled(" Performance (F3) ", Style::default().fg(KEY)))),

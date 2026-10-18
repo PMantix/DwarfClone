@@ -150,6 +150,14 @@ each season, their wounds, and how and when they died. When a dwarf dies the ove
 them in a line of its notes ("Remembered Urist: married Kadol, slew 3; struck down."), and the
 year's chronicle keeps a line for each notable dwarf it lost (`game/lifestory.rs`, `ui/life.rs`).
 
+**Weather you can see.** Over open ground under the sky (never underground, never over a dwarf,
+a beast, a thing or a building) the air moves: rain streaks slanting in the wind, blood rain over
+evil land, snowflakes drifting, leaves falling under the trees in autumn, fireflies blinking at
+summer dusk, dust blowing over dry country. They stand still while the game is paused. They're
+a few hundred points worked out from a clock, well under a millisecond a frame; the F3 overlay
+says what's in the air and what it costs, and they switch themselves off if a frame's worth ever
+costs more than 2 ms (`ui/ambient.rs`).
+
 Use Windows Terminal (or any truecolor + Unicode terminal) at 130x40 or larger.
 Press `?` in game for keys.
 
@@ -745,3 +753,4 @@ cargo test --release profile_year -- --ignored --nocapture
 | `game/moods.rs`, `ui/moodstrip.rs` | the mood strip in the top bar |
 | `game/reel.rs`, `ui/highlights.rs` | the highlight reel: filming big moments, playing them back |
 | `game/lifestory.rs`, `ui/life.rs` | a dwarf's life story, eulogies, the portrait and Life page |
+| `ui/ambient.rs` | rain, snow, leaves, fireflies and dust over the map |
