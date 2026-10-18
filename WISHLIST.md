@@ -568,7 +568,7 @@ Goal: the deep places are dangerous and worth it.
 
 #### D08 The rest of the workshop row (L)
 - **Why:** Glass, kilns, jewellers and melting complete DF's industry.
-- **Steps:** [ ] Melting and recycling ([CRF-10](ideas/economy.md)) · [ ] More metals and gems ([CRF-44](ideas/economy.md)) · [ ] Whole-carcass butchery ([CRF-25](ideas/economy.md)) · [ ] Leather done right ([CRF-31](ideas/economy.md)) · [ ] Kiln, ceramics, lime ([CRF-45](ideas/economy.md)) · [ ] Glass furnace ([CRF-46](ideas/economy.md)) · [ ] Oil, potash, lye ([CRF-32](ideas/economy.md)) · [ ] Musical instruments ([CRF-15](ideas/economy.md)) · [ ] Toys and games ([CRF-14](ideas/economy.md))
+- **Steps:** [ ] Melting and recycling ([CRF-10](ideas/economy.md)) · [ ] More metals and gems ([CRF-44](ideas/economy.md)) · [ ] Whole-carcass butchery ([CRF-25](ideas/economy.md)) · [ ] Leather done right ([CRF-31](ideas/economy.md)) · [ ] Kiln, ceramics, lime ([CRF-45](ideas/economy.md)) · [ ] Glass furnace ([CRF-46](ideas/economy.md)) · [ ] Oil, potash, lye ([CRF-32](ideas/economy.md)) · [x] Musical instruments ([CRF-15](ideas/economy.md)) · [ ] Toys and games ([CRF-14](ideas/economy.md))
 - **Done when:** The overseer melts down captured goblin weapons into bars.
 
 #### B11 Logistics (L)

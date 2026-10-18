@@ -103,6 +103,10 @@ pub mod wizard;
 pub mod horrors;
 mod kin;
 mod haunt;
+pub mod culture;
+mod works;
+mod depict;
+mod dreams;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -503,6 +507,9 @@ pub struct Game {
     /// Animals a butcher is already on the way to.
     #[serde(skip)]
     slaughtering: HashSet<u32>,
+    /// The fortress's arts, its art that tells, its dreams (`culture.rs`).
+    #[serde(default)]
+    pub culture: culture::Culture,
 }
 
 impl Game {
@@ -673,6 +680,7 @@ impl Game {
             treating: HashSet::new(),
             care_retry: HashMap::new(),
             slaughtering: HashSet::new(),
+            culture: Default::default(),
         }
     }
 
@@ -1101,6 +1109,7 @@ impl Game {
             let mat = if b.kind == BuildingKind::Well { b.load.map_or(Mat::Wood, |l| l.1) } else { b.mat };
             let id = self.spawn_item(kind, mat, self.work_spot(b.center()));
             self.items.get_mut(&id).unwrap().quality = b.quality;
+            self.art_moved(b.id, id);
         }
     }
 
@@ -2597,6 +2606,7 @@ impl Game {
                             if Self::labor(d, 120, d.skill(Labor::Building)) {
                                 let (ikind, mat, quality) =
                                     self.items.remove(&item).map_or((ItemKind::Log, Mat::Wood, 0), |it| (it.kind, it.mat, it.quality));
+                                self.art_moved(item, bld);
                                 d.carrying = None;
                                 d.gain_xp(Labor::Building, 20);
                                 d.task = Task::Idle;
@@ -2688,6 +2698,7 @@ impl Game {
                     d.satisfy(dwarf::NeedKind::Craft, 350);
                     d.task = Task::Idle;
                     let mut made: Vec<String> = Vec::new();
+                    let mut made_ids: Vec<u32> = Vec::new();
                     let quality = self.roll_quality(level * d.focus().max(0) as u32 / 100);
                     for (kind, mat, label) in recipe.produce(&used) {
                         let id = self.spawn_item(kind, mat, site);
@@ -2697,7 +2708,9 @@ impl Game {
                             it.quality = quality;
                         }
                         made.push(it.name());
+                        made_ids.push(id);
                     }
+                    self.culture_crafted(d, &made_ids);
                     if d.likes_mat == used.first().map_or(Mat::Air, |it| it.mat) {
                         d.think("enjoyed working with a favorite material", -6, self.tick);
                     }

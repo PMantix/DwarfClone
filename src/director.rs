@@ -59,6 +59,8 @@ pub enum Kind {
     Wedding,
     /// The feast after a broken siege.
     Feast,
+    /// Music, a recital or a dance (`game/culture.rs`).
+    Performance,
 }
 
 impl Kind {
@@ -91,6 +93,7 @@ impl Kind {
             Kind::Wedding => 50,
             Kind::Feast => 50,
             Kind::Magic => 50,
+            Kind::Performance => 38,
         }
     }
 }
@@ -457,6 +460,11 @@ pub fn candidates(g: &Game) -> Vec<Subject> {
             v.push(Subject { who, kind: Kind::Festival, what: format!("the {}", f.kind.name()) });
         }
     }
+    if let Some((at, what, until)) = &g.culture.stage {
+        if *until > g.tick && g.world.in_bounds(*at) {
+            v.push(Subject { who: Who::Spot(*at), kind: Kind::Performance, what: what.clone() });
+        }
+    }
     for z in g.zones.values().filter(|z| z.kind == ZoneKind::Tavern) {
         if let Some(d) = g.dwarves.iter().filter(|d| d.alive && !matches!(d.task, Task::Sleep { .. })).find(|d| z.tiles.contains(&d.pos)) {
             v.push(Subject { who: Who::Dwarf(d.id), kind: Kind::Tavern, what: format!("the tavern, {} among the drinkers", d.name) });
@@ -603,6 +611,22 @@ mod tests {
         app.game.incoming = None;
         app.game.log.clear();
         app.game.zones.retain(|_, z| z.kind != ZoneKind::Tavern);
+        app.game.culture.stage = None;
+    }
+
+    #[test]
+    fn a_performance_is_worth_a_look() {
+        let mut app = app();
+        quiet(&mut app);
+        let at = app.game.embark;
+        let tick = app.game.tick;
+        app.game.culture.stage = Some((at, "Urist playing on the zanmor in the tavern".into(), tick + 100));
+        let c = candidates(&app.game);
+        let s = c.iter().find(|s| s.kind == Kind::Performance).expect("no performance");
+        assert_eq!(s.who, Who::Spot(at));
+        assert!(Kind::Performance.score() > Kind::Tavern.score());
+        app.game.culture.stage = Some((at, "over".into(), tick));
+        assert!(!candidates(&app.game).iter().any(|s| s.kind == Kind::Performance), "it's over");
     }
 
     #[test]

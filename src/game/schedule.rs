@@ -43,6 +43,8 @@ impl Game {
         if tick % 20 == 11 { self.magic_tick(); }
         // Horrors: powers, webs, venom (horrors.rs).
         if tick % horrors::HORROR_TICK == 11 { self.horrors_tick(); }
+        // A culture of their own (culture.rs):
+        if tick % 100 == 40 { self.culture_tick(); }
     }
 
     /// After the dwarves and creatures have moved: wildlife, the day's

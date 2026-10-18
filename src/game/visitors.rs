@@ -116,6 +116,10 @@ impl Game {
 
     /// A song from the legends, the fortress's own most of all.
     fn sing(&mut self, c: &Creature) {
+        // Or one of the fortress's own works (works.rs).
+        if self.bard_performs_work(c) {
+            return;
+        }
         let fort = self.fortress_name.clone();
         let ours: Vec<String> = self.overworld.events.iter().filter(|e| e.text.contains(&fort)).map(|e| e.text.clone()).collect();
         let event = if !ours.is_empty() && self.rng.chance(0.7) {
@@ -142,7 +146,8 @@ impl Game {
         if how.starts_with("The ") {
             how.replace_range(..1, "t");
         }
-        self.msg(&format!("{} the bard sings \"{}\" in the tavern: how {}.", c.title(), title, how), (200, 180, 255));
+        let form = self.bard_form(c).map_or(String::new(), |f| format!(", {},", f));
+        self.msg(&format!("{} the bard sings \"{}\"{} in the tavern: how {}.", c.title(), title, form, how), (200, 180, 255));
         let tick = self.tick;
         for i in 0..self.dwarves.len() {
             let d = &self.dwarves[i];

@@ -27,6 +27,8 @@ impl Game {
         self.ov_faith(o);
         self.ov_omens(o);
         self.ov_wizard(o);
+        // A culture of its own: instruments for the tavern.
+        self.ov_culture(o);
         let _ = o;
     }
 

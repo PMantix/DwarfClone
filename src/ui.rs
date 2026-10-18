@@ -1765,6 +1765,9 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
     if let (Some(deed), true) = (&d.deed, d.epithet.is_some()) {
         v.insert(2, plain(format!("Hero: {}", deed), Color::Rgb(255, 215, 60)));
     }
+    if let Some(o) = g.omen_of(d.id) {
+        v.push(plain(o, Color::Rgb(190, 160, 255)));
+    }
     let hurt = health::part_lines(d, "  ", false);
     if !hurt.is_empty() || d.body.bleeding > 0 {
         v.push(Line::default());
@@ -2789,6 +2792,7 @@ fn legends_lines(ow: &Overworld, tab: usize) -> Vec<Line<'static>> {
                 plain(format!("   at war with: {}", if enemies.is_empty() { "nobody".into() } else { enemies.join(", ") }), MUTED),
             ];
             v.extend(ow.made_lines(c.id).into_iter().map(|l| plain(l, Color::Rgb(210, 160, 255))));
+            v.extend(ow.arts_lines(c.id).into_iter().map(|l| plain(format!("   {}", l), Color::Rgb(200, 180, 255))));
             v
         }).collect(),
         2 => ow.sites.iter().map(|s| {
@@ -3584,6 +3588,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 if !b.orders.is_empty() {
                     v.push(plain(format!("{} work orders queued", b.orders.len()), detail_col));
                 }
+                for l in g.art_lines(b.id).iter().flat_map(|l| wrap_words(l, 40)) {
+                    v.push(plain(l, Color::Rgb(200, 180, 255)));
+                }
                 v.push(plain("Enter: query building".into(), MUTED));
             }
         }
@@ -3605,6 +3612,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                     v.push(header(&cap(&it.name())));
                 }
                 v.push(plain(format!("{}, worth ☼{}", cap(it.mat.name()), it.value()), detail_col));
+                for l in g.art_lines(id).iter().flat_map(|l| wrap_words(l, 40)) {
+                    v.push(plain(l, Color::Rgb(200, 180, 255)));
+                }
                 if let Some(d) = it.claimed_by.and_then(|o| g.dwarves.iter().find(|d| d.id == o)) {
                     v.push(plain(format!("Wanted by {}", d.name), detail_col));
                 }
@@ -4713,6 +4723,11 @@ fn draw_chronicle(f: &mut Frame, area: Rect, g: &Game, idx: usize) {
     ];
     for l in &c.lines {
         v.push(Line::from(Span::styled(l.clone(), Style::default().fg(ink))));
+        v.push(Line::default());
+    }
+    let works = g.works_of_year(c.year);
+    if !works.is_empty() {
+        v.push(Line::from(Span::styled(format!("Works of the year: {}.", works.join("; ")), Style::default().fg(Color::Rgb(90, 50, 110)))));
         v.push(Line::default());
     }
     let nav = format!(

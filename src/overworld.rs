@@ -501,6 +501,9 @@ pub struct Overworld {
     /// Peoples made by villains in history (`overworld/peoples.rs`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub made: Vec<MadeRace>,
+    /// New forms of art devised in play, and who took them up (`arts.rs`).
+    #[serde(default, skip_serializing_if = "crate::arts::WorldArts::is_empty")]
+    pub arts: crate::arts::WorldArts,
 }
 
 /// How a clash ended for the place attacked.
@@ -673,6 +676,7 @@ impl WorldGen {
             clashes: None,
             gods: Vec::new(),
             made: Vec::new(),
+            arts: Default::default(),
         };
         WorldGen { params, ow, rng, land: None, row: 0, stage: GenStage::Terrain, rivers: Vec::new(), trace: None }
     }
@@ -1117,7 +1121,7 @@ fn river_name(rng: &mut Rng, flow: u32) -> String {
     }
 }
 
-fn word(rng: &mut Rng, r: Race, syllables: i32) -> String {
+pub(crate) fn word(rng: &mut Rng, r: Race, syllables: i32) -> String {
     let set = SYL[race_idx(r)];
     let mut s = String::new();
     for _ in 0..syllables {
@@ -1554,6 +1558,7 @@ impl Overworld {
             clashes: None,
             gods: Vec::new(),
             made: Vec::new(),
+            arts: Default::default(),
         }
     }
 

@@ -626,6 +626,32 @@ the legends, your fortress's own most of all ("A Song for Kelda the Dragonslayer
 enjoy them, and a hero who hears their own deeds sung is proud. Wandering dwarf warriors rest a
 couple of days and may ask to stay, joining as seasoned fighters known as the Wanderer.
 
+**A culture of its own.** Every people of the world has instruments of its own (a name, what
+they're made of, how they're played and how they sound), two poetic forms, a musical form or two
+and a dance or two; the legends' Civilizations tab lists them. A bard sings in their own
+people's forms ("a zanost of the Fellowship of Lanterns"). The craftsdwarf makes your people's
+instruments from logs (the look panel tells each one's making and sound); whoever is in the
+tavern with one to hand strikes up a tune that everyone there enjoys, and at a festival the
+most artistic plays while the fortress dances its people's dance. An artistic dwarf now and
+then composes a named poem, tune or dance in one of the forms ("The Lay of Okgash Mogsk"),
+about a legend of the fortress, most often one they lived through: it goes into the legends and
+the chronicle's page for the year, the tavern's musicians, the festival and visiting bards
+perform it, and its author is glad to hear it. Sometimes they devise a new form instead, which
+the neighbours at peace take up over time. The overseer keeps instruments in stock once it
+has a tavern and a craftsdwarf's workshop, and the director stops for a performance.
+
+**Art that tells.** Most statues and some crafts show something real: a legend of the
+fortress, most often one the maker lived through, or one of its heroes or mourned dead. The look
+panel says what a piece shows, who made it and how many in the fortress lived through it, set
+up as a statue or lying in a stockpile. A dwarf passing a statue, craft or engraving of
+something they lived through (or of themselves) stops to admire it.
+
+**Dreams.** Sleeping dwarves dream of what they lived through, of friends now dead, of their
+people's dances or of nothing much, and wake glad or troubled. At most once a year a dream is an
+omen of war, and the next season the army comes for certain; or of a shape in the stone, and
+within days the dreamer is taken by a fey mood. A dream that comes true is a spotlight and goes
+into the legends and the chronicle; the dwarf's sheet tells of their omen.
+
 **Ancient ruins.** Somewhere deep in the rock of every site lies a sealed hall of a vanished
 people, its walls carved with scenes from the world's oldest legends. Mine into it and it gives
 up its treasure (gold, gems and one artifact of legend), and usually wakes the warden sealed in
@@ -823,6 +849,8 @@ cargo test --release profile_year -- --ignored --nocapture
 | `game/trade.rs` | caravans, depot, bartering |
 | `game/overseer.rs`, `game/layout.rs`, `game/blueprint.rs` | the overseer AI: styles, room plans and layouts |
 | `game/architect.rs`, `game/maturity.rs` | the fort's insides: bedrooms, suites, gathering halls, taste; maturity, the industry quarter, rebuilding |
+| `arts.rs`, `game/culture.rs`, `game/works.rs` | the peoples' instruments and forms; music, festivals' dances, composing and new forms |
+| `game/depict.rs`, `game/dreams.rs` | art that shows the fort's history, admiring it; dreams and omens |
 | `game/fortify.rs`, `game/towers.rs` | the curtain wall, towers and grand works outside; the watch, tower stations, shooting down |
 | `game/horrors.rs`, `game/haunt.rs`, `game/kin.rs`, `overworld/peoples.rs` | horrors' powers; the thing in the night; peoples made by villains, in history and at the fort |
 | `dwarf.rs`, `body.rs`, `creature.rs` | units |
