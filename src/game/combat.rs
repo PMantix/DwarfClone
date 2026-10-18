@@ -2018,14 +2018,18 @@ mod tests {
     /// routs once fewer than half are left (`check_rout`), so the last one
     /// (or three, if the general falls first) gets away; "at least one each"
     /// would need the soldiers to catch goblins as fast as they are. So: the
-    /// raid is routed rather than withdrawing, and in most forts it leaves
-    /// three dead behind. (Before the openings, the same forts saw three
-    /// withdrawals, 2.3 goblins slain a raid and three of ten with three slain;
-    /// with them, ten routs, 2.6 slain and seven of ten.)
+    /// raid is routed rather than withdrawing, and it often leaves three dead
+    /// behind. (On the old world map, before the openings, seeds 900-909 saw
+    /// three withdrawals, 2.3 goblins slain a raid and three of ten with three
+    /// slain; with them, ten routs, 2.6 slain and seven of ten. On the world
+    /// map with downhill rivers the same forts stand on other ground, and the
+    /// share with three slain is about two in five over seeds 900-959, so the
+    /// test takes twenty forts and asks for more than pre-openings did: four
+    /// in five routed and nine of twenty with three slain.)
     #[test]
     fn soldiers_in_metal_kill_their_goblins() {
         let mut table = Vec::new();
-        for seed in 0..10u64 {
+        for seed in 0..20u64 {
             let mut g = Game::new(900 + seed);
             g.creatures.retain(|_, c| c.tame);
             let e = g.embark;
@@ -2063,8 +2067,8 @@ mod tests {
         }
         let routed = table.iter().filter(|r| r.2 == "routed").count();
         let three = table.iter().filter(|r| r.1 >= 3).count();
-        assert!(routed >= 8, "only {} of 10 raids were routed", routed);
-        assert!(three >= 6, "only {} of 10 raids left three dead", three);
+        assert!(routed >= 16, "only {} of 20 raids were routed", routed);
+        assert!(three >= 9, "only {} of 20 raids left three dead", three);
     }
 }
 
