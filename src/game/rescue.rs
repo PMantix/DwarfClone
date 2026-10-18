@@ -578,6 +578,7 @@ impl Game {
                         | Task::Plant { .. }
                         | Task::Harvest { .. }
                         | Task::Gather { .. }
+                        | Task::Clean { .. }
                         | Task::Fish { .. }
                         | Task::BuildTile { .. }
                 )

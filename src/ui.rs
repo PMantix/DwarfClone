@@ -549,6 +549,28 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                     fg = Color::Rgb(150, 90, 170);
                 }
             }
+            if t.revealed && !t.kind.solid() {
+                // Blood soaks the floor: a dark stain, a pool where it's thick.
+                if let Some(s) = g.gore.stains.get(&p) {
+                    let (r, gg, b) = s.rgb();
+                    bg = Color::Rgb(r, gg, b);
+                    let plain = matches!(ch, '.' | ',' | '`' | '\'' | '·' | '"' | '=' | ';');
+                    if plain {
+                        let bright = |v: u8| (v as u16 * 3 / 2 + 40).min(255) as u8;
+                        fg = Color::Rgb(bright(r), bright(gg), bright(b));
+                        ch = if s.amt >= crate::game::gore::POOL { '≈' } else if s.amt >= 2 { '·' } else { ch };
+                    }
+                }
+                // Smoke drifting over it.
+                let k = g.smoke_at(p) as u32;
+                if k > 0 {
+                    bg = Color::Rgb((30 + 14 * k) as u8, (30 + 14 * k) as u8, (34 + 14 * k) as u8);
+                    if matches!(ch, '.' | ',' | '`' | '\'' | '·' | '"' | '=' | ';' | ' ' | '≈') {
+                        ch = if k >= 4 { '▒' } else { '░' };
+                        fg = Color::Rgb(175, 175, 180);
+                    }
+                }
+            }
             if t.fire > 0 && t.revealed {
                 let flick = hash2(wx + (g.tick / 4) as i32 % 50, wy) % 3;
                 ch = if flick == 0 { '▲' } else { '^' };
@@ -732,6 +754,7 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
         Task::Plant { .. } => "Planting stoutcaps".into(),
         Task::Harvest { .. } => "Harvesting".into(),
         Task::Gather { .. } => "Gathering plants".into(),
+        Task::Clean { .. } => "Cleaning up blood".into(),
         Task::Fish { .. } => "Fishing".into(),
         Task::Eat { .. } => "Eating".into(),
         Task::DrinkItem { .. } | Task::DrinkWater { .. } => "Drinking".into(),
@@ -3470,7 +3493,21 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
         }
         LookEntry::Item(id) => {
             if let Some(it) = g.items.get(&id) {
-                v.push(header(&cap(&it.name())));
+                if it.kind == ItemKind::BodyPart {
+                    // "Urist's severed left arm", "a goblin's knocked-out teeth".
+                    let name = it.name();
+                    let told = match name.rsplit_once(' ') {
+                        Some((_, last)) if last == "tooth" || last == "teeth" => format!("{} (knocked out)", name),
+                        _ => match name.split_once("'s ").or_else(|| name.split_once("' ")) {
+                            Some((who, part)) => format!("{}'s severed {}", who.trim_end_matches('\''), part),
+                            None => format!("severed {}", name),
+                        },
+                    };
+                    v.push(header(&cap(&told)));
+                    v.push(plain("Lost in a fight. Haul it to the refuse pile.".into(), detail_col));
+                } else {
+                    v.push(header(&cap(&it.name())));
+                }
                 v.push(plain(format!("{}, worth ☼{}", cap(it.mat.name()), it.value()), detail_col));
                 if let Some(d) = it.claimed_by.and_then(|o| g.dwarves.iter().find(|d| d.id == o)) {
                     v.push(plain(format!("Wanted by {}", d.name), detail_col));
@@ -3531,6 +3568,17 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
         keep += 1 + (t.desig != Desig::None) as usize;
     }
     v.truncate(keep);
+    if t.revealed {
+        if let Some(s) = g.stain_at(p) {
+            let (r, gg, b) = s.rgb();
+            let bright = |v: u8| (v as u16 * 3 / 2 + 60).min(255) as u8;
+            v.push(plain(cap(&s.describe()), Color::Rgb(bright(r), bright(gg), bright(b))));
+        }
+        let k = g.smoke_at(p);
+        if k > 0 {
+            v.push(plain(if k >= 4 { "Thick smoke hangs here".into() } else { "A haze of smoke".into() }, Color::Rgb(175, 175, 180)));
+        }
+    }
     if t.revealed && g.world.outside(p) {
         v.push(plain("Outside".into(), MUTED));
     } else if t.revealed && t.kind.has_floor() {

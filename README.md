@@ -381,6 +381,43 @@ severed limbs, limping, unconsciousness and bed rest. Draft soldiers who equip t
 gear, train, station and engage; civilians flee. Doors keep animals out; locked doors stop
 everyone until goblins batter them down.
 
+**Close quarters.** Fighters close and stay engaged: one with a foe beside it strikes rather
+than walks, pursuit makes straight for a free tile beside the quarry, and several attackers
+spread round one target instead of piling onto a tile (a soldier fights the goblin at their
+elbow rather than walking off after the one they meant to). Fights end when someone flees,
+routs or falls. Creatures fight each other too, by a simple hostility rule: armies of
+different peoples, armies and wild predators, predators and the grazers they now and then
+hunt (the deer bolts), cave dwellers and intruders, and the walking dead and the monsters of
+legend against everything living. Merchants, guests and the fort's own animals are left out
+of it, and only a foe close by is noticed, so the land doesn't become a slaughterhouse.
+
+**Brutality.** How bad a blow is depends on the weapon, the edge, the force and the size of
+whoever swings it. A mangled limb may come off to a heavy edge (or be torn away by a beast
+much bigger than its victim); a fatal edged blow to the head may take it off; blunt blows
+shatter bones, cave in skulls and knock teeth out; a heavy edge sometimes bites through
+armour; a bear, an alligator or a megabeast sends a dwarf sprawling a tile back (and
+stunned), smashing any table, chair, bed or door they land in. A fighter whose weapon arm is
+ruined drops what they hold. Only the notable blows are told in the reports (severings,
+broken bones, teeth, devastating hits, kills, armour cut through): no more lines for every
+scratch, block and deflection.
+
+**What a fight leaves.** Blood spatters where blows land (and on the tile beyond for a heavy
+one), pools where someone bled hard or died, and trails behind the wounded who walk on: red
+for dwarves, goblins and beasts, yellow-green ichor for spiders and scorpions, black for the
+walking dead, violet for the horrors of the deep. It dries and fades over a day or so in the
+open (the rain washes it off within hours, standing water at once) but stays a season under a
+roof unless a hauler with nothing else to carry scrubs it up (the cleaning job, once no
+hostiles are about). Severed parts lie where they fell as items with their owner's name
+("Urist's left arm", "goblin's head", "Urist's 2 teeth"), refuse to be hauled to the refuse
+pile or the dump, and rot like any body; dropped weapons, armour and corpses stay until
+someone takes them. Fire and dragon breath throw up smoke that drifts and thins (slowly in the
+halls). The map shows it all under the units: blood as a dark stain (`≈` for a pool), smoke as
+a grey haze; `k` describes it ("A pool of goblin blood", "Urist's severed left arm"). Dwarves
+who see a limb or a head come off, or wade through a pool of blood, are shaken by it, less so
+each time (and soldiers of some skill hardly at all: "was unmoved by the carnage"); the
+director's camera visits the field of a fight while the blood is fresh. Stains and smoke are
+kept in small capped maps, never on the tile, and cost nothing when there are none.
+
 **Trade.** Build a trade depot. Elves come in spring, humans in summer and your own
 civilization in autumn, if they are at peace with you. Haul goods to the depot and barter
 (they want a tenth on top).
@@ -607,6 +644,7 @@ cargo test --release profile_year -- --ignored --nocapture
 | `world.rs` | fortress tiles, movement rules, reveal, embark generation |
 | `game.rs` | core simulation: jobs, needs, fluids, farms, hauling, player commands |
 | `game/combat.rs` | creatures, fighting, wildlife, sieges |
+| `game/melee.rs`, `game/gore.rs` | close quarters, creature feuds; blood, smoke, severed parts |
 | `game/psyche.rs` | relationships, rooms, nobles, mandates, moods, insanity |
 | `game/trade.rs` | caravans, depot, bartering |
 | `dwarf.rs`, `body.rs`, `creature.rs` | units |

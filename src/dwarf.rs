@@ -228,6 +228,8 @@ pub enum Task {
     Berserk,
     /// Talk a broken dwarf back to their senses.
     Coax { patient: u32 },
+    /// Scrub the blood off a floor in the fort (gore.rs).
+    Clean { pos: Pos },
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -575,6 +577,12 @@ pub struct Dwarf {
     /// Foes slain by this dwarf's hand.
     #[serde(default)]
     pub kills: u32,
+    /// Horrors seen in battle: each one hardens a dwarf a little (gore.rs).
+    #[serde(default)]
+    pub gore_seen: u16,
+    /// When gore last gave them a thought.
+    #[serde(default)]
+    pub gore_at: u64,
     /// Arm-wrestling bouts and drinking contests won at festivals.
     #[serde(default)]
     pub bouts_won: u32,

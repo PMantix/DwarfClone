@@ -193,9 +193,10 @@ impl Game {
             self.count("wild.wary", 1);
             self.msg(&format!("The wounded {} breaks off.", c.name()), (160, 230, 160));
         }
-        if c.wary_until > self.tick && (c.target.is_some() || c.stalk.is_some()) {
+        if c.wary_until > self.tick && (c.target.is_some() || c.stalk.is_some() || c.foe.is_some()) {
             c.target = None;
             c.stalk = None;
+            c.foe = None;
             c.path.clear();
             c.think_cd = 0;
         }
@@ -212,6 +213,7 @@ impl Game {
             o.leaving = true;
             o.target = None;
             o.stalk = None;
+            o.foe = None;
             o.path.clear();
             n += 1;
         }

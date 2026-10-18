@@ -233,6 +233,19 @@ impl Body {
         w
     }
 
+    /// A ruined limb taken off altogether (a heavy blow on a mangled
+    /// limb): the stump bleeds as a severing does.
+    pub fn sever_with(&mut self, part: Part, p: &BleedParams) {
+        let i = part.idx();
+        if self.lost[i] {
+            return;
+        }
+        self.lost[i] = true;
+        self.bleeds[i] += p.sever;
+        self.bandaged[i] = false;
+        self.sync_bleeding();
+    }
+
     /// Advance bleeding and recovery, lying still; call every 10 ticks.
     #[cfg(test)]
     pub fn tick(&mut self) {

@@ -215,7 +215,7 @@ impl Game {
         let def = self.dwarf_fighter(&self.dwarves[j]);
         let before = self.dwarves[j].body.clone();
         let mut body = before.clone();
-        let mut msg = self.strike(&att, &def, &mut body);
+        let mut msg = self.strike(&att, &def, &mut body).msg;
         d.attack_cd = 9 + d.body.limp();
         d.satisfy(crate::dwarf::NeedKind::Fight, 60);
         let (vid, vname) = (self.dwarves[j].id, self.dwarves[j].name.clone());
@@ -263,7 +263,7 @@ impl Game {
         let def = self.dwarf_fighter(&self.dwarves[j]);
         let before = self.dwarves[j].body.clone();
         let mut body = before.clone();
-        let msg = self.strike(&att, &def, &mut body);
+        let msg = self.strike(&att, &def, &mut body).msg;
         if body.dead {
             body = before;
             knock_out(&mut body);

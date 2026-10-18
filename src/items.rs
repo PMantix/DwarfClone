@@ -66,6 +66,8 @@ pub enum ItemKind {
     Fish,
     /// Ground grain, for the kitchen.
     Flour,
+    /// A severed limb, head or teeth, labelled with whose ("Urist's left arm").
+    BodyPart,
 }
 
 /// Items that fit in a barrel or a bin, ten to a container.
@@ -79,7 +81,7 @@ pub enum Slot {
 }
 
 impl ItemKind {
-    pub const ALL: [ItemKind; 50] = [
+    pub const ALL: [ItemKind; 51] = [
         ItemKind::Boulder,
         ItemKind::Log,
         ItemKind::Block,
@@ -130,6 +132,7 @@ impl ItemKind {
         ItemKind::Soap,
         ItemKind::Fish,
         ItemKind::Flour,
+        ItemKind::BodyPart,
     ];
 
     /// Plural name for lists ("logs", "metal bars").
@@ -185,6 +188,7 @@ impl ItemKind {
             ItemKind::Soap => "soap",
             ItemKind::Fish => "fish",
             ItemKind::Flour => "flour",
+            ItemKind::BodyPart => "body parts",
         }
     }
 
@@ -211,7 +215,7 @@ impl ItemKind {
         use ItemKind::*;
         match self {
             Boulder | Log | Bone | Charcoal => 1,
-            Seed | Corpse | Carcass => 0,
+            Seed | Corpse | Carcass | BodyPart => 0,
             Hide | Ash => 1,
             Tallow => 2,
             Soap => 5,
@@ -365,7 +369,7 @@ impl StockFilter {
                     Craft | Gem | Bone | Leather | Mechanism | Thread | Splint | Crutch | Cloth | Shirt | Trousers | Shoes | Ash | Tallow | Soap
                 )
             }
-            StockFilter::Refuse => matches!(k, Corpse | Carcass | Hide),
+            StockFilter::Refuse => matches!(k, Corpse | Carcass | Hide | BodyPart),
             StockFilter::Equipment => k.is_equipment(),
             StockFilter::Medical => matches!(k, Thread | Cloth | Splint | Crutch | Soap | Bucket),
         }
@@ -487,6 +491,7 @@ impl Item {
             Soap => format!("{} soap", self.label.as_deref().unwrap_or("tallow")),
             Fish => self.label.clone().unwrap_or_else(|| "fish".into()),
             Flour => format!("{} flour", m.name()),
+            BodyPart => self.label.clone().unwrap_or_else(|| "severed limb".into()),
             Charcoal => "charcoal".into(),
             Bar => format!("{} bar", m.name()),
             Bin => format!("{} bin", m.adj()),
@@ -576,6 +581,9 @@ impl Item {
             Soap => '=',
             Fish => 'α',
             Flour => '∙',
+            BodyPart if self.mat == Mat::Bone => ',',
+            BodyPart if self.label.as_deref().map_or(false, |l| l.ends_with("head")) => 'ö',
+            BodyPart => '⌐',
         };
         let col = match self.kind {
             Drink => Color::Rgb(230, 170, 60),
@@ -589,6 +597,8 @@ impl Item {
             Tallow => Color::Rgb(240, 230, 180),
             Soap => Color::Rgb(250, 250, 220),
             Fish => Color::Rgb(140, 190, 220),
+            BodyPart if self.mat == Mat::Bone => Color::Rgb(235, 225, 200),
+            BodyPart => Color::Rgb(200, 50, 50),
             Bin | Barrel => Mat::Wood.color(),
             _ => self.mat.color(),
         };
