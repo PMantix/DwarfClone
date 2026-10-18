@@ -405,6 +405,22 @@ mandates.
 **Strange moods.** A dwarf may be seized by a fey mood, claim a workshop, demand
 materials and produce a named artifact, or go mad if thwarted.
 
+**Myth and magic.** Each civilization worships a few generated gods, each with a sphere or two,
+a taboo and a line of myth (legends, tab 6). Every dwarf has a patron and a devotion; temples
+are dedicated to the god most of the fort worships, prayers and festivals name the god. Every
+artifact has one modest power that works (a tireless hammer, a cup that calms tantrums, a
+shield that turns blows, a lantern that drives cave things off, a ring that brings luck in
+trade, a bed that mends), shown in the look panel and the legends, and coveted. Breaking a
+god's taboo (felling living trees, blood on the temple floor, eating fish) scandalises the
+devout; an angry enough god curses the culprit for a season, until they atone at the god's
+temple. Omens (fleeing birds, an eclipse, a blood moon, weeping stone, a falling star)
+foretell an army, a great beast, the walking dead, a cave horror or a strange mood, and it
+comes; the overseer reads ill omens as a warning. Now and then a wandering wizard asks to
+settle: the overseer decides by its traits. A wizard wants a laboratory (the overseer raises
+a wizard's tower), gems or metal bars and an assistant, hurls witchfire at the dead, husks,
+horrors and hostile beasts, lays ghosts, reads omens aloud, and now and then sets the
+laboratory on fire or turns a beard blue. The status screen (`z`) sums it all up.
+
 **Danger.** Wildlife, cavern dwellers and sieges. Goblins attack anyone; humans, elves and
 rival dwarves come when their civilization is at war with yours, each with their own gear
 (elves with wooden weapons, dwarf raiders in heavy armour), led by a general out of their
