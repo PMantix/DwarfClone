@@ -30,6 +30,9 @@ pub struct YearLog {
     /// The wounded carried from the field to a bed.
     #[serde(default)]
     pub carried: u32,
+    /// The overseer's war-game of the year's siege (`wargame.rs`).
+    #[serde(default)]
+    pub wargame: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -135,6 +138,9 @@ impl Game {
         }
         if log.fires > 0 {
             lines.push(format!("Fire broke out {} time{}.", log.fires, if log.fires == 1 { "" } else { "s" }));
+        }
+        if let Some(w) = &log.wargame {
+            lines.push(w.clone());
         }
         if log.carried > 0 {
             lines.push(if log.carried == 1 { "A wounded dwarf was carried from the field.".to_string() } else { format!("{} dwarves were carried from the field.", log.carried) });

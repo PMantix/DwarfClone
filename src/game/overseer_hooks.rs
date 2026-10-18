@@ -34,6 +34,8 @@ impl Game {
         self.ov_rescue(o);
         self.ov_hunts(o);
         self.ov_towers_alert(o);
+        // G01: war-game a coming siege in the arena.
+        self.ov_wargame(o);
         let _ = o;
     }
 
@@ -57,5 +59,6 @@ impl Game {
         // M1 (survival):
         self.captives_after_siege(i);
         self.learn_from_siege(i);
+        self.judge_wargame(i);
     }
 }

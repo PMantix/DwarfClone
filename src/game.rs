@@ -91,6 +91,7 @@ mod larder;
 pub mod fortify;
 mod towers;
 pub mod arena;
+mod wargame;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -451,6 +452,9 @@ pub struct Game {
     /// The overseer's hunt for prowling beasts (`hunts.rs`).
     #[serde(default)]
     pub hunts: hunts::Hunts,
+    /// The overseer's last war-game of a coming siege (`wargame.rs`).
+    #[serde(default)]
+    pub wargame: Option<wargame::WarGame>,
     /// A new page has been written and should be shown.
     #[serde(skip)]
     pub chronicle_ready: bool,
@@ -605,6 +609,7 @@ impl Game {
             waterworks: Default::default(),
             siege_watch: None,
             hunts: Default::default(),
+            wargame: None,
             chronicle_ready: false,
             creatures: BTreeMap::new(),
             station: None,
