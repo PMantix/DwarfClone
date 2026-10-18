@@ -32,6 +32,8 @@ pub struct Around {
     pub biome: Biome,
     pub elev: u8,
     pub evil: bool,
+    /// Its river links (1 north, 2 east, 4 south, 8 west), 0 for none.
+    pub river: u8,
 }
 
 /// How a biome shapes the embark region.
@@ -1132,7 +1134,7 @@ impl Overworld {
                 let (x, y) = (sx + dx, sy + dy);
                 if x >= 0 && y >= 0 && x < self.w && y < self.h {
                     let c = self.cell(x, y);
-                    p.around.push(Around { x, y, biome: c.biome, elev: c.elev, evil: c.evil });
+                    p.around.push(Around { x, y, biome: c.biome, elev: c.elev, evil: c.evil, river: c.river });
                 }
             }
         }
