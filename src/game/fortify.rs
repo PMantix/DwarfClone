@@ -944,21 +944,29 @@ impl Game {
                 for k in -1..=1 {
                     let p = Pos::new(x, y, z + k);
                     let Some(t) = w.get(p) else { continue };
-                    if t.revealed && t.desig == Desig::None && stone(t) && w.outside(p.up()) && open_beside(p) && !wet(p) && self.work_at(p).is_none() {
+                    // (Beside open ground, or ground already cut into the hill.)
+                    let face = DIRS8.iter().any(|&(ex, ey)| {
+                        let q = p.offset(ex, ey, 0);
+                        w.get(q).map_or(false, |u| u.kind.has_floor() && !u.kind.solid() && u.water == 0 && (w.outside(q) || (u.dug && q.z >= top.z - 1)))
+                    });
+                    if t.revealed && t.desig == Desig::None && stone(t) && face && !wet(p) && self.work_at(p).is_none() {
                         seen.push((dx.abs() + dy.abs(), p));
                     }
                 }
             }
         }
-        // Below: beside what's dug, under the halls or far out from them.
+        // Below: beside what's dug, under the halls or far out from them
+        // (never in or beside the rooms laid out).
+        let rooms: Vec<(Pos, Pos)> = o.rooms.iter().map(|r| (r.a, r.b)).collect();
+        let by_room = |p: Pos| rooms.iter().any(|&(a, b)| p.z >= a.z.min(b.z) - 1 && p.z <= a.z.max(b.z) + 1 && p.x >= a.x.min(b.x) - 3 && p.x <= a.x.max(b.x) + 3 && p.y >= a.y.min(b.y) - 3 && p.y <= a.y.max(b.y) + 3);
         if seen.len() < 8 {
             for dz in -4..=0 {
                 for dy in -40..=40 {
                     for dx in -40..=40 {
                         let p = base.offset(dx, dy, dz);
-                        // (Never close by the halls, and on their own level
-                        // only west of the stair: the halls spread east.)
-                        if Self::gatehouse(base, p) || (dz == 0 && dx > -12) || dx.abs() + dy.abs() < 15 {
+                        // (Never close by the stair, and further out on the
+                        // halls' own level.)
+                        if Self::gatehouse(base, p) || dx.abs() + dy.abs() < if dz == 0 { 25 } else { 15 } || by_room(p) {
                             continue;
                         }
                         let Some(t) = w.get(p) else { continue };
@@ -1665,6 +1673,11 @@ mod tests {
                 let stone = g.items.values().filter(|it| it.free() && BuildMat::Stone.accepts(it)).count();
                 let logs = g.items.values().filter(|it| it.free() && BuildMat::Wood.accepts(it)).count();
                 let cut = g.annals.counters.get("works.quarry").copied().unwrap_or(0);
+                let waiting: Vec<Pos> = g.designations.iter().copied().filter(|p| g.world.t(*p).desig == Desig::Dig && g.world.t(*p).mat.is_building_stone() && g.world.t(*p).kind == TileKind::Wall).collect();
+                let pop = g.alive_count().max(1) as f64;
+                let drink = g.stock_of(ItemKind::Drink) as f64 / pop;
+                let food = [ItemKind::Meal, ItemKind::Plant, ItemKind::Meat, ItemKind::Fish].iter().map(|&k| g.stock_of(k)).sum::<usize>() as f64 / pop;
+                eprintln!("  stone digs waiting {} drink {:.1} food {:.1} can wait {} alert {}", waiting.len(), drink, food, g.works_can_wait(), g.alert);
                 eprintln!("day {} pop {} wealth {} stone {} logs {} quarried {} cons {} works {}", g.tick / DAY, g.alive_count(), g.wealth(), stone, logs, cut, g.constructions.len(), g.works.list.len());
                 eprint!("{}", report(&g));
             }
