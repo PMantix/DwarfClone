@@ -1508,6 +1508,7 @@ impl Game {
                 if c.attack_cd == 0 {
                     c.attack_cd = info.attack_delay + c.body.limp();
                     self.creature_attack(c, di);
+                    self.stand_together(c, di);
                 }
                 return true;
             }

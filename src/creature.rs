@@ -643,6 +643,9 @@ pub struct Creature {
     /// Another creature it is fighting (or hunting): see `game::combat`.
     #[serde(default)]
     pub foe: Option<u32>,
+    /// Burned once, it keeps well clear of flames (`game::wildlife`).
+    #[serde(default)]
+    pub fears_fire: bool,
 }
 
 fn yes() -> bool {
@@ -691,6 +694,7 @@ impl Creature {
             stalk: None,
             wary_until: 0,
             foe: None,
+            fears_fire: false,
         }
     }
 
