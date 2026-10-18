@@ -1953,11 +1953,16 @@ fn draw_world(f: &mut Frame, app: &mut App, cx: i32, cy: i32) {
         .title(Span::styled(" World map ", Style::default().fg(KEY)));
     let inner = block.inner(left[0]);
     f.render_widget(block, left[0]);
-    let view = paint_world(f, inner, ow, ow.h, Some((cx, cy)));
     // Outline the land the fortress map will cover, east and south of the cursor.
     let size = app.embark_size;
     let (fw, fh) = embark_footprint(size);
-    paint_footprint(f, inner, ow, view, (cx, cy), (fw, fh));
+    let view = if app.world_blocks {
+        paint_world_blocks(f, inner, ow, (cx, cy), (fw, fh))
+    } else {
+        let view = paint_world(f, inner, ow, ow.h, Some((cx, cy)));
+        paint_footprint(f, inner, ow, view, (cx, cy), (fw, fh));
+        view
+    };
     let mut lines = world_info(ow, cx, cy, &app.flash);
     // What the land holds here.
     let biome = ow.cell(cx, cy).biome;
@@ -2264,7 +2269,9 @@ fn paint_world(f: &mut Frame, inner: Rect, ow: &Overworld, rows: i32, cursor: Op
             }
             let c = ow.cell(pick.0, pick.1);
             let (mut ch, mut fg) = ow.look(pick.0, pick.1);
-            let mut bg = if c.evil { Color::Rgb(45, 10, 55) } else { BLACK };
+            // A dark shade of the land behind each glyph, so a region reads as
+            // one piece (terminal cells are tall, and glyphs leave black bands).
+            let mut bg = if c.evil { Color::Rgb(45, 10, 55) } else { land_tint(fg) };
             if c.site > 0 {
                 (ch, fg) = ow.site_look(&ow.sites[(c.site - 1) as usize]);
             }
@@ -2279,6 +2286,60 @@ fn paint_world(f: &mut Frame, inner: Rect, ow: &Overworld, rows: i32, cursor: Op
         }
     }
     view
+}
+
+/// The dark shade of a land colour that fills the cell behind its glyph.
+fn land_tint(c: Color) -> Color {
+    dim(c, 0.24)
+}
+
+/// The world in colour only: each character cell shows two world cells, one
+/// above the other (a half block, top in the foreground colour and bottom in
+/// the background), so cells come out square and twice as much fits. The
+/// embark footprint is shaded and the cursor shows in yellow.
+fn paint_world_blocks(f: &mut Frame, inner: Rect, ow: &Overworld, cursor: (i32, i32), (fw, fh): (i32, i32)) -> WorldView {
+    let (iw, ih) = (inner.width as i32, inner.height as i32);
+    let (cols, wrows) = (iw.min(ow.w), (ih * 2).min(ow.h));
+    let x0 = (cursor.0 - cols / 2).clamp(0, (ow.w - cols).max(0));
+    let y0 = ((cursor.1 - wrows / 2).clamp(0, (ow.h - wrows).max(0))) & !1;
+    let ox = inner.x as i32 + ((iw - cols) / 2).max(0);
+    let oy = inner.y as i32 + ((ih - (wrows + 1) / 2) / 2).max(0);
+    let colour = |x: i32, y: i32| -> Color {
+        if x < 0 || y < 0 || x >= ow.w || y >= ow.h {
+            return BLACK;
+        }
+        if (x, y) == cursor {
+            return Color::Rgb(255, 225, 0);
+        }
+        let c = ow.cell(x, y);
+        let mut col = if c.site > 0 { ow.site_look(&ow.sites[(c.site - 1) as usize]).1 } else { ow.look(x, y).1 };
+        if c.river != 0 && c.site == 0 {
+            col = Color::Rgb(90, 170, 255);
+        }
+        let inside = x >= cursor.0 && x < cursor.0 + fw && y >= cursor.1 && y < cursor.1 + fh;
+        if inside {
+            col = blend(col, Color::Rgb(200, 170, 40), 0.45);
+        }
+        col
+    };
+    let buf = f.buffer_mut();
+    for vy in 0..(wrows + 1) / 2 {
+        for vx in 0..cols {
+            let (x, y) = (x0 + vx, y0 + vy * 2);
+            buf.get_mut((ox + vx) as u16, (oy + vy) as u16).set_char('▀').set_fg(colour(x, y)).set_bg(colour(x, y + 1));
+        }
+    }
+    WorldView { x0, y0, cols, rows: wrows, scale: 1 }
+}
+
+fn blend(a: Color, b: Color, t: f32) -> Color {
+    match (a, b) {
+        (Color::Rgb(r1, g1, b1), Color::Rgb(r2, g2, b2)) => {
+            let m = |p: u8, q: u8| (p as f32 + (q as f32 - p as f32) * t) as u8;
+            Color::Rgb(m(r1, r2), m(g1, g2), m(b1, b2))
+        }
+        _ => a,
+    }
 }
 
 /// How many world cells an embark of each size covers (wide, high).
@@ -2535,6 +2596,7 @@ fn world_info(ow: &Overworld, x: i32, y: i32, flash: &Option<String>) -> Vec<Lin
     v.push(key_line("↑↓←→", "move (Shift = x5)", false));
     v.push(key_line("Enter", "embark here (asks first)", false));
     v.push(key_line("l", "legends of this world", false));
+    v.push(key_line("v", "colour view: square cells, twice the map", false));
     v.push(key_line("Q", "quit", false));
     if let Some(f) = flash {
         v.push(Line::default());
@@ -5227,6 +5289,25 @@ mod tests {
         // Ctrl+Z puts the box back as it was.
         app.on_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::CONTROL));
         assert_eq!(app.game.designations.len(), before, "undo takes back the last designation ({} -> {})", before, after);
+    }
+
+    #[test]
+    fn the_world_map_is_tinted_and_v_shows_it_in_colour() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::generated(42);
+        assert!(matches!(app.mode, Mode::WorldMap { .. }), "a generated world opens on its map");
+        let mut term = Terminal::new(TestBackend::new(150, 46)).unwrap();
+        term.draw(|f| draw(f, &mut app)).unwrap();
+        // Land cells carry a tint behind the glyph, not black.
+        let buf = term.backend().buffer().clone();
+        let tinted = (0..46).flat_map(|y| (0..100).map(move |x| (x, y))).filter(|&(x, y)| buf.get(x, y).bg != Color::Reset && buf.get(x, y).bg != BLACK && buf.get(x, y).symbol() != " ").count();
+        assert!(tinted > 1000, "most of the map should be tinted ({} cells)", tinted);
+        app.on_key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE));
+        assert!(app.world_blocks);
+        let s = dump(&mut app, 150, 46);
+        assert!(s.matches('▀').count() > 1000, "the colour view draws half blocks");
+        app.on_key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE));
+        assert!(!app.world_blocks);
     }
 
     #[test]

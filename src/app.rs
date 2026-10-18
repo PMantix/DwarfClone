@@ -368,6 +368,8 @@ pub struct App {
     pub free_view: bool,
     /// The performance overlay (F3).
     pub perf: Option<Perf>,
+    /// The world map drawn in colour, two cells to a character (`v`).
+    pub world_blocks: bool,
     /// Designations as they were before each recent one (Ctrl+Z puts them back).
     pub undo: Vec<Vec<(Pos, Desig)>>,
     /// The big moment being shown, and for how many frames.
@@ -434,6 +436,7 @@ impl App {
             docked: true,
             perf: None,
             undo: Vec::new(),
+            world_blocks: false,
             pan_from: (0, 0),
         }
     }
@@ -2141,8 +2144,12 @@ impl App {
                 self.mode = Mode::Legends { tab: 0, scroll: usize::MAX, from_world: true };
                 return;
             }
+            KeyCode::Char('v') | KeyCode::Char('V') => {
+                self.world_blocks = !self.world_blocks;
+                return;
+            }
             KeyCode::Char('?') => {
-                self.flash = Some("Arrows pick a site, Enter to embark (play now or prepare carefully). Map size: s presets, [ ] width, { } height, d depth. l legends, Esc back.".into());
+                self.flash = Some("Arrows pick a site, Enter to embark (play now or prepare carefully). Map size: s presets, [ ] width, { } height, d depth. l legends, v colour view, Esc back.".into());
                 return;
             }
             KeyCode::Char('Q') => {
