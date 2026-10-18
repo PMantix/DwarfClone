@@ -18,6 +18,7 @@ impl Game {
         self.ov_larder(o);
         self.ov_hospital(o);
         self.ov_lessons(o);
+        self.ov_shelter(o);
         // The inside of the fort grows up (architect.rs, maturity.rs).
         self.ov_interior(o);
         // The outside and the grand works:
@@ -34,6 +35,7 @@ impl Game {
         self.ov_rescue(o);
         self.ov_hunts(o);
         self.ov_towers_alert(o);
+        self.ov_shelter_alert(o);
         let _ = o;
     }
 

@@ -196,6 +196,23 @@ style survive three years, and every style still loses forts in memorable ways.
 - **Steps:** [ ] Tunable thresholds ([OTH-04](ideas/world-and-overseer.md)) · [ ] Path throttling ([OTH-06](ideas/world-and-overseer.md))
 - **Done when:** A batch can be rerun with a changed threshold from the command line.
 
+#### S11 The shelter holds (M)
+- **Why:** about 30% of the dead died inside the shelter, and long sieges could end in thirst
+  with the drink in a pile outside it.
+- **What the traces found** (`shelter::tests::shelter_breach_trace`, seeds 5001, 5003, 5006,
+  5007): two causes. The gate's own tiles (the doors in front of the bridge) were part of the
+  shelter, so civilians running in stopped on the doors, the bridge went up behind them, and
+  the goblins at the foot of the stair cut them down there (14 of the 33 deaths in the baseline
+  10-fort run). And halls or tunnels that came up under the sky let besiegers walk round the
+  raised bridge into the shelter (one Delver fort lost 8 in one siege that way).
+- **Steps:** [x] the gate (stair foot, doors, bridge) is no part of the shelter, so those
+  running in go on past the bridge (this commit) · [ ] a larder inside the shelter, kept in
+  drink and meals by the haulers · [ ] every other way in (to the sky, or into the stair from
+  the surface) is walled up, daily and the moment the alert goes up · [ ] the shelter sings,
+  and a siege sheltered through without loss is told
+- **Done when:** a long siege doesn't end in thirst while there's drink; a way in past the gate
+  is walled in an alert; deaths inside the shelter fall in the 10-fort batch.
+
 ### Milestone 2: the overseer as a character (v0.4)
 
 Goal: watching a fort, you can tell which overseer built it, and its halls look planned and lived in.
