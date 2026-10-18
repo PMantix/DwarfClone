@@ -37,19 +37,75 @@ impl Game {
 
     /// Tests: a dry, level patch of open ground `w`×`h` near the wagon (at
     /// least `away` tiles off), that a dwarf can walk to. Its top-left corner.
+    /// Where the land has none, one is levelled beside the wagon (with a
+    /// level way to it), so a test never hangs on the lie of the land.
     #[cfg(test)]
-    pub fn flat_patch(&self, w: i32, h: i32, away: i32) -> Pos {
-        self.patch_of(w, h, away, false)
+    pub fn flat_patch(&mut self, w: i32, h: i32, away: i32) -> Pos {
+        self.patch_of(w, h, away, false).unwrap_or_else(|| self.level_patch(w, h, away))
     }
 
     /// Tests: like `flat_patch`, but every tile open ground (no trees).
     #[cfg(test)]
-    pub fn open_patch(&self, w: i32, h: i32, away: i32) -> Pos {
-        self.patch_of(w, h, away, true)
+    pub fn open_patch(&mut self, w: i32, h: i32, away: i32) -> Pos {
+        self.patch_of(w, h, away, true).unwrap_or_else(|| self.level_patch(w, h, away))
+    }
+
+    /// Tests: make the columns of a box level, open ground at `z` (filled
+    /// with soil below, cleared above).
+    #[cfg(test)]
+    pub fn level_ground(&mut self, x0: i32, y0: i32, x1: i32, y1: i32, z: i32) {
+        for y in y0.max(0)..=y1.min(self.world.h - 1) {
+            for x in x0.max(0)..=x1.min(self.world.w - 1) {
+                for k in 1..self.world.d {
+                    let t = self.world.t_mut(Pos::new(x, y, k));
+                    t.water = 0;
+                    t.magma = 0;
+                    t.frozen = false;
+                    if k < z {
+                        if !t.kind.solid() {
+                            t.kind = TileKind::Wall;
+                            t.mat = crate::material::Mat::Loam;
+                        }
+                    } else if k == z {
+                        t.kind = TileKind::Floor;
+                        t.mat = crate::material::Mat::Grass;
+                        t.revealed = true;
+                    } else {
+                        t.kind = TileKind::Open;
+                        t.mat = crate::material::Mat::Air;
+                        t.revealed = true;
+                    }
+                }
+                let i = (y * self.world.w + x) as usize;
+                self.world.surface[i] = z;
+            }
+        }
+        self.water_cells = None;
+        self.dig_version += 1;
+    }
+
+    /// Level a `w`×`h` patch `away` tiles off the wagon, and a way to it.
+    #[cfg(test)]
+    fn level_patch(&mut self, w: i32, h: i32, away: i32) -> Pos {
+        let e = self.embark;
+        let fits = |x: i32, y: i32, g: &Game| x >= 1 && y >= 1 && x + w < g.world.w - 1 && y + h < g.world.h - 1;
+        let tries = [(away, -h / 2), (-away - w + 1, -h / 2), (-w / 2, away), (-w / 2, -away - h + 1)];
+        let (dx, dy) = tries.iter().copied().find(|&(dx, dy)| fits(e.x + dx, e.y + dy, self)).expect("room for a patch");
+        let a = Pos::new(e.x + dx, e.y + dy, e.z);
+        self.level_ground(a.x, a.y, a.x + w - 1, a.y + h - 1, e.z);
+        // The way there, three wide.
+        if dx.abs() >= dy.abs() {
+            let bx = if dx > 0 { a.x } else { a.x + w - 1 };
+            self.level_ground(e.x.min(bx), e.y - 1, e.x.max(bx), e.y + 1, e.z);
+        } else {
+            let by = if dy > 0 { a.y } else { a.y + h - 1 };
+            self.level_ground(e.x - 1, e.y.min(by), e.x + 1, e.y.max(by), e.z);
+        }
+        a
     }
 
     #[cfg(test)]
-    fn patch_of(&self, w: i32, h: i32, away: i32, all_open: bool) -> Pos {
+    fn patch_of(&self, w: i32, h: i32, away: i32, all_open: bool) -> Option<Pos> {
         let e = self.embark;
         for r in away..45 {
             for dy in -r..=r {
@@ -73,12 +129,12 @@ impl Game {
                     let level = dry && enough && self.world.t(Pos::new(a.x, a.y, z)).kind == TileKind::Floor;
                     let a = Pos::new(a.x, a.y, z);
                     if level && crate::path::astar(&self.world, e, a, 30_000, crate::world::Mover::Dwarf).is_some() {
-                        return a;
+                        return Some(a);
                     }
                 }
             }
         }
-        panic!("no flat patch {}x{} near the wagon", w, h);
+        None
     }
 
     /// The next moment to show, oldest first.

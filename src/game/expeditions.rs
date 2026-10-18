@@ -554,7 +554,9 @@ mod tests {
             d.fight_xp = 3000;
         }
         let before = g.dwarves.len();
-        let items = g.items.len();
+        // What a ruin yields (rations taken along leave the stores, so count the loot itself).
+        let loot = |g: &Game| g.items.values().filter(|it| matches!((it.kind, it.mat), (ItemKind::Craft, Mat::Gold) | (ItemKind::Gem, Mat::Amethyst) | (ItemKind::Bar, Mat::Gold) | (ItemKind::Craft, Mat::Marble))).count();
+        let items = loot(&g);
         let dest = Destination { goal: Goal::Ruin, site: 0, name: "the ruins of Testhold".into(), dist: 4, danger: 1 };
         assert!(g.send_expedition(sq, dest.clone()).is_ok());
         assert_eq!(g.dwarves.len(), before - 3, "they've left the map");
@@ -568,7 +570,7 @@ mod tests {
         let text: Vec<&str> = g.log.iter().map(|l| l.text.as_str()).collect();
         assert!(text.iter().any(|t| t.contains("returned") || t.contains("turned back")), "{:?}", text);
         if text.iter().any(|t| t.contains("triumph")) {
-            assert!(g.items.len() > items, "loot");
+            assert!(loot(&g) > items, "loot");
             assert!(g.dwarves.iter().any(|d| d.epithet.as_deref() == Some("Delver")));
         }
     }
