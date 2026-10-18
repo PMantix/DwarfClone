@@ -2229,24 +2229,40 @@ struct WorldView {
 /// (during generation). With a cursor the view scrolls to keep it in sight;
 /// without one the whole world is shrunk to fit.
 fn paint_world(f: &mut Frame, inner: Rect, ow: &Overworld, rows: i32, cursor: Option<(i32, i32)>) -> WorldView {
-    let (iw, ih) = (inner.width as i32, inner.height as i32);
     let rows = rows.min(ow.cells.len() as i32 / ow.w.max(1));
+    paint_cells(f, inner, (ow.w, ow.h), rows, cursor, &|x, y| ow.cell(x, y).site > 0, &|x, y| ow.map_look(x, y))
+}
+
+/// Draw a world of `ww`×`wh` cells (the first `rows` rows) from `look`
+/// (glyph, foreground, background), one character a cell, shrunk to fit
+/// when it's too big (a cell where `site` holds shows through its block).
+#[allow(clippy::too_many_arguments)]
+fn paint_cells(
+    f: &mut Frame,
+    inner: Rect,
+    (ww, wh): (i32, i32),
+    rows: i32,
+    cursor: Option<(i32, i32)>,
+    site: &dyn Fn(i32, i32) -> bool,
+    look: &dyn Fn(i32, i32) -> (char, Color, Color),
+) -> WorldView {
+    let (iw, ih) = (inner.width as i32, inner.height as i32);
     // One character a cell, like a page of an atlas.
-    let fits = ow.w <= iw && ow.h <= ih;
+    let fits = ww <= iw && wh <= ih;
     let cw = 1;
     let mut view = if fits || cursor.is_some() {
-        let (cols, vrows) = ((iw / cw).min(ow.w), ih.min(ow.h));
-        let (cx, cy) = cursor.unwrap_or((ow.w / 2, ow.h / 2));
+        let (cols, vrows) = ((iw / cw).min(ww), ih.min(wh));
+        let (cx, cy) = cursor.unwrap_or((ww / 2, wh / 2));
         WorldView {
-            x0: (cx - cols / 2).clamp(0, (ow.w - cols).max(0)),
-            y0: (cy - vrows / 2).clamp(0, (ow.h - vrows).max(0)),
+            x0: (cx - cols / 2).clamp(0, (ww - cols).max(0)),
+            y0: (cy - vrows / 2).clamp(0, (wh - vrows).max(0)),
             cols,
             rows: vrows,
             scale: 1,
         }
     } else {
-        let scale = ((ow.w + iw - 1) / iw.max(1)).max((ow.h + ih - 1) / ih.max(1)).max(1);
-        WorldView { x0: 0, y0: 0, cols: (ow.w + scale - 1) / scale, rows: (ow.h + scale - 1) / scale, scale }
+        let scale = ((ww + iw - 1) / iw.max(1)).max((wh + ih - 1) / ih.max(1)).max(1);
+        WorldView { x0: 0, y0: 0, cols: (ww + scale - 1) / scale, rows: (wh + scale - 1) / scale, scale }
     };
     view.cols = view.cols.min(iw / cw);
     let ox = inner.x as i32 + ((iw - view.cols * cw) / 2).max(0);
@@ -2255,25 +2271,20 @@ fn paint_world(f: &mut Frame, inner: Rect, ow: &Overworld, rows: i32, cursor: Op
     for vy in 0..view.rows {
         for vx in 0..view.cols {
             let (x, y) = (view.x0 + vx * view.scale, view.y0 + vy * view.scale);
-            if y >= rows || x >= ow.w {
+            if y >= rows || x >= ww {
                 continue;
             }
             // When shrunk, a settlement anywhere in the block shows through.
             let mut pick = (x, y);
             'block: for by in y..(y + view.scale).min(rows) {
-                for bx in x..(x + view.scale).min(ow.w) {
-                    if ow.cell(bx, by).site > 0 {
+                for bx in x..(x + view.scale).min(ww) {
+                    if site(bx, by) {
                         pick = (bx, by);
                         break 'block;
                     }
                 }
             }
-            let c = ow.cell(pick.0, pick.1);
-            let (mut ch, mut fg) = ow.look(pick.0, pick.1);
-            let mut bg = if c.evil { Color::Rgb(45, 10, 55) } else { BLACK };
-            if c.site > 0 {
-                (ch, fg) = ow.site_look(&ow.sites[(c.site - 1) as usize]);
-            }
+            let (ch, mut fg, mut bg) = look(pick.0, pick.1);
             if let Some((cx, cy)) = cursor {
                 if cx >= x && cx < x + view.scale && cy >= y && cy < y + view.scale {
                     bg = Color::Rgb(220, 200, 0);
@@ -2452,6 +2463,7 @@ fn draw_world_setup(f: &mut Frame, app: &App, sel: usize) {
 }
 
 fn draw_worldgen(f: &mut Frame, app: &App) {
+    use crate::genshow::Stage;
     let area = f.size();
     let Some(g) = &app.worldgen else { return };
     let ow = &g.ow;
@@ -2463,7 +2475,11 @@ fn draw_worldgen(f: &mut Frame, app: &App) {
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(20), Constraint::Length(SIDEBAR_W + 8)])
         .split(rows[1]);
-    let (stage, frac) = g.progress();
+    let show = app.genshow.as_ref();
+    let t = app.show_t;
+    let (stage, _) = show.map_or((Stage::Ocean, 0.0), |s| s.stage_at(t));
+    let year = show.and_then(|s| s.year_at(t));
+    let finished = app.worldgen_finished();
     f.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(" ☼ DwarfClone ", Style::default().fg(KEY).add_modifier(Modifier::BOLD)),
@@ -2472,47 +2488,63 @@ fn draw_worldgen(f: &mut Frame, app: &App) {
         .style(Style::default().bg(Color::Rgb(20, 20, 30))),
         rows[0],
     );
+    let title = match year {
+        Some(y) => format!(" Year {} ", y),
+        None => format!(" {} ", stage.short()),
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(MUTED))
-        .title(Span::styled(format!(" Year {} ", ow.year), Style::default().fg(KEY)));
+        .title(Span::styled(title, Style::default().fg(KEY)))
+        .title_bottom(Span::styled(format!(" {} ", stage.caption()), Style::default().fg(TEXT)));
     let inner = block.inner(cols[0]);
     f.render_widget(block, cols[0]);
-    paint_world(f, inner, ow, g.rows_done(), None);
+    if let Some(s) = show {
+        let fr = s.frame(t, g);
+        let w = ow.w;
+        paint_cells(f, inner, (ow.w, ow.h), ow.h, None, &|x, y| fr.site[(y * w + x) as usize], &|x, y| fr.looks[(y * w + x) as usize]);
+    }
 
-    // Running totals, then the latest events.
+    // The stages, then what history has made so far.
     let width = 28usize;
+    let frac = show.map_or(0.0, |s| (t / s.end()).clamp(0.0, 1.0)) as f32;
     let filled = ((frac * width as f32).round() as usize).min(width);
-    let alive_civs = ow.civs.iter().filter(|c| c.alive).count();
-    let towns = ow.sites.iter().filter(|s| s.civ.is_some() && !s.ruined).count();
-    let ruins = ow.sites.iter().filter(|s| s.ruined).count();
-    let figures = ow.figures.len();
     let mut v = vec![
-        plain(stage, TEXT),
+        plain(stage.caption().to_string(), TEXT),
         Line::from(vec![
             Span::styled("█".repeat(filled), Style::default().fg(Color::Rgb(255, 200, 80))),
             Span::styled("░".repeat(width - filled), Style::default().fg(Color::Rgb(60, 55, 50))),
             Span::styled(format!(" {:>3}%", (frac * 100.0) as u32), Style::default().fg(MUTED)),
         ]),
         Line::default(),
-        plain(format!("Year          {:>5} of {}", ow.year, g.params.history), TEXT),
-        plain(format!("Civilizations {:>5} ({} fallen)", alive_civs, ow.civs.len() - alive_civs), TEXT),
-        plain(format!("Settlements   {:>5}", towns), TEXT),
-        plain(format!("Ruins         {:>5}", ruins), TEXT),
-        plain(format!("Figures       {:>5}", figures), TEXT),
-        plain(format!("Events        {:>5}", ow.events.len()), TEXT),
-        Line::default(),
-        header("Lately"),
     ];
+    for s in &Stage::ALL[..7] {
+        let (mark, col) = if *s < stage { ("✓ ", MUTED) } else if *s == stage { ("▶ ", KEY) } else { ("  ", Color::Rgb(90, 90, 100)) };
+        v.push(plain(format!("{}{}", mark, s.short()), col));
+    }
+    v.push(Line::default());
+    let y = year.unwrap_or(0);
+    let (towns, ruins) = match (show, year) {
+        (Some(s), Some(y)) => s.tally(g, y),
+        _ => (0, 0),
+    };
+    let peoples = if year.is_some() { ow.civs.len() } else { 0 };
+    v.push(plain(format!("Year          {:>5} of {}", y, g.params.history), TEXT));
+    v.push(plain(format!("Civilizations {:>5}", peoples), TEXT));
+    v.push(plain(format!("Settlements   {:>5}", towns), TEXT));
+    v.push(plain(format!("Ruins         {:>5}", ruins), TEXT));
+    v.push(Line::default());
+    v.push(header("Lately"));
     // Events wrap to about two lines each; show as many as fit.
     let fit = (cols[1].height as usize).saturating_sub(v.len() + 3) / 2;
-    for e in ow.events.iter().rev().take(fit).collect::<Vec<_>>().into_iter().rev() {
+    let seen: Vec<_> = if year.is_some() { ow.events.iter().filter(|e| e.year <= y).collect() } else { Vec::new() };
+    for e in seen.iter().rev().take(fit).collect::<Vec<_>>().into_iter().rev() {
         v.push(Line::from(vec![
             Span::styled(format!("{:>4} ", e.year), Style::default().fg(MUTED)),
             Span::styled(e.text.clone(), Style::default().fg(Color::Rgb(190, 190, 200))),
         ]));
     }
-    let keys = if g.done() { " Enter accept · r another world · Esc settings " } else { " Space hurry · r new seed · Esc settings " };
+    let keys = if finished { " Enter accept · r another world · Esc settings " } else { " Space skip · r new seed · Esc settings " };
     f.render_widget(
         Paragraph::new(v)
             .wrap(Wrap { trim: true })
@@ -2520,7 +2552,7 @@ fn draw_worldgen(f: &mut Frame, app: &App) {
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(MUTED))
-                    .title(Span::styled(if g.done() { " The world is ready " } else { " Generating " }, Style::default().fg(KEY)))
+                    .title(Span::styled(if finished { " The world is ready " } else { " Generating " }, Style::default().fg(KEY)))
                     .title_bottom(Span::styled(keys, Style::default().fg(KEY))),
             ),
         cols[1],
@@ -5747,5 +5779,75 @@ mod tests {
         assert!(app.game.tick >= tick);
         check(&mut app, &name);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn world_making_is_watched_in_stages_at_any_size() {
+        use crate::genshow::Stage;
+        let mut app = App::new(77);
+        app.world_params = crate::overworld::WorldParams { seed: 77, history: 50, ..Default::default() };
+        app.start_worldgen();
+        app.frame_dt = 1.0 / 30.0;
+        let mut stages: Vec<Stage> = Vec::new();
+        let mut frames = 0;
+        while !app.worldgen_finished() {
+            app.frame();
+            if let Some(s) = &app.genshow {
+                let st = s.stage_at(app.show_t).0;
+                if stages.last() != Some(&st) {
+                    stages.push(st);
+                    // The caption names each stage as it comes.
+                    let scr = dump(&mut app, 200, 60);
+                    assert!(scr.contains(st.caption()), "no caption for {:?}:\n{}", st, scr);
+                }
+            }
+            if frames % 9 == 0 {
+                for (w, h) in [(80, 24), (200, 60)] {
+                    let scr = dump(&mut app, w, h);
+                    assert!(scr.contains("Creating"));
+                }
+            }
+            frames += 1;
+            assert!(frames < 30 * 90, "the show never ended");
+        }
+        assert_eq!(stages, Stage::ALL.to_vec());
+        assert!(frames > 30 * 30, "the show was over in {} frames", frames);
+        let scr = dump(&mut app, 200, 60);
+        assert!(scr.contains("The world is ready") && scr.contains("Year 50"), "{}", scr);
+    }
+
+    #[test]
+    fn space_skips_the_making_to_the_finished_world() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::new(78);
+        app.world_params = crate::overworld::WorldParams { seed: 78, history: 100, ..Default::default() };
+        app.start_worldgen();
+        for _ in 0..3 {
+            app.frame();
+        }
+        assert!(!app.worldgen_finished());
+        // Enter before the end hurries rather than accepts.
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::WorldGen);
+        let mut n = 0;
+        while !app.worldgen_finished() {
+            app.frame();
+            n += 1;
+            assert!(n < 200, "skipping took {} frames", n);
+        }
+        let end = app.genshow.as_ref().unwrap().end();
+        assert_eq!(app.show_t, end);
+        // The map on screen is the finished map.
+        let g = app.worldgen.as_ref().unwrap();
+        let fr = app.genshow.as_ref().unwrap().frame(app.show_t, g);
+        for (i, c) in g.ow.cells.iter().enumerate() {
+            let (x, y) = (i as i32 % g.ow.w, i as i32 / g.ow.w);
+            assert_eq!(fr.looks[i], g.ow.map_look(x, y));
+            assert_eq!(fr.site[i], c.site > 0);
+        }
+        let scr = dump(&mut app, 80, 24);
+        assert!(scr.contains("ready"), "{}", scr);
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::WorldMap { .. }), "{:?}", app.mode);
     }
 }

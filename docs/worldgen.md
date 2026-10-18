@@ -259,7 +259,40 @@ fortress's animals come from its region's population.
   dry and reachable; the overseer still builds (`--autoplay --runs 5
   --years 1 --seed 5000 --threads 3` before and after).
 
-## 12. As built (differences from the plan above)
+## 12. Watching the world being made
+
+`WorldGen::traced` makes the same world as `WorldGen::new` (no extra random
+draws; the saved world is byte for byte the same) and keeps a `GenTrace`:
+
+- the land's `Trace` (`worldgen::build_traced`): the elevation as first
+  raised (proportioned, before erosion), every trial river of the erosion
+  phase as the list of cells it ran over, in the order they ran, and the
+  elevation after erosion and re-proportioning, before the hollows fill;
+- each site's standing (holder, kind, ruined) when first seen, and every
+  later change with its year (diffed after each simulated year);
+- the clashes of history (`Overworld::clashes`, a field never saved and
+  `None` unless tracing): battles and beasts' raids, from site to site,
+  with how they ended.
+
+`genshow::Show` plays that back on the creation screen while the generator
+runs ahead of it (the land is made on the first frame; history a year at a
+time within a frame budget; the show never runs past the last simulated
+year). Every frame is a function of the time since the start:
+
+| stage | seconds | what's drawn |
+|---|---|---|
+| Ocean | 2.5 | the sea, waves rolling |
+| Land rising | 6 | sea level falls from above the highest raw peak to its own; cells above it are land (flat relief), the newest shore as wet sand, the shelf paler |
+| Mountains forming | 6 | relief scaled from 0.3 to full, peaks whitening; each volcano erupts in turn (vent flaring, lava spreading and cooling, smoke drifting) |
+| Weathering | 5.5 | elevation eases from raw to eroded; a sample of the trial rivers (about 500) runs down the heights at 45 cells a second, trails fading to silt |
+| Rivers forming | 6 | river cells appear in order of their flow (springs first, the great mouths last), linked only to water already there; lake cells fill from the bottom of each basin |
+| Climate and life | 6.5 | each land cell takes its biome's look in turn: cold heights first, then from the wettest land to the driest; one or two wildfires on dry warm grass burn outward and green back; the waves calm |
+| History | 0.09 s a year (8 to 20 s), then 2 s held | the finished land; sites in their founding year (a brief glow), in their standing that year (ruins as they fall), clashes flashing between attacker and target |
+
+The last frame is the finished map exactly (`Overworld::map_look`, which the
+world map draws with too). Space or Enter jumps to it.
+
+## 13. As built (differences from the plan above)
 
 - Lakes: only the deepest hollows (fill at least 4 deep, at least two cells
   or 8 deep) hold a lake, at most one per 1200 cells (a dozen to a medium

@@ -5,6 +5,7 @@ mod creature;
 mod director;
 mod dwarf;
 mod game;
+mod genshow;
 mod geom;
 mod items;
 mod jobs;
