@@ -597,6 +597,10 @@ pub struct Dwarf {
     /// The dwarf this one is carrying.
     #[serde(default)]
     pub carrying_dwarf: Option<u32>,
+    /// Their medical history, oldest first: (tick, "gashed in the left leg
+    /// by a goblin"), the last few kept (`medicine::chart`).
+    #[serde(default)]
+    pub med: Vec<(u64, String)>,
 }
 
 impl Dwarf {

@@ -38,6 +38,8 @@ pub enum Lack {
     Bone,
     /// Soldiers with nothing in the stores for this piece of their kit.
     Kit(super::readiness::KitPart),
+    /// Someone is bleeding or senseless and no dwarf can tend them.
+    Doctor,
 }
 
 impl Lack {
@@ -105,6 +107,7 @@ impl Lack {
             Lack::Gem => "gems".into(),
             Lack::Bone => "bone".into(),
             Lack::Kit(p) => format!("{} for the soldiers", p.plural()),
+            Lack::Doctor => "a doctor for the wounded".into(),
         }
     }
 }
@@ -139,7 +142,7 @@ impl Game {
             (Style::Warlord, Lack::Bars | Lack::Mechanism | Lack::Cage | Lack::Ore) => 1.3,
             (Style::Warlord, Lack::Thread | Lack::Cloth | Lack::Leather) => 0.6,
             (Style::Reckless, Lack::Mechanism | Lack::Cage | Lack::Bucket) => 0.3,
-            (_, Lack::Drink | Lack::Food) => 1.4,
+            (_, Lack::Drink | Lack::Food | Lack::Doctor) => 1.4,
             // A dwarf in a fey mood who's kept waiting goes mad.
             (_, Lack::MoodShop(_)) => 1.6,
             _ => 1.0,
@@ -318,6 +321,14 @@ impl Game {
                 }
                 Some(format!("ordered {} for the soldiers ({}).", p.plural(), recipe.name().to_lowercase()))
             }
+            Lack::Doctor => {
+                if !self.hands_for(Labor::Medicine, 1) {
+                    return None;
+                }
+                let doc = self.dwarves.iter().filter(|d| d.alive && d.has(Labor::Medicine)).map(|d| d.name.clone()).next()?;
+                self.msg(&format!("{} is to tend the wounded.", doc), (150, 220, 200));
+                Some(format!("made {} the fortress's doctor.", doc))
+            }
             Lack::Workshop(_) => {
                 if !o.wants.contains(&RoomUse::Workshops) {
                     o.wants.insert(0, RoomUse::Workshops);
@@ -389,6 +400,19 @@ mod tests {
         }
         assert!(g.buildings.values().any(|b| b.kind == kind), "no craftsdwarf's workshop after {} days", days);
         assert_eq!(g.buildings.values().filter(|b| b.kind == kind && !b.built).count().min(1), g.buildings.values().filter(|b| b.kind == kind && !b.built).count(), "only one on its way");
+    }
+
+    #[test]
+    fn a_fort_without_a_doctor_names_one() {
+        let mut g = Game::new(5);
+        for d in g.dwarves.iter_mut() {
+            d.labors[Labor::Medicine.idx()] = false;
+        }
+        let mut o = Overseer::new(Style::Steady);
+        assert!(g.fix(&mut o, Lack::Doctor).is_some());
+        assert!(g.has_doctor(), "nobody was made a doctor");
+        assert_eq!(g.dwarves.iter().filter(|d| d.has(Labor::Medicine)).count(), 1);
+        assert!(g.fix(&mut o, Lack::Doctor).is_none(), "one doctor is enough");
     }
 
     #[test]

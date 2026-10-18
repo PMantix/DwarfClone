@@ -15,6 +15,8 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use ratatui::Frame;
 use std::collections::{HashMap, HashSet};
 
+mod health;
+
 const SIDEBAR_W: u16 = 38;
 
 /// What a mouse click on part of the screen does, gathered as the frame is
@@ -1713,11 +1715,7 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
     if let (Some(deed), true) = (&d.deed, d.epithet.is_some()) {
         v.insert(2, plain(format!("Hero: {}", deed), Color::Rgb(255, 215, 60)));
     }
-    let hurt: Vec<Line> = PARTS
-        .iter()
-        .filter(|p| d.body.part_status(**p) != "fine")
-        .map(|p| plain(format!("  {}: {}", p.name(), d.body.part_status(*p)), Color::Rgb(240, 130, 100)))
-        .collect();
+    let hurt = health::part_lines(d, "  ", false);
     if !hurt.is_empty() || d.body.bleeding > 0 {
         v.push(Line::default());
         v.push(header("Health"));
@@ -1733,6 +1731,7 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
         }
         v.extend(hurt);
     }
+    v.extend(health::card_history(d));
     v.push(Line::default());
     v.push(header("Personality"));
     if let Some(age) = d.age {
@@ -3645,9 +3644,8 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
                     Span::styled(d.name.clone(), Style::default().fg(TEXT).add_modifier(Modifier::BOLD)),
                     Span::styled(if flags.is_empty() { String::new() } else { format!("  {}", flags.join(", ")) }, Style::default().fg(Color::Rgb(255, 90, 80))),
                 ]));
-                for h in hurt {
-                    v.push(plain(format!("    {}", h), Color::Rgb(240, 130, 100)));
-                }
+                v.extend(health::part_lines(d, "    ", true));
+                v.extend(health::history_lines(d, 3, "    "));
             }
             if !any {
                 v.push(plain("Everyone is in good health.".into(), Color::Rgb(120, 220, 120)));

@@ -1396,9 +1396,10 @@ impl Game {
         let att = self.creature_fighter(c);
         let def = self.dwarf_fighter(&d);
         let hp0: i32 = d.body.hp.iter().sum();
+        let before = d.body.clone();
         let msg = self.strike(&att, &def, &mut d.body);
         d.attacker = Some((c.id, self.tick));
-        self.note_wound(d.id, c);
+        self.note_wound(&mut d, c, &before);
         if c.siege {
             let hurt = d.body.hp.iter().sum::<i32>() < hp0;
             self.note_blow(if d.soldier { super::annals::ON_SOLDIER } else { super::annals::ON_CIVILIAN }, hurt);

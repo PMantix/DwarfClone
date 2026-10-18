@@ -76,6 +76,7 @@ pub mod breakdowns;
 pub mod readiness;
 mod cistern;
 mod rescue;
+mod hospital;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;

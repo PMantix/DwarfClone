@@ -1,10 +1,10 @@
 //! Doctors, hospitals and treatment: sutures, cleaning, splints and crutches.
 
-use super::{Game, Travel, ZoneKind, SEARCH_LIMIT, THIRSTY};
-use crate::body::{BleedParams, Part, PARTS};
+use super::{Game, Travel, ZoneKind, HUNGRY, SEARCH_LIMIT, THIRSTY};
+use crate::body::{BleedParams, Body, Part, PARTS};
 use crate::dwarf::{Dwarf, Labor, Task};
 use crate::geom::Pos;
-use crate::items::ItemKind;
+use crate::items::{Item, ItemKind};
 use crate::path;
 use crate::world::Mover;
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,8 @@ pub enum Treatment {
     Crutch,
     /// Bring a bucket of well water to someone lying in bed.
     Water,
+    /// Bring drink (or a meal) to someone lying in bed.
+    Feed,
 }
 
 impl Treatment {
@@ -32,6 +34,7 @@ impl Treatment {
             Treatment::Splint => "setting a bone",
             Treatment::Crutch => "fitting a crutch",
             Treatment::Water => "bringing water",
+            Treatment::Feed => "bringing food and drink",
         }
     }
 
@@ -42,6 +45,8 @@ impl Treatment {
             Treatment::Splint => Some(ItemKind::Splint),
             Treatment::Crutch => Some(ItemKind::Crutch),
             Treatment::Water => Some(ItemKind::Bucket),
+            // (Drink or food, whichever the patient wants: see `feeds`.)
+            Treatment::Feed => None,
         }
     }
 
@@ -52,8 +57,42 @@ impl Treatment {
             Treatment::Splint => 70,
             Treatment::Crutch => 30,
             Treatment::Water => 15,
+            Treatment::Feed => 15,
         }
     }
+}
+
+/// Whether `it` would do for a patient abed who is `thirsty` and/or `hungry`.
+fn feeds(thirsty: bool, hungry: bool, it: &Item) -> bool {
+    thirsty && it.kind == ItemKind::Drink || hungry && it.is_food()
+}
+
+/// How many lines of a dwarf's medical history are kept.
+const MED_LINES: usize = 20;
+
+/// Write a line in a dwarf's medical history.
+pub(crate) fn chart(d: &mut Dwarf, tick: u64, text: String) {
+    d.med.push((tick, text));
+    if d.med.len() > MED_LINES {
+        d.med.remove(0);
+    }
+}
+
+/// What a blow did to a body, for the history: "gashed in the left leg",
+/// "lost the right arm". None if it did no harm.
+pub fn wound_words(before: &Body, after: &Body) -> Option<String> {
+    let i = (0..PARTS.len()).filter(|&i| after.hp[i] < before.hp[i]).max_by_key(|&i| before.hp[i] - after.hp[i])?;
+    let part = PARTS[i].name();
+    let opened = after.bleeds[i] > before.bleeds[i];
+    Some(if after.lost[i] && !before.lost[i] {
+        format!("lost the {}", part)
+    } else if after.hp[i] <= 0 && before.hp[i] > 0 {
+        format!("had the {} mangled", part)
+    } else if (before.hp[i] - after.hp[i]) * 3 >= after.max[i] {
+        format!("{} in the {}", if opened { "gashed" } else { "badly bruised" }, part)
+    } else {
+        format!("{} on the {}", if opened { "cut" } else { "bruised" }, part)
+    })
 }
 
 fn leg(p: Part) -> bool {
@@ -145,7 +184,7 @@ impl Game {
 
     /// A doctor looks for a patient lying down who needs something they can give.
     pub(super) fn find_patient(&mut self, d: &mut Dwarf) -> bool {
-        let mut patients: HashMap<Pos, (u32, Treatment)> = HashMap::new();
+        let mut patients: HashMap<Pos, (u32, Treatment, (bool, bool))> = HashMap::new();
         let wells = !self.working_wells().is_empty();
         for p in self.dwarves.iter().filter(|p| p.alive && p.id != d.id && !self.treating.contains(&p.id)) {
             let lying = (p.asleep && matches!(p.task, Task::Rest { .. })) || p.body.unconscious() || p.task == Task::Catatonic;
@@ -157,10 +196,18 @@ impl Game {
             if wells && p.thirst > THIRSTY / 2 {
                 wants.push(Treatment::Water);
             }
+            // Without a well (or a bucket), drink or a meal brought to the bed.
+            let hunger = (p.thirst > THIRSTY / 2, p.hunger > HUNGRY / 2);
+            if !p.body.unconscious() && (hunger.0 || hunger.1) {
+                wants.push(Treatment::Feed);
+            }
             for t in wants {
-                let have = t.supply().map_or(true, |k| self.items.values().any(|it| it.kind == k && it.free()));
+                let have = match t {
+                    Treatment::Feed => self.items.values().any(|it| it.free() && feeds(hunger.0, hunger.1, it)),
+                    _ => t.supply().map_or(true, |k| self.items.values().any(|it| it.kind == k && it.free())),
+                };
                 if have {
-                    patients.insert(p.pos, (p.id, t));
+                    patients.insert(p.pos, (p.id, t, hunger));
                     break;
                 }
             }
@@ -170,10 +217,17 @@ impl Game {
         }
         let near = |q: Pos| patients.keys().any(|p| p.z == q.z && (p.x - q.x).abs() <= 1 && (p.y - q.y).abs() <= 1);
         let Some((at, _)) = path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, near) else { return false };
-        let (_, &(patient, what)) =
+        let (_, &(patient, what, (thirsty, hungry))) =
             patients.iter().find(|(p, _)| p.z == at.z && (p.x - at.x).abs() <= 1 && (p.y - at.y).abs() <= 1).unwrap();
         let mut item = None;
-        if let Some(kind) = what.supply() {
+        if what == Treatment::Feed {
+            // Drink first: thirst kills sooner.
+            let drink = self.find_item(d.pos, |it| feeds(thirsty, false, it));
+            let Some((id, path)) = drink.or_else(|| self.find_item(d.pos, |it| feeds(false, hungry, it))) else { return false };
+            self.claim_item(id, d.id);
+            Self::set_path(d, path);
+            item = Some(id);
+        } else if let Some(kind) = what.supply() {
             let Some((id, path)) = self.find_item(d.pos, |it| it.kind == kind) else { return false };
             self.claim_item(id, d.id);
             Self::set_path(d, path);
@@ -236,6 +290,7 @@ impl Game {
         if !Self::labor(d, self.treat_time(what.work()), d.skill(Labor::Medicine)) {
             return;
         }
+        let brought = item.and_then(|id| self.items.get(&id)).map(|it| (it.kind, it.name()));
         if let Some(id) = d.carrying.take() {
             if what == Treatment::Water {
                 // The bucket is set down empty, ready for next time.
@@ -255,6 +310,24 @@ impl Game {
         d.gain_xp(Labor::Medicine, 25);
         d.task = Task::Idle;
         self.treating.remove(&patient);
+        let tick = self.tick;
+        if what == Treatment::Feed {
+            let Some((kind, name)) = brought else { return };
+            d.think("cared for the wounded", -3, tick);
+            let Some(p) = self.dwarves.iter_mut().find(|p| p.id == patient) else { return };
+            let drink = kind == ItemKind::Drink;
+            if drink {
+                p.thirst = 0;
+                p.think("was brought a drink while abed", -5, tick);
+            } else {
+                p.hunger = 0;
+                p.think("was brought a meal while abed", -5, tick);
+            }
+            let pname = p.name.clone();
+            self.count(if drink { "abed.drinks" } else { "abed.meals" }, 1);
+            self.msg(&format!("{} brings {} to {} in bed.", doctor, name.to_lowercase(), pname), (150, 220, 200));
+            return;
+        }
         let Some(p) = self.dwarves.iter_mut().find(|p| p.id == patient) else { return };
         let b = &mut p.body;
         match what {
@@ -272,9 +345,19 @@ impl Game {
             }
             Treatment::Crutch => b.crutch = true,
             Treatment::Water => p.thirst = 0,
+            Treatment::Feed => {}
+        }
+        let done = match what {
+            Treatment::Suture => "wounds sutured",
+            Treatment::Clean => "wounds cleaned",
+            Treatment::Splint => "a bone set",
+            Treatment::Crutch => "fitted with a crutch",
+            Treatment::Water | Treatment::Feed => "",
+        };
+        if !done.is_empty() {
+            chart(p, tick, format!("{} by {}", done, doctor));
         }
         let pname = p.name.clone();
-        let tick = self.tick;
         p.think(&format!("was cared for by {}", doctor), -6 - skill as i32, tick);
         self.msg(&format!("{} finished {} for {}.", doctor, what.name(), pname), (150, 220, 200));
     }
@@ -321,6 +404,89 @@ mod tests {
         let (treated, blood_treated) = bleed_out(true);
         assert!(treated < untreated, "sutured after {} ticks, untreated stopped after {}", treated, untreated);
         assert!(blood_treated > blood_untreated, "treated lost more blood ({} vs {})", blood_treated, blood_untreated);
+    }
+
+    #[test]
+    fn a_patient_in_bed_is_brought_ale() {
+        // No well: the doctor carries drink from the stores to the bed.
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        assert!(g.working_wells().is_empty());
+        let e = g.embark;
+        g.spawn_item(ItemKind::Drink, Mat::Stoutcap, e.offset(2, 0, 0));
+        for d in g.dwarves.iter_mut() {
+            d.labors[Labor::Medicine.idx()] = false;
+        }
+        g.dwarves[1].labors[Labor::Medicine.idx()] = true;
+        let id = g.dwarves[0].id;
+        let arm = Part::LeftArm.idx();
+        {
+            let d = &mut g.dwarves[0];
+            d.body.hp[arm] = 1;
+            d.thirst = THIRSTY / 2 + 50;
+            d.task = Task::Rest { bed: None, stand: d.pos };
+            d.asleep = true;
+        }
+        let mut brought = false;
+        for _ in 0..DAY / 2 {
+            g.step();
+            let d = g.dwarves.iter_mut().find(|d| d.id == id).unwrap();
+            d.body.hp[arm] = 1;
+            d.hunger = 0;
+            assert!(matches!(d.task, Task::Rest { .. }), "the patient got up: {:?}", d.task);
+            if d.thirst < 100 {
+                brought = true;
+                break;
+            }
+        }
+        assert!(brought, "nobody brought the patient a drink");
+        let d = g.dwarves.iter().find(|d| d.id == id).unwrap();
+        assert!(d.thoughts.iter().any(|t| t.text.contains("brought a drink while abed")));
+        assert!(g.log.iter().any(|m| m.text.contains("in bed")));
+        assert_eq!(g.annals.counters.get("abed.drinks"), Some(&1));
+    }
+
+    #[test]
+    fn history_records_care() {
+        // A wolf's bite and the doctor's thread both go in the history.
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        let e = g.embark;
+        for d in g.dwarves.iter_mut() {
+            d.labors[Labor::Medicine.idx()] = false;
+        }
+        g.dwarves[1].labors[Labor::Medicine.idx()] = true;
+        g.dwarves[1].pos = e;
+        g.spawn_item(ItemKind::Thread, Mat::Stoutcap, e);
+        let doctor = g.dwarves[1].name.clone();
+        let wolf = crate::creature::Creature::new(9999, crate::creature::Species::Wolf, e, 0);
+        let id = g.dwarves[0].id;
+        let mut d = std::mem::take(&mut g.dwarves[0]);
+        d.pos = e.offset(1, 0, 0);
+        let before = d.body.clone();
+        d.body.wound(Part::LeftLeg, 9, true);
+        g.note_wound(&mut d, &wolf, &before);
+        // (Lying still, as the wounded do once helped to bed.)
+        d.task = Task::Rest { bed: None, stand: d.pos };
+        d.asleep = true;
+        g.dwarves[0] = d;
+        assert_eq!(g.dwarves[0].med.last().map(|m| m.1.as_str()), Some("gashed in the left leg by a wolf"));
+        for _ in 0..DAY / 2 {
+            g.step();
+            if g.dwarves.iter().find(|d| d.id == id).unwrap().body.bleed_rate() == 0 {
+                break;
+            }
+        }
+        let p = g.dwarves.iter().find(|d| d.id == id).unwrap();
+        let lines: Vec<&str> = p.med.iter().map(|m| m.1.as_str()).collect();
+        assert!(lines.contains(&format!("wounds sutured by {}", doctor).as_str()), "history: {:?}", lines);
+        // The history keeps only the last few lines.
+        let mut p = p.clone();
+        for i in 0..30 {
+            chart(&mut p, i, format!("line {}", i));
+        }
+        assert_eq!(p.med.len(), MED_LINES);
+        assert_eq!(p.med.last().unwrap().1, "line 29");
     }
 
     #[test]

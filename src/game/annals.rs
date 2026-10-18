@@ -119,10 +119,18 @@ pub fn kind_of(c: &Creature) -> String {
 }
 
 impl Game {
-    /// A dwarf was hurt by `c`: remember it, for when they bleed out later.
-    pub(super) fn note_wound(&mut self, dwarf: u32, c: &Creature) {
+    /// A dwarf was struck by `c` (their body was `before` the blow):
+    /// remember it, for when they bleed out later, and write what it did in
+    /// their medical history.
+    pub(super) fn note_wound(&mut self, d: &mut Dwarf, c: &Creature, before: &crate::body::Body) {
+        let dwarf = d.id;
         let kind = kind_of(c);
         let tick = self.tick;
+        if let Some(what) = super::medicine::wound_words(before, &d.body) {
+            let a = if kind.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
+            let by = if what.starts_with("lost") { "to" } else { "by" };
+            super::medicine::chart(d, tick, format!("{} {} {} {}", what, by, a, kind));
+        }
         let w = &mut self.annals.wounded_by;
         w.retain(|(d, _, _)| *d != dwarf);
         w.push((dwarf, kind, tick));
@@ -228,9 +236,11 @@ mod tests {
         assert!(g.annals.sieges[0].size >= 3 && !g.annals.sieges[0].leader.is_empty());
         // A goblin wounds a dwarf, who later bleeds out.
         let gob = g.creatures.values().find(|c| c.siege).unwrap().clone();
-        let id = g.dwarves[0].id;
-        g.note_wound(id, &gob);
         let mut d = std::mem::take(&mut g.dwarves[0]);
+        let before = d.body.clone();
+        d.body.wound(crate::body::Part::LeftLeg, 9, true);
+        g.note_wound(&mut d, &gob, &before);
+        assert_eq!(d.med.last().map(|m| m.1.as_str()), Some("gashed in the left leg by a goblin"));
         g.kill(&mut d, "has bled to death");
         g.dwarves[0] = d;
         let note = g.annals.deaths.last().unwrap();
