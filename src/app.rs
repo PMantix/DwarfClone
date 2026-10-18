@@ -379,6 +379,10 @@ pub struct App {
     pub docked: bool,
     /// Where the cursor was when the pan began; moving it any other way ends the pan.
     pub pan_from: (i32, i32),
+    /// The camera that tours the fort when nobody touches anything.
+    pub director: crate::director::Director,
+    /// Seconds since the last frame (set by the main loop; tests use the default).
+    pub frame_dt: f64,
 }
 
 impl App {
@@ -438,6 +442,8 @@ impl App {
             undo: Vec::new(),
             world_blocks: false,
             pan_from: (0, 0),
+            director: crate::director::Director::default(),
+            frame_dt: 1.0 / 30.0,
         }
     }
 
@@ -499,6 +505,8 @@ impl App {
                 self.spot = Some((s, 0));
             }
         }
+        // Nobody at the keys: the camera tours the fort (src/director.rs).
+        self.direct();
         if self.game.chronicle_ready {
             self.game.chronicle_ready = false;
             if matches!(self.mode, Mode::Normal) {
@@ -945,6 +953,7 @@ impl App {
     }
 
     pub fn on_mouse(&mut self, m: MouseEvent) {
+        self.director.touch();
         let r = self.map_rect;
         let (col, row) = (m.column, m.row);
         let in_map = col >= r.x && row >= r.y && col < r.x + r.width && row < r.y + r.height;
@@ -1055,6 +1064,7 @@ impl App {
     }
 
     pub fn on_key(&mut self, k: KeyEvent) {
+        self.director.touch();
         self.flash = None;
         if k.code == KeyCode::Char('c') && k.modifiers.contains(KeyModifiers::CONTROL) {
             self.quit = true;

@@ -1887,6 +1887,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("\\", "status, brain, reports, chronicle, legends: side pane or full screen"),
         k("M", "grow the map north, east, south or west"),
         k("A", "autoplay: the overseer plays (pick a style)"),
+        k("  (hands off)", "20 s untouched while it plays: the camera tours"),
         k("B", "the overseer's brain: senses, ambitions, nudges"),
         k("L", "legends: history, civs, sites, figures"),
         k("Tab", "jump to next dwarf"),
@@ -3024,7 +3025,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::Reports { filter, scroll } => draw_reports(f, area, &app.game, filter, scroll),
         Mode::BuildMenu => draw_build_menu(f, area),
         Mode::Help => {
-            popup(f, area, 60, 47, " Help ", help_text());
+            popup(f, area, 60, 48, " Help ", help_text());
         }
         Mode::ConfirmQuit => {
             popup(
@@ -3067,6 +3068,12 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         draw_banner(f, over, &app.game);
         if let Some((s, _)) = &app.spot {
             draw_spotlight(f, over, s, app.game.overseer.is_some());
+        }
+        if let Some(line) = app.director.caption_line() {
+            let w = (line.width() as u16).min(over.width);
+            let r = Rect::new(over.x + (over.width - w) / 2, over.y, w, 1);
+            f.render_widget(Clear, r);
+            f.render_widget(Paragraph::new(line).style(Style::default().bg(Color::Rgb(18, 14, 24))), r);
         }
     }
 }
