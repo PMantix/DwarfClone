@@ -16,6 +16,7 @@ pub const MOUNTAIN: f32 = 170.0;
 
 /// The fields, as floats while the world is made.
 #[derive(Clone, Debug)]
+#[cfg_attr(not(test), allow(dead_code))]
 pub struct Grids {
     pub w: i32,
     pub h: i32,
@@ -34,6 +35,7 @@ pub struct Grids {
 
 impl Grids {
     #[inline]
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn idx(&self, x: i32, y: i32) -> usize {
         (y * self.w + x) as usize
     }

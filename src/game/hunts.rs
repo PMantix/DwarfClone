@@ -449,6 +449,8 @@ mod tests {
             d.fight_xp = 3000;
         }
         let at = g.open_patch(4, 3, 8).offset(1, 1, 0);
+        // Open, level ground all round them, so the chase is a fair one.
+        g.level_ground(at.x - 7, at.y - 7, at.x + 7, at.y + 7, at.z);
         let pack = wolves(&mut g, at, 2);
         let start = g.tick;
         while g.tick < start + 100 && !matches!(g.squads[s].order, SquadOrder::Kill(_)) {

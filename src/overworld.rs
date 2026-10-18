@@ -69,6 +69,10 @@ pub struct EmbarkParams {
     /// The site cell's river links on the world map (1 north, 2 east,
     /// 4 south, 8 west), so the river on the fortress map runs the same way.
     pub river: u8,
+    /// The region tiles under the map and round it (none for a world made
+    /// before the fields were kept, or a map made by hand): the land is
+    /// then built from them.
+    pub region: Option<std::sync::Arc<crate::worldgen::tiles::RegionTiles>>,
 }
 
 impl Biome {
@@ -170,6 +174,7 @@ impl Biome {
             home: (0, 0),
             around: Vec::new(),
             river: 0,
+            region: None,
         };
         let mut e = match self {
             Biome::Mountain => p(1.6, 0.3, 0.03, 0.3),
@@ -841,13 +846,16 @@ impl WorldGen {
                 (k, _) => k,
             };
             let id = self.ow.regions.len() as u32;
+            // No frozen jungles: a warm land's names don't speak of ice.
+            let warmth = cells.iter().map(|&i| *self.ow.fields.temp.get(i).unwrap_or(&50) as u32).sum::<u32>() / cells.len() as u32;
+            let suit = |n: String| if warmth >= 50 { n.replace("Frozen", "Burning") } else { n };
             // Names are unique; after a few tries fall back to a numbered one.
-            let mut name = region_name(&mut rng, flavour);
+            let mut name = suit(region_name(&mut rng, flavour));
             for attempt in 0..12 {
                 if !self.ow.regions.iter().any(|r| r.name == name) {
                     break;
                 }
-                name = if attempt < 11 { region_name(&mut rng, flavour) } else { format!("{} {}", name, id + 1) };
+                name = if attempt < 11 { suit(region_name(&mut rng, flavour)) } else { format!("{} {}", name, id + 1) };
             }
             let climate: Vec<regions::CellClimate> = cells
                 .iter()
@@ -1129,6 +1137,14 @@ impl Overworld {
                     p.around.push(Around { x, y, biome: c.biome, elev: c.elev, evil: c.evil, river: c.river });
                 }
             }
+        }
+        if !self.fields.is_empty() {
+            // The map stands on the site's cell at its top left; take its
+            // tiles and enough all round for the map to grow either way.
+            use crate::worldgen::tiles::{region_tiles, SUB, TILE};
+            let m = size.w.max(size.h) / TILE + SUB;
+            let (hx, hy) = (sx * SUB, sy * SUB);
+            p.region = Some(std::sync::Arc::new(region_tiles(self, hx - m, hy - m, 2 * m + SUB, 2 * m + SUB)));
         }
         p
     }

@@ -166,6 +166,10 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
             col[(y * w + x) as usize] = b.code() | if evil { 0x80 } else { 0 };
         }
     }
+    // From the region tiles where there are any: their biomes, borders roughened.
+    if let Some(rt) = params.region.as_deref() {
+        col = crate::terrain_gen::region::biomes(seed, params.home, (ox, oy), (w, h), rt);
+    }
     // A kept map keeps its biomes.
     if let Some((old, (dx, dy))) = keep {
         for y in 0..old.h {
@@ -200,6 +204,7 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
         home_elev,
     };
     let shape = crate::terrain_gen::shape(&ctx, keep);
+    let ground = params.region.as_deref().map(|rt| crate::terrain_gen::region::ground(&ctx, rt));
     let surf = shape.surf.clone();
     let water_level = match keep {
         Some((old, _)) => old.water_level,
@@ -246,8 +251,42 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
     let bands = world.caverns.clone();
     // The rock at a level: granite and marble in the high and cold places,
     // sedimentary rock elsewhere, igneous rock deep down.
+    let geo_rock = |geo: crate::worldgen::tiles::Geo, ax: i32, ay: i32, z: i32| -> Mat {
+        use crate::worldgen::tiles::Geo;
+        if z < 4 {
+            return Mat::Basalt;
+        }
+        let r = rock_n.fbm3(ax as f64 / 12.0, ay as f64 / 12.0, z as f64 / 3.0, 2);
+        match geo {
+            Geo::Sedimentary => {
+                if z as f64 >= 12.0 + deep as f64 - r * 3.0 {
+                    // Beds of sandstone and limestone.
+                    if ((z as f64 + r * 4.0) / 3.0).floor() as i32 % 2 == 0 { Mat::Sandstone } else { Mat::Limestone }
+                } else if r > 0.7 {
+                    Mat::Marble
+                } else {
+                    Mat::Granite
+                }
+            }
+            Geo::Metamorphic => {
+                if z >= 9 + deep && r > 0.25 { Mat::Marble } else { Mat::Granite }
+            }
+            Geo::Extrusive => {
+                if z as f64 >= 12.0 + deep as f64 - r * 2.0 { Mat::Basalt } else { Mat::Granite }
+            }
+            Geo::Intrusive => {
+                if r > 0.72 { Mat::Marble } else { Mat::Granite }
+            }
+        }
+    };
     let rock_at = |ax: i32, ay: i32, z: i32, b: Biome| -> Mat {
         use Biome as B;
+        if let Some(g) = &ground {
+            let (x, y) = (ax - ox, ay - oy);
+            if x >= 0 && y >= 0 && x < w && y < h {
+                return geo_rock(g.geo[(y * w + x) as usize], ax, ay, z);
+            }
+        }
         if z >= 13 + deep {
             let r = rock_n.fbm3(ax as f64 / 20.0, ay as f64 / 20.0, z as f64 / 3.0, 2);
             match b {
@@ -306,6 +345,13 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                 B::Desert => 4,
                 _ => 3,
             };
+            // The region tile's own depth, where the land came from them.
+            if let Some(g) = &ground {
+                soil = match b {
+                    B::Glacier | B::Badlands => soil.min(g.soil[i] as i32),
+                    _ => g.soil[i] as i32,
+                };
+            }
             if bare {
                 soil = 0;
             } else if shape.alluvium[i] > 1.0 {
@@ -606,7 +652,10 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                 world.in_bounds(q) && world.t(q).water > 3
             });
             let mat = world.t(p).mat;
-            let trees = if mat == Mat::Grass || matches!(b, Biome::Desert | Biome::Badlands) && mat.is_soil() { b.params().forest } else { 0.0 };
+            let mut trees = if mat == Mat::Grass || matches!(b, Biome::Desert | Biome::Badlands) && mat.is_soil() { b.params().forest } else { 0.0 };
+            if let Some(g) = &ground {
+                trees *= crate::terrain_gen::region::tree_factor(b, g.veg[i]);
+            }
             // Ridges and slopes dry out; hollows and banks hold water.
             let ridge = (drop_at(x, y) as f64 * 0.12).min(0.4);
             let cluster = forest_n.fbm2(ax as f64 / 16.0, ay as f64 / 16.0, 3) + (m - 0.35) * 0.35 - ridge;
@@ -1236,7 +1285,9 @@ mod tests {
                 }
             }
         }
-        assert!(lakes > 50, "hardly any lakes ({})", lakes);
+        // The land from region tiles is smoother than the old invented
+        // relief, with fewer closed hollows; a few lakes still form.
+        assert!(lakes > 20, "hardly any lakes ({})", lakes);
     }
 
     #[test]
@@ -1326,7 +1377,9 @@ mod tests {
             let (_, w, s) = named_site(name);
             let (hist, mean_slope) = slopes(&w);
             let cliffs = (hist[2] + hist[3]) as f64 / w.surface.len() as f64;
-            let wet = s.fill.iter().zip(&w.surface).filter(|(f, z)| **f > **z).count() as f64 / w.surface.len() as f64;
+            // Water cover: lakes and the sea, rivers, streams, bog pools.
+            let _ = &s;
+            let wet = (0..w.h).flat_map(|y| (0..w.w).map(move |x| (x, y))).filter(|&(x, y)| w.t(Pos::new(x, y, w.surface_z(x, y))).water > 0).count() as f64 / w.surface.len() as f64;
             let relief = w.surface.iter().max().unwrap() - w.surface.iter().min().unwrap();
             seen.push((name, mean_slope, cliffs, wet, relief));
         }
@@ -1338,5 +1391,215 @@ mod tests {
                 assert!(differ, "{} and {} look alike: {:?} {:?}", a.0, b.0, a, b);
             }
         }
+    }
+
+    /// A site's map with the region tiles and mapping it was made from.
+    fn tiled_site(ow: &crate::overworld::Overworld, seed: u64, x: i32, y: i32) -> (EmbarkParams, World, crate::terrain_gen::Shape) {
+        let (p, w, s) = site_map(ow, seed, x, y, MapSize::MEDIUM);
+        assert!(p.region.is_some() && s.zmap.is_some(), "no region tiles at {:?}", (x, y));
+        (p, w, s)
+    }
+
+    /// The map column range of a region tile (absolute tile coords) on a
+    /// map embarked at cell `home`.
+    fn tile_cols(home: (i32, i32), rx: i32, ry: i32) -> (i32, i32) {
+        (rx * 3 - home.0 * 48, ry * 3 - home.1 * 48)
+    }
+
+    #[test]
+    fn the_land_follows_the_region_tiles() {
+        let mut diffs: Vec<f32> = Vec::new();
+        let (mut sum_e, mut sum_z, mut sum_ee, mut sum_zz, mut sum_ez) = (0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64);
+        for seed in [42u64, 7] {
+            let ow = crate::overworld::Overworld::generate(seed);
+            for (_, sx, sy) in pick_sites(&ow, seed) {
+                let (p, w, s) = tiled_site(&ow, seed, sx, sy);
+                let rt = p.region.as_deref().unwrap();
+                let zm = s.zmap.unwrap();
+                for ry in rt.y0..rt.y0 + rt.h {
+                    for rx in rt.x0..rt.x0 + rt.w {
+                        let (x0, y0) = tile_cols(p.home, rx, ry);
+                        if x0 < 0 || y0 < 0 || x0 + 3 > w.w || y0 + 3 > w.h {
+                            continue;
+                        }
+                        let i = rt.idx(rx, ry);
+                        if rt.water[i] != crate::worldgen::tiles::LAND || rt.river[i] != 0 {
+                            continue;
+                        }
+                        let mut z = 0.0;
+                        for dy in 0..3 {
+                            for dx in 0..3 {
+                                z += w.surface_z(x0 + dx, y0 + dy) as f32 / 9.0;
+                            }
+                        }
+                        let want = zm.z(rt.elev[i]);
+                        diffs.push((z - want).abs());
+                        let e = want as f64;
+                        sum_e += e;
+                        sum_z += z as f64;
+                        sum_ee += e * e;
+                        sum_zz += z as f64 * z as f64;
+                        sum_ez += e * z as f64;
+                    }
+                }
+            }
+        }
+        diffs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let n = diffs.len() as f64;
+        let corr = (sum_ez / n - sum_e / n * sum_z / n) / ((sum_ee / n - (sum_e / n).powi(2)).sqrt() * (sum_zz / n - (sum_z / n).powi(2)).sqrt());
+        let median = diffs[diffs.len() / 2];
+        let p90 = diffs[diffs.len() * 9 / 10];
+        eprintln!("{} tiles: median off by {:.2} levels, 90% within {:.2}, correlation {:.3}", diffs.len(), median, p90, corr);
+        assert!(median < 1.0 && p90 < 2.5, "the land strays from its tiles: median {:.2}, 90% {:.2}", median, p90);
+        assert!(corr > 0.85, "the land doesn't follow its tiles (correlation {:.3})", corr);
+    }
+
+    #[test]
+    fn rivers_and_brooks_follow_the_region_tiles() {
+        let (mut river_tiles, mut wet, mut brook_tiles, mut brook_wet, mut stray, mut river_cols) = (0, 0, 0, 0, 0, 0);
+        for seed in [42u64, 7] {
+            let ow = crate::overworld::Overworld::generate(seed);
+            let sites: Vec<(i32, i32)> = (2..ow.h - 3).flat_map(|y| (2..ow.w - 3).map(move |x| (x, y))).filter(|&(x, y)| ow.embarkable(x, y) && (ow.cell(x, y).river != 0 || ow.cell(x, y).brook != 0)).step_by(7).take(6).collect();
+            for (sx, sy) in sites {
+                let (p, w, s) = tiled_site(&ow, seed, sx, sy);
+                let rt = p.region.as_deref().unwrap();
+                let water_near = |x0: i32, y0: i32, r: i32| (y0 - r..y0 + 3 + r).any(|y| (x0 - r..x0 + 3 + r).any(|x| x >= 0 && y >= 0 && x < w.w && y < w.h && w.t(Pos::new(x, y, w.surface_z(x, y))).water > 0));
+                for ry in rt.y0..rt.y0 + rt.h {
+                    for rx in rt.x0..rt.x0 + rt.w {
+                        let (x0, y0) = tile_cols(p.home, rx, ry);
+                        if x0 < 2 || y0 < 2 || x0 + 5 > w.w || y0 + 5 > w.h {
+                            continue;
+                        }
+                        let i = rt.idx(rx, ry);
+                        if rt.water[i] != crate::worldgen::tiles::LAND {
+                            continue;
+                        }
+                        if rt.river[i] != 0 {
+                            river_tiles += 1;
+                            if water_near(x0, y0, 1) {
+                                wet += 1;
+                            }
+                        } else if rt.brook[i] != 0 {
+                            brook_tiles += 1;
+                            if water_near(x0, y0, 1) {
+                                brook_wet += 1;
+                            }
+                        }
+                    }
+                }
+                // Every river on the map lies along a river tile.
+                for y in 0..w.h {
+                    for x in 0..w.w {
+                        if s.river[(y * w.w + x) as usize] == 0 {
+                            continue;
+                        }
+                        river_cols += 1;
+                        let (ax, ay) = (x + p.home.0 * 48, y + p.home.1 * 48);
+                        let near = (-1..=1).any(|dy| (-1..=1).any(|dx| {
+                            let j = rt.idx(ax.div_euclid(3) + dx, ay.div_euclid(3) + dy);
+                            rt.river[j] != 0 || rt.water[j] != crate::worldgen::tiles::LAND
+                        }));
+                        if !near {
+                            stray += 1;
+                        }
+                    }
+                }
+            }
+        }
+        eprintln!("river tiles {} ({} wet), brook tiles {} ({} wet), river columns {} ({} away from river tiles)", river_tiles, wet, brook_tiles, brook_wet, river_cols, stray);
+        assert!(river_tiles > 50 && brook_tiles > 50, "too few courses to judge");
+        assert!(wet * 100 >= river_tiles * 95, "rivers missing from their tiles: {} of {}", wet, river_tiles);
+        assert!(brook_wet * 100 >= brook_tiles * 85, "brooks missing from their tiles: {} of {}", brook_wet, brook_tiles);
+        assert!(stray * 100 <= river_cols, "{} of {} river columns stray from the tiles", stray, river_cols);
+    }
+
+    #[test]
+    fn cliffs_stand_where_region_tiles_jump() {
+        let (mut jumps, mut cliffs, mut flats, mut flat_cliffs) = (0, 0, 0, 0);
+        for seed in [42u64, 7, 5] {
+            let ow = crate::overworld::Overworld::generate(seed);
+            for (name, sx, sy) in pick_sites(&ow, seed) {
+                if !matches!(name, "mountains" | "rolling hills" | "badlands") {
+                    continue;
+                }
+                let (p, w, s) = tiled_site(&ow, seed, sx, sy);
+                let rt = p.region.as_deref().unwrap();
+                let zm = s.zmap.unwrap();
+                for ry in rt.y0..rt.y0 + rt.h {
+                    for rx in rt.x0..rt.x0 + rt.w - 1 {
+                        let (x0, y0) = tile_cols(p.home, rx, ry);
+                        if x0 < 0 || y0 < 0 || x0 + 6 > w.w || y0 + 3 > w.h {
+                            continue;
+                        }
+                        let (a, b) = (rt.idx(rx, ry), rt.idx(rx + 1, ry));
+                        if rt.water[a] != 0 || rt.water[b] != 0 || rt.river[a] != 0 || rt.river[b] != 0 || rt.brook[a] != 0 || rt.brook[b] != 0 {
+                            continue;
+                        }
+                        let dz = (zm.z(rt.elev[a]) - zm.z(rt.elev[b])).abs();
+                        // The steepest step across the border, row by row.
+                        let step = (y0..y0 + 3).map(|y| (x0 + 1..x0 + 5).map(|x| (w.surface_z(x, y) - w.surface_z(x + 1, y)).abs()).max().unwrap()).max().unwrap();
+                        if dz >= 3.0 {
+                            jumps += 1;
+                            if step >= 2 {
+                                cliffs += 1;
+                            }
+                        } else if dz < 0.5 {
+                            flats += 1;
+                            if step >= 2 {
+                                flat_cliffs += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        eprintln!("{} jumps, {} with a cliff; {} flat borders, {} with a cliff", jumps, cliffs, flats, flat_cliffs);
+        assert!(jumps > 30, "too few jumps to judge ({})", jumps);
+        assert!(cliffs * 10 >= jumps * 7, "only {} of {} jumps make a cliff", cliffs, jumps);
+        assert!((flat_cliffs as f64 / flats.max(1) as f64) < (cliffs as f64 / jumps as f64) / 3.0, "cliffs everywhere: {} of {} flat borders", flat_cliffs, flats);
+    }
+
+    #[test]
+    fn neighbouring_embarks_meet_at_their_shared_edge() {
+        let mut checked = 0;
+        for seed in [42u64, 7] {
+            let ow = crate::overworld::Overworld::generate(seed);
+            // A medium map is two cells wide, so the map two cells east
+            // starts where this one ends.
+            let pairs: Vec<(i32, i32)> = (2..ow.h - 3).flat_map(|y| (2..ow.w - 5).map(move |x| (x, y))).filter(|&(x, y)| ow.embarkable(x, y) && ow.embarkable(x + 2, y) && (0..3).all(|d| !ow.cell(x + d, y).biome.is_water() && !ow.cell(x + d, y + 1).biome.is_water())).step_by(97).take(4).collect();
+            for (sx, sy) in pairs {
+                let (pa, a, sa) = tiled_site(&ow, seed, sx, sy);
+                let (pb, b, sb) = tiled_site(&ow, seed, sx + 2, sy);
+                assert_eq!(pa.home.0 * 48 + a.w, pb.home.0 * 48);
+                let (za, zb) = (sa.zmap.unwrap(), sb.zmap.unwrap());
+                // In the world's own heights, the two edges agree.
+                let mut off = Vec::new();
+                for y in 0..a.h {
+                    let ea = za.e(a.surface_z(a.w - 1, y) as f32);
+                    let eb = zb.e(b.surface_z(0, y) as f32);
+                    off.push(((ea - eb) * za.k).abs());
+                }
+                off.sort_by(|p, q| p.partial_cmp(q).unwrap());
+                let med = off[off.len() / 2];
+                eprintln!("seed {} {:?}|{:?}: edges differ by {:.2} levels (median), {:.2} (90%)", seed, (sx, sy), (sx + 2, sy), med, off[off.len() * 9 / 10]);
+                assert!(med <= 1.5, "seed {}: the maps at {:?} and {:?} don't meet ({:.2} levels)", seed, (sx, sy), (sx + 2, sy), med);
+                // The same tiles hold water on both sides.
+                let rt_a = pa.region.as_deref().unwrap();
+                let rt_b = pb.region.as_deref().unwrap();
+                for ry in sy * 16..sy * 16 + 21 {
+                    let rx = (sx + 2) * 16;
+                    assert_eq!(rt_a.river[rt_a.idx(rx, ry)], rt_b.river[rt_b.idx(rx, ry)]);
+                    assert_eq!(rt_a.elev[rt_a.idx(rx, ry)], rt_b.elev[rt_b.idx(rx, ry)]);
+                }
+                // A river crossing the edge crosses on both maps at the same place.
+                let wet_a: Vec<i32> = (0..a.h).filter(|&y| sa.river[(y * a.w + a.w - 1) as usize] != 0).collect();
+                let wet_b: Vec<i32> = (0..b.h).filter(|&y| sb.river[(y * b.w) as usize] != 0).collect();
+                for y in &wet_a {
+                    assert!(wet_b.iter().any(|v| (v - y).abs() <= 3), "seed {}: a river leaves {:?} at y {} but doesn't come into {:?}", seed, (sx, sy), y, (sx + 2, sy));
+                }
+                checked += 1;
+            }
+        }
+        assert!(checked >= 4);
     }
 }

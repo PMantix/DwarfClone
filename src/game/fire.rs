@@ -188,8 +188,15 @@ mod tests {
         g.creatures.retain(|_, c| c.tame);
         g.weather = Weather::Clear;
         g.biome = crate::overworld::Biome::Desert;
+        // A band of shrubs three wide, on level ground by the wagon.
         let e = g.embark;
-        // A band of shrubs three wide.
+        let e = (0..400)
+            .map(|k| e.offset(k % 20 - 10, k / 20 - 10, 0))
+            .find(|&o| (4..14).all(|i| (5..8).all(|j| {
+                let p = o.offset(i, j, 0);
+                g.world.in_bounds(p) && g.world.surface_z(p.x, p.y) == g.world.surface_z(o.x + 4, o.y + 6) && g.world.t(Pos::new(p.x, p.y, g.world.surface_z(p.x, p.y))).water == 0
+            })))
+            .expect("level ground near the wagon");
         let at = |g: &Game, i: i32, j: i32| {
             let p = e.offset(i, 6 + j, 0);
             Pos::new(p.x, p.y, g.world.surface_z(p.x, p.y))

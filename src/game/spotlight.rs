@@ -90,7 +90,12 @@ impl Game {
         let e = self.embark;
         let fits = |x: i32, y: i32, g: &Game| x >= 1 && y >= 1 && x + w < g.world.w - 1 && y + h < g.world.h - 1;
         let tries = [(away, -h / 2), (-away - w + 1, -h / 2), (-w / 2, away), (-w / 2, -away - h + 1)];
-        let (dx, dy) = tries.iter().copied().find(|&(dx, dy)| fits(e.x + dx, e.y + dy, self)).expect("room for a patch");
+        // Off to one side if it fits, else as near that as the map allows.
+        let (dx, dy) = tries.iter().copied().find(|&(dx, dy)| fits(e.x + dx, e.y + dy, self)).unwrap_or_else(|| {
+            let (gw, gh) = (self.world.w, self.world.h);
+            let (x, y) = ((e.x + away).clamp(1, (gw - w - 2).max(1)), (e.y - h / 2).clamp(1, (gh - h - 2).max(1)));
+            (x - e.x, y - e.y)
+        });
         let a = Pos::new(e.x + dx, e.y + dy, e.z);
         self.level_ground(a.x, a.y, a.x + w - 1, a.y + h - 1, e.z);
         // The way there, three wide.

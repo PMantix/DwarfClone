@@ -135,9 +135,27 @@ stairs, ▼ channel). Hovering over the map shows what's there.
 192×80 or 288×120), history length, number of civilizations, savagery and minerals. Then you watch the continent appear and its
 history play out year by year (Space hurries it), and accept it or roll another.
 
-**World & history.** A continent of biomes (mountains, hills, forests, grassland,
-desert, tundra, swamp, evil-tainted land) with dwarven, human, elven and goblin
-civilizations. Two centuries of history are simulated before you arrive: settlements are
+**World & history.** The world is made the way Dwarf Fortress makes its own
+(`docs/worldgen.md`): not by placing biomes but by generating fields over every world
+cell and reading the biomes off them. Elevation comes from midpoint displacement with
+ranges lifted along ridge lines; temperature from latitude and height; rainfall from a
+fractal plus the prevailing winds, which drop their water on the windward slopes and leave
+rain shadows past the crests; drainage, savagery and good and evil are fractals of their
+own; vegetation follows rain and warmth; salt lies in the sea and a cell or two inland.
+A threshold table turns those into mountains, hills, forest, taiga, jungle, grassland,
+savanna, shrubland, desert, badlands, tundra, glacier, swamp and marsh (salt marsh on the
+coast), so borders wander like coastlines and no desert lies beside a jungle without the
+grassland between. An erosion phase then runs temporary rivers from the foot of every
+range, wearing the heights and cutting channels to the sea, before the real rivers run:
+every cell drains to the sea or a lake (the deepest hollows fill into lakes; in dry
+basins they keep their water), flow gathers downstream, and the bigger streams are named
+rivers with their tributaries while the smaller are brooks, too small for the world map
+but there on the land. Connected stretches of one broad kind of land are named regions
+(one forest can be taiga in its cold north and jungle in its warm south), each with the
+wildlife and plants that live there: animals have habitats and geographic ranges, so the
+same kind of land in two corners of the world holds different beasts. Cave rivers run
+long courses through the deep rock. The dwarven, human, elven and goblin
+civilizations settle the land the fields made. Two centuries of history are simulated before you arrive: settlements are
 founded, wars declared, sites sacked or conquered, rulers succeed one another, megabeasts
 ravage towns and heroes slay them. Seas, mountain ranges, forests and plains carry names. Big worlds scroll, with a minimap.
 Browse it all in the legends viewer (`L`). You choose
@@ -148,7 +166,7 @@ often sieges come.
 **The world map.** One character a cell, tight like the old game's atlas: each region is a
 solid texture of one glyph family in two or three shades of its colour (green `∩` `n` hills,
 `♣` forests, `"` grass, grey and white `▲` `^` mountains with snow on the high peaks, `↑`
-taiga, `♠` jungle, `%` swamp, sandy `~` desert, icy `░` `▒` glacier, rust `∩` badlands), the
+taiga, `♠` jungle, `%` swamp, sandy `~` desert, icy `░` `▒` glacier, rust `∩` badlands, khaki `τ` shrubland, green-blue `"` marsh, lighter `≈` lakes), the
 sea a uniform blue `≈`, and no blank-looking dots or commas anywhere on land. Rivers are thin
 light-blue lines (`─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼`) from cell to cell; sites stand out as small bright
 marks (`Ω` dwarves, `#` towns, `+` hamlets, `♠` elves, `Ψ` goblins, `&` lairs, `×` ruins) and
@@ -156,14 +174,26 @@ a few red `▲` volcanoes smoulder. A key in each mark's own colour runs under t
 climate runs from ice caps at both poles through taiga and tundra to jungle, savanna, desert
 and badlands in the warm middle.
 
-Rivers respect the land: each springs where the water leaves the mountains (or on high
-hills) and only ever runs downhill, to the sea, into another river, or into a hollow where it
-pools as a lake; none climbs or crosses a ridge. A river on the world map flows through the
-fortress map embarked there, running the same way (east-west or north-south), and only there:
-a site has a river exactly when the map draws one through its cell. A volcano brings its
+Rivers respect the land: each gathers where enough rain has run together and only ever
+runs downhill, to the sea, into a lake, or into the river it feeds, carrying more water the
+further it goes (the great rivers are drawn a deeper blue, and the world info names the
+river through a cell). A site has a river exactly when the map draws one through its cell,
+an underground river exactly when a cave river runs beneath it, and a volcano brings its
 crater.
 
-**The land you embark on.** The local map follows the world map. Each biome has its own
+**The land you embark on.** The local map is built from the world, the way the old game
+builds it: every world cell is 16×16 region tiles (three map columns each), worked out on
+demand from the world's fields, and the fortress map is drawn from the tiles under it. The
+tiles carry the fields smoothly across cell borders plus detail of their own (rolling on
+the plains, ridged in the mountains, stepped where the rock is hard), the sea and lakes
+with shores that wander across the cells, the courses of the world's rivers and brooks,
+a soil depth and the geology of their province (sandstone and limestone beds over granite,
+marble over granite, basalt flows, or granite all the way down). The map takes one height
+scale for all its land, runs its surface through the tiles (smooth between tiles of about
+one height, a cliff of hard rock where they jump), lays its sea, lakes, rivers and brooks
+where the tiles have them, its soil as deep as the tiles say, its trees as thick as their
+vegetation and its stone as their geology, and then the processes below finish it. So two
+fortresses embarked side by side meet on the same land at their shared edge. Each biome has its own
 ground and growth: sand dunes and cacti in the desert, red clay and scrub in the badlands, bare
 rock on the mountain heights, snow that never melts on a glacier, short pale grass on the tundra,
 dark grass under the pines of the taiga, tall golden grass and acacias on the savanna, dense
@@ -176,14 +206,12 @@ mountains next door lift the land toward them, and a big embark spanning several
 blends their biomes along ragged borders. Growing the map (`M`) carries on into the
 neighbours the same way.
 
-The land itself is made by processes, one after another (`src/terrain_gen/`). The world cells'
-heights set the level and the tilt across the map, and each cell's biome, with a character of
-its own, picks the landform: flat plains or rolling hill country, steep hills, ridged mountain
-ranges on broad massifs, stepped mesas in the badlands, dunes in the desert, the sea floor
-offshore; sometimes a fault lifts one side of the map into an escarpment, worn through in
-places. The world's rivers come in and go out across the sides the world map links, run from
-the higher cell to the lower, meander, and cut their valleys first: broad in soft ground, a
-gorge in hard rock, their water never rising along the way. Then the rain wears the land:
+The land is finished by processes, one after another (`src/terrain_gen/`). Dunes rise in the
+desert, a volcano's cone, mesas and sharp peaks where the site has them. The rivers, along
+the region tiles' courses, cut their valleys first: broad in soft ground, a gorge in hard
+rock, their water never rising along the way. (A map with no world behind it, or from a save
+made before the region tiles, is shaped the old way: the world cells' heights set the level
+and the tilt, and each cell's biome picks its landform.) Then the rain wears the land:
 droplets carve gullies and lay alluvium in the flats, and slopes too steep for their rock
 crumble to scree, so cliffs stand only where the rock is hard. Water gathers where the land
 says: streams where the run-off collects, ponds and lakes in the hollows (fewer in dry
@@ -196,11 +224,14 @@ or not, every piece of land can be walked to (a gully is cut down a scarp, a for
 river where nothing else will do), and the wagon stops on dry, level, reachable ground with
 room round it, the caves kept clear of where the fortress will grow.
 
-Wildlife follows the land too: deer, wolves and bears in the forests and hills; elk, wolves
-and bears in the taiga; elk and polar bears on the tundra and glaciers; ibex in the mountains
-and badlands; camels, giant scorpions and vipers in the desert; antelope and lions on the
-savanna; jaguars and vipers in the jungle; vipers and alligators in the swamp. Where evil lies on
-the land, walking husks come in their place half the time.
+Wildlife follows the land too: the grazers, pack hunters and rare beasts that come to the
+fortress are its region's own (the world info and the legends list each region's wildlife
+and plants), and the savagery field makes a site wilder or tamer. Where a region lacks one
+of them the land's usual one comes: deer, wolves and bears in the forests and hills; elk,
+wolves and bears in the taiga; elk and polar bears on the tundra and glaciers; ibex in the
+mountains and badlands; camels, giant scorpions and vipers in the desert; antelope and lions
+on the savanna and shrubland; jaguars and vipers in the jungle; vipers and alligators in the
+swamp and marsh. Where evil lies on the land, walking husks come in their place half the time.
 
 **Sites and maps.** Every site has its own features, shown on the world map before you
 embark: a river with fords, a chasm crossed by natural bridges, a volcano with a magma
@@ -562,6 +593,7 @@ cargo test --release profile_year -- --ignored --nocapture
 | File | Role |
 | --- | --- |
 | `overworld.rs` | world map, civilizations, history, legends data |
+| `worldgen/` | the world's land: fields and biomes, erosion and rivers, regions and wildlife, region tiles |
 | `world.rs` | fortress tiles, movement rules, reveal, embark generation |
 | `game.rs` | core simulation: jobs, needs, fluids, farms, hauling, player commands |
 | `game/combat.rs` | creatures, fighting, wildlife, sieges |

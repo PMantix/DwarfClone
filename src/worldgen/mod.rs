@@ -7,6 +7,7 @@
 pub mod fields;
 pub mod regions;
 pub mod rivers;
+pub mod tiles;
 
 use crate::overworld::Biome;
 use fields::{Grids, Sample};
@@ -24,14 +25,14 @@ pub struct Land {
     /// The rivers, split into stems (main rivers and tributaries).
     pub stems: Vec<rivers::Stem>,
     /// Lake number + 1 per cell, and which lakes have no outflow.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub lake: Vec<u32>,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub terminal: Vec<bool>,
 }
 
 /// Below this on the good/evil field the land is evil.
 pub const EVIL: f32 = 10.0;
-/// Above this it's good.
-pub const GOOD: f32 = 88.0;
 
 impl Grids {
     pub fn sample(&self, i: usize) -> Sample {
