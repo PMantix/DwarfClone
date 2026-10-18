@@ -53,7 +53,8 @@ pub fn items(g: &Game, shown: usize) -> Vec<(String, (u8, u8, u8))> {
     v
 }
 
-/// Draw the ticker on the bottom row of `full`, if there's news to run.
+/// Draw the ticker on the bottom row of `full`, in its longest stretch free
+/// of text (clear of key hints and counters), if there's news to run.
 /// `panel` is how many announcements are on screen now (0 when hidden),
 /// `notes_hidden` whether the overseer's notes are covered, and `reserve`
 /// the columns kept free at the right for a hint.
@@ -67,8 +68,39 @@ pub(super) fn draw(f: &mut ratatui::Frame, app: &App, full: Rect, panel: usize, 
             }
         }
     }
-    let room = full.width.saturating_sub(2 + reserve) as usize;
-    if news.is_empty() || full.width < 20 || room < 16 {
+    if news.is_empty() || full.width < 20 {
+        return;
+    }
+    let y = full.y + full.height - 1;
+    let lo = full.x + 1;
+    let hi = (full.x + full.width).saturating_sub(1 + reserve);
+    // Keep off whatever is already written along the bottom row (a page's
+    // key hints, a counter, the pane's hint): run only in the longest
+    // stretch of bare border or blank, a cell clear of any text.
+    let (x0, room) = {
+        let buf = f.buffer_mut();
+        let free = |x: u16| matches!(buf.get(x, y).symbol(), "─" | " " | "━" | "═");
+        let mut best = (lo, 0u16);
+        let mut x = lo;
+        while x < hi {
+            if !free(x) {
+                x += 1;
+                continue;
+            }
+            let a = x;
+            while x < hi && free(x) {
+                x += 1;
+            }
+            // A cell of gap next to any text.
+            let s = if a > lo { a + 1 } else { a };
+            let e = if x < hi { x.saturating_sub(1) } else { x };
+            if e > s && e - s > best.1 {
+                best = (s, e - s);
+            }
+        }
+        (best.0, best.1 as usize)
+    };
+    if room < 16 {
         return;
     }
     let t = CLOCK.with(|c| {
@@ -82,8 +114,6 @@ pub(super) fn draw(f: &mut ratatui::Frame, app: &App, full: Rect, panel: usize, 
         run.extend("   ◆   ".chars().map(|c| (c, (130, 130, 140))));
     }
     let label = " NEWS ";
-    let y = full.y + full.height - 1;
-    let x0 = full.x + 1;
     let buf = f.buffer_mut();
     let bg = Color::Rgb(24, 16, 12);
     for (i, ch) in label.chars().enumerate() {
@@ -196,9 +226,54 @@ mod tests {
             assert!(ms < 50.0, "{:.1} ms a frame at {}x{}", ms, w, h);
             let buf = term.backend().buffer().clone();
             let last: String = (0..w).map(|x| buf.get(x, h - 1).symbol().to_string()).collect();
-            println!("{}x{}: {:.2} ms a frame
-{}", w, h, ms, last);
+            println!("{}x{}: {:.2} ms a frame\n{}", w, h, ms, last);
             assert!(last.contains("NEWS"));
+        }
+        // Every page keeps its key hints (or its counter) in sight, with the
+        // news running too.
+        let modes = [
+            (Mode::Status { tab: 0, scroll: 0 }, "Esc back"),
+            (Mode::Labors { row: 0, col: 0, detail: 0 }, "Esc back"),
+            (Mode::Legends { tab: 0, scroll: 0, from_world: false }, "Esc back"),
+            (Mode::Highlights { sel: 0 }, " KB "),
+        ];
+        for (w, h) in [(80u16, 24u16), (200, 60)] {
+            for (m, hint) in &modes {
+                app.mode = m.clone();
+                let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+                term.draw(|f| draw_all(f, &mut app)).unwrap();
+                let buf = term.backend().buffer().clone();
+                let rows: Vec<String> = (0..h).map(|y| (0..w).map(|x| buf.get(x, y).symbol().to_string()).collect()).collect();
+                let last = &rows[h as usize - 1];
+                assert!(last.contains("NEWS"), "{:?} {}x{}: {}", m, w, h, last);
+                assert!(rows.iter().any(|r| r.contains(hint)), "{:?} {}x{}: {:?} lost\n{}", m, w, h, hint, rows.join("\n"));
+                if last.contains("Esc close") {
+                    assert!(last.contains("full screen · Esc close"), "{}", last);
+                }
+            }
+        }
+    }
+
+    /// When a page's key hints sit on the very bottom row (as a full-height
+    /// page's would), the ticker runs beside them, not over them.
+    #[test]
+    fn the_ticker_runs_beside_bottom_hints() {
+        use ratatui::widgets::Block;
+        let mut app = App::with_game_for_tests(Game::new(5));
+        app.game.tick = 5000;
+        app.game.msg("A goblin siege has come to the gates!", (255, 70, 70));
+        reset_for_test();
+        for (w, h, hint) in [(80u16, 24u16, " Tab side · ↑↓ move · Space mark · o offer · Esc leave "), (200, 60, " Tab/1-4 switch · ↑↓ PgUp/PgDn scroll · Esc back ")] {
+            let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+            term.draw(|f| {
+                let full = f.size();
+                f.render_widget(Block::bordered().title_bottom(hint), full);
+                draw(f, &app, full, 0, false, 0);
+            })
+            .unwrap();
+            let buf = term.backend().buffer().clone();
+            let last: String = (0..w).map(|x| buf.get(x, h - 1).symbol().to_string()).collect();
+            assert!(last.contains(hint.trim()) && last.contains("NEWS"), "{}", last);
         }
     }
 
