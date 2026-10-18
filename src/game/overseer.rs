@@ -2068,8 +2068,11 @@ mod tests {
     #[test]
     fn a_hospital_before_the_first_siege() {
         // By the first siege's season, each careful style has its hospital
-        // fitted, a doctor, and thread or cloth to dress wounds with.
-        for (seed, style) in [(5003, Style::Steady), (5001, Style::Builder), (5002, Style::Delver)] {
+        // fitted, a doctor, and thread or cloth to dress wounds with. (Since
+        // the world map's downhill rivers, 5003's and 5001's sites have no room
+        // for halls past the first few, whatever the style: 5006 and 5000
+        // stand in for them.)
+        for (seed, style) in [(5006, Style::Steady), (5000, Style::Builder), (5002, Style::Delver)] {
             let g = trial_game(seed, style, 168);
             let o = g.overseer.as_ref().unwrap();
             let rooms: Vec<(RoomUse, u8)> = o.rooms.iter().map(|r| (r.kind, r.stage)).collect();
