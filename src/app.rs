@@ -289,6 +289,10 @@ pub enum Mode {
     GameOver,
     /// The arena: set up a battle and watch it (`app::arena`).
     Arena,
+    /// The highlight reel, playing clip `sel` (`ui/highlights.rs`).
+    Highlights { sel: usize },
+    /// A dwarf's life story and portrait (`ui/life.rs`).
+    Life { id: u32, scroll: usize },
 }
 
 /// Timings gathered for the performance overlay, and the last second's summary.
@@ -921,7 +925,7 @@ impl App {
 
     /// Screens that can sit beside the map as a side pane.
     pub fn dockable(&self) -> bool {
-        matches!(self.mode, Mode::Status { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Chronicle { .. } | Mode::Legends { from_world: false, .. })
+        matches!(self.mode, Mode::Status { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Chronicle { .. } | Mode::Legends { from_world: false, .. } | Mode::Life { .. })
     }
 
     pub fn uses_map_cursor(&self) -> bool {
@@ -974,6 +978,7 @@ impl App {
             Mode::Appoint { pos, .. } => Mode::Appoint { pos, sel: i },
             Mode::PickOwner { zone, .. } => Mode::PickOwner { zone, sel: i },
             Mode::Expedition { squad, .. } => Mode::Expedition { squad, sel: i },
+            Mode::Highlights { .. } => Mode::Highlights { sel: i },
             other => other,
         };
         self.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
@@ -1014,6 +1019,7 @@ impl App {
                     Some(crate::ui::Target::Key(k)) => return self.on_key(KeyEvent::new(k, KeyModifiers::NONE)),
                     Some(crate::ui::Target::Row(i)) => return self.select_row(i),
                     Some(crate::ui::Target::Block) => return,
+                    Some(crate::ui::Target::Dwarf(id)) => return self.jump_to_dwarf(id),
                     None => {}
                 }
                 if !in_map || !self.uses_map_cursor() {
@@ -1160,6 +1166,7 @@ impl App {
                     KeyCode::Char('c') if !self.game.chronicles.is_empty() => self.mode = Mode::Chronicle { idx: self.game.chronicles.len() - 1 },
                     KeyCode::Char('l') => self.mode = Mode::Legends { tab: 0, scroll: usize::MAX, from_world: false },
                     KeyCode::Char('r') => self.mode = Mode::Reports { filter: 0, scroll: 0 },
+                    KeyCode::Char('h') => self.mode = Mode::Highlights { sel: usize::MAX },
                     KeyCode::Char('t') => self.start_save(false, AfterSave::Title),
                     KeyCode::Char('w') | KeyCode::Esc => self.mode = Mode::Normal,
                     _ => {}
@@ -1372,9 +1379,12 @@ impl App {
                     self.flash = Some(if on { "Specialist: won't haul.".into() } else { "Will haul again.".into() });
                 }
                 KeyCode::Char('m') => self.game.toggle_soldier(id),
+                KeyCode::Char('l') => self.mode = Mode::Life { id, scroll: 0 },
                 _ => {}
             },
             Mode::Military => self.key_military(k),
+            Mode::Highlights { sel } => self.key_highlights(k, sel),
+            Mode::Life { id, scroll } => self.key_life(k, id, scroll),
             Mode::KillTarget { squad } => match k.code {
                 KeyCode::Esc => self.mode = Mode::Military,
                 KeyCode::Enter => {
@@ -1734,6 +1744,7 @@ impl App {
             KeyCode::Char('?') => self.mode = Mode::Help,
             KeyCode::Char('Q') => self.mode = Mode::ConfirmQuit,
             KeyCode::Char('H') => self.cursor = self.game.embark,
+            KeyCode::Char('h') => self.mode = Mode::Highlights { sel: usize::MAX },
             KeyCode::F(5) => self.start_save(false, AfterSave::Resume),
             KeyCode::F(9) => {
                 // Reload this fortress's latest save.

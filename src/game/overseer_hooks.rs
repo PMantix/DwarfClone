@@ -29,6 +29,10 @@ impl Game {
         self.ov_wizard(o);
         // A culture of its own: instruments for the tavern.
         self.ov_culture(o);
+        // Interface flair: the row of faces.
+        self.ov_mood_strip(o);
+        self.ov_reel(o);
+        self.ov_eulogies(o);
         let _ = o;
     }
 
@@ -79,5 +83,7 @@ impl Game {
         // ...and a broken one a victory feast.
         self.victory_feast(i);
         self.judge_wargame(i);
+        // Interface flair: the battle gets its name on the reel.
+        self.reel_siege_end(i);
     }
 }

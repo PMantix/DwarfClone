@@ -142,6 +142,50 @@ same thing twice running, and says what it's watching above the map. A fight cut
 anything calmer. It only moves the camera; big-moment cards come first. Any key or mouse
 movement gives control back (the key does what it always does).
 
+**The mood strip.** The top bar has a tiny face for every dwarf, coloured by how they feel: smiles
+first, then the long faces (☹), a dark ☻ for anyone beside themselves (a tantrum, melancholy,
+madness, a fit), and a skull ☠ for each who died this season. Hover over a face for their name,
+mood and what's on their mind; click it to go to them with their sheet open. When the bar is too
+narrow (80 columns) the faces are counted instead ("☺9 ☹2 ☠1"), and a click on a count goes to
+the worst of them. The overseer looks down the same row once a season and notes it when a third
+of the faces are long, or the season has taken two or more (`game/moods.rs`, `ui/moodstrip.rs`).
+
+**Highlights.** The game films its big moments as they happen: every big-moment card (a siege, a
+dragon or a beast, something from the deep, a hero falling, an artifact, a monument, a cave-in...),
+every death and every wedding. Each clip is the ground around the moment (60×16 tiles, with its
+buildings, things lying about and blood) and three seconds of who moves where, with a caption.
+`h` opens the reel and plays them back (↑↓ picks one, Enter plays it again, `c` goes there); the
+fallen fort's page offers it too. A siege's clip is named when the siege ends ("The Battle of the
+Red Mud: the goblins routed, 9 slain, one dwarf lost"), and the first siege says so. At the turn
+of each year the overseer picks the moment of the year (★ on the reel, and a line in its notes).
+The reel keeps its 24 weightiest clips (and at most 12 stars) and is saved with the game (a
+clip is under 48 KB even in a crowded siege, so a megabyte at the very most and usually far
+less); filming draws no dice, so it never changes what happens (`game/reel.rs`, `ui/highlights.rs`).
+
+**A dwarf's life.** On a dwarf's sheet, `l` opens their Life page: a small portrait drawn from
+their looks (beard and hair of their own, greying past 120, a scar across the eye where their head
+was hurt, an empty sleeve or a crutch for a lost limb, the helm, breastplate, shield and weapon they
+carry, eyes shut asleep and crossed out in death, a mouth by their mood) beside who they are, and
+their story below: their temper and likes, family, closest friends and grudges, deeds, kills and
+duels, their best craft, what the chronicle and the legends say of them, the strongest memory of
+each season, their wounds, and how and when they died. When a dwarf dies the overseer remembers
+them in a line of its notes ("Remembered Urist: married Kadol, slew 3; struck down."), and the
+year's chronicle keeps a line for each notable dwarf it lost (`game/lifestory.rs`, `ui/life.rs`).
+
+**Weather you can see.** Over open ground under the sky (never underground, never over a dwarf,
+a beast, a thing or a building) the air moves: rain streaks slanting in the wind, blood rain over
+evil land, snowflakes drifting, leaves falling under the trees in autumn, fireflies blinking at
+summer dusk, dust blowing over dry country. They stand still while the game is paused. They're
+a few hundred points worked out from a clock, well under a millisecond a frame; the F3 overlay
+says what's in the air and what it costs, and they switch themselves off (until the weather
+changes) if a run of frames costs more than 2 ms each (`ui/ambient.rs`).
+
+**The news ticker.** When the announcements can't be seen (a full-screen page or a side pane is
+over them) or the news comes faster than they show it, the latest notable news of the last two
+days (deaths, sieges, beasts, heroes, artifacts, milestones, weddings, births) scrolls along the
+bottom edge of the screen under a NEWS tab, newest first, with the overseer's latest note when
+its pane is covered too (`ui/ticker.rs`).
+
 Use Windows Terminal (or any truecolor + Unicode terminal) at 130x40 or larger.
 Press `?` in game for keys.
 
@@ -860,3 +904,8 @@ cargo test --release profile_year -- --ignored --nocapture
 | `game/arena.rs`, `game/arena/` | the arena: matchups, fields, the bout's own loop, reruns, saved matchups |
 | `game/wargame.rs` | the overseer war-games a coming siege in the arena |
 | `app/arena.rs`, `ui/arena.rs` | the arena's screens: setup, the bout, summary, report, win rates |
+| `game/moods.rs`, `ui/moodstrip.rs` | the mood strip in the top bar |
+| `game/reel.rs`, `ui/highlights.rs` | the highlight reel: filming big moments, playing them back |
+| `game/lifestory.rs`, `ui/life.rs` | a dwarf's life story, eulogies, the portrait and Life page |
+| `ui/ambient.rs` | rain, snow, leaves, fireflies and dust over the map |
+| `ui/ticker.rs` | the news ticker along the bottom |

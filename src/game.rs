@@ -107,6 +107,9 @@ pub mod culture;
 mod works;
 mod depict;
 mod dreams;
+pub mod moods;
+pub mod reel;
+pub mod lifestory;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -494,6 +497,9 @@ pub struct Game {
     /// Gods, temples and strange powers (`magic.rs`).
     #[serde(default)]
     pub magic: magic::Magic,
+    /// The highlight reel: the big moments, filmed (`reel.rs`).
+    #[serde(default)]
+    pub reel: reel::Reel,
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
@@ -620,6 +626,7 @@ impl Game {
             gore: Default::default(),
             stories: Default::default(),
             magic: Default::default(),
+            reel: Default::default(),
             festival: None,
             year_log: YearLog::default(),
             vault: None,

@@ -268,12 +268,12 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O05 Spectator mode (M)
 - **Why:** An autoplay fort is a show: the player should see moods at a glance, have the camera cut to the drama, and replay the best moments.
-- **Steps:** [ ] Mood strip ([UI-01](ideas/world-and-overseer.md)) · [ ] Director camera ([UI-03](ideas/world-and-overseer.md)) · [ ] Sound-based reports ([UI-06](ideas/world-and-overseer.md)) · [ ] Last words ([UI-02](ideas/world-and-overseer.md)) · [ ] Announcement control ([UI-07](ideas/world-and-overseer.md)) · [ ] Step size ([UI-32](ideas/world-and-overseer.md)) · [ ] Highlight reel and replay ([UI-04](ideas/world-and-overseer.md)) · [ ] Export the fort ([UI-10](ideas/world-and-overseer.md))
+- **Steps:** [x] Mood strip ([UI-01](ideas/world-and-overseer.md), this commit: faces in the top bar, click to go, the overseer reads them) · [ ] Director camera ([UI-03](ideas/world-and-overseer.md)) · [ ] Sound-based reports ([UI-06](ideas/world-and-overseer.md)) · [ ] Last words ([UI-02](ideas/world-and-overseer.md)) · [ ] Announcement control ([UI-07](ideas/world-and-overseer.md)) · [ ] Step size ([UI-32](ideas/world-and-overseer.md)) · [x] Highlight reel and replay ([UI-04](ideas/world-and-overseer.md), this commit: clips of every big moment, death and wedding, named battles, `h` plays them, the overseer's moment of the year) · [ ] Export the fort ([UI-10](ideas/world-and-overseer.md)) · [x] Ambient particles: rain, snow, leaves, fireflies, dust (fa0b163) · [x] A news ticker when the announcements are hidden or full (this commit)
 - **Done when:** A three-year autoplay fort produces a highlight reel that replays its sieges and deaths.
 
 #### O06 Know your dwarves (M)
 - **Why:** Every dwarf should be a story you can read: their life, their family, how they died.
-- **Steps:** [ ] A dwarf's life story ([UI-05](ideas/world-and-overseer.md)) · [ ] Unit list with stress ([UI-13](ideas/world-and-overseer.md)) · [ ] Live unit sheet ([UI-14](ideas/world-and-overseer.md)) · [ ] Family tree screen ([UI-15](ideas/world-and-overseer.md)) · [ ] Death scenes in the chronicle ([UI-08](ideas/world-and-overseer.md)) · [ ] Status readouts ([UI-35](ideas/world-and-overseer.md))
+- **Steps:** [x] A dwarf's life story ([UI-05](ideas/world-and-overseer.md), this commit: the Life page with a portrait, the overseer's eulogies) · [ ] Unit list with stress ([UI-13](ideas/world-and-overseer.md)) · [ ] Live unit sheet ([UI-14](ideas/world-and-overseer.md)) · [ ] Family tree screen ([UI-15](ideas/world-and-overseer.md)) · [x] Death scenes in the chronicle ([UI-08](ideas/world-and-overseer.md), this commit: a line for each notable dwarf lost that year) · [ ] Status readouts ([UI-35](ideas/world-and-overseer.md))
 - **Done when:** Any dwarf's sheet shows a life story drawn from the chronicle and a family tree.
 
 #### O07 A mortal overseer (M)

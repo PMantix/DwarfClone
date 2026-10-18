@@ -17,6 +17,11 @@ use std::collections::{HashMap, HashSet};
 
 mod arena;
 mod health;
+mod highlights;
+mod life;
+mod moodstrip;
+mod ambient;
+mod ticker;
 
 const SIDEBAR_W: u16 = 38;
 
@@ -28,6 +33,8 @@ pub enum Target {
     Key(crossterm::event::KeyCode),
     Row(usize),
     Block,
+    /// A face in the mood strip: go to that dwarf.
+    Dwarf(u32),
 }
 
 thread_local! {
@@ -213,7 +220,7 @@ fn foliage(w: &World, p: Pos, year_frac: f32, cold: bool) -> Option<(char, Color
 }
 
 /// Appearance of a bare tile (no units, items or buildings).
-fn tile_look(w: &World, p: Pos) -> (char, Color, Color) {
+pub(crate) fn tile_look(w: &World, p: Pos) -> (char, Color, Color) {
     let t = w.t(p);
     if !t.revealed {
         return (' ', BLACK, BLACK);
@@ -679,6 +686,8 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
             cell.set_char(ch).set_fg(fg).set_bg(bg);
         }
     }
+    // Rain, snow, leaves, fireflies and dust in the air (src/ui/ambient.rs).
+    ambient::draw(f, app, inner);
 }
 
 fn key_line<'a>(k: &str, desc: &str, active: bool) -> Line<'a> {
@@ -1017,7 +1026,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
     let mut v: Vec<Line> = Vec::new();
     let title;
     match &app.mode {
-        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GrowMap { .. } | Mode::GameOver => {
+        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GrowMap { .. } | Mode::GameOver | Mode::Highlights { .. } | Mode::Life { .. } => {
             title = "Main".to_string();
             v.extend(stocks(g));
             v.push(Line::default());
@@ -1894,7 +1903,7 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
         v.push(plain(format!("· {}", t.text), col));
     }
     v.push(Line::default());
-    v.push(plain("c: center on dwarf · Esc: back".into(), MUTED));
+    v.push(plain("l: life story · c: center on dwarf · Esc: back".into(), MUTED));
     v
 }
 
@@ -1923,13 +1932,14 @@ fn help_text() -> Vec<Line<'static>> {
         k("z", "fortress status: population, stocks, health"),
         k("b", "build workshops, furniture; C constructions"),
         k("q", "query building: queue work orders"),
-        k("u / v", "unit list / view dwarf (m drafts)"),
+        k("u / v", "unit list / view dwarf (m drafts, l life story)"),
         k("y", "labors: who does what, work details"),
         k("w / o", "burrows / traffic designations"),
         k("m", "military: squads, orders, uniforms, alerts"),
         k("n", "nobles, mandates, bedrooms, wealth"),
         k("c", "the chronicle: each year told as a story"),
         k("r", "reports: every past announcement, filtered"),
+        k("h", "highlights: the fort's big moments, replayed"),
         k("F3", "performance: frames per second, and where the time goes"),
         k("\\", "status, brain, reports, chronicle, legends: side pane or full screen"),
         k("M", "grow the map north, east, south or west"),
@@ -2990,10 +3000,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     } else {
         Span::styled(format!(" x{} ", app.ticks_per_frame()), Style::default().fg(BLACK).bg(Color::Rgb(90, 200, 90)))
     };
-    let status = Line::from(vec![
+    let mut status = vec![
         Span::styled(" ☼ DwarfClone ", Style::default().fg(KEY).add_modifier(Modifier::BOLD)),
         Span::styled(format!("│ {} ", g.date_string()), Style::default().fg(TEXT)),
-        Span::styled(format!("│ {} dwarves ", g.alive_count()), Style::default().fg(TEXT)),
         match &g.overseer {
             Some(o) => Span::styled(
                 match o.ambition {
@@ -3026,7 +3035,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Span::raw(" "),
         speed,
         Span::styled("  ? help", Style::default().fg(MUTED)),
-    ]);
+    ];
+    // The dwarves, a face each (src/ui/moodstrip.rs).
+    moodstrip::splice(g, &mut status, 2, rows[0]);
+    let status = Line::from(status);
     f.render_widget(Paragraph::new(status).style(Style::default().bg(Color::Rgb(20, 20, 30))), rows[0]);
 
     draw_map(f, app, mid[0]);
@@ -3096,6 +3108,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
     let rows = [rows[0], rows[1], news];
     let n = rows[2].height.saturating_sub(2) as usize;
+    let news_rows = n;
     let log: Vec<Line> = g
         .log
         .iter()
@@ -3140,6 +3153,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::GrowMap { n, e, s, w } => draw_grow(f, area, &app.game, (n, e, s, w)),
         Mode::Reports { filter, scroll } => draw_reports(f, area, &app.game, filter, scroll),
         Mode::BuildMenu => draw_build_menu(f, area),
+        Mode::Highlights { sel } => highlights::draw(f, area, app, sel),
+        Mode::Life { id, scroll } => life::draw(f, area, &app.game, id, scroll),
         Mode::Help => {
             popup(f, area, 60, 48, " Help ", help_text());
         }
@@ -3161,7 +3176,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         _ => {}
     }
     // Full-screen views sit over everything else.
-    if matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GameOver) {
+    if matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GameOver | Mode::Highlights { .. } | Mode::Life { .. }) {
         add_target(area, Target::Block);
     }
     if let Some(p) = pane {
@@ -3175,7 +3190,15 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         let w = hint.chars().count() as u16;
         f.render_widget(Paragraph::new(Span::styled(hint, Style::default().fg(MUTED))), Rect::new(full.x + full.width.saturating_sub(w + 1), full.y + full.height - 1, w, 1));
     }
+    // The news ticker, when the announcements are hidden or full (src/ui/ticker.rs).
+    if app.in_fortress() && app.mode != Mode::GameOver {
+        let covered = pane.is_some()
+            || matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Highlights { .. } | Mode::Life { .. } | Mode::Help);
+        let reserve = if pane.is_some() { 28 } else if app.dockable() { 14 } else { 0 };
+        ticker::draw(f, app, full, if covered { 0 } else { news_rows }, covered && app.game.overseer.is_some(), reserve);
+    }
     draw_tooltip(f, app);
+    moodstrip::draw_tip(f, app);
     if app.in_fortress() && matches!(app.mode, Mode::Normal) {
         let over = if app.map_rect.width > 0 { app.map_rect } else { area };
         draw_banner(f, over, &app.game);
@@ -3223,9 +3246,10 @@ fn draw_perf(f: &mut Frame, area: Rect, p: &crate::app::PerfShown) {
         ]),
         plain(format!(" {:.0} ticks/s · slowest tick {:.1} ms · {:.0} path searches/s ({:.0}k nodes)", p.tps, p.parts[5], p.paths, p.nodes / 1000.0), MUTED),
         plain(format!(" sim: {}", parts.iter().map(|(i, v)| format!("{} {:.1}", names[*i], v)).collect::<Vec<_>>().join(" · ")), MUTED),
+        plain(format!(" {}", ambient::perf_note()), MUTED),
     ];
     let w = 80.min(area.width);
-    let r = Rect::new(area.x + area.width - w, area.y + 1, w, 5);
+    let r = Rect::new(area.x + area.width - w, area.y + 1, w, 6.min(area.height.saturating_sub(1)));
     f.render_widget(Clear, r);
     f.render_widget(
         Paragraph::new(lines).style(Style::default().bg(Color::Rgb(10, 10, 16))).block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(MUTED)).title(Span::styled(" Performance (F3) ", Style::default().fg(KEY)))),
@@ -3390,6 +3414,9 @@ fn draw_game_over(f: &mut Frame, area: Rect, g: &Game) {
     }
     keys.push(key_line("l", "Legends of the world", false));
     keys.push(key_line("r", "Every report", false));
+    if !g.reel.clips.is_empty() {
+        keys.push(key_line("h", "The highlight reel", false));
+    }
     keys.push(key_line("w", "Look upon the ruins", false));
     keys.push(key_line("t", "Return to the title (the ruin is saved)", false));
     v.extend(keys);
