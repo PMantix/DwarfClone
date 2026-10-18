@@ -319,11 +319,10 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
         if near.dist[i] <= s.half {
             bed[i] = (s.level.floor() as i32).clamp(cx.lo, cx.top - 1);
             surf[i] = bed[i];
-            // Fords: a riffle a level up, shallow water over stones, that holds the
-            // deep water back in pools between them.
+            // Fords: shallow water over stones, on the bed between the banks
+            // (a riffle raised to the banks' height would spill over them).
             if (s.along as i32).rem_euclid(21) < 3 {
                 river[i] = 2;
-                surf[i] = bed[i] + 1;
             } else {
                 river[i] = 6;
             }
@@ -434,6 +433,46 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
         }
     }
 
+    // A stream cuts its bed a level into the land, so its water stays in
+    // it rather than spreading thin over the ground and drying (it's kept
+    // running, like a river's). Where it reaches a river or a lake its last
+    // tile stays dry (its water would only spill out over the other's), and
+    // so does any stretch beside ground no higher than its bed, which it
+    // would drain out over.
+    let nbrs4 = |i: usize| {
+        let (x, y) = (i as i32 % w, i as i32 / w);
+        crate::geom::DIRS4.iter().filter_map(move |&(dx, dy)| {
+            let (nx, ny) = (x + dx, y + dy);
+            (nx >= 0 && ny >= 0 && nx < w && ny < h).then(|| (ny * w + nx) as usize)
+        })
+    };
+    let nbrs8 = |i: usize| {
+        let (x, y) = (i as i32 % w, i as i32 / w);
+        crate::geom::DIRS8.iter().filter_map(move |&(dx, dy)| {
+            let (nx, ny) = (x + dx, y + dy);
+            (nx >= 0 && ny >= 0 && nx < w && ny < h).then(|| (ny * w + nx) as usize)
+        })
+    };
+    for i in 0..n {
+        if stream[i] && (nbrs8(i).any(|j| out[j]) || surf[i] - 1 < cx.lo) {
+            stream[i] = false;
+        }
+    }
+    loop {
+        let leaky: Vec<usize> = (0..n).filter(|&i| stream[i] && nbrs4(i).any(|j| !stream[j] && surf[j] < surf[i])).collect();
+        if leaky.is_empty() {
+            break;
+        }
+        for i in leaky {
+            stream[i] = false;
+        }
+    }
+    for i in 0..n {
+        if stream[i] {
+            surf[i] -= 1;
+        }
+    }
+
     // Every piece of land within reach.
     let mut wet: Vec<Wet> = (0..n)
         .map(|i| {
@@ -462,6 +501,9 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
                     if river[j] != 0 {
                         lo = lo.max(bed[j] + 1);
                     }
+                    if stream[j] {
+                        lo = lo.max(surf[j] + 1);
+                    }
                 }
             }
             lo
@@ -470,10 +512,7 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
     let mut pass = vec![false; n];
     for c in connect::join(&mut surf, &mut wet, &brim, &lowest, &fixed, w, h) {
         match c {
-            connect::Change::Ford(i) => {
-                river[i] = 2;
-                surf[i] = bed[i] + 1;
-            }
+            connect::Change::Ford(i) => river[i] = 2,
             connect::Change::Causeway(i) => {
                 fill[i] = 0;
                 pass[i] = true;

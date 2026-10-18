@@ -831,7 +831,9 @@ mod tests {
         }
         assert!(opened, "the overseer never let the water in");
         assert!(g.buildings[&gid].locked, "the gate was never shut again: chamber {:?}", plan.chamber_tiles().map(|p| g.world.t(p).water).collect::<Vec<_>>());
-        let deep = g.world.t(plan.drop.down()).water;
+        // (The water levels out across the chamber while the lever is walked
+        // to, so count all of it.)
+        let deep: u32 = plan.chamber_tiles().map(|p| g.world.t(p).water as u32).sum();
         assert!(deep >= 4, "the chamber only filled to {}", deep);
         assert!(g.working_wells().contains(&plan.well));
         // It stays full behind the shut gate, nothing beyond it got wet, and
@@ -884,6 +886,8 @@ mod tests {
                 }
             }
         }
+        // (Nor a brook running back in.)
+        g.world.river_beds.retain(|(q, _)| (q.x - e.x).abs() > 12 || (q.y - e.y).abs() > 12);
         g.world.t_mut(spot).kind = TileKind::Open;
         g.world.t_mut(spot.down()).kind = TileKind::Open;
         g.world.t_mut(spot.down()).water = 7;
