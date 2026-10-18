@@ -1028,6 +1028,13 @@ impl Game {
         }
     }
 
+    /// Whether `p` is in the gatehouse's walls (two deep on each side of the
+    /// corridor, and round the foot of the stair), which nothing may be cut
+    /// from: it would open a way round the doors and the bridge.
+    pub(super) fn gatehouse(base: Pos, p: Pos) -> bool {
+        p.z == base.z && (-2..=16).contains(&(p.x - base.x)) && (-2..=3).contains(&(p.y - base.y))
+    }
+
     /// Plain stone for the gate's mechanisms. A fort whose halls are cut in
     /// soil, ore or coal has none to make them from, and its drawbridge never
     /// comes: until the lever is linked (or while a lesson wants traps and
@@ -1051,10 +1058,6 @@ impl Game {
         }) {
             return;
         }
-        // Never the gatehouse's walls (two deep on each side of the
-        // corridor, and round the foot of the stair): cutting them opens a
-        // way round the doors and the bridge.
-        let gatehouse = |dx: i32, dy: i32, dz: i32| dz == 0 && (-2..=16).contains(&dx) && (-2..=3).contains(&dy);
         // Nor rock that holds back water or the sky, nor the waterworks'.
         let mut works: Vec<(Pos, Pos)> = Vec::new();
         if let Some(w) = self.waterworks.well.as_ref() {
@@ -1083,7 +1086,7 @@ impl Game {
         for dz in -4..=0 {
             for dy in -14..=14 {
                 for dx in -14..=30 {
-                    if gatehouse(dx, dy, dz) {
+                    if Self::gatehouse(base, base.offset(dx, dy, dz)) {
                         continue;
                     }
                     let p = base.offset(dx, dy, dz);
