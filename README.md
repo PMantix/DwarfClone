@@ -158,6 +158,12 @@ a few hundred points worked out from a clock, well under a millisecond a frame; 
 says what's in the air and what it costs, and they switch themselves off if a frame's worth ever
 costs more than 2 ms (`ui/ambient.rs`).
 
+**The news ticker.** When the announcements can't be seen (a full-screen page or a side pane is
+over them) or the news comes faster than they show it, the latest notable news of the last two
+days (deaths, sieges, beasts, heroes, artifacts, milestones, weddings, births) scrolls along the
+bottom edge of the screen under a NEWS tab, newest first, with the overseer's latest note when
+its pane is covered too (`ui/ticker.rs`).
+
 Use Windows Terminal (or any truecolor + Unicode terminal) at 130x40 or larger.
 Press `?` in game for keys.
 
@@ -754,3 +760,4 @@ cargo test --release profile_year -- --ignored --nocapture
 | `game/reel.rs`, `ui/highlights.rs` | the highlight reel: filming big moments, playing them back |
 | `game/lifestory.rs`, `ui/life.rs` | a dwarf's life story, eulogies, the portrait and Life page |
 | `ui/ambient.rs` | rain, snow, leaves, fireflies and dust over the map |
+| `ui/ticker.rs` | the news ticker along the bottom |

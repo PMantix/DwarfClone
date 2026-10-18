@@ -20,6 +20,7 @@ mod highlights;
 mod life;
 mod moodstrip;
 mod ambient;
+mod ticker;
 
 const SIDEBAR_W: u16 = 38;
 
@@ -3081,6 +3082,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
     let rows = [rows[0], rows[1], news];
     let n = rows[2].height.saturating_sub(2) as usize;
+    let news_rows = n;
     let log: Vec<Line> = g
         .log
         .iter()
@@ -3161,6 +3163,13 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         let hint = " \\ side pane ";
         let w = hint.chars().count() as u16;
         f.render_widget(Paragraph::new(Span::styled(hint, Style::default().fg(MUTED))), Rect::new(full.x + full.width.saturating_sub(w + 1), full.y + full.height - 1, w, 1));
+    }
+    // The news ticker, when the announcements are hidden or full (src/ui/ticker.rs).
+    if app.in_fortress() && app.mode != Mode::GameOver {
+        let covered = pane.is_some()
+            || matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Highlights { .. } | Mode::Life { .. } | Mode::Help);
+        let reserve = if pane.is_some() { 28 } else if app.dockable() { 14 } else { 0 };
+        ticker::draw(f, app, full, if covered { 0 } else { news_rows }, covered && app.game.overseer.is_some(), reserve);
     }
     draw_tooltip(f, app);
     moodstrip::draw_tip(f, app);
