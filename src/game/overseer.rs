@@ -984,9 +984,12 @@ impl Game {
             }
         }
         // Where the miners broke into a cavern, a door: beasts can't open one.
+        // (Never on the gate's own tiles: a door where the bridge or lever
+        // goes keeps the drawbridge from ever being built.)
+        let gate_part = |p: Pos| p.z == base.z && (1..=3).contains(&(p.x - base.x)) && (0..=1).contains(&(p.y - base.y));
         for q in std::mem::take(&mut self.breaches) {
             let spots = std::iter::once(q).chain(crate::geom::DIRS4.iter().map(|&(dx, dy)| q.offset(dx, dy, 0)));
-            let fit: Vec<Pos> = spots.filter(|&p| self.world.get(p).map_or(false, |t| t.dug && t.kind == TileKind::Floor && t.building == 0)).collect();
+            let fit: Vec<Pos> = spots.filter(|&p| !gate_part(p) && self.world.get(p).map_or(false, |t| t.dug && t.kind == TileKind::Floor && t.building == 0)).collect();
             let hung = fit.into_iter().any(|p| self.place_building(BuildingKind::Door, p));
             if hung {
                 Self::note(o, self.tick, "Hung a door where the miners broke into the caverns.".into());
