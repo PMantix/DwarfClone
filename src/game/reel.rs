@@ -8,8 +8,10 @@
 //!
 //! Clips are small and capped (`MAX_CLIPS`): the ground once as three
 //! strings (glyphs, ink, paper), each frame as a string of marks, and every
-//! number as one character, so a full reel is a few hundred kilobytes of
-//! save. Filming draws no random numbers, so it never changes a fort's story.
+//! number as one character, and a frame holds at most `MAX_MARKS` marks, so
+//! a clip is under 48 KB even in the thick of a siege and a full reel at
+//! most about a megabyte of save (usually far less). Filming draws no random
+//! numbers, so it never changes a fort's story.
 
 use super::overseer::Overseer;
 use super::*;
@@ -22,6 +24,11 @@ pub const FRAMES: u8 = 24;
 pub const FRAME_TICKS: u64 = 4;
 /// The most clips kept; past it the least of them goes.
 pub const MAX_CLIPS: usize = 24;
+/// The most moments of the year kept starred; past it the least of them
+/// loses its star (and may then go like any other clip).
+pub const MAX_STARS: usize = 12;
+/// The most marks filmed in a frame, however thick the battle.
+pub const MAX_MARKS: usize = 120;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Clip {
@@ -158,9 +165,10 @@ impl Game {
         let tick = self.tick;
         if let Some(c) = self.reel.clips.iter_mut().rev().find(|c| c.title == title && c.tick + 2 * DAY > tick) {
             // A second death or wedding so soon is a line on the first's
-            // clip, not lost.
+            // clip, not lost; marked "Elsewhere" when it isn't in the shot.
             if matches!(title, "A death" | "A wedding") && !caption.is_empty() && !c.caption.contains(caption) && c.caption.len() + caption.len() < 400 {
-                c.caption.push(' ');
+                let inside = at.map_or(true, |p| p.z == c.corner.z && p.x >= c.corner.x && p.y >= c.corner.y && p.x < c.corner.x + CLIP_W && p.y < c.corner.y + CLIP_H);
+                c.caption.push_str(if inside { " " } else { " Elsewhere: " });
                 c.caption.push_str(caption);
             }
             return;
@@ -249,9 +257,11 @@ impl Game {
     fn film_frame(&self, clip: &Clip) -> String {
         let c0 = clip.corner;
         let mut s = String::new();
+        let mut n = 0;
         let mut put = |p: Pos, g: char, ink: (u8, u8, u8), paper: Option<(u8, u8, u8)>| {
             let (x, y) = (p.x - c0.x, p.y - c0.y);
-            if p.z == c0.z && x >= 0 && y >= 0 && x < CLIP_W && y < CLIP_H {
+            if n < MAX_MARKS && p.z == c0.z && x >= 0 && y >= 0 && x < CLIP_W && y < CLIP_H {
+                n += 1;
                 s.push(num(x));
                 s.push(num(y));
                 s.push(g);
@@ -368,6 +378,13 @@ impl Game {
         let text = format!("The moment of the year: {} ({}).", c.title.trim_end_matches('!'), first_words(&c.caption, 8));
         Self::note_ov(o, self.tick, text);
         self.count("highlights_starred", 1);
+        // Too many stars: the least (and then oldest) loses its star, so
+        // the cap on clips still holds in a long fort.
+        if self.reel.clips.iter().filter(|c| c.star).count() > MAX_STARS {
+            if let Some(c) = self.reel.clips.iter_mut().filter(|c| c.star && c.tick < from).min_by_key(|c| (c.score, c.tick)) {
+                c.star = false;
+            }
+        }
     }
 }
 
@@ -479,5 +496,73 @@ mod tests {
         g.ov_reel(&mut o);
         assert!(g.reel.clips[0].star && !g.reel.clips[1].star);
         assert!(o.notes.iter().any(|n| n.1.starts_with("The moment of the year: The Battle of")), "{:?}", o.notes);
+        g.overseer = Some(o);
+    }
+
+    /// A long fort stars a moment a year, but keeps at most `MAX_STARS`
+    /// stars, so the reel stays within its cap.
+    #[test]
+    fn stars_are_capped_and_so_is_the_reel() {
+        let mut g = Game::new(5);
+        let mut o = Overseer::new(Style::Steady);
+        for y in 1..=40u64 {
+            g.tick = y * YEAR - 30 * DAY;
+            g.film(&format!("A great work {}", y), "", None);
+            g.reel.clips.iter_mut().for_each(|c| c.left = 0);
+            g.tick = y * YEAR;
+            g.ov_reel(&mut o);
+            assert!(g.reel.clips.iter().filter(|c| c.star).count() <= MAX_STARS);
+            assert!(g.reel.clips.len() <= MAX_CLIPS, "{} clips in year {}", g.reel.clips.len(), y);
+        }
+        // This year's pick keeps its star.
+        assert!(g.reel.clips.iter().any(|c| c.star && c.title == "A great work 40"));
+    }
+
+    /// A second death far from the first clip is noted as elsewhere, not
+    /// as if the clip showed it.
+    #[test]
+    fn a_death_out_of_shot_is_elsewhere() {
+        let mut g = Game::new(5);
+        let at = g.dwarves[0].pos;
+        g.film("A death", "Urist was struck down.", Some(at));
+        let far = Pos::new((at.x + CLIP_W * 2).min(g.world.w - 1), at.y, at.z);
+        let far = if (far.x - g.reel.clips[0].corner.x) < CLIP_W { Pos::new(at.x, at.y, at.z - 1) } else { far };
+        g.film("A death", "Kadol was struck down.", Some(far));
+        g.film("A death", "Bomrek was struck down.", Some(at));
+        let c = &g.reel.clips[0];
+        assert!(c.caption.contains("Elsewhere: Kadol") && c.caption.contains(" Bomrek") && !c.caption.contains("Elsewhere: Bomrek"), "{}", c.caption);
+    }
+
+    /// A siege packed into the window stays small: frames hold at most
+    /// `MAX_MARKS` marks, and a full reel of such clips is about a
+    /// megabyte at the very most.
+    #[test]
+    fn a_crowded_siege_clip_stays_small() {
+        let mut g = Game::new(5);
+        let at = g.dwarves[0].pos;
+        let mut n = 0;
+        for dy in -7..7 {
+            for dx in -28..28 {
+                let p = Pos::new(at.x + dx, at.y + dy, at.z);
+                if (dx + dy) % 3 == 0 && g.world.in_bounds(p) && !g.world.t(p).kind.solid() {
+                    g.spawn_creature(crate::creature::Species::Goblin, p, u64::MAX);
+                    n += 1;
+                }
+            }
+        }
+        assert!(n > MAX_MARKS, "only {} goblins", n);
+        g.film("Siege!", "Goblins!", Some(at));
+        for _ in 0..FRAMES {
+            let f = g.film_frame(&g.reel.clips[0]);
+            let c = &mut g.reel.clips[0];
+            c.frames.push(f);
+            c.left -= 1;
+        }
+        let c = &g.reel.clips[0];
+        assert!(c.marks(0).len() == MAX_MARKS);
+        let json = serde_json::to_string(c).unwrap().len();
+        println!("a crowded siege clip: {} bytes of save", json);
+        assert!(json < 48_000, "{} bytes", json);
+        assert!(json * MAX_CLIPS < 1_200_000);
     }
 }
