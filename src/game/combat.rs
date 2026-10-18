@@ -1492,7 +1492,7 @@ mod tests {
         }
         let bp = g.bleed_params();
         let e = g.embark;
-        let mut gear = |g: &mut Game, kinds: &[(ItemKind, Mat)]| -> (Option<u32>, Vec<u32>) {
+        let gear = |g: &mut Game, kinds: &[(ItemKind, Mat)]| -> (Option<u32>, Vec<u32>) {
             let mut held = None;
             let mut armor = Vec::new();
             for &(k, m) in kinds {

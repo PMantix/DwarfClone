@@ -622,12 +622,7 @@ impl Game {
             }
             Lack::Wood => {
                 self.hands_for(Labor::Woodcutting, 1);
-                let e = self.embark;
-                let k = o.done.iter().filter(|d| d.starts_with("chop")).count() as i32;
-                let r = 22 + k * 8;
-                self.designate(e.offset(-r, -r, -2), e.offset(r, r, 2), Desig::Chop);
-                o.done.push(format!("chop{}", k));
-                Some("sent woodcutters further out.".into())
+                Some(if self.chop_further(&mut o.done) { "sent woodcutters further out.".into() } else { "found no trees left to fell anywhere near.".into() })
             }
             Lack::Blocks => {
                 Self::boost(o, Recipe::Blocks, 10 + pop / 2, tick);

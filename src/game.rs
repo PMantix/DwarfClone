@@ -791,7 +791,15 @@ impl Game {
     pub fn designate(&mut self, a: Pos, b: Pos, d: Desig) -> usize {
         self.dig_version += 1;
         let mut n = 0;
-        for p in box_iter(a, b) {
+        // Only what's on the map: a box reaching far past the edge (a chop
+        // ring grown wide) would otherwise check millions of tiles.
+        let w = &self.world;
+        let lo = Pos::new(a.x.min(b.x).max(0), a.y.min(b.y).max(0), a.z.min(b.z).max(0));
+        let hi = Pos::new(a.x.max(b.x).min(w.w - 1), a.y.max(b.y).min(w.h - 1), a.z.max(b.z).min(w.d - 1));
+        if lo.x > hi.x || lo.y > hi.y || lo.z > hi.z {
+            return 0;
+        }
+        for p in box_iter(lo, hi) {
             if !self.world.in_bounds(p) {
                 continue;
             }
@@ -836,6 +844,20 @@ impl Game {
             n += 1;
         }
         n
+    }
+
+    /// Mark trees for felling in a ring that grows each time the wood runs
+    /// short, up to the whole map. False when there's nothing left to fell.
+    pub(super) fn chop_further(&mut self, done: &mut Vec<String>) -> bool {
+        let e = self.embark;
+        let k = done.iter().filter(|d| d.starts_with("chop")).count() as i32;
+        let whole = self.world.w.max(self.world.h);
+        let r = (22 + k * 8).min(whole);
+        let n = self.designate(e.offset(-r, -r, -2), e.offset(r, r, 2), Desig::Chop);
+        if r < whole {
+            done.push(format!("chop{}", k));
+        }
+        n > 0 || self.designations.iter().any(|p| self.world.t(*p).desig == Desig::Chop)
     }
 
     /// Drop designations that can no longer be carried out (a tile dug

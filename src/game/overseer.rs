@@ -1208,10 +1208,7 @@ impl Game {
         if self.stock_of(ItemKind::Log) < 6 {
             let chopping = self.designations.iter().filter(|p| self.world.t(**p).desig == Desig::Chop).count();
             if chopping < 5 {
-                let k = o.done.iter().filter(|d| d.starts_with("chop")).count() as i32;
-                let r = 22 + k * 8;
-                self.designate(e.offset(-r, -r, -2), e.offset(r, r, 2), Desig::Chop);
-                o.done.push(format!("chop{}", k));
+                self.chop_further(&mut o.done);
             }
         }
         self.ov_defences(o);
@@ -2089,6 +2086,25 @@ mod tests {
             let dressings = g.items.values().filter(|it| matches!(it.kind, ItemKind::Thread | ItemKind::Cloth)).count();
             assert!(dressings >= 2, "{} {}: {} thread or cloth", style.name(), seed, dressings);
         }
+    }
+
+    #[test]
+    fn running_short_of_wood_for_ages_stays_cheap() {
+        // The chop ring grows each time the logs run short; it used to grow
+        // without end, checking millions of tiles off the map every day.
+        let mut g = Game::new(5);
+        let mut done = Vec::new();
+        for _ in 0..200 {
+            g.chop_further(&mut done);
+        }
+        let t = std::time::Instant::now();
+        g.chop_further(&mut done);
+        assert!(done.len() < 40, "the ring stops growing once it covers the map ({} rounds)", done.len());
+        assert!(t.elapsed().as_millis() < 50, "a round costs {} ms", t.elapsed().as_millis());
+        // And a box far off the map is no work at all.
+        let t = std::time::Instant::now();
+        assert_eq!(g.designate(Pos::new(-5000, -5000, 0), Pos::new(5000, 5000, 5), Desig::None), 0);
+        assert!(t.elapsed().as_millis() < 50);
     }
 
     #[test]

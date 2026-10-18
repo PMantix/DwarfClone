@@ -2269,9 +2269,7 @@ fn paint_world(f: &mut Frame, inner: Rect, ow: &Overworld, rows: i32, cursor: Op
             }
             let c = ow.cell(pick.0, pick.1);
             let (mut ch, mut fg) = ow.look(pick.0, pick.1);
-            // A dark shade of the land behind each glyph, so a region reads as
-            // one piece (terminal cells are tall, and glyphs leave black bands).
-            let mut bg = if c.evil { Color::Rgb(45, 10, 55) } else { land_tint(fg) };
+            let mut bg = if c.evil { Color::Rgb(45, 10, 55) } else { BLACK };
             if c.site > 0 {
                 (ch, fg) = ow.site_look(&ow.sites[(c.site - 1) as usize]);
             }
@@ -2286,11 +2284,6 @@ fn paint_world(f: &mut Frame, inner: Rect, ow: &Overworld, rows: i32, cursor: Op
         }
     }
     view
-}
-
-/// The dark shade of a land colour that fills the cell behind its glyph.
-fn land_tint(c: Color) -> Color {
-    dim(c, 0.24)
 }
 
 /// The world in colour only: each character cell shows two world cells, one
@@ -5301,16 +5294,12 @@ mod tests {
     }
 
     #[test]
-    fn the_world_map_is_tinted_and_v_shows_it_in_colour() {
+    fn v_shows_the_world_map_in_colour() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let mut app = App::generated(42);
         assert!(matches!(app.mode, Mode::WorldMap { .. }), "a generated world opens on its map");
         let mut term = Terminal::new(TestBackend::new(150, 46)).unwrap();
         term.draw(|f| draw(f, &mut app)).unwrap();
-        // Land cells carry a tint behind the glyph, not black.
-        let buf = term.backend().buffer().clone();
-        let tinted = (0..46).flat_map(|y| (0..100).map(move |x| (x, y))).filter(|&(x, y)| buf.get(x, y).bg != Color::Reset && buf.get(x, y).bg != BLACK && buf.get(x, y).symbol() != " ").count();
-        assert!(tinted > 1000, "most of the map should be tinted ({} cells)", tinted);
         app.on_key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE));
         assert!(app.world_blocks);
         let s = dump(&mut app, 150, 46);
