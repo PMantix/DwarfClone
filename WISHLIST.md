@@ -581,7 +581,7 @@ Goal: the worst threats come from inside. Night creatures, spies and curses make
 
 #### N01 Things in the night (M)
 - **Why:** Night creatures with known banes: werebeasts under the moon, a vampire hiding among the migrants, omens before them.
-- **Steps:** [ ] Omens ([MYT-05](ideas/myth-and-depths.md)) · [ ] Banes and weaknesses ([MYT-06](ideas/myth-and-depths.md)) · [ ] Werebeast raid and moon curse ([MYT-03](ideas/myth-and-depths.md)) · [ ] Secret vampire citizen ([MYT-04](ideas/myth-and-depths.md)) · [ ] Bogeymen ([MYT-07](ideas/myth-and-depths.md)) · [ ] Sensing evil ([MYT-26](ideas/myth-and-depths.md)) · [ ] Charms and wards ([MYT-25](ideas/myth-and-depths.md))
+- **Steps:** [ ] Omens ([MYT-05](ideas/myth-and-depths.md)) · [x] Banes and weaknesses ([MYT-06](ideas/myth-and-depths.md), the thing in the night) · [ ] Werebeast raid and moon curse ([MYT-03](ideas/myth-and-depths.md)) · [ ] Secret vampire citizen ([MYT-04](ideas/myth-and-depths.md)) · [ ] Bogeymen ([MYT-07](ideas/myth-and-depths.md)) · [ ] Sensing evil ([MYT-26](ideas/myth-and-depths.md)) · [ ] Charms and wards ([MYT-25](ideas/myth-and-depths.md))
 - **Done when:** A vampire among the migrants drains sleepers until the fort works out who it is.
 
 #### B04 Enemies within (L)

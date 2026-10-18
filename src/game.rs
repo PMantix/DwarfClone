@@ -92,6 +92,7 @@ pub mod fortify;
 mod towers;
 pub mod horrors;
 mod kin;
+mod haunt;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;

@@ -398,7 +398,7 @@ impl Game {
         let (hp0, siege): (i32, bool) = (body.hp.iter().sum(), c.siege);
         let (cpos, species, owner, seen) = (c.pos, c.species, super::gore::owner_of_creature(c), a_or_name(c));
         let blow = self.strike(&att, &def, &mut body);
-        self.struck_horror(cid);
+        self.struck_horror(cid, d, &mut body, hp0);
         if siege {
             let hurt = body.hp.iter().sum::<i32>() < hp0;
             self.note_blow(if d.soldier { super::annals::BY_SOLDIER } else { super::annals::BY_CIVILIAN }, hurt);

@@ -60,6 +60,8 @@ impl Game {
             self.check_mandate();
             // M1 (survival), daily:
             self.shift_daily();
+            // The thing in the night (haunt.rs).
+            self.haunt_daily();
         }
         if tick % SEASON == 0 { self.season_turns(); }
     }

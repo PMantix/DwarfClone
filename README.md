@@ -387,6 +387,24 @@ stony dwarf shows it in the look panel, and webs show on the map as `#`. Skulker
 about, grab it and run for the edge of the map. A dwarf who comes within five tiles spots
 them, and once spotted they flee and can be fought; killing one drops what it stole.
 
+**The thing in the night.** After the first year, something may come to live near the fort
+(`game/haunt.rs`). Nobody sees it; the dwarves give it a name ("the Pale Drinker") and notice
+its signs: livestock found drained of blood, tracks as wide as a cartwheel leading off to the
+north-east, a hauler gone missing and found at dawn, torn and senseless. Once the tales pile
+up, the sheriff (or the bookkeeper, the manager or the eldest) looks into it and, clue by clue
+("its tracks run along the brook for a mile and never cross it"), finds out what it is, where
+it lairs and what it can't bear: **gold**, **fire**, **running water** or **a warding
+engraving**. The fort arms the hunters with it if it can (gold from the stocks, a log for
+torches, water drawn from the map, a copy of an engraving): their blows then bite deep and its
+wounds no longer knit; a gold blade, a fire or water beside it, or an engraving it brushes
+against hurt it whoever brought them, and the first time gives the bane away. The overseer
+reacts by temper: a cautious one keeps everyone indoors at each new tale and waits behind the
+walls, a bold one (or a warlord) sends the squad to its lair at once, a steady one once the
+bane is ready and three can go; the reckless pay it no mind. Whoever doesn't go to it, it
+comes to in the end. The status screen (`z`) follows the tale, the look panel names it and its
+bane, and the legends keep who found it out and who slew it. Its look, powers, name and bane
+are fixed by the world's seed and the site, and it's all saved with the fort.
+
 **Justice.** Punches and wrecked furniture in a tantrum, and the dwarf blamed for an unmet
 mandate, go on the fortress's record of crimes, shown on the nobles screen. Appoint a sheriff
 (`n`, `6`) and they seek out each culprit and beat them, closing every charge against them;
@@ -732,6 +750,7 @@ cargo test --release profile_year -- --ignored --nocapture
 | `game/overseer.rs`, `game/layout.rs`, `game/blueprint.rs` | the overseer AI: styles, room plans and layouts |
 | `game/architect.rs`, `game/maturity.rs` | the fort's insides: bedrooms, suites, gathering halls, taste; maturity, the industry quarter, rebuilding |
 | `game/fortify.rs`, `game/towers.rs` | the curtain wall, towers and grand works outside; the watch, tower stations, shooting down |
+| `game/horrors.rs`, `game/haunt.rs`, `game/kin.rs`, `overworld/peoples.rs` | horrors' powers; the thing in the night; peoples made by villains, in history and at the fort |
 | `dwarf.rs`, `body.rs`, `creature.rs` | units |
 | `buildings.rs`, `items.rs`, `material.rs` | data definitions and recipes |
 | `path.rs` | A* and nearest-goal Dijkstra search |

@@ -122,6 +122,9 @@ pub struct Horrors {
     /// What the fort knows of each made people's gift: (civ, power).
     #[serde(default)]
     pub kin_known: Vec<(u32, Power)>,
+    /// The thing in the night (haunt.rs).
+    #[serde(default)]
+    pub haunt: Option<super::haunt::Haunt>,
 }
 
 /// How often the horrors' round runs (schedule.rs).
@@ -195,6 +198,7 @@ impl Game {
     pub(super) fn horror_died(&mut self, c: &Creature) {
         self.horrors.gifts.remove(&c.id);
         self.kin_died(c);
+        self.haunt_died(c);
     }
 
     /// Before it closes or strikes: a power aimed at the dwarf it hunts, at
@@ -368,8 +372,10 @@ impl Game {
         self.learn_power(c.id, &title, Power::Venom);
     }
 
-    /// A dwarf struck at it: its hide shows (and so does whatever it knits).
-    pub(super) fn struck_horror(&mut self, id: u32) {
+    /// A dwarf struck at it: its hide shows, and its bane bites (haunt.rs).
+    pub(super) fn struck_horror(&mut self, id: u32, d: &Dwarf, body: &mut crate::body::Body, hp0: i32) {
+        let hurt = body.hp.iter().sum::<i32>() < hp0;
+        self.bane_blow(id, d, body, hurt);
         let Some(g) = self.horrors.gifts.get(&id) else { return };
         if g.has(Power::Hide) && !g.known.contains(&Power::Hide) {
             let title = self.creatures.get(&id).map_or_else(|| "it".to_string(), |c| c.title());
@@ -396,6 +402,7 @@ impl Game {
         if h.gifts.is_empty() && h.webs.is_empty() && h.held.is_empty() && h.venom.is_empty() {
             return;
         }
+        self.bane_tick();
         let tick = self.tick;
         // The dead and the departed keep no powers.
         let creatures = &self.creatures;
@@ -468,7 +475,7 @@ impl Game {
     fn regrowth_checked(&self, id: u32) -> bool {
         let Some(c) = self.creatures.get(&id) else { return true };
         let burning = DIRS8.iter().map(|&(dx, dy)| c.pos.offset(dx, dy, 0)).chain([c.pos]).any(|q| self.world.get(q).map_or(false, |t| t.fire > 0));
-        burning
+        burning || self.bane_stops_regrowth(id)
     }
 
     /// Venom works its way in: a dose hurts somewhere new, until it's spent.
@@ -533,7 +540,7 @@ impl Game {
     /// Lines for the look panel: its powers as the fort knows them.
     pub fn horror_lines(&self, c: &Creature) -> Vec<String> {
         let Some(g) = self.horrors.gifts.get(&c.id) else { return Vec::new() };
-        let mut v = Vec::new();
+        let mut v = self.haunt_look(c);
         if !g.known.is_empty() {
             let known: Vec<&str> = g.powers.iter().filter(|p| g.known.contains(p)).map(|p| p.known()).collect();
             v.push(format!("Known: it {}.", join_and(&known)));

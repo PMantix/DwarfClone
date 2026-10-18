@@ -34,6 +34,8 @@ impl Game {
         self.ov_rescue(o);
         self.ov_hunts(o);
         self.ov_towers_alert(o);
+        // The thing in the night: hunt it or hide (haunt.rs).
+        self.ov_haunt(o);
         let _ = o;
     }
 
