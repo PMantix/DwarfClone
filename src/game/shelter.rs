@@ -44,6 +44,7 @@ impl Game {
     }
 
     /// Whether `p` lies in the shelter.
+    #[cfg(test)]
     pub(super) fn in_shelter(&self, p: Pos) -> bool {
         self.shelter_bits().map_or(false, |m| self.world.get(p).map_or(false, |t| t.burrows & m != 0))
     }
@@ -84,72 +85,128 @@ impl Game {
     }
 
     /// The ways into the shelter that don't pass the gate: for each, the
-    /// tile in the shelter and the first one outside it on the way to the
-    /// sky. (Found walking out from the shelter's edge, never through the
-    /// gate's tiles, a locked door or a raised bridge.)
-    pub fn ways_in(&self, base: Pos) -> Vec<(Pos, Pos)> {
-        let Some(mask) = self.shelter_bits() else { return Vec::new() };
+    /// tile in the shelter and the one outside it that a foe would step in
+    /// from. Found walking from the top of the stair (where an army comes)
+    /// over everything but the shelter and the gate's tiles, through any
+    /// door but a locked one; a raised bridge stops it too. (A pit open to
+    /// the sky that nothing outside can walk into is no way in.)
+    #[cfg(test)]
+    pub fn ways_in(&self, base: Pos, top: Pos) -> Vec<(Pos, Pos)> {
+        self.search_ways_in(base, top).0
+    }
+
+    /// `ways_in`, and the way back to the top of the stair from every tile
+    /// it walked.
+    fn search_ways_in(&self, base: Pos, top: Pos) -> (Vec<(Pos, Pos)>, HashMap<Pos, Pos>) {
+        let mut from: HashMap<Pos, Pos> = HashMap::new();
+        let mut found: Vec<(Pos, Pos)> = Vec::new();
+        let Some(mask) = self.shelter_bits() else { return (found, from) };
         let w = &self.world;
         let inside = |p: Pos| w.get(p).map_or(false, |t| t.burrows & mask != 0);
         let gate: HashSet<Pos> = Self::gate_tiles(base).collect();
-        // The shelter's edge: a step out of it, not onto the gate.
-        let mut from: HashMap<Pos, (Pos, Pos)> = HashMap::new();
         let mut todo: VecDeque<Pos> = VecDeque::new();
         let mut nb = Vec::new();
-        for (k, t) in w.tiles.iter().enumerate() {
-            if t.burrows & mask == 0 {
-                continue;
-            }
-            let s = w.pos_of(k);
-            w.neighbors(s, &mut nb, Mover::Goblin);
-            for &(q, _) in nb.iter() {
-                if !inside(q) && !gate.contains(&q) && !from.contains_key(&q) {
-                    from.insert(q, (s, q));
-                    todo.push_back(q);
-                }
-            }
+        if inside(top) || gate.contains(&top) {
+            return (found, from);
         }
-        // Out from there, all at once, to the open sky.
-        let mut found: Vec<(Pos, Pos)> = Vec::new();
-        let mut budget = 200_000;
+        from.insert(top, top);
+        todo.push_back(top);
+        let mut budget = self.knob("shelter.ways_search", 400_000.0) as usize;
         while let Some(p) = todo.pop_front() {
-            let way = from[&p];
-            if w.outside(p) {
-                if !found.contains(&way) {
-                    found.push(way);
-                }
-                continue;
-            }
-            budget -= 1;
+            budget = budget.saturating_sub(1);
             if budget == 0 {
                 break;
             }
             w.neighbors(p, &mut nb, Mover::Goblin);
             for &(q, _) in nb.iter() {
-                if !inside(q) && !gate.contains(&q) && !from.contains_key(&q) {
-                    from.insert(q, way);
+                if inside(q) {
+                    if !found.contains(&(q, p)) {
+                        found.push((q, p));
+                    }
+                } else if !gate.contains(&q) && !from.contains_key(&q) {
+                    from.insert(q, p);
                     todo.push_back(q);
                 }
             }
         }
-        found
+        (found, from)
     }
 
-    /// Wall up every way into the shelter but the gate: a wall on the first
-    /// tile outside it, or else on its own last tile. How many were planned.
+    /// Whether walling `s` leaves the shelter round it in one piece.
+    fn shelter_whole_without(&self, s: Pos, mask: u8) -> bool {
+        let w = &self.world;
+        let inside = |p: Pos| p != s && w.get(p).map_or(false, |t| t.burrows & mask != 0);
+        let mut nb = Vec::new();
+        w.neighbors(s, &mut nb, Mover::Dwarf);
+        let mut want: HashSet<Pos> = nb.iter().map(|&(q, _)| q).filter(|&q| inside(q)).collect();
+        let Some(&first) = want.iter().next() else { return true };
+        let mut seen: HashSet<Pos> = HashSet::from([first]);
+        let mut todo = vec![first];
+        while let Some(p) = todo.pop() {
+            want.remove(&p);
+            if want.is_empty() {
+                return true;
+            }
+            if seen.len() > 3000 {
+                return false;
+            }
+            w.neighbors(p, &mut nb, Mover::Dwarf);
+            for &(q, _) in nb.iter() {
+                if inside(q) && seen.insert(q) {
+                    todo.push(q);
+                }
+            }
+        }
+        false
+    }
+
+    /// Wall up every way into the shelter but the gate: a wall on the way
+    /// in, under ground, just outside the shelter; else on the shelter's
+    /// own last tile, if that leaves it in one piece; else that tile leaves
+    /// the shelter, and the way is walled further in next time. How many
+    /// walls were planned.
     fn wall_up_ways_in(&mut self, o: &mut Overseer, base: Pos) -> usize {
-        let ways = self.ways_in(base);
+        let Some(top) = o.top else { return 0 };
+        let Some(mask) = self.shelter_bits() else { return 0 };
+        let (ways, from) = self.search_ways_in(base, top);
+        let larder = self.larder_tiles();
         let mut n = 0;
         let mut open = 0;
+        let mut given_up: Vec<Pos> = Vec::new();
         for (s, q) in ways {
-            if [q, s].iter().any(|&p| self.construction_at(p).map_or(false, |c| c.kind == ConstructKind::Wall)) {
+            // The way back out, a few steps.
+            let mut chain = vec![q];
+            while chain.len() < 6 {
+                let last = *chain.last().unwrap();
+                match from.get(&last) {
+                    Some(&p) if p != last => chain.push(p),
+                    _ => break,
+                }
+            }
+            let walled = |g: &Game, p: Pos| g.world.t(p).kind == TileKind::Wall || g.construction_at(p).map_or(false, |c| c.kind == ConstructKind::Wall);
+            if walled(self, s) || chain.iter().any(|&p| walled(self, p)) {
                 continue;
             }
-            let spot = [q, s].into_iter().find(|&p| !Self::gate_tiles(base).any(|g| g == p) && self.can_construct(p, ConstructKind::Wall));
+            let gate = |p: Pos| Self::gate_tiles(base).any(|g| g == p);
+            let spot = chain.iter().copied().find(|&p| !self.world.outside(p) && !gate(p) && self.can_construct(p, ConstructKind::Wall));
+            let spot = spot.or_else(|| (!gate(s) && self.can_construct(s, ConstructKind::Wall) && self.shelter_whole_without(s, mask)).then_some(s));
             match spot {
                 Some(p) if self.plan_constructions(p, p, ConstructKind::Wall, BuildMat::Any) > 0 => n += 1,
-                _ => open += 1,
+                _ => {
+                    open += 1;
+                    if !larder.contains(&s) && !gate(s) && given_up.len() < 4 && !given_up.contains(&s) {
+                        given_up.push(s);
+                    }
+                }
             }
+        }
+        // Tiles that can't be walled leave the shelter, so the way in is
+        // walled further in.
+        if let Some(i) = self.burrows.iter().position(|b| Some(b.bit) == self.alert_burrow) {
+            for &p in &given_up {
+                self.world.t_mut(p).burrows &= !mask;
+            }
+            self.burrows[i].tiles = self.burrows[i].tiles.saturating_sub(given_up.len() as u32);
         }
         if n > 0 {
             self.shelter.walled += n as u32;
@@ -160,7 +217,8 @@ impl Game {
             }
             Self::note_ov(o, self.tick, text);
         }
-        if open > 0 {
+        // (Counted on the daily round only.)
+        if open > 0 && !self.civ_alert {
             self.count("shelter_ways_open", open as u32);
         }
         n
@@ -476,10 +534,10 @@ mod tests {
     fn a_way_in_past_the_gate_is_walled_in_an_alert() {
         let (mut g, mut o) = sheltered_fort();
         g.creatures.retain(|_, c| !c.hostile());
-        let base = o.base.unwrap();
-        let before = g.ways_in(base).len();
-        // A tunnel out of the shelter, six tiles through the rock to a pit
-        // open to the sky.
+        let (base, top) = (o.base.unwrap(), o.top.unwrap());
+        let before = g.ways_in(base, top).len();
+        // A tunnel out of the shelter, six tiles through the rock, and a
+        // stair at its end up to the ground.
         let mask = g.shelter_bits().unwrap();
         let (s, dir) = (0..g.world.tiles.len())
             .map(|k| g.world.pos_of(k))
@@ -503,11 +561,17 @@ mod tests {
             t.dug = true;
             t.revealed = true;
         }
-        let pit = s.offset(dir.0 * 6, dir.1 * 6, 0);
-        let w = g.world.w;
-        g.world.surface[(pit.y * w + pit.x) as usize] = pit.z;
+        let foot = s.offset(dir.0 * 6, dir.1 * 6, 0);
+        let sz = g.world.surface_z(foot.x, foot.y);
+        assert!(sz > foot.z, "the tunnel's end is under the sky already");
+        for z in foot.z..=sz {
+            let t = g.world.t_mut(Pos::new(foot.x, foot.y, z));
+            t.kind = if z == foot.z { TileKind::StairUp } else if z == sz { TileKind::StairDown } else { TileKind::StairUD };
+            t.dug = true;
+            t.revealed = true;
+        }
         g.dig_version += 1;
-        let ways = g.ways_in(base);
+        let ways = g.ways_in(base, top);
         assert!(ways.contains(&(s, s.offset(dir.0, dir.1, 0))), "the tunnel at {:?} isn't seen as a way in: {:?}", s, ways);
         // The alert: it's walled straight away.
         // (The overseer's alert check, as it runs every ten ticks.)
@@ -519,7 +583,7 @@ mod tests {
             g.step();
         }
         assert_eq!(g.world.t(door).kind, TileKind::Wall, "the way in at {:?} was never walled", door);
-        assert!(g.ways_in(base).len() <= before, "ways in left: {:?}", g.ways_in(base));
+        assert!(g.ways_in(base, top).len() <= before, "ways in left: {:?}", g.ways_in(base, top));
         assert!(g.log.iter().any(|l| l.text.contains("walled up")), "the player was never told");
     }
 
