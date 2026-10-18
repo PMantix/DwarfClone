@@ -4,6 +4,8 @@
 //! goes into the chronicle and the legends as one named event. The place
 //! where it broke takes a name from the deed done there (WLD-02: "Kolvar's
 //! Stand", "the Weeping Gate"), shown on look and in the legends.
+//! Children are named for the fallen (SOC-01), with the reason in the
+//! chronicle.
 //!
 //! Names come from a hash of the fort and the moment, never the game's
 //! RNG, so naming things changes nothing else that happens.
@@ -83,6 +85,12 @@ pub struct Stories {
     pub marks: Vec<Mark>,
     #[serde(default)]
     pub places: Vec<Place>,
+    /// The fallen children have been named for, once each.
+    #[serde(default)]
+    pub honoured: Vec<String>,
+    /// News to tell once the day's births are announced.
+    #[serde(default)]
+    pub pending: Vec<String>,
 }
 
 /// How long a mark is kept.
@@ -342,6 +350,47 @@ impl Game {
         self.stories.places.push(Place { name, at, r: 4, deed, year });
     }
 
+    /// A newborn (`families_daily`): the parents may name it for one of the
+    /// fallen they honour, a hero or one who died in a named fight within
+    /// the last three years. The reason goes in the chronicle and legends.
+    pub(super) fn named_for_hero(&mut self, mut child: Dwarf) -> Dwarf {
+        let tick = self.tick;
+        let (mother, father) = child.parents.unwrap_or((0, 0));
+        let regard = |id: u32| -> i32 { self.dwarves.iter().filter(|p| p.id == mother || p.id == father).map(|p| p.regard(id) + if p.family_of(id) { 40 } else { 0 }).max().unwrap_or(0) };
+        let fort = self.fortress_name.clone();
+        let mut best: Option<(i32, String, String, String)> = None;
+        for d in self.dwarves.iter().filter(|d| !d.alive && d.died.map_or(false, |t| tick < t + 3 * YEAR)) {
+            let called = d.called();
+            let fight = self.stories.episodes.iter().rev().find(|e| e.dead.contains(&called));
+            let reason = match (&d.deed, fight) {
+                (Some(deed), Some(e)) => format!("who {} and fell in {}", deed, e.name),
+                (Some(deed), None) => format!("who {}", deed),
+                (None, Some(e)) => format!("who fell in {}", e.name),
+                (None, None) if d.soldier && self.annals.deaths.iter().any(|n| n.name == d.name && n.siege.is_some()) => format!("who fell defending {}", fort),
+                _ => continue,
+            };
+            let score = regard(d.id) + if d.epithet.is_some() { 50 } else { 0 } - 60 * self.stories.honoured.iter().filter(|h| **h == called).count() as i32;
+            if best.as_ref().map_or(true, |b| score > b.0) {
+                best = Some((score, called, d.name.clone(), reason));
+            }
+        }
+        let Some((_, hero, hero_name, reason)) = best else { return child };
+        let roll = (hash(&child.name, child.id as u64) % 1000) as f64 / 1000.0;
+        if roll >= self.knob("story.hero_name", 0.7) {
+            return child;
+        }
+        let family = child.name.split(' ').nth(1).unwrap_or("").to_string();
+        child.name = format!("{} {}", first_name(&hero_name), family).trim().to_string();
+        let parent = self.dwarves.iter().find(|p| p.id == mother).map_or("The parents".to_string(), |p| p.called());
+        let what = if child.female == Some(true) { "her daughter" } else { "her son" };
+        self.stories.pending.push(format!("{} named {} {} for {}, {}.", parent, what, child.name, hero, reason));
+        self.year_log.stories.push(format!("{} was named for {}, {}.", child.name, hero, reason));
+        self.legend(format!("{}, born in {}, was named for {}, {}.", child.name, fort, hero, reason));
+        self.stories.honoured.push(hero);
+        self.count("stories.named_for_heroes", 1);
+        child
+    }
+
     fn veterans_near(&self, at: Pos, r: i32) -> Vec<u32> {
         self.dwarves.iter().filter(|d| d.alive && (d.soldier || near(d.pos, at, r))).map(|d| d.id).collect()
     }
@@ -421,6 +470,9 @@ impl Game {
     /// same kind of killer).
     pub(super) fn stories_daily(&mut self) {
         let tick = self.tick;
+        for text in std::mem::take(&mut self.stories.pending) {
+            self.msg(&text, (150, 255, 150));
+        }
         self.stories.marks.retain(|m| tick < m.tick + MARK_DAYS * DAY || m.siege.map_or(false, |i| self.annals.sieges.get(i).map_or(false, |s| s.ended.is_none())));
         let window = self.knob("story.massacre_days", 3.0) as u64 * DAY;
         let since = self.stories.episodes.iter().filter(|e| e.kind == EpisodeKind::Massacre && e.siege.is_none()).map(|e| e.tick).max().unwrap_or(0);
@@ -615,6 +667,48 @@ mod tests {
         let pl = g.stories.places.last().expect("named").clone();
         assert!(pl.name.starts_with("the "), "{}", pl.name);
         assert!(pl.deed.contains(" died in "), "{}", pl.deed);
+    }
+
+    #[test]
+    fn a_child_is_named_for_a_fallen_hero() {
+        let mut g = quiet(81);
+        g.knobs.set.insert("story.hero_name".into(), 1.0);
+        // A hero falls.
+        let mut hero = std::mem::take(&mut g.dwarves[2]);
+        hero.epithet = Some("Grim".into());
+        hero.epithet_rank = 2;
+        hero.deed = Some("slew ten foes".into());
+        g.kill(&mut hero, "was struck down");
+        let (hero_first, called) = (first_name(&hero.name).to_string(), hero.called());
+        g.dwarves[2] = hero;
+        // A mother is due.
+        let (m, f) = (g.dwarves[0].id, g.dwarves[1].id);
+        g.dwarves[0].female = Some(true);
+        g.dwarves[0].spouse = Some(f);
+        g.dwarves[1].spouse = Some(m);
+        g.dwarves[0].due = Some(g.tick);
+        g.families_daily();
+        g.stories_daily();
+        let kid = g.dwarves.iter().find(|d| d.parents == Some((m, f))).expect("born");
+        assert_eq!(first_name(&kid.name), hero_first);
+        let line = format!("{} was named for {}, who slew ten foes.", kid.name, called);
+        assert!(g.year_log.stories.contains(&line), "{:?}", g.year_log.stories);
+        assert!(g.log.iter().any(|l| l.text.contains("for ") && l.text.contains(&called) && l.text.contains(&kid.name)), "no announcement");
+        assert!(g.overworld.events.iter().any(|e| e.text.contains("was named for")));
+        assert_eq!(g.stories.honoured, vec![called]);
+    }
+
+    #[test]
+    fn with_nobody_fallen_a_child_keeps_its_name() {
+        let mut g = quiet(81);
+        g.knobs.set.insert("story.hero_name".into(), 1.0);
+        let (m, f) = (g.dwarves[0].id, g.dwarves[1].id);
+        g.dwarves[0].female = Some(true);
+        g.dwarves[0].spouse = Some(f);
+        g.dwarves[0].due = Some(g.tick);
+        g.families_daily();
+        assert!(g.dwarves.iter().any(|d| d.parents == Some((m, f))));
+        assert!(g.year_log.stories.is_empty() && g.stories.honoured.is_empty());
     }
 
     #[test]

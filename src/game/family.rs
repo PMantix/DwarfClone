@@ -240,6 +240,7 @@ impl Game {
             let pos = d.pos;
             let id = self.new_id();
             let child = dwarf::new_child(id, pos, &mut self.rng, &self.dwarves[i], father);
+            let child = self.named_for_hero(child);
             let (cname, girl) = (child.name.clone(), child.female == Some(true));
             let m = &mut self.dwarves[i];
             m.due = None;
