@@ -156,7 +156,13 @@ impl Game {
             return;
         }
         let tick = self.tick;
-        if self.reel.clips.iter().any(|c| c.title == title && c.tick + 2 * DAY > tick) {
+        if let Some(c) = self.reel.clips.iter_mut().rev().find(|c| c.title == title && c.tick + 2 * DAY > tick) {
+            // A second death or wedding so soon is a line on the first's
+            // clip, not lost.
+            if matches!(title, "A death" | "A wedding") && !caption.is_empty() && !c.caption.contains(caption) && c.caption.len() + caption.len() < 400 {
+                c.caption.push(' ');
+                c.caption.push_str(caption);
+            }
             return;
         }
         let first_siege = title == "Siege!" && !self.reel.clips.iter().any(|c| c.title.starts_with("The Battle") || c.title == "Siege!" || c.title == "The first siege");
@@ -428,6 +434,12 @@ mod tests {
         g.reel_tick();
         assert!(g.reel.clips.iter().any(|c| c.title == "A death" && c.caption.contains(&name)), "{:?}", g.reel.clips.iter().map(|c| &c.title).collect::<Vec<_>>());
         assert!(g.reel.clips.iter().any(|c| c.title == "A wedding"));
+        // Another wedding the next day is a line on the same clip.
+        g.tick += DAY;
+        g.film("A wedding", "Bomrek and Ingiz have married.", None);
+        let weds: Vec<&Clip> = g.reel.clips.iter().filter(|c| c.title == "A wedding").collect();
+        assert_eq!(weds.len(), 1);
+        assert!(weds[0].caption.contains("Urist and Kadol") && weds[0].caption.contains("Bomrek and Ingiz"), "{}", weds[0].caption);
         for i in 0..40 {
             g.tick += 3 * DAY;
             g.reel.clips.iter_mut().for_each(|c| c.left = 0);
