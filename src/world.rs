@@ -475,12 +475,19 @@ impl World {
 
     /// Reveal the cells around a freshly dug position. Returns true if this
     /// broke into a previously unknown open area (e.g. a cavern).
-    pub fn reveal_around(&mut self, p: Pos) -> bool {
+    /// Reveal what's beside `p` on its level, and above or below only when
+    /// the dig opens that way (stairs, ramps, channels): you can't see
+    /// through a floor or a ceiling.
+    pub fn reveal_around(&mut self, p: Pos, up: bool, down: bool) -> bool {
         let mut seeds = Vec::new();
         let mut around: Vec<Pos> = DIRS8.iter().map(|&(dx, dy)| p.offset(dx, dy, 0)).collect();
         around.push(p);
-        around.push(p.up());
-        around.push(p.down());
+        if up {
+            around.push(p.up());
+        }
+        if down {
+            around.push(p.down());
+        }
         for q in around {
             if let Some(t) = self.get(q) {
                 if !t.revealed {

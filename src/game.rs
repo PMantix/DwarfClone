@@ -2830,7 +2830,7 @@ impl Game {
                     self.world.t_mut(below).kind = TileKind::Ramp;
                     drop_at = below;
                 }
-                self.world.reveal_around(below);
+                self.world.reveal_around(below, false, false);
                 self.drop_items_at(q);
             }
             Desig::Chop => {
@@ -2876,7 +2876,9 @@ impl Game {
         if wet && self.world.aquifer > 0 {
             self.warn("aquifer", "You have breached an aquifer! Water is seeping in.", (90, 160, 255));
         }
-        let broke_in = self.world.reveal_around(q) && !self.world.outside(q);
+        let up = matches!(t.desig, Desig::StairUp | Desig::StairUD | Desig::Ramp);
+        let down = matches!(t.desig, Desig::StairDown | Desig::StairUD | Desig::Channel);
+        let broke_in = self.world.reveal_around(q, up, down) && !self.world.outside(q);
         if broke_in {
             self.check_vault();
         }
@@ -2932,6 +2934,37 @@ fn day_ordinal(d: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn digging_shows_the_level_below_only_through_an_opening() {
+        let mut g = Game::new(5);
+        let e = g.embark;
+        // Solid, unseen rock four levels down, three levels deep.
+        let c = Pos::new(e.x, e.y, e.z - 5);
+        for dz in -1..=1 {
+            for dy in -2..=2 {
+                for dx in -2..=4 {
+                    let t = g.world.t_mut(c.offset(dx, dy, dz));
+                    t.kind = TileKind::Wall;
+                    t.mat = Mat::Granite;
+                    t.revealed = false;
+                    t.desig = Desig::None;
+                }
+            }
+        }
+        // A plain dig: the rock beside is seen, the levels above and below aren't.
+        g.world.t_mut(c).desig = Desig::Dig;
+        g.complete_dig(c);
+        assert!(g.world.t(c.offset(1, 0, 0)).revealed);
+        assert!(!g.world.t(c.down()).revealed, "no seeing through the floor");
+        assert!(!g.world.t(c.up()).revealed, "nor the ceiling");
+        // Stairs down open the way, so the level below is seen.
+        let s = c.offset(2, 0, 0);
+        g.world.t_mut(s).desig = Desig::StairDown;
+        g.complete_dig(s);
+        assert!(g.world.t(s.down()).revealed);
+        assert!(!g.world.t(s.up()).revealed);
+    }
 
     fn count(g: &Game, k: ItemKind) -> usize {
         g.items.values().filter(|it| it.kind == k).count()
