@@ -182,9 +182,11 @@ footprint (and enough round it for the map to grow) and passes them in
 `EmbarkParams::region`. `terrain_gen::shape` then:
 
 1. Elevation surface: one mapping from world elevation to z-levels for the
-   whole map (0.15 levels per unit, compressed only if the footprint's range
-   wouldn't fit between the sea and the sky, and anchored so any water in
-   the footprint sits at the map's sea level). Each column takes the
+   whole map (0.15 levels per unit, the land's median height at the map's
+   middle level, compressed only if the footprint's range wouldn't fit
+   under the sky; water stands at the map's sea level whatever its world
+   height, and the land eases down to it in beaches or meets it in
+   cliffs). Each column takes the
    elevation of the region tiles round it: interpolated smoothly between
    tiles of similar height, but where two neighbouring tiles differ by two
    levels or more the step is kept sharp at the tile border (wandering a
