@@ -250,9 +250,10 @@ impl Game {
             return;
         }
         self.works_builders(o);
-        // Build: each unfinished work moves on (none while an army is about;
-        // the builders are sheltering).
-        if !self.alert {
+        // Build: each unfinished work moves on (none while an army is about,
+        // the builders sheltering; nor while food or drink run short, when
+        // every hand is wanted for those).
+        if !self.alert && self.works_can_wait() {
             for i in 0..self.works.list.len() {
                 if !self.works.list[i].done() {
                     self.advance_work(o, i);
@@ -264,6 +265,14 @@ impl Game {
         self.laboratory(o);
         self.pick_watchman(o);
         let _ = tick;
+    }
+
+    /// Whether the fort has food and drink enough to spare hands for its walls.
+    fn works_can_wait(&self) -> bool {
+        let pop = self.alive_count().max(1) as f64;
+        let drink = self.stock_of(ItemKind::Drink) as f64 / pop;
+        let food = [ItemKind::Meal, ItemKind::Plant, ItemKind::Meat, ItemKind::Fish].iter().map(|&k| self.stock_of(k)).sum::<usize>() as f64 / pop;
+        drink >= 3.0 && food >= 3.0
     }
 
     /// Whether the fort is ready for a curtain wall: grown, with its gate
@@ -916,7 +925,7 @@ impl Game {
             let t = self.world.t(**p);
             t.desig == Desig::Dig && stone(t)
         });
-        if cutting.count() >= 12 {
+        if cutting.count() >= 8 {
             return;
         }
         let e = self.embark;
@@ -947,7 +956,9 @@ impl Game {
                 for dy in -40..=40 {
                     for dx in -40..=40 {
                         let p = base.offset(dx, dy, dz);
-                        if Self::gatehouse(base, p) || (dz == 0 && dx.abs() + dy.abs() < 25) {
+                        // (Never on the halls' own level, nor close under them:
+                        // that rock is for rooms.)
+                        if Self::gatehouse(base, p) || dz == 0 || dx.abs() + dy.abs() < 15 {
                             continue;
                         }
                         let Some(t) = w.get(p) else { continue };
@@ -962,7 +973,7 @@ impl Game {
             return;
         }
         seen.sort();
-        let n = seen.len().min(24);
+        let n = seen.len().min(16);
         for &(_, p) in seen.iter().take(n) {
             self.designate(p, p, Desig::Dig);
         }
@@ -1096,7 +1107,7 @@ impl Game {
         if self.works.list.iter().all(|w| w.done()) {
             return;
         }
-        let want = 2 + self.alive_count() / 10;
+        let want = 2 + self.alive_count() / 15;
         let have = self.dwarves.iter().filter(|d| d.alive && !d.is_child() && !d.soldier && d.has(Labor::Building)).count();
         if have >= want {
             return;

@@ -3553,6 +3553,7 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
     let mut keep = 1;
     if t.revealed {
         keep += 1;
+        keep += g.work_at(p).is_some() as usize;
         keep += (t.water > 0) as usize;
         keep += (t.magma > 0) as usize;
         keep += t.aquifer as usize;
