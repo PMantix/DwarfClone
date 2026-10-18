@@ -110,10 +110,15 @@ impl Game {
         let friends: Vec<String> = rel.iter().filter(|r| r.1 > 0).take(3).filter_map(|r| name_of(r.0)).map(|n| first_name(&n).to_string()).collect();
         let foes: Vec<String> = rel.iter().filter(|r| r.1 < 0).take(2).filter_map(|r| name_of(r.0)).map(|n| first_name(&n).to_string()).collect();
         if !friends.is_empty() {
-            fam.push(format!("{} closest friend{}: {}.", cap(if they == "they" { "their" } else if they == "she" { "her" } else { "his" }), if friends.len() == 1 { " was" } else { "s were" }, list(&friends)));
+            fam.push(format!("{} closest friend{} {}.", cap(if they == "they" { "their" } else if they == "she" { "her" } else { "his" }), match (friends.len() == 1, d.alive) {
+                (true, true) => " is",
+                (true, false) => " was",
+                (false, true) => "s are",
+                (false, false) => "s were",
+            }, list(&friends)));
         }
         if !foes.is_empty() {
-            fam.push(format!("{} could not abide {}.", cap(they), list(&foes)));
+            fam.push(format!("{} {} abide {}.", cap(they), if d.alive { "cannot" } else { "could not" }, list(&foes)));
         }
         if !fam.is_empty() {
             out.push(fam.join(" "));
@@ -128,11 +133,13 @@ impl Game {
         }
         let wins = d.duels_won + d.bouts_won + d.contests_won;
         if wins > 0 {
-            deeds.push(format!("{} won {} duel{}, bout{} and contest{}.", cap(they), wins, if wins == 1 { "" } else { "s" }, if wins == 1 { "" } else { "s" }, if wins == 1 { "" } else { "s" }));
+            deeds.push(if wins == 1 { format!("{} won a duel, bout or contest.", cap(they)) } else { format!("{} won {} duels, bouts and contests.", cap(they), wins) });
         }
         let best = LABORS.iter().enumerate().max_by_key(|(i, _)| d.skills[*i]).filter(|(i, _)| d.skills[*i] >= 1200);
         if let Some((i, l)) = best {
-            deeds.push(format!("{} was a {} {}.", cap(they), crate::dwarf::skill_rank(d.skills[i]).to_lowercase(), l.profession().to_lowercase()));
+            let rank = crate::dwarf::skill_rank(d.skills[i]).to_lowercase();
+            let a = if rank.starts_with(|c| "aeiou".contains(c)) { "an" } else { "a" };
+            deeds.push(format!("{} {} {} {} {}.", cap(they), if d.alive { "is" } else { "was" }, a, rank, l.profession().to_lowercase()));
         }
         // The chronicle and the legends.
         for c in &self.chronicles {
@@ -279,6 +286,17 @@ mod tests {
         assert!(story.contains("lost") && story.contains("left arm"));
         assert!(story.contains(&format!("Summer of {}", g.start_year)), "memories by season");
         assert!(face_scar(&g.dwarves[0]));
+        // The living are told in the present: their friends are, their
+        // craft is, and an expert is "an expert".
+        g.dwarves[0].relations.push((b, 90));
+        g.dwarves[0].skills[0] = 1_000_000;
+        let story = g.life_story(&g.dwarves[0]).join("
+");
+        assert!(story.contains(" closest friend is ") && story.contains(" is a legendary "), "{}", story);
+        g.dwarves[0].skills[0] = (0..1_000_000).find(|x| crate::dwarf::skill_rank(*x) == "Expert").unwrap();
+        g.dwarves[0].skills.iter_mut().skip(1).for_each(|s| *s = 0);
+        assert!(g.life_story(&g.dwarves[0]).join("
+").contains(" is an expert "));
         // Dead: how and when.
         g.tick = SEASON * 3;
         let mut d = std::mem::take(&mut g.dwarves[0]);
