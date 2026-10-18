@@ -1079,4 +1079,25 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn the_camera_watches_weddings_and_feasts() {
+        use crate::director::{candidates, Kind, Who};
+        let mut g = quiet(81);
+        let (a, b) = sweethearts(&mut g);
+        g.wedding(0, 1);
+        let v = candidates(&g);
+        let s = v.iter().find(|s| s.kind == Kind::Wedding).expect("the wedding is a subject");
+        assert!(matches!(s.who, Who::Dwarf(id) if id == a || id == b) && s.what.starts_with("the wedding of"));
+        // The plain festival isn't shown twice.
+        assert!(!v.iter().any(|s| s.kind == Kind::Festival));
+        let mut g = quiet(31);
+        fought_siege(&mut g, 1, 4);
+        let v = candidates(&g);
+        let s = v.iter().find(|s| s.kind == Kind::Feast).expect("the feast is a subject");
+        assert!(s.what.starts_with("the victory feast after "), "{}", s.what);
+        // Once it's over, the camera moves on.
+        g.tick += DAY;
+        assert!(!candidates(&g).iter().any(|s| matches!(s.kind, Kind::Feast | Kind::Wedding)));
+    }
 }
