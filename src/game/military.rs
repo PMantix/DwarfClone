@@ -553,7 +553,9 @@ mod tests {
     fn an_empty_quiver_is_filled_and_archers_stand_back() {
         let mut g = Game::new(71);
         g.creatures.retain(|_, c| c.tame);
-        let a = g.open_patch(9, 3, 6).offset(0, 1, 0);
+        // Open ground that takes in the bolts (two rows down) and the goblin
+        // (nine along), so nothing hangs on what the world puts round it.
+        let a = g.open_patch(10, 4, 6).offset(0, 1, 0);
         let id = g.dwarves[0].id;
         let s = g.new_squad();
         g.squads[s].weapon = UniformWeapon::Crossbow;
