@@ -4612,6 +4612,11 @@ fn draw_chronicle(f: &mut Frame, area: Rect, g: &Game, idx: usize) {
         v.push(Line::from(Span::styled(l.clone(), Style::default().fg(ink))));
         v.push(Line::default());
     }
+    let works = g.works_of_year(c.year);
+    if !works.is_empty() {
+        v.push(Line::from(Span::styled(format!("Works of the year: {}.", works.join("; ")), Style::default().fg(Color::Rgb(90, 50, 110)))));
+        v.push(Line::default());
+    }
     let nav = format!(
         "{}  page {} of {}  {}   any other key closes",
         if idx > 0 { "◀" } else { " " },

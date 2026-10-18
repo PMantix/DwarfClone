@@ -17,7 +17,7 @@ use crate::dwarf::NeedKind;
 pub struct Culture {
     /// Its own random stream (seeded on first use).
     #[serde(default)]
-    rng: Option<Rng>,
+    pub(super) rng: Option<Rng>,
     /// A performance going on now, for the director: where, what, until when.
     #[serde(default)]
     pub stage: Option<(Pos, String, u64)>,
@@ -30,6 +30,21 @@ pub struct Culture {
     /// Instruments made so far (to take turns among the people's kinds).
     #[serde(default)]
     pub instruments_made: u32,
+    /// The works composed in the fortress (`works.rs`).
+    #[serde(default)]
+    pub works: Vec<super::works::Work>,
+    /// The world's events the culture wrote itself (compositions, new forms).
+    #[serde(default)]
+    pub own: Vec<usize>,
+    /// The day last seen to (daily work runs once a day).
+    #[serde(default)]
+    day: u64,
+    /// How many of the world's events have been looked at for witnesses.
+    #[serde(default)]
+    seen: usize,
+    /// The fortress's legends and who was there: (event index, dwarves alive then).
+    #[serde(default)]
+    pub memories: Vec<(usize, Vec<u32>)>,
 }
 
 impl Game {
@@ -120,8 +135,36 @@ impl Game {
         if self.culture.stage.as_ref().map_or(false, |s| self.tick >= s.2) {
             self.culture.stage = None;
         }
+        self.remember();
+        let day = self.tick / DAY + 1;
+        if day != self.culture.day {
+            self.culture.day = day;
+            self.works_daily();
+        }
         self.festival_music();
         self.tavern_music();
+    }
+
+    /// New legends of the fortress, and who was alive in it to see them.
+    pub(super) fn remember(&mut self) {
+        let n = self.overworld.events.len();
+        if self.culture.seen >= n {
+            self.culture.seen = self.culture.seen.min(n);
+            return;
+        }
+        let fort = self.fortress_name.clone();
+        let alive: Vec<u32> = self.dwarves.iter().filter(|d| d.alive && !d.ghost).map(|d| d.id).collect();
+        for i in self.culture.seen..n {
+            if self.overworld.events[i].text.contains(&fort) && !self.culture.own.contains(&i) {
+                self.culture.memories.push((i, alive.clone()));
+            }
+        }
+        self.culture.seen = n;
+    }
+
+    /// The fortress's legends a dwarf lived through.
+    pub fn lived_through(&self, id: u32) -> Vec<usize> {
+        self.culture.memories.iter().filter(|m| m.1.contains(&id)).map(|m| m.0).collect()
     }
 
     /// Someone in the tavern with an instrument to hand strikes up a tune;
@@ -148,6 +191,9 @@ impl Game {
         let Some(kind) = self.items.get(&inst).and_then(|it| self.instrument_of(it)) else { return };
         let tick = self.tick;
         let pname = self.dwarves[player].name.clone();
+        // One of the fortress's own works, now and then.
+        let work = if self.c_roll() < 0.5 { self.pick_work(None) } else { None };
+        let piece = work.map_or(String::new(), |w| format!(" \"{}\"", self.culture.works[w].title));
         for &i in &here {
             let d = &mut self.dwarves[i];
             if i == player {
@@ -159,11 +205,14 @@ impl Game {
             }
         }
         self.count("culture.tunes", 1);
+        if let Some(w) = work {
+            self.performed(w);
+        }
         let at = self.dwarves[player].pos;
-        self.culture.stage = Some((at, format!("{} playing the {} in the tavern", pname, kind.name), tick + DAY / 8));
+        self.culture.stage = Some((at, format!("{} playing{} on the {} in the tavern", pname, piece, kind.name), tick + DAY / 8));
         if tick >= self.culture.next_tune {
             self.culture.next_tune = tick + DAY;
-            self.msg(&format!("{} plays the {} in the tavern: {}.", pname, kind.name, kind.sound), (200, 180, 255));
+            self.msg(&format!("{} plays{} on the {} in the tavern: {}.", pname, piece, kind.name, kind.sound), (200, 180, 255));
         }
     }
 
@@ -182,6 +231,22 @@ impl Game {
         let Some(&player) = players.iter().max_by_key(|id| self.dwarves.iter().find(|d| d.id == **id).map_or(-99, |d| d.personality.artistry)) else { return };
         let pname = self.dwarves.iter().find(|d| d.id == player).map(|d| d.name.clone()).unwrap_or_default();
         let fest = kind.name();
+        // A dance composed in the fortress, if there is one.
+        if let Some(w) = self.pick_work(Some(FormKind::Dance)) {
+            let wk = self.culture.works[w].clone();
+            let tick = self.tick;
+            for d in self.dwarves.iter_mut().filter(|d| d.alive && attended.contains(&d.id)) {
+                d.think(&format!("danced \"{}\" at the {}", wk.title, fest), -6, tick);
+                d.satisfy(NeedKind::Party, 200);
+            }
+            self.performed(w);
+            self.count("culture.dances", 1);
+            if let Some(at) = self.dwarves.iter().find(|d| d.id == player).map(|d| d.pos).or(venue.first().copied()) {
+                self.culture.stage = Some((at, format!("the {}: \"{}\"", fest, wk.title), until));
+            }
+            self.msg(&format!("At the {}, {} leads the fortress in \"{}\", a {} by {}.", fest, pname, wk.title, wk.form, wk.author), (255, 215, 60));
+            return;
+        }
         let (text, thought) = match (instruments.first().and_then(|id| self.items.get(id)).and_then(|it| self.instrument_of(it)), arts.of_kind(FormKind::Dance).first()) {
             (Some(i), Some(dance)) => (
                 format!("At the {}, {} strikes up the {} and the fortress dances the {}, {}.", fest, pname, i.name, dance.name, dance.desc),
@@ -300,9 +365,9 @@ mod tests {
         for _ in 0..40 {
             g.tavern_music();
         }
-        assert!(g.log.iter().any(|l| l.text.contains(&format!("plays the {} in the tavern", name))));
+        assert!(g.log.iter().any(|l| l.text.contains(&format!("on the {} in the tavern", name))));
         assert!(g.dwarves.iter().any(|d| d.thoughts.iter().any(|t| t.text == format!("enjoyed music on the {}", name))));
-        assert!(g.culture.stage.as_ref().map_or(false, |s| s.1.contains("playing the")), "the director has a stage to visit");
+        assert!(g.culture.stage.as_ref().map_or(false, |s| s.1.contains("playing")), "the director has a stage to visit");
         // A feast: the musician plays and everyone dances the people's dance.
         let dance = g.our_arts().of_kind(FormKind::Dance)[0].name.clone();
         g.start_festival(FestivalKind::Harvest);
@@ -317,6 +382,47 @@ mod tests {
         g.festival_music();
         assert_eq!(g.log.len(), n);
         println!("{}", line);
+    }
+
+    #[test]
+    fn the_fortress_plays_and_dances_its_own_works() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        let tiles = tavern(&mut g);
+        let e = g.embark;
+        let inst = g.spawn_item(ItemKind::Instrument, Mat::Wood, e);
+        g.items.get_mut(&inst).unwrap().label = Some(g.our_arts().instruments[0].name.clone());
+        for (i, d) in g.dwarves.iter_mut().enumerate() {
+            d.pos = tiles[i % tiles.len()];
+            d.asleep = false;
+        }
+        let author = g.dwarves[0].id;
+        let year = g.start_year;
+        let work = |title: &str, kind: FormKind| super::super::works::Work {
+            title: title.into(),
+            form: "zanost".into(),
+            kind,
+            author: "Urist".into(),
+            author_id: author,
+            year,
+            about: "how it began".into(),
+            performed: 0,
+        };
+        g.culture.works.push(work("The Air of Stone", FormKind::Music));
+        g.culture.works.push(work("The Reel of Stone", FormKind::Dance));
+        for _ in 0..60 {
+            g.tavern_music();
+        }
+        assert!(g.culture.works[0].performed > 0, "the tune was never played");
+        assert_eq!(g.culture.works[1].performed, 0, "a dance isn't played in the tavern");
+        assert!(g.log.iter().any(|l| l.text.contains("plays \"The Air of Stone\" on the")));
+        assert!(g.dwarves[0].thoughts.iter().any(|t| t.text.starts_with("was glad to hear their")));
+        g.start_festival(FestivalKind::Harvest);
+        let ids: Vec<u32> = g.dwarves.iter().map(|d| d.id).collect();
+        g.festival.as_mut().unwrap().attended = ids;
+        g.festival_music();
+        assert_eq!(g.culture.works[1].performed, 1);
+        assert!(g.log.iter().any(|l| l.text.contains("leads the fortress in \"The Reel of Stone\"")));
     }
 
     #[test]
