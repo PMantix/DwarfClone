@@ -201,7 +201,14 @@ impl Game {
     fn room_fits(&self, o: &Overseer, shape: Shape, o0: Pos) -> bool {
         let b = o.base.unwrap();
         let (w, h) = shape.size();
-        if o0.x - 1 < b.x + 15 || o0.x + w + 1 >= self.world.w - 1 || o0.y - 1 < 1 || o0.y + h + 1 >= self.world.h - 1 {
+        // East of the gatehouse; or, digging anywhere, clear of it (and of
+        // the stair) by two tiles of rock.
+        let west = if o.anywhere() {
+            o0.z == b.z && !(o0.x + w + 2 < b.x - 2 || o0.x - 2 > b.x + 16 || o0.y + h + 2 < b.y - 2 || o0.y - 2 > b.y + 3)
+        } else {
+            o0.x - 1 < b.x + 15
+        };
+        if west || o0.x - 1 < 1 || o0.x + w + 1 >= self.world.w - 1 || o0.y - 1 < 1 || o0.y + h + 1 >= self.world.h - 1 {
             return false;
         }
         // Clear of every other room's whole box, with rock between.
@@ -227,6 +234,8 @@ impl Game {
         let (w, h) = shape.size();
         let anchors: Vec<Pos> = o.anchors.iter().copied().filter(|a| a.z == z).chain(std::iter::once(Self::level_hub(o, k))).collect();
         let near = |p: Pos| anchors.iter().map(|a| (a.x - p.x).abs() + (a.y - p.y).abs()).min().unwrap_or(0);
+        // Where rooms may start: east of the gatehouse, or anywhere.
+        let x0 = if o.anywhere() { 2 } else { b.x + 15 };
         let mut out: Vec<(i32, Pos)> = Vec::new();
         match o.layout {
             Layout::Orderly | Layout::Symmetric | Layout::Grid | Layout::Spokes => {
@@ -266,7 +275,7 @@ impl Game {
             Layout::Sprawling | Layout::Warren => {
                 let spread = if o.layout == Layout::Warren { 3 } else { 9 };
                 for _ in 0..400 {
-                    let x = self.rng.range(b.x + 15, (self.world.w - 3 - w).max(b.x + 16));
+                    let x = self.rng.range(x0, (self.world.w - 3 - w).max(x0 + 1));
                     let y = self.rng.range(2, (self.world.h - 3 - h).max(3));
                     let p = Pos::new(x, y, z);
                     let jitter = self.rng.range(0, spread * 4);
@@ -278,7 +287,7 @@ impl Game {
         // When the pattern has no room left, anywhere near the halls will do.
         let mut extra: Vec<(i32, Pos)> = (0..300)
             .map(|_| {
-                let x = self.rng.range(b.x + 15, (self.world.w - 3 - w).max(b.x + 16));
+                let x = self.rng.range(x0, (self.world.w - 3 - w).max(x0 + 1));
                 let y = self.rng.range(2, (self.world.h - 3 - h).max(3));
                 let p = Pos::new(x, y, z);
                 (near(p), p)
@@ -316,11 +325,14 @@ impl Game {
             };
             // (A bound, in case the target lies where the tunnel may not go.)
             let mut steps = 0;
+            // (From a room west of the gatehouse, along first and then in
+            // to its end, round the gatehouse rather than through it.)
+            let x_first = x_first || (o.anywhere() && a.x < b.x + 14);
             while p != c && steps < 400 {
                 steps += 1;
                 step(&mut p, c.x, c.y, x_first);
                 // Never into the gatehouse or past it towards the stair.
-                if p.x < b.x + 14 && p.z == b.z {
+                if p.x < b.x + 14 && p.z == b.z && !o.anywhere() {
                     p.x = b.x + 14;
                 }
                 path.push(p);
@@ -399,7 +411,8 @@ impl Game {
             }
             // The first spot that fits and that a tunnel can reach.
             let hub = Self::level_hub(o, level);
-            let anchors: Vec<Pos> = o.anchors.iter().copied().filter(|a| a.z == z).chain(std::iter::once(hub)).collect();
+            // (Only anchors dug or still to be: a room given up leaves its own behind.)
+            let anchors: Vec<Pos> = o.anchors.iter().copied().filter(|&a| a.z == z && self.world.get(a).map_or(false, |t| !t.kind.solid() || t.desig != Desig::None)).chain(std::iter::once(hub)).collect();
             let dist = |p: Pos, a: Pos| (a.x - p.x).abs() + (a.y - p.y).abs();
             let mut found = None;
             let spots = self.room_spots(o, shape, level);
@@ -415,7 +428,9 @@ impl Game {
                     .min_by_key(|&(t, a)| dist(t, a))
                     .unwrap();
                 let path = self.tunnel(o, door, anchor);
-                if path.iter().all(|&p| self.tunnel_ok(p)) {
+                // (Never through the gatehouse short of its end, behind the gate.)
+                let gate = |p: Pos| p.z == b.z && (-2..=7).contains(&(p.x - b.x)) && (-2..=3).contains(&(p.y - b.y));
+                if path.iter().all(|&p| self.tunnel_ok(p) && !gate(p)) {
                     found = Some((o0, tiles, door, path));
                     break;
                 }

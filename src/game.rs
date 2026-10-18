@@ -78,6 +78,7 @@ pub mod readiness;
 mod cistern;
 mod rescue;
 mod hospital;
+mod watchdog;
 pub mod lessons;
 mod openings;
 pub mod gore;

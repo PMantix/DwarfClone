@@ -31,7 +31,9 @@ impl Game {
             return;
         }
         self.ov_dressings(o);
-        if o.wants.contains(&RoomUse::Hospital) {
+        // (Not while it's found no rock to cut one from: it would only ask
+        // again, and again, to no effect.)
+        if o.wants.contains(&RoomUse::Hospital) || o.blocked_lately(RoomUse::Hospital, self.tick) {
             return;
         }
         // (After the first beds, or after a while anyway: other wants can
