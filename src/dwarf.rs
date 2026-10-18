@@ -437,6 +437,7 @@ impl Task {
         matches!(
             self,
             Task::Eat { .. }
+                | Task::Dine { .. }
                 | Task::DrinkItem { .. }
                 | Task::DrinkWater { .. }
                 | Task::Sleep { .. }

@@ -665,14 +665,8 @@ impl Game {
                 self.hands_for(Labor::Farming, 3 + pop as usize / 6);
                 Some("put more hands to farming and brewing.".into())
             }
-            Lack::Food => {
-                Self::boost(o, Recipe::Cook, 15 + pop * 2, tick);
-                self.hands_for(Labor::Cooking, 1);
-                self.hands_for(Labor::Farming, 3 + pop as usize / 6);
-                self.hands_for(Labor::Fishing, 2);
-                self.hunt = o.style != Style::Reckless;
-                Some("set more to farming, fishing and the kitchen.".into())
-            }
+            // Whatever gets food into the larder on this land, this season (larder.rs).
+            Lack::Food => Some(self.fix_food(o)),
             Lack::Seeds => {
                 self.hands_for(Labor::Farming, 2);
                 Some("set farmers to gather what grows wild.".into())

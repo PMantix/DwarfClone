@@ -526,7 +526,9 @@ impl Game {
     /// Stone-fall traps further down the corridor (boulders are plenty), once.
     pub(super) fn set_stone_traps(&mut self, o: &mut Overseer) {
         let base = o.base.unwrap();
-        if !o.did("stonetraps") && self.stock_of(ItemKind::Mechanism) >= 2 && self.stock_of(ItemKind::Boulder) >= 2 {
+        // (The gate's drawbridge and lever have the first mechanisms.)
+        let gate_first = o.style != Style::Reckless && !o.did("linked");
+        if !o.did("stonetraps") && !gate_first && self.stock_of(ItemKind::Mechanism) >= 2 && self.stock_of(ItemKind::Boulder) >= 2 {
             let mut n = 0;
             for dx in 10..14 {
                 for dy in 0..2 {

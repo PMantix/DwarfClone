@@ -109,7 +109,7 @@ impl Game {
         }
         match d.fit {
             Fit::None => {
-                if d.insane && !matches!(d.task, Task::Idle | Task::Wander { .. } | Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Eat { .. }) {
+                if d.insane && !matches!(d.task, Task::Idle | Task::Wander { .. } | Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Eat { .. } | Task::Dine { .. }) {
                     self.release_task(d);
                 }
                 false
@@ -128,7 +128,7 @@ impl Game {
             }
             Fit::Catatonic { .. } => {
                 // Only desperate thirst or hunger stirs them, as it does the mad.
-                let sipping = matches!(d.task, Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Eat { .. });
+                let sipping = matches!(d.task, Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Eat { .. } | Task::Dine { .. });
                 if sipping || d.thirst > THIRSTY + 6000 || d.hunger > HUNGRY + 12000 {
                     if d.task == Task::Catatonic {
                         d.task = Task::Idle;

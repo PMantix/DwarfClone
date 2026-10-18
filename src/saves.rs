@@ -123,4 +123,134 @@ mod tests {
         let back: Game = serde_json::from_str(&serde_json::to_string(&g).unwrap()).unwrap();
         assert_eq!((back.tick, back.dwarves.len()), (g.tick, g.dwarves.len()));
     }
+
+    /// Drop from `new` whatever `old` (the same thing as an older save wrote
+    /// it) doesn't have, so it loads the way an older save does: the fields
+    /// added since come back at their defaults.
+    fn as_old(new: &mut serde_json::Value, old: &serde_json::Value) {
+        use serde_json::Value;
+        match (new, old) {
+            (Value::Object(n), Value::Object(o)) => {
+                n.retain(|k, _| o.contains_key(k));
+                for (k, v) in n.iter_mut() {
+                    as_old(v, &o[k]);
+                }
+            }
+            (Value::Array(n), Value::Array(o)) if !o.is_empty() => {
+                // A short tuple (a run of tiles: count and tile) goes by
+                // position; a list by its first element.
+                let tuple = o.len() == n.len() && o.len() <= 3;
+                for (i, v) in n.iter_mut().enumerate() {
+                    as_old(v, if tuple { &o[i] } else { &o[0] });
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The same old save, made before the worlds were built from fields
+    /// (no fields, rivers, regions or region tiles in its world), plays on.
+    /// Its map and world were left out of the file, so it is given today's,
+    /// written as that older game wrote them (nothing it didn't know of: no
+    /// fields, no region populations, no rivers in the cells), and its
+    /// fortress is moved onto the new ground by the wagon. A few days go
+    /// by with the overseer at work and nobody lost; and what it has become
+    /// saves and plays on again.
+    #[test]
+    fn a_save_from_before_m1_plays_on() {
+        use crate::game::DAY;
+        use crate::geom::Pos;
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures");
+        let mut g = read(&dir, "goldfist-before-m1.json", &|_, _| {}).unwrap();
+        let old: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join("goldfist-before-m1.json")).unwrap()).unwrap();
+        let fresh = Game::new(5);
+        let mut world = serde_json::to_value(&fresh.world).unwrap();
+        as_old(&mut world, &old["world"]);
+        g.world = serde_json::from_value(world).unwrap();
+        let mut ow = serde_json::to_value(&fresh.overworld).unwrap();
+        as_old(&mut ow, &old["overworld"]);
+        g.overworld = serde_json::from_value(ow).unwrap();
+        assert!(g.overworld.fields.is_empty() && g.overworld.rivers.is_empty() && g.overworld.seed == 0, "the world is as an old save had it");
+        g.site = fresh.site;
+        // The fortress, moved so its wagon stands where today's would.
+        let d = (fresh.embark.x - g.embark.x, fresh.embark.y - g.embark.y, fresh.embark.z - g.embark.z);
+        let mv = |p: Pos| p.offset(d.0, d.1, d.2);
+        g.embark = fresh.embark;
+        let mut ground: Vec<Pos> = Vec::new();
+        for dw in g.dwarves.iter_mut() {
+            dw.pos = mv(dw.pos);
+            dw.path.clear();
+            ground.push(dw.pos);
+        }
+        for it in g.items.values_mut() {
+            it.pos = mv(it.pos);
+            ground.push(it.pos);
+        }
+        for c in g.creatures.values_mut() {
+            c.pos = mv(c.pos);
+            c.path.clear();
+            ground.push(c.pos);
+        }
+        let mut stamps: Vec<(Pos, u32, bool)> = Vec::new();
+        for b in g.buildings.values_mut() {
+            b.pos = mv(b.pos);
+            let s = b.kind.size();
+            for dy in 0..s {
+                for dx in 0..s {
+                    stamps.push((b.pos.offset(dx, dy, 0), b.id, true));
+                }
+            }
+        }
+        for z in g.zones.values_mut() {
+            for t in z.tiles.iter_mut() {
+                *t = mv(*t);
+                stamps.push((*t, z.id, false));
+            }
+        }
+        // (What was designated was marked on the old map's tiles.)
+        g.designations.clear();
+        if let Some(o) = g.overseer.as_mut() {
+            o.base = o.base.map(mv);
+            o.top = o.top.map(mv);
+        }
+        // Ground under all of it: a floor where each thing stands.
+        for &p in ground.iter().chain(stamps.iter().map(|s| &s.0)) {
+            if g.world.get(p).is_some() {
+                let under = !g.world.outside(p);
+                let t = g.world.t_mut(p);
+                if t.kind.solid() || t.kind == crate::world::TileKind::Open {
+                    t.kind = crate::world::TileKind::Floor;
+                    t.dug = under;
+                }
+                t.revealed = true;
+                t.water = 0;
+            }
+        }
+        for (p, id, building) in stamps {
+            if g.world.get(p).is_some() {
+                let t = g.world.t_mut(p);
+                if building {
+                    t.building = id;
+                } else {
+                    t.zone = id;
+                }
+            }
+        }
+        g.after_load();
+        let start = g.tick;
+        let alive = g.alive_count();
+        while g.tick < start + 3 * DAY {
+            g.step();
+        }
+        assert_eq!(g.tick, start + 3 * DAY);
+        assert_eq!(g.alive_count(), alive, "nobody lost in three quiet days");
+        assert!(g.overseer.as_ref().map_or(false, |o| o.notes.len() > old["overseer"]["notes"].as_array().map_or(0, |n| n.len())), "the overseer went on with its work");
+        // And it saves, loads and plays on again.
+        let mut back: Game = serde_json::from_str(&serde_json::to_string(&g).unwrap()).unwrap();
+        back.after_load();
+        for _ in 0..DAY {
+            back.step();
+        }
+        assert_eq!(back.tick, start + 4 * DAY);
+    }
 }

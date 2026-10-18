@@ -125,6 +125,17 @@ fn well_room(kind: RoomUse) -> Option<u8> {
 }
 
 impl Game {
+    /// The well under way's shaft and its diggers' stair: water for the
+    /// fort, dug before anything else (`find_dig`).
+    pub(super) fn well_digs(&self) -> Vec<Pos> {
+        let Some(plan) = self.waterworks.well else { return Vec::new() };
+        let mut v: Vec<Pos> = plan.shaft().collect();
+        if let Some(s) = plan.stair {
+            v.extend((plan.water_z + 1..=s.z).map(|z| Pos::new(s.x, s.y, z)));
+        }
+        v
+    }
+
     /// Sound rock to dig a shaft through: a natural wall, no aquifer.
     fn shaft_rock(&self, p: Pos) -> bool {
         self.world.get(p).map_or(false, |t| t.kind == TileKind::Wall && t.mat.diggable() && t.built_from.is_none() && !t.aquifer && t.magma == 0)

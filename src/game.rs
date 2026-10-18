@@ -81,6 +81,7 @@ pub mod lessons;
 mod openings;
 mod archery;
 mod hunts;
+mod larder;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -882,8 +883,13 @@ impl Game {
     }
 
     pub fn add_zone(&mut self, a: Pos, b: Pos, kind: ZoneKind) -> usize {
+        self.add_zone_tiles(box_iter(a, b).collect(), kind)
+    }
+
+    /// A zone of just these tiles (those that can take it).
+    pub fn add_zone_tiles(&mut self, all: Vec<Pos>, kind: ZoneKind) -> usize {
         let mut tiles = Vec::new();
-        for p in box_iter(a, b) {
+        for p in all {
             let Some(t) = self.world.get(p) else { continue };
             // A meeting hall can take in the tables and chairs already standing in it.
             let bld_ok = t.building == 0 || kind.holds_furniture();
@@ -1416,7 +1422,7 @@ impl Game {
         // A mad dwarf still sips and picks at food when it's that bad (or
         // they'd never live to come back out of it).
         let sipping = d.insane
-            && (matches!(d.task, Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Eat { .. })
+            && (matches!(d.task, Task::DrinkItem { .. } | Task::DrinkWater { .. } | Task::Eat { .. } | Task::Dine { .. })
                 || (matches!(d.task, Task::Idle | Task::Wander { .. }) && (d.thirst > THIRSTY + 6000 || d.hunger > HUNGRY + 12000)));
         if sipping && matches!(d.task, Task::Wander { .. }) {
             d.task = Task::Idle;
@@ -2138,7 +2144,21 @@ impl Game {
             return started;
         }
         let mut target = None;
-        let found = path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| {
+        // A well's shaft first: it's the fort's water.
+        let first: HashSet<Pos> = if chop { HashSet::new() } else { self.well_digs().into_iter().filter(|p| open.contains(p)).collect() };
+        let mut found = None;
+        if !first.is_empty() {
+            found = path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| {
+                for q in self.work_targets(p) {
+                    if first.contains(&q) && self.desig_valid(q, self.world.t(q).desig) {
+                        target = Some(q);
+                        return true;
+                    }
+                }
+                false
+            });
+        }
+        let found = if found.is_some() { found } else { path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| {
             for q in self.work_targets(p) {
                 if open.contains(&q) && self.desig_valid(q, self.world.t(q).desig) {
                     target = Some(q);
@@ -2146,7 +2166,7 @@ impl Game {
                 }
             }
             false
-        });
+        }) };
         if let (Some((stand, path)), Some(target)) = (found, target) {
             self.claimed.insert(target);
             d.task = Task::Dig { target, stand };
