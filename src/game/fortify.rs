@@ -803,7 +803,7 @@ impl Game {
                     let up: Vec<(Pos, ConstructKind)> = spots.iter().map(|&p| (p.up(), ConstructKind::Wall)).collect();
                     self.works.list.push(Work {
                         kind: WorkKind::Pillars,
-                        name: format!("the Pillars of {}", name.trim_start_matches("the ")),
+                        name: format!("the Pillars of {}", name),
                         at: m,
                         height: 2,
                         door: None,
@@ -956,9 +956,9 @@ impl Game {
                 for dy in -40..=40 {
                     for dx in -40..=40 {
                         let p = base.offset(dx, dy, dz);
-                        // (Never on the halls' own level, nor close under them:
-                        // that rock is for rooms.)
-                        if Self::gatehouse(base, p) || dz == 0 || dx.abs() + dy.abs() < 15 {
+                        // (Never close by the halls, and on their own level
+                        // only west of the stair: the halls spread east.)
+                        if Self::gatehouse(base, p) || (dz == 0 && dx > -12) || dx.abs() + dy.abs() < 15 {
                             continue;
                         }
                         let Some(t) = w.get(p) else { continue };
