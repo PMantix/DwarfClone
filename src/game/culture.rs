@@ -48,6 +48,15 @@ pub struct Culture {
     /// What the fortress's art shows, by item or building id (`depict.rs`).
     #[serde(default)]
     pub art: BTreeMap<u32, super::depict::Depiction>,
+    /// When each dwarf last dreamt (`dreams.rs`).
+    #[serde(default)]
+    pub dreamt: BTreeMap<u32, u64>,
+    /// Dreams that foretell.
+    #[serde(default)]
+    pub omens: Vec<super::dreams::Omen>,
+    /// An army was already in sight at the last look.
+    #[serde(default)]
+    pub siege_seen: bool,
 }
 
 impl Game {
@@ -149,6 +158,7 @@ impl Game {
         self.festival_music();
         self.tavern_music();
         self.admire_art();
+        self.dreams_tick();
     }
 
     /// New legends of the fortress, and who was alive in it to see them.

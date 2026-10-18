@@ -1751,6 +1751,9 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
     if let (Some(deed), true) = (&d.deed, d.epithet.is_some()) {
         v.insert(2, plain(format!("Hero: {}", deed), Color::Rgb(255, 215, 60)));
     }
+    if let Some(o) = g.omen_of(d.id) {
+        v.push(plain(o, Color::Rgb(190, 160, 255)));
+    }
     let hurt = health::part_lines(d, "  ", false);
     if !hurt.is_empty() || d.body.bleeding > 0 {
         v.push(Line::default());
