@@ -95,11 +95,11 @@ pub(super) fn draw(cv: &mut Canvas) {
     }
 
     // Fireworks.
-    let shells = (w / 18).clamp(3, 12);
+    let shells = (w / 14).clamp(4, 14);
     let top = 1;
     let low = if big { (g as f32 * 0.6) as i32 } else { (g - 2).max(2) };
     for k in 0..shells {
-        let life = 110 + (hash(k, 3) % 70) as u64;
+        let life = 95 + (hash(k, 3) % 60) as u64;
         let age_all = t + (hash(k, 5) as u64 % life);
         let a = age_all % life;
         let round = (age_all / life) as i32;

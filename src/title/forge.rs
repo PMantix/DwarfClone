@@ -355,6 +355,25 @@ pub(super) fn draw(cv: &mut Canvas) {
             cv.glyph(ox + 8 + k, oy, 'Θ', rgb((150, 100, 50)));
         }
         cv.glyph(ox + 9, oy - 1, 'Θ', rgb((150, 100, 50)));
+        // A bench where the fine work is filed and fitted.
+        let (bx, by) = ((w as f32 * 0.2) as i32, g + (h - g) / 3 + 1);
+        cv.sprite(bx, by, &["╤═════╤"], rgb((130, 92, 54)));
+        cv.glyph(bx + 2, by - 1, '¬', rgb(lerp(cold, (220, 220, 230), 0.4)));
+        cv.glyph(bx + 4, by - 1, '♦', rgb(if (t / 30) % 2 == 0 { (120, 220, 255) } else { (90, 170, 220) }));
+        cv.glyph(bx + 3, by + 1, '☺', rgb((200, 160, 220)));
+        cv.glyph(bx + 2, by, if (t / 5) % 2 == 0 { '/' } else { '─' }, rgb((150, 150, 160)));
+        // Armour on its stands, catching the firelight.
+        let (sx0, sy) = (w - (w as f32 * 0.25) as i32, h - 4);
+        for k in 0..3 {
+            let x = sx0 + k * 4;
+            let shine = (t / 6 + k as u64 * 17) % 50 == 0;
+            let steel = rgb(if shine { (255, 255, 240) } else { lerp(cold, (190, 190, 200), 0.5) });
+            cv.glyph(x, sy - 2, '◘', steel);
+            cv.glyph(x - 1, sy - 1, '▐', steel);
+            cv.glyph(x, sy - 1, '█', steel);
+            cv.glyph(x + 1, sy - 1, '▌', steel);
+            cv.glyph(x, sy, '╨', rgb((120, 90, 60)));
+        }
     }
 
     // Sparks drifting up from the furnace mouth.

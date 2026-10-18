@@ -170,7 +170,10 @@ pub(super) fn draw(cv: &mut Canvas) {
     let n = ((r - l) / 4).clamp(5, 36) + (cv.roll(3) % 6) as i32;
     let road = (w + n * 2 + 20) as u64;
     let head = ((t / 4 + cv.roll(4) as u64) % road) as i32 - n * 2 + w / 3;
-    let armour = [(180, 190, 205), (200, 170, 110), (160, 200, 230)][(cv.roll(5) % 3) as usize];
+    // Dark against a bright sky, bright against the night.
+    let coats: [Rgb; 4] = if night { [(180, 190, 205), (200, 170, 110), (160, 200, 230), (210, 150, 130)] } else { [(60, 50, 70), (110, 50, 40), (40, 60, 110), (50, 80, 50)] };
+    let steel = if night { (190, 190, 200) } else { (40, 40, 48) };
+    let tint = cv.roll(5) as usize;
     for k in 0..n {
         let x = head - k * 2;
         if x < 0 || x >= w {
@@ -179,14 +182,14 @@ pub(super) fn draw(cv: &mut Canvas) {
         let y = if x >= l - 2 && x <= r + 1 { bd - 1 } else { land(x) - 1 };
         let step = ((t / 8) as i32 + k) % 2;
         let bearer = k % 6 == 1;
-        cv.glyph(x, y, '☺', rgb(if bearer { banner } else { armour }));
+        cv.glyph(x, y, '☺', rgb(if bearer { banner } else { coats[(k as usize + tint) % 4] }));
         if bearer {
             cv.glyph(x + 1, y - 1, '│', rgb((140, 100, 60)));
             cv.glyph(x + 1, y - 2, '│', rgb((140, 100, 60)));
             let flap = (t / 5 + k as u64) % 2 == 0;
             cv.glyph(x, y - 2, if flap { '◄' } else { '◀' }, rgb(banner));
         } else if k % 2 == 0 {
-            cv.glyph(x + step, y - 1, '↑', rgb((190, 190, 200)));
+            cv.glyph(x + step, y - 1, '↑', rgb(steel));
         }
         if night && k % 4 == 0 {
             cv.glyph(x - 1, y - 1, '¡', rgb((255, 200, 90)));

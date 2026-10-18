@@ -124,8 +124,9 @@ pub(super) fn draw(cv: &mut Canvas) {
                 continue;
             }
             let col = lerp(cool, hot, n * 0.7 + near * 0.3);
-            let ch = if y == top { '▄' } else if hs % 4 == 0 { '≈' } else if hs % 4 == 1 { '~' } else { ' ' };
-            let fg = if y == top { lerp(hot, (255, 255, 220), 0.4) } else { lerp(col, hot, 0.5) };
+            let crest = y == top && top < ml;
+            let ch = if crest { '▄' } else if y == top || hs % 4 == 0 { '≈' } else if hs % 4 == 1 { '~' } else { ' ' };
+            let fg = if crest { lerp(hot, (255, 255, 220), 0.3) } else { lerp(col, hot, 0.5) };
             cv.put(x, y, ch, rgb(fg), Some(rgb(col)));
         }
     }
