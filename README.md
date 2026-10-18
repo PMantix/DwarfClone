@@ -582,8 +582,9 @@ towers' doors are barred when the enemy comes close, once the archers are up. A 
 greedy overseer (or a Builder, or anyone in a very rich fort) raises a **wizard's tower**, five
 storeys with a walled, windowed and roofed **laboratory** at the top ("the Spire of Urist", "the
 Star Tower", "the Counting Tower"), where dwarves with a need to learn go to study. A rich fort
-with its walls done adds **grand works**: the Great Portico (pillars and a roof over the stair)
-and pillars round the monument. `k` names what a tile is part of ("Part of the North-West
+with its walls done adds **grand works**: the Great Portico (pillars and a roof over the stair),
+pillars round the monument, and a bridge over a chasm or sunken river that makes the fort walk
+the long way round. `k` names what a tile is part of ("Part of the North-West
 Watchtower"), the director's camera visits the watch and the works going up, and the overseer
 notes each step in its own voice.
 
