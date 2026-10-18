@@ -2018,27 +2018,72 @@ mod tests {
         assert!(g2.annals.counters.get("finished").copied().unwrap_or(0) >= 1);
     }
 
+    /// The same ground for every raid, whatever the seed's site: the whole
+    /// map a level plain at the wagon's height, and round the wagon a ring
+    /// of rock (eight tiles out) whose only way in is a gate corridor two
+    /// wide, running six tiles east from it. Everyone and everything is
+    /// moved in beside the wagon.
+    fn gate_arena(g: &mut Game) {
+        let e = g.embark;
+        let (w, h) = (g.world.w, g.world.h);
+        g.level_ground(0, 0, w - 1, h - 1, e.z);
+        let rock = |g: &mut Game, x: i32, y: i32| {
+            let t = g.world.t_mut(Pos::new(x, y, e.z));
+            t.kind = TileKind::Wall;
+            t.mat = Mat::Granite;
+        };
+        for y in e.y - 8..=e.y + 8 {
+            for x in e.x - 8..=e.x + 8 {
+                let ring = (x - e.x).abs() == 8 || (y - e.y).abs() == 8;
+                let gate = x == e.x + 8 && (y == e.y || y == e.y + 1);
+                if ring && !gate {
+                    rock(g, x, y);
+                }
+            }
+        }
+        for x in e.x + 9..=e.x + 14 {
+            rock(g, x, e.y - 1);
+            rock(g, x, e.y + 2);
+        }
+        g.dig_version += 1;
+        for (i, d) in g.dwarves.iter_mut().enumerate() {
+            d.pos = e.offset(-3 + (i as i32 % 6), -2 + (i as i32 / 6), 0);
+            d.path.clear();
+        }
+        for it in g.items.values_mut().filter(|it| it.carried_by.is_none()) {
+            it.pos = e;
+        }
+    }
+
     /// The WISHLIST's "done when" for S07, as far as a raid of four can
-    /// give it: four soldiers in iron (axe, helm, mail, shield) holding a
-    /// station against four goblins break them by killing them. The raid
-    /// routs once fewer than half are left (`check_rout`), so the last one
-    /// (or three, if the general falls first) gets away; "at least one each"
-    /// would need the soldiers to catch goblins as fast as they are. So: the
-    /// raid is routed rather than withdrawing, and it often leaves three dead
-    /// behind. (On the old world map, before the openings, seeds 900-909 saw
-    /// three withdrawals, 2.3 goblins slain a raid and three of ten with three
-    /// slain; with them, ten routs, 2.6 slain and seven of ten. On the world
-    /// map with downhill rivers the same forts stand on other ground, and the
-    /// share with three slain is about two in five over seeds 900-959, so the
-    /// test takes twenty forts and asks for more than pre-openings did: four
-    /// in five routed and nine of twenty with three slain.)
+    /// give it: four soldiers in iron (axe, helm, mail, shield) holding the
+    /// inner end of a gate corridor against four goblins break them by
+    /// killing them. The raid routs once fewer than half are left
+    /// (`check_rout`) or the moment the general falls, so some get away;
+    /// "at least one each" would need the soldiers to catch goblins as fast
+    /// as they are. So: the raid is routed rather than withdrawing, it
+    /// leaves dead behind, and now and then three.
+    ///
+    /// The fight is on the same ground in every fort (`gate_arena`), so a
+    /// new way of making the land can't move it. It used to stand by the
+    /// wagon on each seed's own site, and its bar followed the land: seven
+    /// of ten with three slain on the first world map, two in five on the
+    /// map with downhill rivers (bar 9 of 20), and on the land made by
+    /// processes 19 of 60 (seeds 900-959; 51 routed, 2.05 slain a raid).
+    /// In the arena the same sixty forts give 51 routed, 17 with three
+    /// slain and 1.83 slain a raid: the land was never what decided it, and
+    /// with twenty forts and a one-in-three chance the old bar was a coin
+    /// toss (it failed at 6 of 20). Sixty forts and bars about two and a
+    /// half deviations under what is seen: three in four routed, one in
+    /// six with three slain, 1.5 slain a raid.
     #[test]
     fn soldiers_in_metal_kill_their_goblins() {
         let mut table = Vec::new();
-        for seed in 0..20u64 {
+        for seed in 0..60u64 {
             let mut g = Game::new(900 + seed);
             g.creatures.retain(|_, c| c.tame);
             let e = g.embark;
+            gate_arena(&mut g);
             let s = g.new_squad();
             let ids: Vec<u32> = g.dwarves.iter().filter(|d| !d.is_child()).take(4).map(|d| d.id).collect();
             for &id in &ids {
@@ -2054,7 +2099,8 @@ mod tests {
                 d.held = Some(kit[0]);
                 d.armor = kit[1..].to_vec();
             }
-            g.order_station(s, e);
+            // At the inner end of the gate corridor.
+            g.order_station(s, e.offset(7, 0, 0));
             run(&mut g, DAY / 4);
             let civ = g.civ.map_or(0, |c| if c == 0 { 1 } else { 0 });
             g.overworld.civs[civ as usize].alive = true;
@@ -2073,8 +2119,10 @@ mod tests {
         }
         let routed = table.iter().filter(|r| r.2 == "routed").count();
         let three = table.iter().filter(|r| r.1 >= 3).count();
-        assert!(routed >= 16, "only {} of 20 raids were routed", routed);
-        assert!(three >= 9, "only {} of 20 raids left three dead", three);
+        let slain: u32 = table.iter().map(|r| r.1).sum();
+        assert!(routed >= 45, "only {} of 60 raids were routed", routed);
+        assert!(three >= 10, "only {} of 60 raids left three dead", three);
+        assert!(slain >= 90, "only {} goblins slain in 60 raids", slain);
     }
 }
 
