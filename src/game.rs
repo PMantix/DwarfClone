@@ -92,6 +92,7 @@ pub mod fortify;
 mod towers;
 pub mod culture;
 mod works;
+mod depict;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -1069,6 +1070,7 @@ impl Game {
             let mat = if b.kind == BuildingKind::Well { b.load.map_or(Mat::Wood, |l| l.1) } else { b.mat };
             let id = self.spawn_item(kind, mat, self.work_spot(b.center()));
             self.items.get_mut(&id).unwrap().quality = b.quality;
+            self.art_moved(b.id, id);
         }
     }
 
@@ -2561,6 +2563,7 @@ impl Game {
                             if Self::labor(d, 120, d.skill(Labor::Building)) {
                                 let (ikind, mat, quality) =
                                     self.items.remove(&item).map_or((ItemKind::Log, Mat::Wood, 0), |it| (it.kind, it.mat, it.quality));
+                                self.art_moved(item, bld);
                                 d.carrying = None;
                                 d.gain_xp(Labor::Building, 20);
                                 d.task = Task::Idle;

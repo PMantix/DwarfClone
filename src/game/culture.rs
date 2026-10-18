@@ -45,6 +45,9 @@ pub struct Culture {
     /// The fortress's legends and who was there: (event index, dwarves alive then).
     #[serde(default)]
     pub memories: Vec<(usize, Vec<u32>)>,
+    /// What the fortress's art shows, by item or building id (`depict.rs`).
+    #[serde(default)]
+    pub art: BTreeMap<u32, super::depict::Depiction>,
 }
 
 impl Game {
@@ -104,13 +107,15 @@ impl Game {
         if let Some(i) = self.items.get(&id).and_then(|it| self.instrument_of(it)) {
             v.push(i.describe());
         }
+        v.extend(self.depiction_lines(id));
         v
     }
 
     /// Something has just been made at a workshop: an instrument takes the
     /// name of one of its people's kinds.
-    pub(super) fn culture_crafted(&mut self, _d: &Dwarf, ids: &[u32]) {
+    pub(super) fn culture_crafted(&mut self, d: &Dwarf, ids: &[u32]) {
         for &id in ids {
+            self.depict_made(d, id);
             if self.items.get(&id).map_or(true, |it| it.kind != ItemKind::Instrument || it.label.is_some()) {
                 continue;
             }
@@ -143,6 +148,7 @@ impl Game {
         }
         self.festival_music();
         self.tavern_music();
+        self.admire_art();
     }
 
     /// New legends of the fortress, and who was alive in it to see them.

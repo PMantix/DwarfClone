@@ -3497,6 +3497,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 if !b.orders.is_empty() {
                     v.push(plain(format!("{} work orders queued", b.orders.len()), detail_col));
                 }
+                for l in g.art_lines(b.id).iter().flat_map(|l| wrap_words(l, 40)) {
+                    v.push(plain(l, Color::Rgb(200, 180, 255)));
+                }
                 v.push(plain("Enter: query building".into(), MUTED));
             }
         }
