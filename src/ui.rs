@@ -3059,9 +3059,6 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         let w = hint.chars().count() as u16;
         f.render_widget(Paragraph::new(Span::styled(hint, Style::default().fg(MUTED))), Rect::new(full.x + full.width.saturating_sub(w + 1), full.y + full.height - 1, w, 1));
     }
-    if let Some(p) = app.perf.and_then(|p| p.shown) {
-        draw_perf(f, full, &p);
-    }
     draw_tooltip(f, app);
     if app.in_fortress() && matches!(app.mode, Mode::Normal) {
         let over = if app.map_rect.width > 0 { app.map_rect } else { area };
@@ -3075,6 +3072,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             f.render_widget(Clear, r);
             f.render_widget(Paragraph::new(line).style(Style::default().bg(Color::Rgb(18, 14, 24))), r);
         }
+    }
+    // The F3 timings sit over everything, the director's caption too (a long
+    // caption once hid the fps line).
+    if let Some(p) = app.perf.and_then(|p| p.shown) {
+        draw_perf(f, full, &p);
     }
 }
 
