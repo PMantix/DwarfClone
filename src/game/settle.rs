@@ -23,7 +23,9 @@ const CHECK: u32 = 100;
 /// The most water turns the settling runs: twenty days.
 const MAX_TURNS: u32 = 8000;
 
-/// What the settling did, for looking into.
+/// What the settling did, for looking into (by the tests: the game
+/// itself only wants the water settled).
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Settled {
     pub turns: u32,
