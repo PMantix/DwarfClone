@@ -19,7 +19,14 @@ pub const BROOK_FLOW: f32 = 6.0;
 /// the hills line: each steps to its lowest neighbour, wearing the cells it
 /// passes, and digs through when every neighbour is higher, until it
 /// reaches the sea or the world's edge (or gives up).
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn erode(elev: &mut [f32], w: i32, h: i32, seed: u64) {
+    erode_traced(elev, w, h, seed, None)
+}
+
+/// `erode`, noting each trial river's cells in `paths` when given (the
+/// wearing is the same either way).
+pub fn erode_traced(elev: &mut [f32], w: i32, h: i32, seed: u64, mut paths: Option<&mut Vec<Vec<u32>>>) {
     let mut rng = Rng::new(seed ^ 0xE205_10E0);
     let idx = |x: i32, y: i32| (y * w + x) as usize;
     for _pass in 0..2 {
@@ -34,8 +41,12 @@ pub fn erode(elev: &mut [f32], w: i32, h: i32, seed: u64) {
                 continue;
             }
             let (mut x, mut y) = (s as i32 % w, s as i32 / w);
+            let mut path: Vec<u32> = Vec::new();
             for _ in 0..300 {
                 let i = idx(x, y);
+                if paths.is_some() {
+                    path.push(i as u32);
+                }
                 if elev[i] < SEA || x == 0 || y == 0 || x == w - 1 || y == h - 1 {
                     break;
                 }
@@ -59,6 +70,9 @@ pub fn erode(elev: &mut [f32], w: i32, h: i32, seed: u64) {
                 }
                 x = nx;
                 y = ny;
+            }
+            if let Some(p) = paths.as_mut() {
+                p.push(path);
             }
         }
     }

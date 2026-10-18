@@ -487,6 +487,35 @@ pub struct Overworld {
     /// The named rivers (empty in old saves).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rivers: Vec<River>,
+    /// Battles and beasts' raids as history makes them, kept only while a
+    /// world is made to be watched (`None` otherwise; never saved).
+    #[serde(skip)]
+    pub clashes: Option<Vec<Clash>>,
+}
+
+/// How a clash ended for the place attacked.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClashEnd {
+    /// Attacked and still standing.
+    Held,
+    /// Razed or laid waste.
+    Fell,
+    /// Conquered and held by the attacker.
+    Taken,
+    /// The attackers were beaten back.
+    Repulsed,
+    /// A hero slew the beast.
+    Slain,
+}
+
+/// One battle or raid: from the attacker's site (a beast's lair) to the
+/// site it struck.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Clash {
+    pub year: i32,
+    pub from: u32,
+    pub to: u32,
+    pub end: ClashEnd,
 }
 
 fn is_zero(v: &u8) -> bool {
@@ -581,6 +610,30 @@ pub struct WorldGen {
     stage: GenStage,
     /// Each river's course, spring first (for checking they run downhill).
     pub rivers: Vec<Vec<(i32, i32)>>,
+    /// What generation did, kept to be played back (`WorldGen::traced`).
+    pub trace: Option<GenTrace>,
+}
+
+/// A site's standing at some moment of history.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SiteState {
+    pub civ: Option<u32>,
+    pub kind: SiteKind,
+    pub ruined: bool,
+}
+
+/// The record of a world's making, for watching it: the land's trace, each
+/// site as it was founded, every later change to a site with its year, and
+/// the clashes of history. Recording draws no random numbers.
+#[derive(Clone, Debug, Default)]
+pub struct GenTrace {
+    pub land: Option<crate::worldgen::Trace>,
+    /// Per site (by id): as founded.
+    pub first: Vec<SiteState>,
+    /// (year, site, its new state).
+    pub changes: Vec<(i32, u32, SiteState)>,
+    pub clashes: Vec<Clash>,
+    last: Vec<SiteState>,
 }
 
 impl WorldGen {
@@ -607,17 +660,52 @@ impl WorldGen {
             seed,
             fields: Default::default(),
             rivers: Vec::new(),
+            clashes: None,
         };
-        WorldGen { params, ow, rng, land: None, row: 0, stage: GenStage::Terrain, rivers: Vec::new() }
+        WorldGen { params, ow, rng, land: None, row: 0, stage: GenStage::Terrain, rivers: Vec::new(), trace: None }
+    }
+
+    /// A generator that also keeps a `GenTrace` of what it does, so the
+    /// making can be played back. The world comes out the same.
+    pub fn traced(params: WorldParams) -> WorldGen {
+        let mut g = WorldGen::new(params);
+        g.trace = Some(GenTrace::default());
+        g.ow.clashes = Some(Vec::new());
+        g
+    }
+
+    /// Whether the land (fields, rivers, volcanoes, regions) is all made.
+    pub fn land_ready(&self) -> bool {
+        self.stage != GenStage::Terrain
+    }
+
+    /// Whether the civilisations and beasts are placed and history has begun.
+    pub fn history_ready(&self) -> bool {
+        matches!(self.stage, GenStage::History | GenStage::Done)
+    }
+
+    /// Note sites new since the last look as they were founded, and any
+    /// site whose holder, kind or ruin changed in `year`.
+    fn note_sites(&mut self, year: i32) {
+        let Some(t) = self.trace.as_mut() else { return };
+        for s in &self.ow.sites[t.first.len()..] {
+            t.first.push(SiteState { civ: s.civ, kind: s.kind, ruined: s.ruined });
+            t.last.push(SiteState { civ: s.civ, kind: s.kind, ruined: s.ruined });
+        }
+        for (k, s) in self.ow.sites.iter().enumerate() {
+            let now = SiteState { civ: s.civ, kind: s.kind, ruined: s.ruined };
+            if now != t.last[k] {
+                t.changes.push((year, k as u32, now));
+                t.last[k] = now;
+            }
+        }
+        if let Some(c) = self.ow.clashes.as_mut() {
+            t.clashes.append(c);
+        }
     }
 
     pub fn done(&self) -> bool {
         self.stage == GenStage::Done
-    }
-
-    /// Rows of terrain generated so far (the rest of the map is still blank).
-    pub fn rows_done(&self) -> i32 {
-        self.row
     }
 
     /// Advance by up to `rows` rows of terrain or `years` years of history.
@@ -642,10 +730,12 @@ impl WorldGen {
             }
             GenStage::Civs => {
                 self.found_civs();
+                self.note_sites(0);
                 self.stage = GenStage::Beasts;
             }
             GenStage::Beasts => {
                 self.place_beasts();
+                self.note_sites(0);
                 self.stage = GenStage::History;
             }
             GenStage::History => {
@@ -656,6 +746,7 @@ impl WorldGen {
                     let year = self.ow.year + 1;
                     self.ow.simulate_year(&mut self.rng, year);
                     self.ow.year = year;
+                    self.note_sites(year);
                 }
                 if self.ow.year >= self.params.history {
                     self.stage = GenStage::Done;
@@ -682,12 +773,14 @@ impl WorldGen {
 
     pub fn finish(mut self) -> Overworld {
         while !self.step(usize::MAX, usize::MAX) {}
+        self.ow.clashes = None;
         self.ow
     }
 
     fn terrain_row(&mut self, y: i32) {
         let (w, h) = (self.ow.w, self.ow.h);
-        let land = self.land.get_or_insert_with(|| crate::worldgen::build(self.params.seed, w, h));
+        let traced = self.trace.is_some();
+        let land = self.land.get_or_insert_with(|| crate::worldgen::build_traced(self.params.seed, w, h, traced));
         for x in 0..w {
             let i = (y * w + x) as usize;
             let elev = land.grids.elev[i].round().clamp(0.0, 255.0) as u8;
@@ -702,7 +795,10 @@ impl WorldGen {
     fn rivers_and_fire(&mut self) {
         let (w, h) = (self.ow.w, self.ow.h);
         let mut rng = Rng::new(self.params.seed ^ 0x51FE5);
-        let Some(land) = self.land.take() else { return };
+        let Some(mut land) = self.land.take() else { return };
+        if let Some(t) = self.trace.as_mut() {
+            t.land = land.trace.take();
+        }
         self.ow.fields = crate::worldgen::fields::Fields::from_grids(&land.grids, &land.flow);
         for i in 0..(w * h) as usize {
             self.ow.cells[i].river = land.river[i];
@@ -1234,6 +1330,19 @@ impl Overworld {
         }
     }
 
+    /// A cell as the finished world map draws it: the land's glyph and
+    /// colour (a site's mark over it), on a dark ground tinted where the
+    /// land is evil.
+    pub fn map_look(&self, x: i32, y: i32) -> (char, Color, Color) {
+        let c = self.cell(x, y);
+        let (mut ch, mut fg) = self.look(x, y);
+        let bg = if c.evil { Color::Rgb(45, 10, 55) } else { Color::Rgb(0, 0, 0) };
+        if c.site > 0 {
+            (ch, fg) = self.site_look(&self.sites[(c.site - 1) as usize]);
+        }
+        (ch, fg, bg)
+    }
+
     /// A site's mark on the world map: small and bright, so it stands out
     /// of the land round it.
     pub fn site_look(&self, s: &Site) -> (char, Color) {
@@ -1413,6 +1522,7 @@ impl Overworld {
             seed: 0,
             fields: Default::default(),
             rivers: Vec::new(),
+            clashes: None,
         }
     }
 
@@ -1561,6 +1671,7 @@ impl Overworld {
                 self.figures[hero as usize].title = Some(format!("slayer of {}", bname));
                 self.kill_figure(f, year, format!("slain by {}", self.figures[hero as usize].name));
                 let hname = self.figures[hero as usize].name.clone();
+                self.clash(year, lair.id, t, ClashEnd::Slain);
                 self.log(year, format!("{} slew {} the {} at {}.", hname, bname, bkind, sname));
             } else {
                 self.figures[f as usize].kills += rng.range(5, 40) as u32;
@@ -1569,9 +1680,11 @@ impl Overworld {
                 s.pop = s.pop * 2 / 3;
                 if !protected && (s.pop < 40 || rng.chance(0.3)) {
                     s.ruined = true;
+                    self.clash(year, lair.id, t, ClashEnd::Fell);
                     self.log(year, format!("{} the {} laid waste to {}.", bname, bkind, sname));
                     self.check_extinct(year);
                 } else {
+                    self.clash(year, lair.id, t, ClashEnd::Held);
                     self.log(year, format!("{} the {} attacked {} and was driven off.", bname, bkind, sname));
                 }
             }
@@ -1606,6 +1719,7 @@ impl Overworld {
         if a_pow > d_pow && mountainhome {
             let t = &mut self.sites[target as usize];
             t.pop = t.pop * 2 / 3;
+            self.clash(year, from, target, ClashEnd::Held);
             self.log(year, format!("{}: the {} of the {} broke upon the gates of the mountainhome.", label, ar.plural(), an));
         } else if a_pow > d_pow {
             let t = &mut self.sites[target as usize];
@@ -1613,9 +1727,11 @@ impl Overworld {
             if ar == Race::Goblin && rng.chance(0.5) {
                 t.civ = Some(att);
                 t.kind = SiteKind::DarkFortress;
+                self.clash(year, from, target, ClashEnd::Taken);
                 self.log(year, format!("{}: the {} of the {} conquered {}.", label, ar.plural(), an, tname));
             } else {
                 t.ruined = true;
+                self.clash(year, from, target, ClashEnd::Fell);
                 self.log(year, format!("{}: the {} of the {} razed {}.", label, ar.plural(), an, tname));
             }
             // Sometimes a ruler falls.
@@ -1633,7 +1749,15 @@ impl Overworld {
         } else {
             let f = &mut self.sites[from as usize];
             f.pop = f.pop * 4 / 5;
+            self.clash(year, from, target, ClashEnd::Repulsed);
             self.log(year, format!("{}: the {} of the {} were repulsed.", label, ar.plural(), an));
+        }
+    }
+
+    /// Keep a clash for watching, when a world is being made to be watched.
+    fn clash(&mut self, year: i32, from: u32, to: u32, end: ClashEnd) {
+        if let Some(c) = self.clashes.as_mut() {
+            c.push(Clash { year, from, to, end });
         }
     }
 
