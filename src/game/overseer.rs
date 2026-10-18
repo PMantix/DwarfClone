@@ -1066,7 +1066,7 @@ impl Game {
         // An army on the map is danger wherever it is; a lone monster only
         // when it comes near.
         // (An army the scouts saw coming counts once it's near.)
-        let coming = self.incoming.as_ref().map_or(false, |i| self.tick + 400 >= i.0);
+        let coming = self.incoming.as_ref().map_or(false, |i| self.tick + self.wargame_lead() >= i.0);
         // (Nor one walled up near it, in a cavern pocket or by a sunken
         // pool, with no way to the stair outside or to the halls: sheltering
         // from that would last until the fort died of thirst.)

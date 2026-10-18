@@ -93,6 +93,8 @@ pub mod fortify;
 mod towers;
 mod shelter;
 pub mod stories;
+pub mod arena;
+mod wargame;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -459,6 +461,9 @@ pub struct Game {
     /// Dens, lairs and grazing grounds the wild come from (`lairs.rs`).
     #[serde(default)]
     pub lairs: Vec<lairs::Lair>,
+    /// The overseer's last war-game of a coming siege (`wargame.rs`).
+    #[serde(default)]
+    pub wargame: Option<wargame::WarGame>,
     /// A new page has been written and should be shown.
     #[serde(skip)]
     pub chronicle_ready: bool,
@@ -620,6 +625,7 @@ impl Game {
             shelter: Default::default(),
             hunts: Default::default(),
             lairs: Vec::new(),
+            wargame: None,
             chronicle_ready: false,
             creatures: BTreeMap::new(),
             station: None,

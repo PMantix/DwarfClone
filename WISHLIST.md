@@ -656,11 +656,11 @@ Goal: the same world and simulation, seen from other seats.
 #### G01 Arena mode (M)
 - **Why:** a battle you set up and watch: two sides, any creatures, any kit. It's fun on its
   own, and it's the best tool for tuning combat (the arena test already measures fights).
-- **Steps:** [ ] an Arena entry on the title screen: pick each side's creatures (any species,
-  dwarves with skills), numbers, weapons, armour and training · [ ] pick a field: open ground,
-  a corridor with a door, a cavern, a bridge over a chasm · [ ] watch it at any speed with the
-  combat log, pause, follow a fighter, and a summary at the end (who won, wounds, kills) ·
-  [ ] save a matchup and rerun it N times for win rates
+- **Steps:** [x] an Arena entry on the title screen: pick each side's creatures (any species,
+  dwarves with skills), numbers, weapons, armour and training (dc56c77) · [x] pick a field: open ground,
+  a corridor with a door, a cavern, a bridge over a chasm (8c2c983) · [x] watch it at any speed with the
+  combat log, pause, follow a fighter, and a summary at the end (who won, wounds, kills) (dc56c77) ·
+  [x] save a matchup and rerun it N times for win rates (dc56c77)
 - **Done when:** ten dwarves with spears against six goblins can be set up, watched, and rerun
   a hundred times for a win rate.
 
@@ -716,6 +716,7 @@ above; the [idea catalogue](ideas/README.md) holds hundreds more.
 
 ## Done
 
+- **Arena mode** (G01; 8c2c983, dc56c77, this commit): *Arena* on the title screen sets two sides against each other (any species, dwarves with a fighting skill, counts, weapon, armour and metals, training, bolts) on open ground, a corridor with a door, a cavern, a bridge over a chasm or a walled yard, and plays the bout on its own little map with the siege's blows, blood, severed parts, finishing blows, marksdwarves and battered doors (and the odd fighter knocked off the bridge): any speed, pause, step, follow a fighter, the combat log and the whole report, and a summary (winner, first blood, fighter of the bout, each fighter's wounds, severed parts and kills). `r` reruns it headless N times for win rates, with a table of every rerun; matchups save to `saves/<name>.arena.json`. For fun: ten presets, *surprise me*, and picking a winner before the bout. A duel comes out as the combat.rs arena table has it (80%/30%/35%). The overseer war-games a coming siege in it (its soldiers as kitted against the army as sieges arm it, a dozen bouts): the odds are announced and chronicled, grim odds bring the alert a day early, and after the siege the war-game is judged against what happened.
 - **Walls, towers and grand works** (this commit): a grown fort's overseer walls the stair and the fields with a curtain wall (gate towers, battlements, a walkway, an arch and a drawbridge over an always-open gate), raises watchtowers at its corners (a soldier keeps watch; a manned one sees an army half a day sooner), puts its marksdwarves on the towers in an alert to shoot down over the battlements, and (vain, pious, greedy or rich) a wizard's tower with a laboratory where dwarves go to learn; then a pillared portico over the stair, pillars round the monument and a bridge over a chasm. Built from real stone (quarried from outcrops), blocks or timber by real builders, a stretch and a storey at a time; walls and fortifications can go up on a wall top or beside something to build against, and builders may work from the level below. `k` and the director name them.
 - **Performance overlay and the overseer's doings** (this commit): `F3` shows frames per second and where the time goes (simulation by part, drawing, path searches, the slowest tick); the announcements split in two while the overseer plays, its notes on the right. Found with it: a dig that uncovered a tile of open air flooded through the whole known sky (up to 60,000 tiles) to reveal it, a 70–300 ms freeze many times a year while a fort dug in near the surface; the flood now stops at what's already known. Pathfinding keeps what it has reached in flat arrays reused between searches instead of a hash map (about 14% off a batch).
 - **The local map follows the world map** (16ad7d2; wildlife this commit): ground, plants and rock by biome (dunes and cacti, red clay, bare peaks, lasting snow, conifers, acacias, palms, reeds, evil-tainted growth); the neighbouring world cells reach onto the map with their biomes and heights (coasts, rising mountains, blended borders, carried on when the map grows); wildlife by biome (camels, scorpions, vipers, elk, ibex, antelope, lions, jaguars, alligators, polar bears) and walking husks on evil land.

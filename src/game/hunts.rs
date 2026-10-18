@@ -796,6 +796,8 @@ mod tests {
         assert!(!matches!(g.squads[s].order, SquadOrder::Kill(_)));
         // The army turns back; the wolf is still there, but the hunters rest a while first.
         g.incoming = None;
+        // (A grim war-game put the alert up early; the next alert check stands it down.)
+        g.alert = false;
         let mut o = g.overseer.take().unwrap();
         g.ov_hunts(&mut o);
         assert!(g.hunts.on.is_none(), "straight back out after the wolf");
