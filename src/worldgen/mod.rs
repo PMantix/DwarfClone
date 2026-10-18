@@ -29,6 +29,22 @@ pub struct Land {
     pub lake: Vec<u32>,
     #[cfg_attr(not(test), allow(dead_code))]
     pub terminal: Vec<bool>,
+    /// What the making of the land went through, when asked for (to show
+    /// the world taking shape); `None` otherwise.
+    pub trace: Option<Trace>,
+}
+
+/// The land's making, kept to be played back: the elevation as first
+/// raised, the trial rivers of the erosion phase in the order they ran,
+/// and the elevation they left. Keeping it draws no random numbers.
+#[derive(Clone, Debug, Default)]
+pub struct Trace {
+    /// Elevation before the erosion phase (already proportioned).
+    pub raw: Vec<f32>,
+    /// Every trial river, cell by cell from where it started.
+    pub paths: Vec<Vec<u32>>,
+    /// Elevation after the erosion phase, before the hollows fill.
+    pub eroded: Vec<f32>,
 }
 
 /// Below this on the good/evil field the land is evil.
@@ -52,11 +68,22 @@ impl Grids {
 /// Make the land of a `w`×`h` world: elevation, the erosion phase, the
 /// depressions filled (lakes where deep), the climate on the land as it
 /// ends up, biomes, rivers and brooks.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn build(seed: u64, w: i32, h: i32) -> Land {
+    build_traced(seed, w, h, false)
+}
+
+/// `build`, keeping a `Trace` of the making when `trace` is set. The land
+/// comes out the same either way.
+pub fn build_traced(seed: u64, w: i32, h: i32, trace: bool) -> Land {
     let n = (w * h) as usize;
     let mut elev = fields::elevation(seed, w, h);
-    rivers::erode(&mut elev, w, h, seed);
+    let mut tr = if trace { Some(Trace { raw: elev.clone(), ..Default::default() }) } else { None };
+    rivers::erode_traced(&mut elev, w, h, seed, tr.as_mut().map(|t| &mut t.paths));
     fields::proportion(&mut elev);
+    if let Some(t) = tr.as_mut() {
+        t.eroded = elev.clone();
+    }
     let (spill, recv) = rivers::route(&elev, w, h);
     let depth: Vec<f32> = (0..n).map(|i| if elev[i] < fields::SEA { 0.0 } else { spill[i] - elev[i] }).collect();
     let filled: Vec<f32> = (0..n).map(|i| if elev[i] < fields::SEA { elev[i] } else { spill[i] }).collect();
@@ -86,7 +113,7 @@ pub fn build(seed: u64, w: i32, h: i32) -> Land {
         }
     }
     let stems = rivers::stems(&water);
-    Land { grids, biomes, evil, river, brook, flow: water.flow, stems, lake: water.lake, terminal: water.terminal }
+    Land { grids, biomes, evil, river, brook, flow: water.flow, stems, lake: water.lake, terminal: water.terminal, trace: tr }
 }
 
 #[cfg(test)]
@@ -280,6 +307,22 @@ mod water_tests {
             assert!(rivers > 100 && brooks > rivers, "seed {}: {} river cells, {} brook cells", seed, rivers, brooks);
         }
         assert!(lakes >= 4, "only {} lakes in four worlds", lakes);
+    }
+
+    #[test]
+    fn tracing_changes_nothing() {
+        for seed in [3u64, 42] {
+            let (a, b) = (build(seed, 128, 56), build_traced(seed, 128, 56, true));
+            assert_eq!(a.grids.elev, b.grids.elev);
+            assert_eq!(a.grids.rain, b.grids.rain);
+            assert_eq!(a.biomes, b.biomes);
+            assert_eq!(a.river, b.river);
+            assert_eq!(a.flow, b.flow);
+            let t = b.trace.expect("a trace");
+            assert!(a.trace.is_none());
+            assert!(t.paths.len() > 100, "{} trial rivers", t.paths.len());
+            assert!(t.raw != t.eroded, "erosion left no mark");
+        }
     }
 
     #[test]

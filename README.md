@@ -132,8 +132,18 @@ stairs, ▼ channel). Hovering over the map shows what's there.
 ## Features
 
 **World creation.** New world opens a settings screen: preset, seed, world size (128×56,
-192×80 or 288×120), history length, number of civilizations, savagery and minerals. Then you watch the continent appear and its
-history play out year by year (Space hurries it), and accept it or roll another.
+192×80 or 288×120), history length, number of civilizations, savagery and minerals. Then you
+watch the world being made, in about fifty seconds: an empty sea; land rising out of it as the
+water falls away, its coasts spreading; mountain ranges thrust up and whitening at the peaks,
+volcanoes erupting in lava and smoke; the erosion phase's trial rivers running down the heights
+and wearing them; the real rivers growing from their springs to the sea, tributaries joining,
+lakes filling their basins; rain and warmth bringing the biomes in (snow on the cold heights,
+forests greening from the wettest land outward, deserts last), a wildfire or two sweeping dry
+grass and greening back; and then history, with the year counting up, hamlets, towns, holds
+and lairs appearing in the year they were founded, battles and raids flashing between places,
+ruins where they fell. A caption names each stage. It is the generator's own record played
+back, not a second simulation: the same seed makes the same world, watched or not. Space or
+Enter skips to the finished world; accept it or roll another.
 
 **World & history.** The world is made the way Dwarf Fortress makes its own
 (`docs/worldgen.md`): not by placing biomes but by generating fields over every world

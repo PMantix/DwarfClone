@@ -353,6 +353,10 @@ pub struct App {
     pub worldgen: Option<WorldGen>,
     /// Skip the pacing and generate as fast as possible.
     pub gen_fast: bool,
+    /// The world's making played back while it's made, and how far it has
+    /// played (seconds).
+    pub genshow: Option<crate::genshow::Show>,
+    pub show_t: f64,
     /// Index into `MapSize::ALL` for the next embark.
     /// The fortress map to embark on.
     pub embark_size: crate::world::MapSize,
@@ -430,6 +434,8 @@ impl App {
             world_params: WorldParams { seed, ..WorldParams::default() },
             worldgen: None,
             gen_fast: false,
+            genshow: None,
+            show_t: 0.0,
             embark_size: crate::world::MapSize::MEDIUM,
             loadout: Loadout::prepared(),
             squad_sel: 0,
@@ -454,9 +460,22 @@ impl App {
         self.poll_job();
         if self.mode == Mode::WorldGen {
             if let Some(g) = self.worldgen.as_mut() {
-                // Paced so the world can be watched taking shape; Space skips ahead.
-                let (rows, years) = if self.gen_fast { (usize::MAX, 40) } else { (1, 1) };
-                g.step(rows, years);
+                // The world is made a step at a time, well ahead of the show
+                // that plays its making back; Space skips to the end.
+                if self.gen_fast {
+                    g.step(usize::MAX, 40);
+                } else {
+                    let t0 = std::time::Instant::now();
+                    while !g.done() && t0.elapsed().as_millis() < 12 {
+                        g.step(usize::MAX, 1);
+                    }
+                }
+                if self.genshow.is_none() && g.land_ready() {
+                    self.genshow = Some(crate::genshow::Show::new(g));
+                }
+                if let Some(s) = &self.genshow {
+                    self.show_t = if self.gen_fast { s.end() } else { (self.show_t + self.frame_dt.clamp(0.0, 0.1)).min(s.ready_until(g)) };
+                }
             }
             return;
         }
@@ -555,9 +574,17 @@ impl App {
 
     pub fn start_worldgen(&mut self) {
         self.seed = self.world_params.seed;
-        self.worldgen = Some(WorldGen::new(self.world_params));
+        self.worldgen = Some(WorldGen::traced(self.world_params));
         self.gen_fast = false;
+        self.genshow = None;
+        self.show_t = 0.0;
         self.mode = Mode::WorldGen;
+    }
+
+    /// Whether the world is made and its making has played to the end.
+    pub fn worldgen_finished(&self) -> bool {
+        let made = self.worldgen.as_ref().map_or(false, |g| g.done());
+        made && self.genshow.as_ref().map_or(false, |s| self.show_t >= s.end())
     }
 
     fn key_world_setup(&mut self, k: KeyEvent, sel: usize) {
@@ -606,21 +633,29 @@ impl App {
     }
 
     fn key_worldgen(&mut self, k: KeyEvent) {
-        let done = self.worldgen.as_ref().map_or(false, |g| g.done());
+        let done = self.worldgen_finished();
         match k.code {
             KeyCode::Enter if done => {
+                self.genshow = None;
                 let ow = self.worldgen.take().unwrap().finish();
                 self.game = Game::placeholder(ow);
                 let (x, y) = self.game.site;
                 self.mode = Mode::WorldMap { x, y };
             }
-            KeyCode::Char(' ') | KeyCode::Enter => self.gen_fast = true,
+            KeyCode::Char(' ') | KeyCode::Enter => {
+                // Skip to the end: the rest is made as fast as it can be.
+                self.gen_fast = true;
+                if let Some(s) = &self.genshow {
+                    self.show_t = s.end();
+                }
+            }
             KeyCode::Char('r') => {
                 self.world_params.seed = random_seed();
                 self.start_worldgen();
             }
             KeyCode::Esc | KeyCode::Char('e') => {
                 self.worldgen = None;
+                self.genshow = None;
                 self.mode = Mode::WorldSetup { sel: 0 };
             }
             _ => {}
