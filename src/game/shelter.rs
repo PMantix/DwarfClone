@@ -287,6 +287,23 @@ impl Game {
         best.map(|(_, a)| box_iter(a, a.offset(2, 2, 0)).collect())
     }
 
+    /// A siege has ended (`overseer_hooks.rs`): if the shelter was called
+    /// and nobody in it was lost, it held, and the fort is told so.
+    pub(super) fn shelter_after_siege(&mut self, i: usize) {
+        let Some(s) = self.annals.sieges.get(i) else { return };
+        if !s.shelter || s.outcome == "the fortress fell" {
+            return;
+        }
+        let lost = self.annals.deaths.iter().filter(|d| d.siege == Some(i) && d.sheltered).count();
+        if lost == 0 {
+            let text = format!("The shelter held: not one of those sheltering was lost to the {}.", s.foe);
+            self.count("shelter_held", 1);
+            self.msg(&text, (150, 220, 150));
+        } else {
+            self.count("shelter_lost", lost as u32);
+        }
+    }
+
     /// A hauler's job (`finders.rs`): drink or a meal from outside the
     /// shelter into its larder, while it holds less than it should. Not
     /// during an alert (nobody may leave the shelter then).
@@ -504,6 +521,26 @@ mod tests {
         assert_eq!(g.world.t(door).kind, TileKind::Wall, "the way in at {:?} was never walled", door);
         assert!(g.ways_in(base).len() <= before, "ways in left: {:?}", g.ways_in(base));
         assert!(g.log.iter().any(|l| l.text.contains("walled up")), "the player was never told");
+    }
+
+    /// A siege sheltered through without loss is told; one with a death in
+    /// the shelter isn't.
+    #[test]
+    fn a_shelter_that_held_is_told() {
+        let mut g = Game::new(5);
+        let note = |g: &mut Game| {
+            g.annals.sieges.push(crate::game::annals::SiegeNote { foe: "goblins".into(), shelter: true, outcome: "routed".into(), ended: Some(g.tick), ..Default::default() });
+            g.annals.sieges.len() - 1
+        };
+        let i = note(&mut g);
+        g.shelter_after_siege(i);
+        assert!(g.log.iter().any(|l| l.text.starts_with("The shelter held")));
+        assert_eq!(g.annals.counters.get("shelter_held").copied(), Some(1));
+        let j = note(&mut g);
+        g.annals.deaths.push(crate::game::annals::DeathNote { siege: Some(j), sheltered: true, ..Default::default() });
+        g.shelter_after_siege(j);
+        assert_eq!(g.annals.counters.get("shelter_held").copied(), Some(1));
+        assert_eq!(g.annals.counters.get("shelter_lost").copied(), Some(1));
     }
 
     /// Where the drink and food lie in a grown fort: SEED, STYLE, DAYS.

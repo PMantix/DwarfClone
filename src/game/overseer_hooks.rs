@@ -59,5 +59,6 @@ impl Game {
         // M1 (survival):
         self.captives_after_siege(i);
         self.learn_from_siege(i);
+        self.shelter_after_siege(i);
     }
 }
