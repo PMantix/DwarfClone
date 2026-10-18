@@ -11,6 +11,7 @@
 use super::overseer::Overseer;
 use super::*;
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 
 /// What the overseer keeps for the shelter (`Game.shelter`).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -25,6 +26,12 @@ pub struct Shelter {
     /// counted (the haulers ask often; it's counted now and then).
     #[serde(skip)]
     pub want: (u64, u32, u32),
+    /// Ways into the shelter past the gate walled up so far.
+    #[serde(default)]
+    pub walled: u32,
+    /// When the ways in were last looked for during an alert.
+    #[serde(skip)]
+    pub ways_checked: u64,
 }
 
 /// What the shelter's larder takes: drink and meals, nothing else.
@@ -54,19 +61,109 @@ impl Game {
             return;
         }
         self.gate_out_of_shelter(base);
+        self.wall_up_ways_in(o, base);
         self.ov_larder_in_shelter(o, base);
     }
 
     /// Every ten ticks (`overseer_hooks.rs`): when the alert is raised, the
     /// shelter is made ready at once.
+    /// While it's up, the ways in are looked for again now and then.
     pub(super) fn ov_shelter_alert(&mut self, o: &mut Overseer) {
-        if self.civ_alert == self.shelter.was_alert {
-            return;
+        let Some(base) = o.base else { return };
+        if self.civ_alert != self.shelter.was_alert {
+            self.shelter.was_alert = self.civ_alert;
+            if self.civ_alert {
+                self.gate_out_of_shelter(base);
+                self.shelter.ways_checked = self.tick;
+                self.wall_up_ways_in(o, base);
+            }
+        } else if self.civ_alert && self.tick >= self.shelter.ways_checked + 100 {
+            self.shelter.ways_checked = self.tick;
+            self.wall_up_ways_in(o, base);
         }
-        self.shelter.was_alert = self.civ_alert;
-        if let (true, Some(base)) = (self.civ_alert, o.base) {
-            self.gate_out_of_shelter(base);
+    }
+
+    /// The ways into the shelter that don't pass the gate: for each, the
+    /// tile in the shelter and the first one outside it on the way to the
+    /// sky. (Found walking out from the shelter's edge, never through the
+    /// gate's tiles, a locked door or a raised bridge.)
+    pub fn ways_in(&self, base: Pos) -> Vec<(Pos, Pos)> {
+        let Some(mask) = self.shelter_bits() else { return Vec::new() };
+        let w = &self.world;
+        let inside = |p: Pos| w.get(p).map_or(false, |t| t.burrows & mask != 0);
+        let gate: HashSet<Pos> = Self::gate_tiles(base).collect();
+        // The shelter's edge: a step out of it, not onto the gate.
+        let mut from: HashMap<Pos, (Pos, Pos)> = HashMap::new();
+        let mut todo: VecDeque<Pos> = VecDeque::new();
+        let mut nb = Vec::new();
+        for (k, t) in w.tiles.iter().enumerate() {
+            if t.burrows & mask == 0 {
+                continue;
+            }
+            let s = w.pos_of(k);
+            w.neighbors(s, &mut nb, Mover::Goblin);
+            for &(q, _) in nb.iter() {
+                if !inside(q) && !gate.contains(&q) && !from.contains_key(&q) {
+                    from.insert(q, (s, q));
+                    todo.push_back(q);
+                }
+            }
         }
+        // Out from there, all at once, to the open sky.
+        let mut found: Vec<(Pos, Pos)> = Vec::new();
+        let mut budget = 200_000;
+        while let Some(p) = todo.pop_front() {
+            let way = from[&p];
+            if w.outside(p) {
+                if !found.contains(&way) {
+                    found.push(way);
+                }
+                continue;
+            }
+            budget -= 1;
+            if budget == 0 {
+                break;
+            }
+            w.neighbors(p, &mut nb, Mover::Goblin);
+            for &(q, _) in nb.iter() {
+                if !inside(q) && !gate.contains(&q) && !from.contains_key(&q) {
+                    from.insert(q, way);
+                    todo.push_back(q);
+                }
+            }
+        }
+        found
+    }
+
+    /// Wall up every way into the shelter but the gate: a wall on the first
+    /// tile outside it, or else on its own last tile. How many were planned.
+    fn wall_up_ways_in(&mut self, o: &mut Overseer, base: Pos) -> usize {
+        let ways = self.ways_in(base);
+        let mut n = 0;
+        let mut open = 0;
+        for (s, q) in ways {
+            if [q, s].iter().any(|&p| self.construction_at(p).map_or(false, |c| c.kind == ConstructKind::Wall)) {
+                continue;
+            }
+            let spot = [q, s].into_iter().find(|&p| !Self::gate_tiles(base).any(|g| g == p) && self.can_construct(p, ConstructKind::Wall));
+            match spot {
+                Some(p) if self.plan_constructions(p, p, ConstructKind::Wall, BuildMat::Any) > 0 => n += 1,
+                _ => open += 1,
+            }
+        }
+        if n > 0 {
+            self.shelter.walled += n as u32;
+            self.count("shelter_ways_walled", n as u32);
+            let text = format!("Ordered {} way{} into the shelter walled up, so the gate is the only way in.", n, if n == 1 { "" } else { "s" });
+            if self.civ_alert {
+                self.msg(&text, (255, 200, 90));
+            }
+            Self::note_ov(o, self.tick, text);
+        }
+        if open > 0 {
+            self.count("shelter_ways_open", open as u32);
+        }
+        n
     }
 
     /// Take the gate's tiles out of the shelter, so those running in go on
@@ -354,6 +451,59 @@ mod tests {
         assert!(thirsty.is_empty(), "died of thirst or hunger in the shelter: {:?}", thirsty);
         assert!(worst <= THIRSTY + 3000, "a sheltering dwarf went thirsty: {}", worst);
         assert!(g.shelter_supplies().0 < drink, "nobody drank from the shelter's stores");
+    }
+
+    /// A hall broken through to the sky is a way in past the gate: when the
+    /// alert goes up it's walled, and the gate is the only way in again.
+    #[test]
+    fn a_way_in_past_the_gate_is_walled_in_an_alert() {
+        let (mut g, mut o) = sheltered_fort();
+        g.creatures.retain(|_, c| !c.hostile());
+        let base = o.base.unwrap();
+        let before = g.ways_in(base).len();
+        // A tunnel out of the shelter, six tiles through the rock to a pit
+        // open to the sky.
+        let mask = g.shelter_bits().unwrap();
+        let (s, dir) = (0..g.world.tiles.len())
+            .map(|k| g.world.pos_of(k))
+            .filter(|&p| p.z == base.z && g.world.t(p).burrows & mask != 0 && g.world.t(p).kind == TileKind::Floor && g.world.t(p).building == 0)
+            .filter(|&p| !Game::gatehouse(base, p))
+            .find_map(|p| {
+                DIRS4.iter().copied().find(|&(dx, dy)| (1..=7).all(|i| {
+                    let q = p.offset(dx * i, dy * i, 0);
+                    g.world.in_bounds(q) && g.world.t(q).kind == TileKind::Wall && g.world.t(q).burrows == 0 && !g.world.outside(q) && !Game::gatehouse(base, q)
+                }) && (1..=7).all(|i| {
+                    // (Rock on either side, so it stays one tunnel.)
+                    let q = p.offset(dx * i, dy * i, 0);
+                    g.world.solid(q.offset(dy, dx, 0)) && g.world.solid(q.offset(-dy, -dx, 0))
+                })).map(|d| (p, d))
+            })
+            .expect("a shelter wall with rock behind it");
+        for i in 1..=6 {
+            let q = s.offset(dir.0 * i, dir.1 * i, 0);
+            let t = g.world.t_mut(q);
+            t.kind = TileKind::Floor;
+            t.dug = true;
+            t.revealed = true;
+        }
+        let pit = s.offset(dir.0 * 6, dir.1 * 6, 0);
+        let w = g.world.w;
+        g.world.surface[(pit.y * w + pit.x) as usize] = pit.z;
+        g.dig_version += 1;
+        let ways = g.ways_in(base);
+        assert!(ways.contains(&(s, s.offset(dir.0, dir.1, 0))), "the tunnel at {:?} isn't seen as a way in: {:?}", s, ways);
+        // The alert: it's walled straight away.
+        // (The overseer's alert check, as it runs every ten ticks.)
+        assert_eq!(g.toggle_civ_alert(), Ok(true));
+        g.ov_shelter_alert(&mut o);
+        let door = s.offset(dir.0, dir.1, 0);
+        assert!(g.construction_at(door).map_or(false, |c| c.kind == ConstructKind::Wall), "no wall planned at {:?}", door);
+        for _ in 0..DAY * 2 {
+            g.step();
+        }
+        assert_eq!(g.world.t(door).kind, TileKind::Wall, "the way in at {:?} was never walled", door);
+        assert!(g.ways_in(base).len() <= before, "ways in left: {:?}", g.ways_in(base));
+        assert!(g.log.iter().any(|l| l.text.contains("walled up")), "the player was never told");
     }
 
     /// Where the drink and food lie in a grown fort: SEED, STYLE, DAYS.
