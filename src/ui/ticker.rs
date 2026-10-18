@@ -166,6 +166,42 @@ mod tests {
         assert_ne!(a, b);
     }
 
+    /// All five pieces of flair at once (faces, a filmed moment, snow,
+    /// the ticker, a Life page) draw at both sizes, and a frame of them
+    /// stays cheap.
+    #[test]
+    fn all_the_flair_at_once_stays_cheap() {
+        let mut app = App::with_game_for_tests(Game::new(5));
+        app.paused = false;
+        app.game.tick = 5000;
+        app.game.weather = crate::game::Weather::Snow;
+        app.cursor.z = app.game.world.surface_z(app.cursor.x, app.cursor.y);
+        let at = app.game.dwarves[0].pos;
+        app.game.film_for_test("An artifact", "Urist has created a thing of beauty!", Some(at));
+        app.game.msg("A goblin siege has come to the gates!", (255, 70, 70));
+        let id = app.game.dwarves[0].id;
+        let modes = [Mode::Normal, Mode::Highlights { sel: 0 }, Mode::Life { id, scroll: 0 }, Mode::Status { tab: 0, scroll: 0 }];
+        for (w, h) in [(80u16, 24u16), (200, 60)] {
+            let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+            for m in &modes {
+                app.mode = m.clone();
+                term.draw(|f| draw_all(f, &mut app)).unwrap();
+            }
+            app.mode = Mode::Status { tab: 0, scroll: 0 };
+            let t0 = std::time::Instant::now();
+            for _ in 0..20 {
+                term.draw(|f| draw_all(f, &mut app)).unwrap();
+            }
+            let ms = t0.elapsed().as_secs_f64() * 1000.0 / 20.0;
+            assert!(ms < 50.0, "{:.1} ms a frame at {}x{}", ms, w, h);
+            let buf = term.backend().buffer().clone();
+            let last: String = (0..w).map(|x| buf.get(x, h - 1).symbol().to_string()).collect();
+            println!("{}x{}: {:.2} ms a frame
+{}", w, h, ms, last);
+            assert!(last.contains("NEWS"));
+        }
+    }
+
     #[test]
     fn the_ticker_stays_cheap_on_a_busy_log() {
         let mut g = Game::new(5);
