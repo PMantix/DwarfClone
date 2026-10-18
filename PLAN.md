@@ -19,6 +19,10 @@ WISHLIST's steps) to a tested commit. Run five to eight at a time, that is rough
 elapsed work, so the roadmap is many months of agent time; **Milestone 1 is about 28 sessions in
 four waves** and is where to start.
 
+**Other ways to play** (WISHLIST G01–G03): the arena mode is next after Milestone 1's wave 3,
+since it is contained and doubles as the combat-tuning tool; the bigger bestiary grows
+alongside it; adventurer mode follows Milestones 4 and 8, whose living world and fallen forts it needs.
+
 ## How a wave runs
 
 1. **Packages.** Each milestone plan lists its work packages (P0, P1 …) and the wave each belongs

@@ -623,6 +623,43 @@ Goal: a fort's fall is the start of the next story. The world remembers ruins, r
 - **Steps:** [ ] Caravans on the world map ([ECO-32](ideas/economy.md)) · [ ] Caravan raiders ([ECO-28](ideas/economy.md)) · [ ] Fairs ([ECO-30](ideas/economy.md)) · [ ] Your own caravans ([ECO-31](ideas/economy.md)) · [ ] Hill and deep dwarf partners ([ECO-33](ideas/economy.md)) · [ ] World economy ([ECO-54](ideas/economy.md))
 - **Done when:** A trade route opened to a distant site brings a new kind of caravan.
 
+### Other ways to play
+
+Goal: the same world and simulation, seen from other seats.
+
+#### G01 Arena mode (M)
+- **Why:** a battle you set up and watch: two sides, any creatures, any kit. It's fun on its
+  own, and it's the best tool for tuning combat (the arena test already measures fights).
+- **Steps:** [ ] an Arena entry on the title screen: pick each side's creatures (any species,
+  dwarves with skills), numbers, weapons, armour and training · [ ] pick a field: open ground,
+  a corridor with a door, a cavern, a bridge over a chasm · [ ] watch it at any speed with the
+  combat log, pause, follow a fighter, and a summary at the end (who won, wounds, kills) ·
+  [ ] save a matchup and rerun it N times for win rates
+- **Done when:** ten dwarves with spears against six goblins can be set up, watched, and rerun
+  a hundred times for a win rate.
+
+#### G02 A bigger bestiary (L)
+- **Why:** more creatures, each with a way of behaving rather than only new numbers: things
+  that make stories.
+- **Steps:** [ ] behaviours as reusable parts: ambusher, pack hunter, burrower, flier,
+  web-spinner, thief, lair guardian, grazer, scavenger, swimmer · [ ] new species by biome
+  and depth built from them (see the CRE ideas in [the catalogue](ideas/myth-and-depths.md)) ·
+  [ ] each new creature appears in the arena first, then in the world
+- **Done when:** every biome has at least three creatures that behave differently, and each
+  can be fought in the arena.
+
+#### G03 Adventurer mode (XL)
+- **Why:** take one character into the world for fame, fortune or utter ruin.
+- **Needs:** Milestone 4's living world (the world tick, sites as places, news) and Milestone
+  8's fallen forts (ruins to explore).
+- **Steps:** [ ] make a character (race, skills, gear) and start at a site · [ ] travel the
+  world map; enter sites as local maps (towns, ruins, lairs, caves) · [ ] talk: hear news and
+  rumours, take jobs, hire companions · [ ] fight with the same body and wounds as fortress
+  mode; loot; rest and heal · [ ] fame and infamy in the legends; visit or reclaim your old
+  forts · [ ] death ends it, and the world remembers
+- **Done when:** a character can leave a town, find a ruin from a fallen fort, fight what lives
+  there, and come back with its treasure recorded in the legends.
+
 ### Later
 
 Bigger systems from Tarn's page, and the epics the review left for after Milestone 8.
