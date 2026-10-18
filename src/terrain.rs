@@ -112,35 +112,28 @@ impl Course {
 /// out). With `keep`, an existing map is kept as it is at offset (dx, dy)
 /// and the new land fitted round it.
 pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), base: (i32, i32), keep: Option<(&World, (i32, i32))>) -> World {
+    generate_shaped(seed, params, origin, base, keep).0
+}
+
+/// `generate_region`, with the shaped land it was built from (rivers' courses,
+/// lakes, streams) for looking into.
+pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), base: (i32, i32), keep: Option<(&World, (i32, i32))>) -> (World, crate::terrain_gen::Shape) {
     let MapSize { w, h, d } = params.size;
     let (ox, oy) = origin;
     let bits = params.features;
     let has = |b: u32| bits & b != 0;
     // Deeper maps add rock below the usual layers (and room for a second cavern).
     let deep = (d - 32).max(0);
-    let height_n = Noise::new(seed);
     let soil_n = Noise::new(seed ^ 0x1111);
     let rock_n = Noise::new(seed ^ 0x2222);
     let cave_n = Noise::new(seed ^ 0x3333);
     let ore_n = Noise::new(seed ^ 0x4444);
     let forest_n = Noise::new(seed ^ 0x5555);
     let pool_n = Noise::new(seed ^ 0x6666);
-    let ridge_n = Noise::new(seed ^ 0xA1A1);
     let feat_n = Noise::new(seed ^ 0xB2B2);
     let mut rng = Rng::new(seed ^ 0x7777);
     let mut frng = Rng::new(seed ^ 0xC3C3);
     let (w0, h0) = base;
-    // The river runs the way the world map draws it through the cell
-    // (across for east-west, down for north-south; a bend either way).
-    let river = has(feat::RIVER).then(|| {
-        let coin = frng.chance(0.5);
-        let across = match (params.river & 10 != 0, params.river & 5 != 0) {
-            (true, false) => true,
-            (false, true) => false,
-            _ => coin,
-        };
-        Course::new(seed, 0x1A1A, base, across)
-    });
     let chasm = has(feat::CHASM).then(|| Course::new(seed, 0x2B2B, base, frng.chance(0.5)));
     let volcano = has(feat::VOLCANO).then(|| (frng.range(w0 / 4, (3 * w0 / 4).max(w0 / 4 + 1)), frng.range(h0 / 4, (3 * h0 / 4).max(h0 / 4 + 1))));
     let oasis = has(feat::OASIS).then(|| (frng.range(w0 / 5, (4 * w0 / 5).max(w0 / 5 + 1)), frng.range(h0 / 5, (4 * h0 / 5).max(h0 / 5 + 1))));
@@ -148,8 +141,8 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
     let top = d - 3;
 
     // Which world cell each column lies in (the site's own, or a neighbour's
-    // toward the edges, with a ragged border), for its biome and its height.
-    const CELL: f64 = 48.0;
+    // toward the edges, with a ragged border), for its biome.
+    const CELL: f64 = crate::terrain_gen::CELL;
     let biome_n = Noise::new(seed ^ 0xD4D4);
     let around = |c: (i32, i32)| params.around.iter().find(|a| (a.x, a.y) == c);
     let home_elev = around(params.home).map_or(128.0, |a| a.elev as f64);
@@ -162,85 +155,20 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
         let c = (params.home.0 + ((ax as f64 + jx) / CELL).floor() as i32, params.home.1 + ((ay as f64 + jy) / CELL).floor() as i32);
         around(c).map_or((params.biome, false), |a| (a.biome, a.evil))
     };
-    // The world's own heights, smoothly: mountains next door lift that side,
-    // the sea next door drops it.
-    let lift = |ax: i32, ay: i32| -> f64 {
-        if params.around.is_empty() {
-            return 0.0;
-        }
-        let (fx, fy) = (ax as f64 / CELL - 0.5, ay as f64 / CELL - 0.5);
-        let (i0, j0) = (fx.floor(), fy.floor());
-        let smooth = |t: f64| t * t * (3.0 - 2.0 * t);
-        let (tx, ty) = (smooth(fx - i0), smooth(fy - j0));
-        let e = |i: f64, j: f64| around((params.home.0 + i as i32, params.home.1 + j as i32)).map_or(home_elev, |a| a.elev as f64);
-        let top_row = e(i0, j0) + (e(i0 + 1.0, j0) - e(i0, j0)) * tx;
-        let bottom_row = e(i0, j0 + 1.0) + (e(i0 + 1.0, j0 + 1.0) - e(i0, j0 + 1.0)) * tx;
-        let v = top_row + (bottom_row - top_row) * ty;
-        ((v - home_elev) / 9.0).clamp(-9.0, 7.0)
-    };
     let sea = 14 + deep;
     let mut col = vec![0u8; (w * h) as usize];
-
-    // Height map.
-    let mut surf = vec![0i32; (w * h) as usize];
-    let mut river_cell = vec![false; (w * h) as usize];
     for y in 0..h {
         for x in 0..w {
-            let (ax, ay) = (x + ox, y + oy);
-            let v = height_n.fbm2(ax as f64 / 34.0, ay as f64 / 34.0, 4);
-            let lo = (9 + deep) as f64;
-            let mut hh = 18.0 + deep as f64 + (v - 0.5) * 18.0 * params.relief + lift(ax, ay);
-            let (b, evil) = local(ax, ay);
+            let (b, evil) = local(x + ox, y + oy);
             col[(y * w + x) as usize] = b.code() | if evil { 0x80 } else { 0 };
-
-            if has(feat::PEAKS) {
-                let r = 1.0 - (2.0 * ridge_n.fbm2(ax as f64 / 22.0, ay as f64 / 22.0, 3) - 1.0).abs();
-                hh += r * r * r * 12.0 * params.relief.max(0.6);
-            }
-            if has(feat::MESAS) {
-                hh = (hh / 3.0).floor() * 3.0 + 1.0;
-            }
-            if has(feat::COAST) {
-                let t = match coast_side {
-                    0 => ax as f64 / w0 as f64,
-                    1 => 1.0 - ax as f64 / w0 as f64,
-                    2 => ay as f64 / h0 as f64,
-                    _ => 1.0 - ay as f64 / h0 as f64,
-                };
-                hh -= ((0.45 - t).max(0.0) * 26.0).min(9.0);
-            }
-            if let Some((vx, vy)) = volcano {
-                let r = (((ax - vx).pow(2) + (ay - vy).pow(2)) as f64).sqrt();
-                if r < 14.0 {
-                    hh += (1.0 - r / 14.0) * 11.0;
-                }
-            }
-            if b == Biome::Ocean {
-                // The sea next door: under water, shelving down (after the
-                // features, which could otherwise lift it back up).
-                hh = hh.min(sea as f64 - 2.0 - (v * 3.0).floor());
-            }
-            let cap = (lo + 18.0).max(if has(feat::PEAKS) || volcano.is_some() { lo + 24.0 } else { lo + 18.0 });
-            let mut hi = hh.round().clamp(lo, cap.min(top as f64)) as i32;
-            if let Some(c) = &river {
-                if c.at(ax, ay).0 <= 2.0 {
-                    hi -= 2;
-                    river_cell[(y * w + x) as usize] = true;
-                }
-            }
-            surf[(y * w + x) as usize] = hi;
         }
     }
-    // A kept map's land stays exactly as it is.
-    let mut fixed = vec![false; (w * h) as usize];
+    // A kept map keeps its biomes.
     if let Some((old, (dx, dy))) = keep {
         for y in 0..old.h {
             for x in 0..old.w {
                 let (nx, ny) = (x + dx, y + dy);
                 if nx >= 0 && ny >= 0 && nx < w && ny < h {
-                    surf[(ny * w + nx) as usize] = old.surface_z(x, y);
-                    fixed[(ny * w + nx) as usize] = true;
-                    river_cell[(ny * w + nx) as usize] = false;
                     if let Some(&c) = old.biomes.get((y * old.w + x) as usize) {
                         col[(ny * w + nx) as usize] = c;
                     }
@@ -248,81 +176,47 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
             }
         }
     }
-    // Relax so neighbours never differ by more than one level (every slope
-    // gets a ramp and the whole surface is walkable).
-    if keep.is_none() {
-        loop {
-            let mut changed = false;
-            for y in 0..h {
-                for x in 0..w {
-                    for &(dx, dy) in DIRS8.iter() {
-                        let (nx, ny) = (x + dx, y + dy);
-                        if nx < 0 || ny < 0 || nx >= w || ny >= h {
-                            continue;
-                        }
-                        let n = surf[(ny * w + nx) as usize];
-                        let c = &mut surf[(y * w + x) as usize];
-                        if *c > n + 1 {
-                            *c = n + 1;
-                            changed = true;
-                        }
-                    }
-                }
-            }
-            if !changed {
-                break;
-            }
-        }
-    } else {
-        // Around kept land: within one of every neighbour, rising to meet
-        // the old map where it must.
-        for _ in 0..400 {
-            let mut changed = false;
-            for y in 0..h {
-                for x in 0..w {
-                    let i = (y * w + x) as usize;
-                    if fixed[i] {
-                        continue;
-                    }
-                    let (mut lo, mut hi) = (i32::MIN, i32::MAX);
-                    for &(dx, dy) in DIRS8.iter() {
-                        let (nx, ny) = (x + dx, y + dy);
-                        if nx < 0 || ny < 0 || nx >= w || ny >= h {
-                            continue;
-                        }
-                        let n = surf[(ny * w + nx) as usize];
-                        lo = lo.max(n - 1);
-                        hi = hi.min(n + 1);
-                    }
-                    let c = surf[i];
-                    let nc = if lo > hi { lo } else { c.clamp(lo, hi) };
-                    if nc != c {
-                        surf[i] = nc;
-                        changed = true;
-                    }
-                }
-            }
-            if !changed {
-                break;
-            }
-        }
-    }
 
+    // The land itself: raised, weathered and watered (see `terrain_gen`).
+    let ctx = crate::terrain_gen::Ctx {
+        seed,
+        p: params,
+        ox,
+        oy,
+        w,
+        h,
+        base,
+        lo: 9 + deep,
+        top,
+        mid: 17.0 + deep as f64,
+        sea,
+        col: &col,
+        volcano,
+        oasis,
+        coast_side,
+        home_elev,
+    };
+    let shape = crate::terrain_gen::shape(&ctx, keep);
+    let surf = shape.surf.clone();
     let water_level = match keep {
         Some((old, _)) => old.water_level,
-        None => {
-            let mut sorted = surf.clone();
-            sorted.sort_unstable();
-            if params.lake <= 0.0 {
-                0
-            } else {
-                sorted[((sorted.len() as f64 * params.lake) as usize).min(sorted.len() - 1)]
-            }
-        }
+        None => shape.water_level,
     };
-    // A shore on the map: the sea fills to its level.
-    let water_level = if col.iter().any(|&c| Biome::from_code(c) == Some(Biome::Ocean)) { water_level.max(sea) } else { water_level };
     let biome_of = |i: usize| Biome::from_code(col[i]).unwrap_or(params.biome);
+    // How far each column stands above its lowest neighbour.
+    let drop_at = |x: i32, y: i32| -> i32 {
+        let s = surf[(y * w + x) as usize];
+        DIRS8
+            .iter()
+            .filter(|&&(dx, dy)| x + dx >= 0 && y + dy >= 0 && x + dx < w && y + dy < h)
+            .filter(|&&(dx, dy)| {
+                let j = ((y + dy) * w + x + dx) as usize;
+                shape.fill[j] <= surf[j] && shape.river[j] == 0
+            })
+            .map(|&(dx, dy)| s - surf[((y + dy) * w + x + dx) as usize])
+            .max()
+            .unwrap_or(0)
+    };
 
     let mut world = World {
         w,
@@ -347,21 +241,75 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
         biomes: col.clone(),
     };
     let bands = world.caverns.clone();
+    // The rock at a level: granite and marble in the high and cold places,
+    // sedimentary rock elsewhere, igneous rock deep down.
+    let rock_at = |ax: i32, ay: i32, z: i32, b: Biome| -> Mat {
+        use Biome as B;
+        if z >= 13 + deep {
+            let r = rock_n.fbm3(ax as f64 / 20.0, ay as f64 / 20.0, z as f64 / 3.0, 2);
+            match b {
+                B::Mountain | B::Glacier | B::Tundra | B::Taiga => {
+                    if r < 0.62 { Mat::Granite } else { Mat::Marble }
+                }
+                _ => {
+                    if r < 0.5 { Mat::Sandstone } else { Mat::Limestone }
+                }
+            }
+        } else if z >= 4 {
+            let r = rock_n.fbm3(ax as f64 / 9.0, ay as f64 / 9.0, z as f64 / 2.0, 2);
+            match b {
+                B::Mountain | B::Glacier => {
+                    if r > 0.68 { Mat::Basalt } else { Mat::Granite }
+                }
+                B::Desert | B::Badlands | B::Savanna => {
+                    if r < 0.42 {
+                        Mat::Sandstone
+                    } else if r > 0.66 {
+                        Mat::Marble
+                    } else {
+                        Mat::Granite
+                    }
+                }
+                _ => {
+                    if r > 0.66 { Mat::Marble } else { Mat::Granite }
+                }
+            }
+        } else {
+            Mat::Basalt
+        }
+    };
 
     for y in 0..h {
         for x in 0..w {
             let (ax, ay) = (x + ox, y + oy);
-            let hh = surf[(y * w + x) as usize];
-            let b = biome_of((y * w + x) as usize);
+            let i = (y * w + x) as usize;
+            let hh = surf[i];
+            let b = biome_of(i);
             use Biome as B;
-            // How deep the soil lies: bare rock on the heights, deep sand in the desert.
-            let soil = match b {
+            let underwater = shape.fill[i] > hh || shape.river[i] != 0;
+            let near_sea = shape.sea[i]
+                || DIRS8.iter().any(|&(dx, dy)| {
+                    let (nx, ny) = (x + dx * 2, y + dy * 2);
+                    nx >= 0 && ny >= 0 && nx < w && ny < h && shape.sea[(ny * w + nx) as usize]
+                });
+            // Bare rock on cliffs and crags where the rock is hard; deep soil
+            // where the water laid it down; sand on the beach.
+            let steep = drop_at(x, y);
+            let bare = !underwater && (steep >= 2 && shape.hard[i] > 0.5 || steep >= 3);
+            let mut soil = match b {
                 B::Mountain | B::Glacier => i32::from(hh <= 20 + deep),
                 B::Badlands => 1,
                 B::Tundra => 2,
                 B::Desert => 4,
                 _ => 3,
             };
+            if bare {
+                soil = 0;
+            } else if shape.alluvium[i] > 1.0 {
+                soil += 1;
+            } else if shape.alluvium[i] < -1.2 && shape.hard[i] > 0.5 || shape.scree[i] > 0.8 {
+                soil = soil.min(1);
+            }
             let sv = soil_n.fbm2(ax as f64 / 14.0, ay as f64 / 14.0, 2);
             let soil_mat = match b {
                 B::Desert => Mat::Sand,
@@ -371,6 +319,7 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                 B::Swamp | B::Jungle => {
                     if sv < 0.55 { Mat::Loam } else { Mat::Clay }
                 }
+                _ if near_sea && hh <= sea + 1 => Mat::Sand,
                 _ => {
                     if sv < 0.42 {
                         Mat::Loam
@@ -383,67 +332,41 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
             };
             for z in 0..d {
                 let p = Pos::new(x, y, z);
-                let t = world.t_mut(p);
                 if z == 0 {
+                    let t = world.t_mut(p);
                     t.kind = TileKind::Wall;
                     t.mat = Mat::Bedrock;
                 } else if z < hh {
-                    t.kind = TileKind::Wall;
                     let depth = hh - z;
-                    t.mat = if depth <= soil {
-                        soil_mat
-                    } else if z >= 13 + deep {
-                        let r = rock_n.fbm3(ax as f64 / 20.0, ay as f64 / 20.0, z as f64 / 3.0, 2);
-                        match b {
-                            // Granite in the high and cold places, sedimentary rock elsewhere.
-                            B::Mountain | B::Glacier | B::Tundra | B::Taiga => {
-                                if r < 0.62 { Mat::Granite } else { Mat::Marble }
-                            }
-                            _ => {
-                                if r < 0.5 { Mat::Sandstone } else { Mat::Limestone }
-                            }
-                        }
-                    } else if z >= 4 {
-                        let r = rock_n.fbm3(ax as f64 / 9.0, ay as f64 / 9.0, z as f64 / 2.0, 2);
-                        match b {
-                            B::Mountain | B::Glacier => {
-                                if r > 0.68 { Mat::Basalt } else { Mat::Granite }
-                            }
-                            B::Desert | B::Badlands | B::Savanna => {
-                                if r < 0.42 {
-                                    Mat::Sandstone
-                                } else if r > 0.66 {
-                                    Mat::Marble
-                                } else {
-                                    Mat::Granite
-                                }
-                            }
-                            _ => {
-                                if r > 0.66 { Mat::Marble } else { Mat::Granite }
-                            }
-                        }
-                    } else {
-                        Mat::Basalt
-                    };
+                    let mat = if depth <= soil { soil_mat } else { rock_at(ax, ay, z, b) };
+                    let t = world.t_mut(p);
+                    t.kind = TileKind::Wall;
+                    t.mat = mat;
                 } else if z == hh {
-                    t.kind = TileKind::Floor;
-                    // Sand under water, and a beach along the sea.
-                    t.mat = if hh < water_level || b == B::Ocean && hh <= water_level + 1 {
+                    // Sand and clay under water, a beach along the sea, bare
+                    // rock where there's no soil.
+                    let mat = if underwater {
+                        if matches!(b, B::Swamp | B::Jungle) || shape.river[i] == 0 && sv < 0.4 { Mat::Clay } else { Mat::Sand }
+                    } else if near_sea && hh <= sea + 1 {
                         Mat::Sand
+                    } else if soil == 0 {
+                        rock_at(ax, ay, z - 1, b)
                     } else {
                         match b {
                             B::Desert | B::Ocean => Mat::Sand,
                             B::Badlands => soil_mat,
-                            B::Mountain | B::Glacier if soil == 0 => Mat::Granite,
                             _ => Mat::Grass,
                         }
                     };
+                    let t = world.t_mut(p);
+                    t.kind = TileKind::Floor;
+                    t.mat = mat;
                 }
             }
         }
     }
 
-    // Natural ramps on every slope.
+    // Natural ramps on every slope (a step of one level; anything higher is a cliff).
     for y in 0..h {
         for x in 0..w {
             let hh = surf[(y * w + x) as usize];
@@ -589,17 +512,56 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
         }
     }
 
+    // Water: the sea and the lakes to their brims, the rivers in their
+    // beds (shallow at the fords), streams where the run-off gathers.
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) as usize;
+            let hh = surf[i];
+            if shape.fill[i] > hh {
+                for z in hh..shape.fill[i].min(d - 1) {
+                    world.t_mut(Pos::new(x, y, z)).water = 7;
+                }
+            } else if shape.river[i] != 0 {
+                world.t_mut(Pos::new(x, y, hh)).water = shape.river[i];
+            } else if shape.stream[i] {
+                let t = world.t_mut(Pos::new(x, y, hh));
+                t.water = 2;
+                if t.mat == Mat::Grass {
+                    t.mat = Mat::Sand;
+                }
+            }
+        }
+    }
+
+    // Caves and tunnels in the upper rock (bored last, below): more of
+    // them in broken, hilly land.
+    let rough = (0..h).flat_map(|y| (0..w).map(move |x| (x, y))).filter(|&(x, y)| drop_at(x, y) >= 2).count() as f64 / (w * h) as f64;
+    let hilly = matches!(params.biome, Biome::Hills | Biome::Mountain | Biome::Badlands | Biome::Glacier);
+    let mut tunnels = ((w * h) as f64 / 1500.0 * (0.4 + rough * 25.0)).round() as usize;
+    if hilly {
+        tunnels = tunnels.max(3);
+    } else if rough < 0.01 && frng.chance(0.5) {
+        tunnels = tunnels.min(1);
+    }
+    let cave_floor = bands.iter().map(|b| b.1).max().unwrap_or(8) + 2;
+
     // An aquifer: rock two to four levels down that holds water, in broad
-    // patches across the map.
+    // patches across the map, likelier under wet lowland than dry heights.
     if params.aquifer > 0 {
         let aq_n = Noise::new(seed ^ 0x9999);
+        let mut sorted = surf.clone();
+        sorted.sort_unstable();
+        let median = sorted[sorted.len() / 2];
         for y in 0..h {
             for x in 0..w {
                 let (ax, ay) = (x + ox, y + oy);
-                if aq_n.fbm2(ax as f64 / 18.0, ay as f64 / 18.0, 2) < 0.45 {
+                let i = (y * w + x) as usize;
+                let hh = surf[i];
+                let low = ((median - hh) as f64 * 0.03).clamp(-0.12, 0.12);
+                if aq_n.fbm2(ax as f64 / 18.0, ay as f64 / 18.0, 2) + shape.moist[i] as f64 * 0.12 + low < 0.5 {
                     continue;
                 }
-                let hh = surf[(y * w + x) as usize];
                 for z in (hh - 4).max(1)..=hh - 2 {
                     let t = world.t_mut(Pos::new(x, y, z));
                     if t.kind == TileKind::Wall && !t.mat.is_ore() && !t.mat.is_gem() {
@@ -610,33 +572,56 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
         }
     }
 
-    // Surface lakes, forests and shrubs.
+    // What grows: forests where the ground is wet (thick along the rivers,
+    // thin on the ridges, with clearings), meadows on the flats, reeds by
+    // still water, nothing on bare rock; snow on the heights of cold lands.
+    let (lo_s, hi_s) = (*surf.iter().min().unwrap_or(&0), *surf.iter().max().unwrap_or(&0));
     for y in 0..h {
         for x in 0..w {
             let (ax, ay) = (x + ox, y + oy);
-            let hh = surf[(y * w + x) as usize];
-            if hh < water_level {
-                for z in hh..water_level {
-                    world.t_mut(Pos::new(x, y, z)).water = 7;
-                }
-                continue;
-            }
+            let i = (y * w + x) as usize;
+            let hh = surf[i];
             let p = Pos::new(x, y, hh);
-            if world.t(p).kind != TileKind::Floor {
+            let b = biome_of(i);
+            let snowline = match b {
+                Biome::Glacier => i32::MIN,
+                Biome::Mountain => lo_s + (hi_s - lo_s) * 7 / 10,
+                Biome::Tundra | Biome::Taiga => hi_s - 3,
+                _ => i32::MAX,
+            };
+            if hh >= snowline && hi_s > lo_s + 4 || b == Biome::Glacier {
+                if world.t(p).water == 0 && world.t(p).kind != TileKind::Open {
+                    world.t_mut(p).snow = true;
+                }
+            }
+            if world.t(p).kind != TileKind::Floor || world.t(p).water > 0 {
                 continue;
             }
-            let forest = forest_n.fbm2(ax as f64 / 16.0, ay as f64 / 16.0, 3);
-            // Trees by the column's own biome (and none on bare rock or snowfields).
-            let b = biome_of((y * w + x) as usize);
-            let trees = if world.t(p).mat == Mat::Grass || matches!(b, Biome::Desert | Biome::Badlands) { b.params().forest } else { 0.0 };
-            if b == Biome::Glacier {
-                world.t_mut(p).snow = true;
-            }
-            if forest > 0.55 && rng.chance((0.30 * trees).min(0.8)) || rng.chance(0.015 * trees) {
+            let m = shape.moist[i] as f64;
+            let by_water = DIRS8.iter().any(|&(dx, dy)| {
+                let q = p.offset(dx, dy, 0);
+                world.in_bounds(q) && world.t(q).water > 3
+            });
+            let mat = world.t(p).mat;
+            let trees = if mat == Mat::Grass || matches!(b, Biome::Desert | Biome::Badlands) && mat.is_soil() { b.params().forest } else { 0.0 };
+            // Ridges and slopes dry out; hollows and banks hold water.
+            let ridge = (drop_at(x, y) as f64 * 0.12).min(0.4);
+            let cluster = forest_n.fbm2(ax as f64 / 16.0, ay as f64 / 16.0, 3) + (m - 0.35) * 0.35 - ridge;
+            let density = trees * (0.35 + 0.9 * m);
+            if shape.pass[i] {
+                // A way cut through stays open.
+            } else if cluster > 0.52 && rng.chance((0.34 * density).min(0.8)) || rng.chance(0.012 * trees) {
                 let t = world.t_mut(p);
                 t.kind = TileKind::Tree;
                 t.mat = Mat::Wood;
-            } else if rng.chance(0.05) {
+            } else if by_water && matches!(b, Biome::Swamp | Biome::Jungle | Biome::Forest | Biome::Taiga | Biome::Tundra | Biome::Grassland) && rng.chance(0.35) {
+                // Reeds and marsh by still water.
+                if b == Biome::Swamp && rng.chance(0.4) {
+                    world.t_mut(p).water = 2;
+                } else {
+                    world.t_mut(p).kind = TileKind::Shrub;
+                }
+            } else if rng.chance(0.04 + 0.05 * m) {
                 world.t_mut(p).kind = TileKind::Shrub;
             }
         }
@@ -644,25 +629,6 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
 
     // ---- The site's features. ----
     let surf_at = |world: &World, x: i32, y: i32| world.surface[(y * world.w + x) as usize];
-    // A river in its bed: deep water, with shallow fords every so often.
-    if let Some(c) = &river {
-        for y in 0..h {
-            for x in 0..w {
-                if !river_cell[(y * w + x) as usize] {
-                    continue;
-                }
-                let (_, along) = c.at(x + ox, y + oy);
-                let hh = surf_at(&world, x, y);
-                let p = Pos::new(x, y, hh);
-                let t = world.t_mut(p);
-                if t.kind == TileKind::Tree || t.kind == TileKind::Shrub {
-                    t.kind = TileKind::Floor;
-                }
-                t.mat = Mat::Sand;
-                t.water = if along.rem_euclid(19) < 3 { 2 } else { 6 };
-            }
-        }
-    }
     // A chasm down through the rock, with bridges of rock left across it.
     if let Some(c) = &chasm {
         let bottom = bands.last().map_or(8, |b| b.1 + 1);
@@ -723,8 +689,10 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                     continue;
                 }
                 if r2 <= 9 {
-                    world.t_mut(p).water = 6;
-                } else if r2 <= 40 {
+                    if world.t(p).water == 0 {
+                        world.t_mut(p).water = 6;
+                    }
+                } else if r2 <= 40 && world.t(p).water == 0 {
                     let t = world.t_mut(p);
                     t.mat = Mat::Grass;
                     if frng.chance(0.35) && t.kind == TileKind::Floor {
@@ -769,7 +737,7 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                 }
                 let hh = surf_at(&world, tx, ty);
                 let p = Pos::new(tx, ty, hh);
-                if world.t(p).kind == TileKind::Floor && world.t(p).water == 0 {
+                if world.t(p).kind == TileKind::Floor && world.t(p).water == 0 && !shape.pass[(ty * w + tx) as usize] {
                     let t = world.t_mut(p);
                     t.kind = TileKind::Wall;
                     t.mat = Mat::Granite;
@@ -821,6 +789,20 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
         }
     }
 
+    // A tree or a crag that shuts a narrow way between two pieces of land
+    // falls (the land must stay one piece to walk).
+    if keep.is_none() {
+        open_ways(&mut world);
+    }
+
+    // The caves, kept clear of where the wagon will stop (the fortress
+    // grows round it).
+    if keep.is_none() && tunnels > 0 {
+        let e = embark_spot(&world);
+        let clear = (w.min(h) as f64 * 0.42) as i32;
+        crate::terrain_gen::caves::bore(&mut world, seed, tunnels.min(14), (e.x, e.y), clear, cave_floor, volcano.map(|(vx, vy)| (vx - ox, vy - oy)));
+    }
+
     // Everything under the open sky is known, plus the cliff faces beside it.
     for y in 0..h {
         for x in 0..w {
@@ -857,7 +839,114 @@ pub fn generate_region(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
             }
         }
     }
-    world
+    (world, shape)
+}
+
+/// Clear the trees and crags standing between the walkable land's pieces:
+/// any whose neighbours belong to more than one piece goes, until the
+/// land is one (or nothing more can be opened).
+fn open_ways(world: &mut World) {
+    for _ in 0..6 {
+        let (piece, main) = crate::terrain_gen::connect::surface_pieces(world);
+        let pieces = piece.iter().filter(|&&p| p != u32::MAX && p != main).count();
+        if pieces == 0 {
+            return;
+        }
+        let (w, h) = (world.w, world.h);
+        let mut opened = 0;
+        for y in 0..h {
+            for x in 0..w {
+                let p = Pos::new(x, y, world.surface_z(x, y));
+                let t = *world.t(p);
+                if !(t.kind == TileKind::Tree || t.kind == TileKind::Wall && t.water == 0) {
+                    continue;
+                }
+                let mut seen: Vec<u32> = Vec::new();
+                for &(dx, dy) in DIRS8.iter() {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx < 0 || ny < 0 || nx >= w || ny >= h {
+                        continue;
+                    }
+                    let k = piece[(ny * w + nx) as usize];
+                    if k != u32::MAX && (world.surface_z(nx, ny) - p.z).abs() <= 1 && !seen.contains(&k) {
+                        seen.push(k);
+                    }
+                }
+                if seen.len() >= 2 {
+                    let t = world.t_mut(p);
+                    t.kind = TileKind::Floor;
+                    if t.mat == Mat::Wood || t.mat.is_building_stone() {
+                        t.mat = Mat::Grass;
+                    }
+                    opened += 1;
+                }
+            }
+        }
+        if opened == 0 {
+            return;
+        }
+    }
+}
+
+/// Pick a dry, open spot near the middle of the map for the wagon: on the
+/// land the map's edges can be walked to from, back from deep water, with
+/// level ground round it and rock to dig into beside it.
+pub fn embark_spot(w: &World) -> Pos {
+    let (cx, cy) = (w.w / 2, w.h / 2);
+    let (piece, main) = crate::terrain_gen::connect::surface_pieces(w);
+    let deep = |x: i32, y: i32| x >= 0 && y >= 0 && x < w.w && y < w.h && w.t(Pos::new(x, y, w.surface_z(x, y))).water > 3;
+    let mut best = None;
+    let mut best_score = i32::MIN;
+    // Open, dry ground at each column's top (not a tree, not water).
+    let open = |x: i32, y: i32| -> bool {
+        let p = Pos::new(x, y, w.surface_z(x, y));
+        w.walkable(p) && w.t(p).water == 0 && w.t(p).kind != TileKind::Tree
+    };
+    let (mx, my) = ((w.w / 8).clamp(4, 12), (w.h / 6).clamp(4, 10));
+    for y in my..w.h - my {
+        for x in mx..w.w - mx {
+            let p = Pos::new(x, y, w.surface_z(x, y));
+            if !w.walkable(p) || w.t(p).water > 0 || piece[(y * w.w + x) as usize] != main {
+                continue;
+            }
+            // Room round the wagon for stockpiles, farms and workshops:
+            // open ground within a level of it, best of all level with it.
+            let mut score = 0;
+            for dy in (-10..=10).step_by(2) {
+                for dx in (-10..=10).step_by(2) {
+                    let (qx, qy) = (x + dx, y + dy);
+                    if qx < 0 || qy < 0 || qx >= w.w || qy >= w.h || !open(qx, qy) {
+                        continue;
+                    }
+                    let dz = (w.surface_z(qx, qy) - p.z).abs();
+                    score += match dz {
+                        0 => 4,
+                        1 => 2,
+                        _ => 0,
+                    };
+                }
+            }
+            if (-3..=3).any(|dy| (-3..=3).any(|dx| deep(x + dx, y + dy))) {
+                score -= 30;
+            }
+            // Ground that holds level or rises to the east: halls dug there stay under rock.
+            score += (1..=20).filter(|&dx| x + dx < w.w && w.surface_z(x + dx, y) >= p.z - 1).count() as i32;
+            for dy in -2..=2 {
+                for dx in -2..=2 {
+                    let q = Pos::new(x + dx, y + dy, p.z);
+                    if w.walkable(q) && w.t(q).water == 0 && w.t(q).kind != TileKind::Ramp {
+                        score += 4;
+                    }
+                }
+            }
+            score -= (x - cx).abs() + (y - cy).abs();
+            if score > best_score {
+                best_score = score;
+                best = Some(p);
+            }
+        }
+    }
+    best.unwrap_or(Pos::new(cx, cy, w.surface_z(cx, cy)))
 }
 
 #[cfg(test)]
@@ -886,7 +975,7 @@ mod tests {
             for dx in -3..=3 {
                 let biome = if dx >= 1 && dy <= 0 { Biome::Ocean } else if dy >= 1 { Biome::Desert } else { Biome::Grassland };
                 let elev = if biome == Biome::Ocean { 60 } else { 120 };
-                p.around.push(Around { x: 10 + dx, y: 10 + dy, biome, elev, evil: false });
+                p.around.push(Around { x: 10 + dx, y: 10 + dy, biome, elev, evil: false, river: 0 });
             }
         }
         let w = generate_region(5, &p, (0, 0), (96, 64), None);
@@ -942,5 +1031,309 @@ mod tests {
         p.size = MapSize::MEDIUM;
         let old = crate::world::generate(42, &p);
         assert!(old.tiles == plain.tiles);
+    }
+
+    /// What the top of a column looks like, in plain ASCII: `~` deep water,
+    /// `-` shallows, `#` ice, `T` tree, `"` shrub, `,` grass, `:` bare soil,
+    /// `.` sand, `n` bare rock, `*` snow, `W` rock standing up, `M` magma,
+    /// ` ` a drop.
+    pub(crate) fn cover_char(w: &World, x: i32, y: i32) -> char {
+        let s = w.surface_z(x, y);
+        let mut p = Pos::new(x, y, s);
+        while p.z + 1 < w.d && w.t(p.up()).water > 0 {
+            p = p.up();
+        }
+        let t = w.t(p);
+        if t.frozen {
+            return '#';
+        }
+        if t.magma > 0 {
+            return 'M';
+        }
+        if t.water > 3 || p.z > s {
+            return '~';
+        }
+        if t.water > 0 {
+            return '-';
+        }
+        match t.kind {
+            TileKind::Tree => 'T',
+            TileKind::Shrub => '"',
+            TileKind::Wall => 'W',
+            TileKind::Open => ' ',
+            _ if t.snow => '*',
+            _ => match t.mat {
+                Mat::Grass => ',',
+                Mat::Sand => '.',
+                Mat::Loam | Mat::Clay => ':',
+                _ => 'n',
+            },
+        }
+    }
+
+    /// The surface height as one character: 0-9 then a-z, counted up from
+    /// the lowest column.
+    pub(crate) fn height_char(w: &World, x: i32, y: i32, lo: i32) -> char {
+        let v = (w.surface_z(x, y) - lo).clamp(0, 35) as u32;
+        std::char::from_digit(v, 36).unwrap()
+    }
+
+    /// The sites `show_sites` draws: (label, test on a world cell).
+    pub(crate) fn pick_sites(ow: &crate::overworld::Overworld, seed: u64) -> Vec<(&'static str, i32, i32)> {
+        use crate::overworld::Biome as B;
+        let cells: Vec<(i32, i32)> = (2..ow.h - 3).flat_map(|y| (2..ow.w - 3).map(move |x| (x, y))).filter(|&(x, y)| ow.embarkable(x, y)).collect();
+        let same_round = |x: i32, y: i32| [(1, 0), (0, 1), (1, 1)].iter().all(|&(dx, dy)| ow.cell(x + dx, y + dy).biome == ow.cell(x, y).biome);
+        let sea_next = |x: i32, y: i32| [(1, 0), (0, 1)].iter().any(|&(dx, dy)| ow.cell(x + dx, y + dy).biome == B::Ocean);
+        let feats = |x: i32, y: i32| ow.site_features(seed, x, y);
+        let tests: Vec<(&'static str, Box<dyn Fn(i32, i32) -> bool>)> = vec![
+            ("plains (grassland)", Box::new(move |x, y| ow.cell(x, y).biome == B::Grassland && same_round(x, y) && feats(x, y) & (feat::RIVER | feat::MESAS | feat::CHASM) == 0)),
+            ("rolling hills", Box::new(move |x, y| ow.cell(x, y).biome == B::Hills && same_round(x, y) && feats(x, y) & (feat::MESAS | feat::CHASM) == 0)),
+            ("mountains", Box::new(move |x, y| ow.cell(x, y).biome == B::Mountain && feats(x, y) & feat::PEAKS != 0 && feats(x, y) & feat::CHASM == 0)),
+            ("forest with a river", Box::new(move |x, y| ow.cell(x, y).biome == B::Forest && ow.cell(x, y).river != 0 && same_round(x, y))),
+            ("coast", Box::new(move |x, y| matches!(ow.cell(x, y).biome, B::Grassland | B::Forest | B::Hills) && sea_next(x, y))),
+            ("swamp", Box::new(move |x, y| ow.cell(x, y).biome == B::Swamp)),
+            ("desert", Box::new(move |x, y| ow.cell(x, y).biome == B::Desert)),
+            ("badlands", Box::new(move |x, y| ow.cell(x, y).biome == B::Badlands)),
+        ];
+        tests.iter().filter_map(|(name, f)| cells.iter().find(|&&(x, y)| f(x, y)).map(|&(x, y)| (*name, x, y))).collect()
+    }
+
+    /// Draw a handful of sites (cover, then heights), every second row,
+    /// from world 42 or the next world that has one:
+    /// `cargo test --release show_sites -- --ignored --nocapture` (SITE=name for one).
+    #[test]
+    #[ignore]
+    fn show_sites() {
+        let only = std::env::var("SITE").ok();
+        let mut shown: Vec<&str> = Vec::new();
+        for seed in [42u64, 7, 5, 11, 13] {
+        let ow = crate::overworld::Overworld::generate(seed);
+        for (name, sx, sy) in pick_sites(&ow, seed) {
+            if shown.contains(&name) || only.as_deref().map_or(false, |o| !name.contains(o)) {
+                continue;
+            }
+            shown.push(name);
+            let params = ow.embark_params(seed, sx, sy, MapSize::MEDIUM);
+            let t0 = std::time::Instant::now();
+            let w = crate::world::generate(seed ^ ((sx as u64) << 20) ^ ((sy as u64) << 40), &params);
+            let ms = t0.elapsed().as_secs_f64() * 1000.0;
+            let lo = (0..w.h).flat_map(|y| (0..w.w).map(move |x| (x, y))).map(|(x, y)| w.surface_z(x, y)).min().unwrap();
+            let hi = (0..w.h).flat_map(|y| (0..w.w).map(move |x| (x, y))).map(|(x, y)| w.surface_z(x, y)).max().unwrap();
+            println!("== {} at ({}, {}): {:?}, features {:?}, river links {}, z {}..{}, {:.0} ms", name, sx, sy, params.biome, feature_names(params.features), params.river, lo, hi, ms);
+            for y in (0..w.h).step_by(2) {
+                let cover: String = (0..w.w).map(|x| cover_char(&w, x, y)).collect();
+                println!("  {}", cover);
+            }
+            println!("  -- heights (0 = z {})", lo);
+            for y in (0..w.h).step_by(2) {
+                let hts: String = (0..w.w).map(|x| height_char(&w, x, y, lo)).collect();
+                println!("  {}", hts);
+            }
+        }
+        }
+    }
+
+    /// A site from a generated world, made as `Game::embark` makes it.
+    fn site_map(ow: &crate::overworld::Overworld, seed: u64, x: i32, y: i32, size: MapSize) -> (EmbarkParams, World, crate::terrain_gen::Shape) {
+        let p = ow.embark_params(seed, x, y, size);
+        let (w, s) = generate_shaped(seed ^ ((x as u64) << 20) ^ ((y as u64) << 40), &p, (0, 0), (size.w, size.h), None);
+        (p, w, s)
+    }
+
+    fn named_site(name: &str) -> (EmbarkParams, World, crate::terrain_gen::Shape) {
+        for seed in [42u64, 7, 5] {
+            let ow = crate::overworld::Overworld::generate(seed);
+            if let Some(&(_, x, y)) = pick_sites(&ow, seed).iter().find(|s| s.0.contains(name)) {
+                return site_map(&ow, seed, x, y, MapSize::MEDIUM);
+            }
+        }
+        panic!("no {} site", name);
+    }
+
+    /// Each column's steepest step to a neighbour, as a histogram (0, 1, 2,
+    /// 3 or more levels) and its mean.
+    fn slopes(w: &World) -> ([usize; 4], f64) {
+        let mut hist = [0usize; 4];
+        let mut sum = 0i64;
+        for y in 0..w.h {
+            for x in 0..w.w {
+                let s = w.surface_z(x, y);
+                let d = crate::geom::DIRS4.iter().filter(|&&(dx, dy)| x + dx >= 0 && y + dy >= 0 && x + dx < w.w && y + dy < w.h).map(|&(dx, dy)| (w.surface_z(x + dx, y + dy) - s).abs()).max().unwrap_or(0);
+                hist[(d as usize).min(3)] += 1;
+                sum += d as i64;
+            }
+        }
+        (hist, sum as f64 / (w.w * w.h) as f64)
+    }
+
+    #[test]
+    fn rivers_run_downhill_the_way_the_world_draws_them() {
+        let mut checked = 0;
+        for seed in [42u64, 7] {
+            let ow = crate::overworld::Overworld::generate(seed);
+            let sites: Vec<(i32, i32)> = (2..ow.h - 3).flat_map(|y| (2..ow.w - 3).map(move |x| (x, y))).filter(|&(x, y)| ow.embarkable(x, y) && ow.cell(x, y).river != 0).take(8).collect();
+            for (sx, sy) in sites {
+                let (p, w, s) = site_map(&ow, seed, sx, sy, MapSize::MEDIUM);
+                // Never uphill along any reach.
+                for c in &s.courses {
+                    for k in 1..c.len() {
+                        assert!(c[k].2 <= c[k - 1].2, "seed {} site {:?}: the river climbs from {:?} to {:?}", seed, (sx, sy), c[k - 1], c[k]);
+                    }
+                }
+                // Water in its bed.
+                let river: Vec<(i32, i32)> = (0..w.h).flat_map(|y| (0..w.w).map(move |x| (x, y))).filter(|&(x, y)| s.river[(y * w.w + x) as usize] != 0).collect();
+                assert!(river.len() > 40, "seed {} site {:?}: hardly any river ({})", seed, (sx, sy), river.len());
+                for &(x, y) in &river {
+                    assert!(w.t(Pos::new(x, y, w.surface_z(x, y))).water > 0, "a dry river bed at {:?}", (x, y));
+                }
+                // In and out across the sides the world map links.
+                let near = |f: &dyn Fn(i32, i32) -> bool| river.iter().any(|&(x, y)| f(x, y));
+                if p.river & 1 != 0 {
+                    assert!(near(&|x, y| y == 0 && x < 48), "seed {} site {:?}: no river at the north edge", seed, (sx, sy));
+                }
+                if p.river & 8 != 0 {
+                    assert!(near(&|x, y| x == 0 && y < 48), "seed {} site {:?}: no river at the west edge", seed, (sx, sy));
+                }
+                if p.river & 2 != 0 {
+                    assert!(near(&|x, y| (46..=50).contains(&x) && y < 48), "seed {} site {:?}: no river across the east side", seed, (sx, sy));
+                }
+                if p.river & 4 != 0 {
+                    assert!(near(&|x, y| (46..=50).contains(&y) && x < 48), "seed {} site {:?}: no river across the south side", seed, (sx, sy));
+                }
+                checked += 1;
+            }
+        }
+        assert!(checked >= 8, "only {} river sites", checked);
+    }
+
+    #[test]
+    fn lakes_lie_in_hollows() {
+        let mut lakes = 0;
+        for name in ["forest", "swamp", "mountains", "hills", "plains"] {
+            let (_, w, s) = named_site(name);
+            for y in 0..w.h {
+                for x in 0..w.w {
+                    let i = (y * w.w + x) as usize;
+                    if s.fill[i] <= w.surface_z(x, y) || s.sea[i] {
+                        continue;
+                    }
+                    lakes += 1;
+                    // Held in on every side: by the lake itself, or by ground at least as high as its water.
+                    for &(dx, dy) in DIRS8.iter() {
+                        let (nx, ny) = (x + dx, y + dy);
+                        if nx < 0 || ny < 0 || nx >= w.w || ny >= w.h {
+                            continue;
+                        }
+                        let j = (ny * w.w + nx) as usize;
+                        let held = s.fill[j] >= s.fill[i] || w.surface_z(nx, ny) >= s.fill[i];
+                        assert!(held, "{}: the lake at {:?} (to {}) spills over {:?} (ground {})", name, (x, y), s.fill[i], (nx, ny), w.surface_z(nx, ny));
+                    }
+                    // And the water itself is there, to its brim.
+                    assert_eq!(w.t(Pos::new(x, y, s.fill[i] - 1)).water, 7);
+                }
+            }
+        }
+        assert!(lakes > 50, "hardly any lakes ({})", lakes);
+    }
+
+    #[test]
+    fn mountains_are_steeper_than_plains() {
+        let (_, plains, _) = named_site("plains");
+        let (_, peaks, _) = named_site("mountains");
+        let (_, hills, _) = named_site("hills");
+        let (ph, pm) = slopes(&plains);
+        let (mh, mm) = slopes(&peaks);
+        let (hh, hm) = slopes(&hills);
+        eprintln!("slopes 0/1/2/3+ and mean: plains {:?} {:.2}, hills {:?} {:.2}, mountains {:?} {:.2}", ph, pm, hh, hm, mh, mm);
+        assert!(mm > pm * 2.0, "mountains {:.2} vs plains {:.2}", mm, pm);
+        assert!(mh[2] + mh[3] > (ph[2] + ph[3]) * 3, "cliffs: mountains {:?} plains {:?}", mh, ph);
+        assert!(ph[0] > mh[0], "the plains are flatter");
+        let range = |w: &World| w.surface.iter().max().unwrap() - w.surface.iter().min().unwrap();
+        assert!(range(&peaks) > range(&plains) + 4, "relief: mountains {} plains {}", range(&peaks), range(&plains));
+    }
+
+    #[test]
+    fn caves_wind_under_hilly_land() {
+        let mut found = 0;
+        for name in ["hills", "mountains", "badlands"] {
+            let (p, w, _) = named_site(name);
+            if p.features & (feat::CHASM | feat::VOLCANO) != 0 {
+                continue;
+            }
+            let top_band = w.caverns.iter().map(|b| b.1).max().unwrap();
+            let caves = count(&w, |t, q| q.z > top_band + 1 && q.z < w.surface_z(q.x, q.y) - 1 && !t.kind.solid() && t.water == 0 && t.magma == 0);
+            eprintln!("{}: {} tiles of cave", name, caves);
+            assert!(caves > 40, "{}: no caves ({})", name, caves);
+            found += 1;
+        }
+        assert!(found >= 2);
+        // And none where the wagon stops.
+        let (_, w, _) = named_site("hills");
+        let e = embark_spot(&w);
+        let top_band = w.caverns.iter().map(|b| b.1).max().unwrap();
+        let near = count(&w, |t, q| (q.x - e.x).abs() <= 12 && (q.y - e.y).abs() <= 12 && q.z > top_band + 1 && q.z < w.surface_z(q.x, q.y) - 1 && !t.kind.solid());
+        assert_eq!(near, 0, "a cave under the wagon");
+    }
+
+    #[test]
+    fn land_is_made_quickly() {
+
+        let ow = crate::overworld::Overworld::generate(42);
+        let (_, x, y) = pick_sites(&ow, 42).into_iter().find(|s| s.0 == "mountains").unwrap();
+        let p = ow.embark_params(42, x, y, MapSize::MEDIUM);
+        let slow = if cfg!(debug_assertions) { 15.0 } else { 1.0 };
+        for (size, bound) in [(MapSize::MEDIUM, 1.0), (MapSize::ALL[2], 3.0), (MapSize { w: 320, h: 256, d: 48 }, 6.0)] {
+            let mut q = p.clone();
+            q.size = size;
+            let t0 = std::time::Instant::now();
+            let w = generate_region(9, &q, (0, 0), (size.w, size.h), None);
+            let s = t0.elapsed().as_secs_f64();
+            eprintln!("{}x{}x{}: {:.0} ms", w.w, w.h, w.d, s * 1000.0);
+            assert!(s < bound * slow, "{}x{} took {:.2}s", size.w, size.h, s);
+        }
+    }
+
+    #[test]
+    fn the_wagon_stops_on_dry_ground_the_whole_map_can_reach() {
+        for name in ["plains", "hills", "mountains", "forest", "coast", "swamp", "desert", "badlands"] {
+            let (_, w, _) = named_site(name);
+            let e = embark_spot(&w);
+            let t = w.t(e);
+            assert!(w.walkable(e) && t.water == 0 && t.kind != TileKind::Tree, "{}: the wagon at {:?} on {:?}", name, e, t.kind);
+            assert!(DIRS8.iter().all(|&(dx, dy)| w.get(e.offset(dx, dy, 0)).map_or(true, |q| q.water <= 3)), "{}: deep water beside the wagon", name);
+            // Every bit of walkable ground is one piece with the wagon's.
+            let (piece, main) = crate::terrain_gen::connect::surface_pieces(&w);
+            assert_eq!(piece[(e.y * w.w + e.x) as usize], main, "{}: the wagon is cut off", name);
+            let walk = (0..w.w * w.h).filter(|&i| piece[i as usize] != u32::MAX).count();
+            let cut_off = (0..w.w * w.h).filter(|&i| piece[i as usize] != u32::MAX && piece[i as usize] != main).count();
+            assert!(cut_off * 100 <= walk, "{}: {} of {} tiles cut off", name, cut_off, walk);
+            // And a walker from the map's edge gets there.
+            let edge = (0..w.w).map(|x| Pos::new(x, 0, w.surface_z(x, 0))).find(|&p| w.walkable(p) && piece[p.x as usize] == main);
+            if let Some(from) = edge {
+                assert!(crate::path::astar(&w, from, e, 200_000, crate::world::Mover::Goblin).is_some(), "{}: no way in from the edge", name);
+            }
+        }
+    }
+
+    #[test]
+    fn sites_differ() {
+        // Slope, cliffs, relief and water cover differ from site to site.
+        let mut seen = Vec::new();
+        for name in ["plains", "hills", "mountains", "forest", "coast", "swamp", "badlands", "desert"] {
+            let (_, w, s) = named_site(name);
+            let (hist, mean_slope) = slopes(&w);
+            let cliffs = (hist[2] + hist[3]) as f64 / w.surface.len() as f64;
+            let wet = s.fill.iter().zip(&w.surface).filter(|(f, z)| **f > **z).count() as f64 / w.surface.len() as f64;
+            let relief = w.surface.iter().max().unwrap() - w.surface.iter().min().unwrap();
+            seen.push((name, mean_slope, cliffs, wet, relief));
+        }
+        eprintln!("{:?}", seen);
+        for i in 0..seen.len() {
+            for j in i + 1..seen.len() {
+                let (a, b) = (seen[i], seen[j]);
+                let differ = (a.1 - b.1).abs() > 0.03 || (a.2 - b.2).abs() > 0.02 || (a.3 - b.3).abs() > 0.01 || (a.4 - b.4).abs() >= 3;
+                assert!(differ, "{} and {} look alike: {:?} {:?}", a.0, b.0, a, b);
+            }
+        }
     }
 }

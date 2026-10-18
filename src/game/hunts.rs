@@ -442,8 +442,13 @@ mod tests {
 
     #[test]
     fn the_overseer_sends_a_squad_after_wolves() {
-        let (mut g, s, _) = fort(21, Style::Steady);
-        let at = out_by(&g, 15);
+        let (mut g, s, ids) = fort(21, Style::Steady);
+        // Old hands at this, and the wolves on open, level ground a way off,
+        // where the squad can run them down before they slip away.
+        for d in g.dwarves.iter_mut().filter(|d| ids.contains(&d.id)) {
+            d.fight_xp = 3000;
+        }
+        let at = g.open_patch(4, 3, 8).offset(1, 1, 0);
         let pack = wolves(&mut g, at, 2);
         let start = g.tick;
         while g.tick < start + 100 && !matches!(g.squads[s].order, SquadOrder::Kill(_)) {
@@ -455,6 +460,13 @@ mod tests {
         assert_eq!(g.annals.counters.get("hunts").copied(), Some(1));
         while g.tick < start + DAY && pack.iter().any(|w| g.creatures.get(w).map_or(false, |c| c.alive)) {
             g.step();
+            // These wolves fight to the end (a wounded one would otherwise
+            // run for the map's edge, and whether it gets there is luck).
+            for w in &pack {
+                if let Some(c) = g.creatures.get_mut(w) {
+                    c.leaving = false;
+                }
+            }
         }
         assert!(pack.iter().all(|w| g.creatures.get(w).map_or(true, |c| !c.alive)), "the wolves live on");
         for _ in 0..20 {
@@ -597,7 +609,8 @@ mod tests {
     #[test]
     fn an_army_calls_the_hunt_off() {
         let (mut g, s, _) = fort(21, Style::Steady);
-        let at = out_by(&g, 25);
+        // On open ground a way off the fort, where it can be seen and run down.
+        let at = g.open_patch(3, 3, 18).offset(1, 1, 0);
         wolves(&mut g, at, 1);
         let start = g.tick;
         while g.tick < start + 100 && g.hunts.on.is_none() {

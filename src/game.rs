@@ -495,7 +495,7 @@ impl Game {
         let params = ow.embark_params(seed, sx, sy, size);
         let world = world::generate(seed ^ ((sx as u64) << 20) ^ ((sy as u64) << 40), &params);
         report("Loading the wagon", 0.8);
-        let embark = find_embark(&world);
+        let embark = crate::terrain::embark_spot(&world);
         let mut g = Game::from_world(world, seed, ow, (sx, sy), embark);
         g.settle_expedition(embark, loadout);
         g.bring_animals(embark, &loadout.animal_list());
@@ -2926,36 +2926,6 @@ fn day_ordinal(d: u64) -> String {
         _ => "th",
     };
     format!("{}{}", d, suf)
-}
-
-/// Pick a dry, open spot near the middle of the map for the wagon.
-fn find_embark(w: &World) -> Pos {
-    let (cx, cy) = (w.w / 2, w.h / 2);
-    let mut best = None;
-    let mut best_score = i32::MIN;
-    for y in 4..w.h - 4 {
-        for x in 4..w.w - 4 {
-            let p = Pos::new(x, y, w.surface_z(x, y));
-            if !w.walkable(p) || w.t(p).water > 0 {
-                continue;
-            }
-            let mut score = 0;
-            for dy in -2..=2 {
-                for dx in -2..=2 {
-                    let q = Pos::new(x + dx, y + dy, p.z);
-                    if w.walkable(q) && w.t(q).water == 0 && w.t(q).kind != TileKind::Ramp {
-                        score += 4;
-                    }
-                }
-            }
-            score -= (x - cx).abs() + (y - cy).abs();
-            if score > best_score {
-                best_score = score;
-                best = Some(p);
-            }
-        }
-    }
-    best.unwrap_or(Pos::new(cx, cy, w.surface_z(cx, cy)))
 }
 
 #[cfg(test)]

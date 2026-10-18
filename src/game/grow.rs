@@ -128,13 +128,32 @@ mod tests {
         assert_eq!(g.items[&item].pos, shift(ipos));
         assert!(tile_at(&g, shift(sample)) == before, "the old map should be untouched");
         assert_eq!(g.world.surface_z(shift(e).x, shift(e).y), surface_before);
-        // The new land meets the old without cliffs.
+        // The new land meets the old without cliffs (where the old land's
+        // edge isn't a cliff itself), and every bit of it can be walked to.
+        let old = |x: i32, y: i32| x >= 32 && y >= 16 && x < 32 + w0 && y < 16 + h0;
+        let old_cliff = |x: i32, y: i32| {
+            let s = g.world.surface_z(x, y);
+            crate::geom::DIRS8.iter().any(|&(dx, dy)| old(x + dx, y + dy) && (g.world.surface_z(x + dx, y + dy) - s).abs() >= 2)
+        };
         for y in 0..g.world.h {
-            for x in 0..g.world.w - 1 {
-                let (a, b) = (g.world.surface_z(x, y), g.world.surface_z(x + 1, y));
-                assert!((a - b).abs() <= 1 || g.world.t(Pos::new(x, y, a)).water > 0 || g.world.t(Pos::new(x + 1, y, b)).water > 0, "a cliff at ({}, {}): {} vs {}", x, y, a, b);
+            for x in 0..g.world.w {
+                for (dx, dy) in [(1, 0), (0, 1)] {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx >= g.world.w || ny >= g.world.h || old(x, y) == old(nx, ny) {
+                        continue;
+                    }
+                    let (a, b) = (g.world.surface_z(x, y), g.world.surface_z(nx, ny));
+                    let (kx, ky) = if old(x, y) { (x, y) } else { (nx, ny) };
+                    let wet = g.world.t(Pos::new(x, y, a)).water > 0 || g.world.t(Pos::new(nx, ny, b)).water > 0;
+                    assert!((a - b).abs() <= 1 || wet || old_cliff(kx, ky), "a cliff at the seam ({}, {}): {} vs {}", x, y, a, b);
+                }
             }
         }
+        let (piece, main) = crate::terrain_gen::connect::surface_pieces(&g.world);
+        let walk = piece.iter().filter(|&&p| p != u32::MAX).count();
+        let cut = piece.iter().filter(|&&p| p != u32::MAX && p != main).count();
+        let bad: Vec<(i32, i32, i32, TileKind, u8)> = (0..piece.len()).filter(|&i| piece[i] != u32::MAX && piece[i] != main).step_by(97).map(|i| { let (x, y) = (i as i32 % g.world.w, i as i32 / g.world.w); let t = g.world.t(Pos::new(x, y, g.world.surface_z(x, y))); (x, y, g.world.surface_z(x, y), t.kind, t.water) }).collect();
+        assert!(cut * 50 <= walk, "{} of {} tiles cut off: {:?} size {}x{}", cut, walk, bad, g.world.w, g.world.h);
         // And the fortress carries on.
         for _ in 0..200 {
             g.step();

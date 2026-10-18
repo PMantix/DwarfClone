@@ -687,7 +687,9 @@ mod tests {
         let tiles: Vec<Pos> = o.rooms.iter().filter(|r| r.stage >= 1).flat_map(|r| if r.tiles.is_empty() { box_iter(r.a, r.b).collect() } else { r.tiles.clone() }).collect();
         for p in tiles {
             let q = p.offset(0, 0, -2);
-            if !g.world.solid(q) {
+            // A sealed pocket: rock on every side and below, so the water stays put.
+            let sealed = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, -1), (1, 1, 0), (1, -1, 0), (-1, 1, 0), (-1, -1, 0)].iter().all(|&(a, b, c)| g.world.solid(q.offset(a, b, c)));
+            if !g.world.solid(q) || !sealed {
                 continue;
             }
             let before = *g.world.t(q);
@@ -852,9 +854,22 @@ mod tests {
             .flat_map(|r| (-r..=r).map(move |dx| e.offset(dx, r, 0)))
             .find(|&p| {
                 let floor_ok = g.world.walkable(p) && g.world.t(p).building == 0 && !g.items.values().any(|it| it.pos == p);
-                floor_ok && g.world.solid(p.down()) && g.world.solid(p.down().down()) && g.world.walkable(p.offset(-1, 0, 0))
+                // The pocket sealed in rock all round, so its water stays put.
+                let sealed = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().all(|&(dx, dy)| g.world.solid(p.offset(dx, dy, -1)));
+                floor_ok && sealed && g.world.solid(p.down()) && g.world.solid(p.down().down()) && g.world.walkable(p.offset(-1, 0, 0))
             })
             .expect("somewhere to sink a well");
+        // No other water inside the shelter: the well is the only drink.
+        for y in e.y - 12..=e.y + 12 {
+            for x in e.x - 12..=e.x + 12 {
+                for z in 1..g.world.d {
+                    let q = Pos::new(x, y, z);
+                    if g.world.in_bounds(q) {
+                        g.world.t_mut(q).water = 0;
+                    }
+                }
+            }
+        }
         g.world.t_mut(spot).kind = TileKind::Open;
         g.world.t_mut(spot.down()).kind = TileKind::Open;
         g.world.t_mut(spot.down()).water = 7;

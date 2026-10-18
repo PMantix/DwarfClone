@@ -317,7 +317,8 @@ mod tests {
     fn meadow(seed: u64) -> (Game, Pos, [u32; 3], u32) {
         let mut g = Game::new(seed);
         g.creatures.retain(|_, c| c.tame);
-        let a = g.flat_patch(16, 3, 4).offset(0, 1, 0);
+        // Room all round, so the beasts can circle as they would in the open.
+        let a = g.flat_patch(44, 31, 4).offset(14, 15, 0);
         for i in 0..16 {
             for j in -1..=1 {
                 g.world.t_mut(a.offset(i, j, 0)).kind = TileKind::Floor;
@@ -458,7 +459,8 @@ mod tests {
             d.held = None;
             d.pos = a.offset(14, 0, 0);
         }
-        let wolves = [g.spawn_creature(Species::Wolf, a.offset(6, 0, 0), u64::MAX), g.spawn_creature(Species::Wolf, a.offset(6, 1, 0), u64::MAX)];
+        // The wolves come up from beyond the pair, so the pair is nearest.
+        let wolves = [g.spawn_creature(Species::Wolf, a.offset(22, 0, 0), u64::MAX), g.spawn_creature(Species::Wolf, a.offset(22, 1, 0), u64::MAX)];
         for w in wolves {
             g.creatures.get_mut(&w).unwrap().pack = wolves[0];
         }

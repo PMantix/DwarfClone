@@ -1998,6 +1998,8 @@ mod tests {
         let mut g2 = Game::new(21);
         g2.creatures.retain(|_, c| c.tame);
         g2.dwarves.truncate(1);
+        // The same open ground in this game (levelled here too, if it had to be).
+        let a = g2.open_patch(8, 4, 8).offset(1, 1, 0);
         g2.dwarves[0].pos = a;
         senseless(&mut g2.dwarves[0].body);
         let gob = g2.spawn_creature(Species::Goblin, a.offset(1, 0, 0), u64::MAX);

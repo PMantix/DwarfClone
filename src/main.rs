@@ -16,6 +16,7 @@ mod report;
 mod rng;
 mod saves;
 mod terrain;
+mod terrain_gen;
 mod title;
 mod ui;
 mod world;
