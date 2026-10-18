@@ -33,7 +33,7 @@ pub(super) fn draw(cv: &mut Canvas) {
     let big = w >= 110 && g >= 16;
 
     // The furnace against the near wall.
-    let fw = (w / 8).clamp(7, 18).min((w / 3).max(3));
+    let fw = (w / 8 + (cv.roll(8) % 3) as i32 - 1).clamp(7, 18).min((w / 3).max(3));
     let (f0, f1) = (1, fw);
     let fh = (g * 2 / 3).clamp(3, 15);
     let ftop = g - fh;
@@ -44,7 +44,7 @@ pub(super) fn draw(cv: &mut Canvas) {
     let reach = (w as f32 / 3.2).clamp(10.0, 60.0);
 
     // The anvil, and the smith's stroke.
-    let ax = f1 + 6 + (w as f32 * 0.1) as i32;
+    let ax = f1 + 6 + (w as f32 * (0.06 + (cv.roll(7) % 9) as f32 / 100.0)) as i32;
     let beat = 16u64;
     let p = t % beat;
     let heat = 1.0 - (t % 420) as f32 / 420.0 * 0.75;

@@ -843,15 +843,23 @@ mod tests {
     #[test]
     #[ignore]
     fn show_the_scenes() {
-        let only: Option<usize> = std::env::var("SCENE").ok().and_then(|s| s.parse().ok());
+        // SCENE picks one by number or by name; SIZE=WxH as for the pictures.
+        let only = std::env::var("SCENE").ok();
         let t: u64 = std::env::var("FRAME").ok().and_then(|s| s.parse().ok()).unwrap_or(333);
+        let (w, h) = std::env::var("SIZE")
+            .ok()
+            .and_then(|s| {
+                let (a, b) = s.split_once('x')?;
+                Some((a.parse().ok()?, b.parse().ok()?))
+            })
+            .unwrap_or((120u16, 40u16));
         for scene in 0..SCENE_COUNT {
-            if only.map_or(false, |o| o != scene) {
+            if only.as_deref().map_or(false, |o| !o.split(',').any(|n| n == SCENES[scene].name || n.parse() == Ok(scene))) {
                 continue;
             }
             for seed in [11u64, 12] {
                 println!("=== {} (seed {}) ===", SCENES[scene].name, seed);
-                println!("{}", text(&render(scene, seed, 120, 40, t)));
+                println!("{}", text(&render(scene, seed, w, h, t)));
             }
         }
     }

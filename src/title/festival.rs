@@ -99,13 +99,13 @@ pub(super) fn draw(cv: &mut Canvas) {
     let top = 1;
     let low = if big { (g as f32 * 0.6) as i32 } else { (g - 2).max(2) };
     for k in 0..shells {
-        let life = 95 + (hash(k, 3) % 60) as u64;
-        let age_all = t + (hash(k, 5) as u64 % life);
+        let life = 95 + (hash(k + salt, 3) % 60) as u64;
+        let age_all = t + (hash(k + salt, 5) as u64 % life);
         let a = age_all % life;
         let round = (age_all / life) as i32;
-        let hs = hash(k, round * 7 + 11);
+        let hs = hash(k + salt, round * 7 + 11);
         let lx = 2 + (hs % (w - 4).max(1) as u32) as i32;
-        let by = top + (hash(k, round + 13) % (low - top).max(1) as u32) as i32;
+        let by = top + (hash(k + salt, round + 13) % (low - top).max(1) as u32) as i32;
         let rise = ((g - by) * 2).max(2) as u64;
         let col = pal[(hs % 4) as usize];
         let col2 = pal[((hs / 4) % 4) as usize];
@@ -134,7 +134,7 @@ pub(super) fn draw(cv: &mut Canvas) {
             let (rr, droop) = match kind {
                 1 => (r, b * b * 0.006),
                 2 => (r * 0.8, b * b * 0.002),
-                3 => (r * (0.4 + (hash(j, round) % 60) as f32 / 100.0), b * b * 0.003),
+                3 => (r * (0.4 + (hash(j + salt, round) % 60) as f32 / 100.0), b * b * 0.003),
                 _ => (r * if j % 2 == 0 { 1.0 } else { 0.75 }, b * b * 0.003),
             };
             let x = lx + (ang.cos() * rr * 2.0).round() as i32;

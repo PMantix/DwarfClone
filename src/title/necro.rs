@@ -215,9 +215,9 @@ pub(super) fn draw(cv: &mut Canvas) {
     let walk_end = hx - 3;
     for k in 0..nd {
         let bx = barrows[(k % nb) as usize] + (k / nb) % 3 - 1;
-        let life = 420 + (hash(k, 31) % 300) as u64;
-        let a = (t + hash(k, 33) as u64) % life;
-        let bone = hash(k, 35) % 3 == 0;
+        let life = 420 + (hash(k + salt, 31) % 300) as u64;
+        let a = (t + hash(k + salt, 33) as u64) % life;
+        let bone = hash(k + salt, 35) % 3 == 0;
         let col = if bone { (225, 220, 200) } else { (150, 190, 140) };
         if a < 30 {
             if (t / 3 + k as u64) % 2 == 0 {
