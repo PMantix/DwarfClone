@@ -10,7 +10,6 @@
 use super::field::{cell_hash, fbm, Grid};
 use super::Ctx;
 use crate::noise::Noise;
-use crate::overworld::Biome;
 
 /// A point along a river, in map coordinates, with its water level.
 #[derive(Clone, Copy, Debug)]
@@ -68,7 +67,7 @@ pub fn network(cx: &Ctx, hg: &Grid) -> Net {
         // Lower cells are downstream; the sea and the world's edge are lowest.
         match cx.around(c.0, c.1) {
             _ if cx.p.around.is_empty() => (cx.home_elev as i32, -(c.1 * 4096 + c.0)),
-            Some(a) if a.biome != Biome::Ocean => (a.elev as i32, c.1 * 4096 + c.0),
+            Some(a) if !a.biome.is_water() => (a.elev as i32, c.1 * 4096 + c.0),
             _ => (-1, c.1 * 4096 + c.0),
         }
     };

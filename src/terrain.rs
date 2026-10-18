@@ -68,6 +68,9 @@ pub fn site_features(seed: u64, sx: i32, sy: i32, biome: Biome) -> u32 {
         Biome::Savanna => &[(RIVER, 0.3), (TORS, 0.4), (OASIS, 0.2), (MESAS, 0.15)],
         Biome::Badlands => &[(MESAS, 0.85), (CHASM, 0.35), (TORS, 0.3), (VOLCANO, 0.08)],
         Biome::Glacier => &[(GLACIER, 1.0), (PEAKS, 0.3), (CHASM, 0.15)],
+        Biome::Shrubland => &[(RIVER, 0.3), (TORS, 0.4), (MESAS, 0.2), (CHASM, 0.1)],
+        Biome::Marsh => &[(BOG, 0.9), (RIVER, 0.3)],
+        Biome::Lake => &[(COAST, 1.0), (TORS, 0.2)],
     };
     let mut bits = 0;
     for &(b, p) in odds {
@@ -261,7 +264,7 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                 B::Mountain | B::Glacier => {
                     if r > 0.68 { Mat::Basalt } else { Mat::Granite }
                 }
-                B::Desert | B::Badlands | B::Savanna => {
+                B::Desert | B::Badlands | B::Savanna | B::Shrubland => {
                     if r < 0.42 {
                         Mat::Sandstone
                     } else if r > 0.66 {
@@ -316,7 +319,7 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                 B::Badlands => {
                     if sv < 0.6 { Mat::Clay } else { Mat::Sand }
                 }
-                B::Swamp | B::Jungle => {
+                B::Swamp | B::Marsh | B::Jungle => {
                     if sv < 0.55 { Mat::Loam } else { Mat::Clay }
                 }
                 _ if near_sea && hh <= sea + 1 => Mat::Sand,
@@ -346,14 +349,14 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                     // Sand and clay under water, a beach along the sea, bare
                     // rock where there's no soil.
                     let mat = if underwater {
-                        if matches!(b, B::Swamp | B::Jungle) || shape.river[i] == 0 && sv < 0.4 { Mat::Clay } else { Mat::Sand }
+                        if matches!(b, B::Swamp | B::Marsh | B::Jungle) || shape.river[i] == 0 && sv < 0.4 { Mat::Clay } else { Mat::Sand }
                     } else if near_sea && hh <= sea + 1 {
                         Mat::Sand
                     } else if soil == 0 {
                         rock_at(ax, ay, z - 1, b)
                     } else {
                         match b {
-                            B::Desert | B::Ocean => Mat::Sand,
+                            B::Desert | B::Ocean | B::Lake => Mat::Sand,
                             B::Badlands => soil_mat,
                             _ => Mat::Grass,
                         }
@@ -614,9 +617,9 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                 let t = world.t_mut(p);
                 t.kind = TileKind::Tree;
                 t.mat = Mat::Wood;
-            } else if by_water && matches!(b, Biome::Swamp | Biome::Jungle | Biome::Forest | Biome::Taiga | Biome::Tundra | Biome::Grassland) && rng.chance(0.35) {
+            } else if by_water && matches!(b, Biome::Swamp | Biome::Marsh | Biome::Jungle | Biome::Forest | Biome::Taiga | Biome::Tundra | Biome::Grassland) && rng.chance(0.35) {
                 // Reeds and marsh by still water.
-                if b == Biome::Swamp && rng.chance(0.4) {
+                if matches!(b, Biome::Swamp | Biome::Marsh) && rng.chance(0.4) {
                     world.t_mut(p).water = 2;
                 } else {
                     world.t_mut(p).kind = TileKind::Shrub;

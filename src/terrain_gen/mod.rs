@@ -113,13 +113,13 @@ pub fn lake_odds(b: Biome) -> f64 {
     match b {
         Biome::Desert => 0.0,
         Biome::Badlands => 0.1,
-        Biome::Savanna => 0.35,
+        Biome::Savanna | Biome::Shrubland => 0.35,
         Biome::Glacier => 0.3,
         Biome::Mountain => 0.55,
         Biome::Grassland | Biome::Hills => 0.6,
         Biome::Tundra | Biome::Forest => 0.75,
         Biome::Taiga | Biome::Jungle => 0.85,
-        Biome::Swamp | Biome::Ocean => 1.0,
+        Biome::Swamp | Biome::Marsh | Biome::Ocean | Biome::Lake => 1.0,
     }
 }
 
@@ -128,10 +128,11 @@ pub fn rainfall(b: Biome) -> f32 {
     match b {
         Biome::Desert | Biome::Badlands => 0.1,
         Biome::Savanna | Biome::Glacier => 0.4,
+        Biome::Shrubland => 0.3,
         Biome::Grassland | Biome::Tundra | Biome::Mountain => 0.6,
         Biome::Hills => 0.7,
         Biome::Forest | Biome::Taiga => 0.9,
-        Biome::Jungle | Biome::Swamp | Biome::Ocean => 1.0,
+        Biome::Jungle | Biome::Swamp | Biome::Marsh | Biome::Ocean | Biome::Lake => 1.0,
     }
 }
 
@@ -148,7 +149,7 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
         for x in 0..w {
             let i = (y * w + x) as usize;
             let (ax, ay) = ((x + cx.ox) as f64, (y + cx.oy) as f64);
-            let mut s = cx.biome(i) == Biome::Ocean;
+            let mut s = cx.biome(i).is_water();
             if cx.p.features & crate::terrain::feat::COAST != 0 {
                 let (bw, bh) = (cx.base.0 as f64, cx.base.1 as f64);
                 let t = match cx.coast_side {
@@ -176,7 +177,7 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
         for x in 0..w {
             let i = (y * w + x) as usize;
             let wet = match cx.biome(i) {
-                Biome::Swamp => 1.0,
+                Biome::Swamp | Biome::Marsh => 1.0,
                 Biome::Jungle | Biome::Taiga | Biome::Forest | Biome::Tundra => 0.45,
                 Biome::Grassland => 0.3,
                 _ => 0.0,

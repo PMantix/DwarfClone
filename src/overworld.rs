@@ -1,13 +1,12 @@
 //! The wider world: biomes, civilizations, sites, historical figures and
 //! a couple of centuries of generated history.
 
-use crate::noise::Noise;
 use crate::rng::Rng;
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Biome {
     Ocean,
     Mountain,
@@ -22,6 +21,12 @@ pub enum Biome {
     Savanna,
     Badlands,
     Glacier,
+    /// Dry scrub on free-draining ground.
+    Shrubland,
+    /// Grassy wetland (salt marsh by the sea).
+    Marsh,
+    /// Fresh (or, in dry basins, salt) standing water inland.
+    Lake,
 }
 
 /// A world cell near the site, as the embark map sees it.
@@ -67,7 +72,7 @@ pub struct EmbarkParams {
 }
 
 impl Biome {
-    pub const ALL: [Biome; 13] = [
+    pub const ALL: [Biome; 16] = [
         Biome::Ocean,
         Biome::Mountain,
         Biome::Hills,
@@ -81,6 +86,9 @@ impl Biome {
         Biome::Savanna,
         Biome::Badlands,
         Biome::Glacier,
+        Biome::Shrubland,
+        Biome::Marsh,
+        Biome::Lake,
     ];
 
     /// 1 + its place in `ALL` (0 means unknown).
@@ -110,7 +118,15 @@ impl Biome {
             Biome::Savanna => "savanna",
             Biome::Badlands => "badlands",
             Biome::Glacier => "glacier",
+            Biome::Shrubland => "shrubland",
+            Biome::Marsh => "marsh",
+            Biome::Lake => "lake",
         }
+    }
+
+    /// The sea or a lake: no land to stand on.
+    pub fn is_water(self) -> bool {
+        matches!(self, Biome::Ocean | Biome::Lake)
     }
 
     /// Whether winter (or the whole year) is cold enough for ice and snow.
@@ -134,6 +150,9 @@ impl Biome {
             Biome::Savanna => ('"', Color::Rgb(205, 195, 90)),
             Biome::Badlands => ('∩', Color::Rgb(205, 115, 65)),
             Biome::Glacier => ('░', Color::Rgb(210, 235, 255)),
+            Biome::Shrubland => ('τ', Color::Rgb(170, 160, 95)),
+            Biome::Marsh => ('"', Color::Rgb(90, 165, 150)),
+            Biome::Lake => ('≈', Color::Rgb(70, 140, 230)),
         }
     }
 
@@ -166,6 +185,9 @@ impl Biome {
             Biome::Savanna => p(0.4, 0.4, 0.04, 0.3),
             Biome::Badlands => p(1.4, 0.03, 0.0, 0.25),
             Biome::Glacier => p(0.8, 0.0, 0.02, 0.2),
+            Biome::Shrubland => p(0.6, 0.35, 0.03, 0.25),
+            Biome::Marsh => p(0.25, 0.3, 0.3, 0.25),
+            Biome::Lake => p(0.4, 0.2, 0.5, 0.2),
         };
         e.biome = self;
         e
@@ -202,9 +224,9 @@ impl Race {
     fn home(self, b: Biome, evil: bool) -> bool {
         match self {
             Race::Dwarf => matches!(b, Biome::Mountain | Biome::Hills | Biome::Badlands),
-            Race::Human => matches!(b, Biome::Grassland | Biome::Forest | Biome::Hills | Biome::Savanna),
+            Race::Human => matches!(b, Biome::Grassland | Biome::Forest | Biome::Hills | Biome::Savanna | Biome::Shrubland),
             Race::Elf => matches!(b, Biome::Forest | Biome::Jungle | Biome::Taiga) && !evil,
-            Race::Goblin => evil || matches!(b, Biome::Tundra | Biome::Mountain | Biome::Glacier),
+            Race::Goblin => evil && !b.is_water() || matches!(b, Biome::Tundra | Biome::Mountain | Biome::Glacier),
         }
     }
 
@@ -407,6 +429,12 @@ pub struct Overworld {
     pub minerals: f64,
     #[serde(default)]
     pub regions: Vec<Region>,
+    /// The world seed (for the region tiles under an embark; 0 in old saves).
+    #[serde(default)]
+    pub seed: u64,
+    /// The fields the land was made from (empty in old saves).
+    #[serde(default, skip_serializing_if = "crate::worldgen::fields::Fields::is_empty")]
+    pub fields: crate::worldgen::fields::Fields,
 }
 
 fn is_zero(v: &u8) -> bool {
@@ -494,15 +522,11 @@ pub struct WorldGen {
     pub params: WorldParams,
     pub ow: Overworld,
     rng: Rng,
-    elev: Noise,
-    ridge: Noise,
-    rain: Noise,
-    heat: Noise,
-    evil: Noise,
+    /// The land, made all at once on the first step and then shown a few
+    /// rows at a time.
+    land: Option<crate::worldgen::Land>,
     row: i32,
     stage: GenStage,
-    /// Raises or lowers the land so about the same share of every world is sea.
-    sea_shift: f64,
     /// Each river's course, spring first (for checking they run downhill).
     pub rivers: Vec<Vec<(i32, i32)>>,
 }
@@ -512,8 +536,8 @@ impl WorldGen {
         let seed = params.seed;
         let mut rng = Rng::new(seed ^ 0xBADC0DE);
         let (w, h) = params.dims();
-        // The terrain uses only noise, so naming the world first draws the
-        // same random numbers as naming it afterwards.
+        // The land has random streams of its own, so naming the world first
+        // draws the same random numbers as naming it afterwards.
         let name = format!("The {} {}", word(&mut rng, Race::Elf, 2), rng.pick(&["Continent", "Expanse", "Reaches", "Wilds"]));
         let ow = Overworld {
             w,
@@ -528,31 +552,10 @@ impl WorldGen {
             savagery: params.savagery_mult(),
             minerals: params.minerals_mult(),
             regions: Vec::new(),
+            seed,
+            fields: Default::default(),
         };
-        WorldGen {
-            params,
-            ow,
-            rng,
-            elev: Noise::new(seed ^ 0xE1E7),
-            ridge: Noise::new(seed ^ 0x81D6E),
-            rain: Noise::new(seed ^ 0x7A1),
-            heat: Noise::new(seed ^ 0x4EA7),
-            evil: Noise::new(seed ^ 0xE711),
-            row: 0,
-            stage: GenStage::Terrain,
-            sea_shift: 0.0,
-            rivers: Vec::new(),
-        }
-        .with_sea_level()
-    }
-
-    /// Sample the land coarsely and set the sea so about two-fifths is water.
-    fn with_sea_level(mut self) -> WorldGen {
-        let (w, h) = (self.ow.w, self.ow.h);
-        let mut hs: Vec<f64> = (0..h).step_by(3).flat_map(|y| (0..w).step_by(3).map(move |x| (x, y))).map(|(x, y)| self.height(x, y)).collect();
-        hs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        self.sea_shift = hs[hs.len() * 2 / 5] - 0.36;
-        self
+        WorldGen { params, ow, rng, land: None, row: 0, stage: GenStage::Terrain, rivers: Vec::new() }
     }
 
     pub fn done(&self) -> bool {
@@ -578,6 +581,9 @@ impl WorldGen {
                     self.row += 1;
                 }
                 if self.row >= self.ow.h {
+                    if let Some(land) = &self.land {
+                        self.ow.fields = crate::worldgen::fields::Fields::from_grids(&land.grids);
+                    }
                     self.rivers_and_fire();
                     self.name_regions();
                     self.stage = GenStage::Civs;
@@ -628,64 +634,13 @@ impl WorldGen {
         self.ow
     }
 
-    /// Height at a cell, about 0..1: rolling land, lower toward the edges,
-    /// with long ridges of mountains running through it.
-    fn height(&self, x: i32, y: i32) -> f64 {
-        let (w, h) = (self.ow.w, self.ow.h);
-        // A cell is twice as tall as it is wide.
-        let (fx, fy) = (x as f64 / 24.0, y as f64 / 12.0);
-        let edge = {
-            let dx = (x as f64 / w as f64 - 0.5).abs() * 2.0;
-            let dy = (y as f64 / h as f64 - 0.5).abs() * 2.0;
-            dx.max(dy).powi(3) * 0.35
-        };
-        // Bend the land a little so coasts aren't blobs.
-        let warp = (self.heat.fbm2(fx * 0.7 + 9.1, fy * 0.7, 2) - 0.5) * 1.6;
-        let e = self.elev.fbm2(fx + warp, fy - warp * 0.5, 5) - edge;
-        // Ridges: where the ridge noise crosses its middle.
-        let rn = self.ridge.fbm2(fx * 0.9 + warp * 0.6, fy * 0.9, 4);
-        let ridge = (1.0 - (rn - 0.5).abs() * 9.0).max(0.0);
-        let inland = ((e - self.sea_shift - 0.38) * 8.0).clamp(0.0, 1.0);
-        e + ridge * 0.24 * inland - self.sea_shift
-    }
-
     fn terrain_row(&mut self, y: i32) {
         let (w, h) = (self.ow.w, self.ow.h);
+        let land = self.land.get_or_insert_with(|| crate::worldgen::build(self.params.seed, w, h));
         for x in 0..w {
-            let (fx, fy) = (x as f64 / 24.0, y as f64 / 12.0);
-            let e = self.height(x, y);
-            let r = self.rain.fbm2(fx * 1.2, fy * 1.2, 3) + (self.rain.fbm2(fx * 4.0, fy * 4.0, 2) - 0.5) * 0.25;
-            // Cold toward both poles, and up in the heights.
-            let lat = (y as f64 / h as f64 - 0.5).abs() * 2.0;
-            let t = 1.0 - lat * 0.95 + (self.heat.fbm2(fx, fy, 3) - 0.5) * 0.5 - (e - 0.6).max(0.0) * 1.5;
-            let biome = if e < 0.36 {
-                Biome::Ocean
-            } else if t < 0.08 {
-                Biome::Glacier
-            } else if e > 0.66 {
-                Biome::Mountain
-            } else if e > 0.58 {
-                if r < 0.42 && t > 0.55 { Biome::Badlands } else { Biome::Hills }
-            } else if t < 0.26 {
-                if r > 0.5 { Biome::Taiga } else { Biome::Tundra }
-            } else if t < 0.38 && r > 0.47 {
-                Biome::Taiga
-            } else if r < 0.37 && t > 0.55 {
-                if r > 0.34 && t > 0.62 { Biome::Badlands } else { Biome::Desert }
-            } else if t > 0.66 && r > 0.55 {
-                if r > 0.66 { Biome::Swamp } else { Biome::Jungle }
-            } else if r > 0.65 {
-                Biome::Swamp
-            } else if r > 0.5 {
-                Biome::Forest
-            } else if t > 0.62 && r < 0.47 {
-                Biome::Savanna
-            } else {
-                Biome::Grassland
-            };
-            let ev = biome != Biome::Ocean && self.evil.fbm2(fx * 1.6, fy * 1.6, 2) > 0.66;
-            let elev = (e * 255.0).clamp(0.0, 255.0) as u8;
-            self.ow.cells.push(Cell { biome, evil: ev, site: 0, region: 0, elev, river: 0, volcano: false });
+            let i = (y * w + x) as usize;
+            let elev = land.grids.elev[i].round().clamp(0.0, 255.0) as u8;
+            self.ow.cells.push(Cell { biome: land.biomes[i], evil: land.evil[i], site: 0, region: 0, elev, river: 0, volcano: false });
         }
     }
 
@@ -704,7 +659,7 @@ impl WorldGen {
         for _ in 0..sources * 4 {
             let (x, y) = (rng.range(1, w - 1), rng.range(1, h - 1));
             let c = &self.ow.cells[idx(x, y)];
-            if c.biome == Biome::Ocean || c.river != 0 || c.elev < 150 || matches!(c.biome, Biome::Desert | Biome::Badlands | Biome::Glacier) {
+            if c.biome.is_water() || c.river != 0 || c.elev < 150 || matches!(c.biome, Biome::Desert | Biome::Badlands | Biome::Glacier) {
                 continue;
             }
             let mut path = vec![(x, y)];
@@ -729,7 +684,7 @@ impl WorldGen {
                 }
                 path.push((nx, ny));
                 seen.insert((nx, ny));
-                if nc.biome == Biome::Ocean || nc.river != 0 {
+                if nc.biome.is_water() || nc.river != 0 {
                     end = Some(true);
                     break;
                 }
@@ -746,7 +701,7 @@ impl WorldGen {
                 let ((ax, ay), (bx, by)) = (path[i], path[i + 1]);
                 let &(_, _, out, inn) = dirs.iter().find(|d| (d.0, d.1) == (bx - ax, by - ay)).unwrap();
                 self.ow.cells[idx(ax, ay)].river |= out;
-                if self.ow.cells[idx(bx, by)].biome != Biome::Ocean {
+                if !self.ow.cells[idx(bx, by)].biome.is_water() {
                     self.ow.cells[idx(bx, by)].river |= inn;
                 }
             }
@@ -762,7 +717,7 @@ impl WorldGen {
                         // The lake spreads over the hollow's floor, not up
                         // the slopes or over another river.
                         if (dx, dy) == (0, 0) || (c.biome != Biome::Mountain && c.river == 0 && c.elev <= low.saturating_add(4)) {
-                            c.biome = Biome::Ocean;
+                            c.biome = Biome::Lake;
                             c.elev = c.elev.min(low);
                             c.river = 0;
                             c.evil = false;
@@ -783,12 +738,12 @@ impl WorldGen {
                     let (nx, ny) = (x + dx, y + dy);
                     if r & bit != 0 && nx >= 0 && ny >= 0 && nx < w && ny < h {
                         let n = &self.ow.cells[idx(nx, ny)];
-                        if n.biome == Biome::Ocean || n.river & back != 0 {
+                        if n.biome.is_water() || n.river & back != 0 {
                             keep |= bit;
                         }
                     }
                 }
-                self.ow.cells[idx(x, y)].river = if self.ow.cells[idx(x, y)].biome == Biome::Ocean { 0 } else { keep };
+                self.ow.cells[idx(x, y)].river = if self.ow.cells[idx(x, y)].biome.is_water() { 0 } else { keep };
             }
         }
         // Volcanoes on the high peaks.
@@ -856,6 +811,9 @@ impl WorldGen {
             Biome::Savanna => 10,
             Biome::Badlands => 11,
             Biome::Glacier => 12,
+            Biome::Shrubland => 4,
+            Biome::Marsh => 7,
+            Biome::Lake => 13,
         };
         let mut seen = vec![false; (w * h) as usize];
         for start in 0..(w * h) as usize {
@@ -891,14 +849,14 @@ impl WorldGen {
             let kind = match self.ow.cells[start].biome {
                 Biome::Ocean if edge && cells.len() > 400 => RegionKind::Ocean,
                 Biome::Ocean if edge => RegionKind::Sea,
-                Biome::Ocean => RegionKind::Lake,
+                Biome::Ocean | Biome::Lake => RegionKind::Lake,
                 Biome::Mountain => RegionKind::Mountains,
                 Biome::Hills => RegionKind::Hills,
                 Biome::Forest => RegionKind::Forest,
-                Biome::Grassland => RegionKind::Plains,
+                Biome::Grassland | Biome::Shrubland => RegionKind::Plains,
                 Biome::Desert => RegionKind::Desert,
                 Biome::Tundra => RegionKind::Tundra,
-                Biome::Swamp => RegionKind::Swamp,
+                Biome::Swamp | Biome::Marsh => RegionKind::Swamp,
                 Biome::Jungle => RegionKind::Jungle,
                 Biome::Taiga => RegionKind::Taiga,
                 Biome::Savanna => RegionKind::Savanna,
@@ -931,7 +889,7 @@ impl WorldGen {
             for _ in 0..300 {
                 let (x, y) = (self.rng.range(0, w), self.rng.range(0, h));
                 let c = self.ow.cell(x, y);
-                if c.site == 0 && matches!(c.biome, Biome::Mountain | Biome::Swamp | Biome::Desert | Biome::Tundra | Biome::Badlands | Biome::Glacier | Biome::Jungle) {
+                if c.site == 0 && matches!(c.biome, Biome::Mountain | Biome::Swamp | Biome::Marsh | Biome::Desert | Biome::Tundra | Biome::Badlands | Biome::Glacier | Biome::Jungle) {
                     spot = Some((x, y));
                     break;
                 }
@@ -1103,6 +1061,9 @@ impl Overworld {
             Biome::Savanna => 25,
             Biome::Badlands => 3,
             Biome::Glacier => 5,
+            Biome::Shrubland => 20,
+            Biome::Marsh => 80,
+            Biome::Lake => 70,
         };
         let mut h = (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ (self.year as u64);
         h ^= h >> 29;
@@ -1209,6 +1170,9 @@ impl Overworld {
             }
             Biome::Badlands => (pick(&['∩', 'n', '∩']), tone(&[(205, 115, 65), (175, 90, 50)])),
             Biome::Glacier => (pick(&['░', '▒', '░']), tone(&[(210, 235, 255), (180, 210, 240)])),
+            Biome::Shrubland => (pick(&['τ', '"', 'τ']), tone(&[(170, 160, 95), (150, 140, 80), (185, 175, 110)])),
+            Biome::Marsh => (pick(&['"', '"', '%']), tone(&[(90, 165, 150), (70, 140, 130)])),
+            Biome::Lake => ('≈', Color::Rgb(70, 140, 230)),
         }
     }
 
@@ -1252,7 +1216,7 @@ impl Overworld {
     }
 
     pub fn embarkable(&self, x: i32, y: i32) -> bool {
-        x >= 0 && y >= 0 && x < self.w && y < self.h && self.cell(x, y).biome != Biome::Ocean && self.cell(x, y).site == 0
+        x >= 0 && y >= 0 && x < self.w && y < self.h && !self.cell(x, y).biome.is_water() && self.cell(x, y).site == 0
     }
 
     /// Living civilizations with a site within `r` cells, nearest first.
@@ -1288,7 +1252,7 @@ impl Overworld {
                 continue;
             }
             let c = self.cell(nx, ny);
-            if c.site == 0 && c.biome != Biome::Ocean && race.home(c.biome, c.evil) {
+            if c.site == 0 && !c.biome.is_water() && race.home(c.biome, c.evil) {
                 return Some((nx, ny));
             }
         }
@@ -1383,6 +1347,8 @@ impl Overworld {
             savagery: 1.0,
             minerals: 1.0,
             regions: Vec::new(),
+            seed: 0,
+            fields: Default::default(),
         }
     }
 
@@ -1650,7 +1616,7 @@ impl Overworld {
                 // fortress wants land there, not the sea.
                 for (dx, dy, cost) in [(1, 0, 14), (0, 1, 14), (1, 1, 14), (-1, 0, 5), (0, -1, 5), (-1, -1, 3), (1, -1, 3), (-1, 1, 3)] {
                     let (nx, ny) = (x + dx, y + dy);
-                    if nx < 0 || ny < 0 || nx >= self.w || ny >= self.h || self.cell(nx, ny).biome == Biome::Ocean {
+                    if nx < 0 || ny < 0 || nx >= self.w || ny >= self.h || self.cell(nx, ny).biome.is_water() {
                         score -= cost;
                     }
                 }
@@ -1801,6 +1767,33 @@ mod tests {
                 }
                 eprintln!("{} events, {} sites, {} figures", ow.events.len(), ow.sites.len(), ow.figures.len());
             }
+        }
+    }
+
+    /// Print a world map (glyphs only) and how long it took:
+    /// `cargo test --release print_world -- --ignored --nocapture` (SEED=n).
+    #[test]
+    #[ignore]
+    fn print_world() {
+        let seeds: Vec<u64> = std::env::var("SEED").ok().map(|s| s.split(',').filter_map(|v| v.parse().ok()).collect()).unwrap_or(vec![42, 7]);
+        for seed in seeds {
+            let t0 = std::time::Instant::now();
+            let mut g = WorldGen::new(WorldParams { seed, size: 1, ..WorldParams::default() });
+            while g.stage == GenStage::Terrain {
+                g.step(usize::MAX, 0);
+            }
+            let land = t0.elapsed().as_secs_f64() * 1000.0;
+            let ow = g.finish();
+            let all = t0.elapsed().as_secs_f64() * 1000.0;
+            println!("== world {} ({}x{}): land {:.0} ms, with history {:.0} ms, {} regions, {} sites", seed, ow.w, ow.h, land, all, ow.regions.len(), ow.sites.len());
+            for y in 0..ow.h {
+                let sites = std::env::var("SITES").is_ok();
+                let row: String = (0..ow.w).map(|x| match ow.site_at(x, y) { Some(s) if sites => ow.site_look(s).0, _ => ow.look(x, y).0 }).collect();
+                println!("{}", row);
+            }
+            let mut counts: Vec<(String, usize)> = Biome::ALL.iter().map(|b| (b.name().to_string(), ow.cells.iter().filter(|c| c.biome == *b).count())).collect();
+            counts.retain(|c| c.1 > 0);
+            println!("biomes: {:?}", counts);
         }
     }
 }

@@ -2547,7 +2547,7 @@ fn world_info(ow: &Overworld, x: i32, y: i32, flash: &Option<String>) -> Vec<Lin
         let owner = s.civ.map_or("no one".to_string(), |c| format!("the {}", ow.civ(c).name));
         let state = if s.ruined { "ruined " } else { "" };
         v.push(plain(format!("{}: {}{} of {}", s.name, state, s.kind.name(), owner), Color::Rgb(255, 230, 120)));
-    } else if c.biome != crate::overworld::Biome::Ocean {
+    } else if !c.biome.is_water() {
         let p = c.biome.params();
         v.push(plain(
             format!(
@@ -2635,6 +2635,8 @@ fn world_legend() -> Line<'static> {
         Biome::Tundra,
         Biome::Glacier,
         Biome::Badlands,
+        Biome::Shrubland,
+        Biome::Marsh,
     ] {
         let (g, col) = b.glyph();
         item(g.to_string(), col, if b == Biome::Ocean { "water" } else { b.name() });

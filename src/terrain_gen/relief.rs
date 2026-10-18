@@ -58,7 +58,9 @@ pub fn biome_form(b: Biome) -> Form {
         Biome::Badlands => f(6.5, 0.0, 24.0, 0.95, 3.0, 0.65, 0.0),
         Biome::Desert => f(1.6, 0.0, 40.0, 0.0, 3.0, 0.3, 2.2),
         Biome::Swamp => f(1.1, 0.0, 30.0, 0.0, 3.0, 0.15, 0.0),
-        Biome::Ocean => f(2.0, 0.0, 40.0, 0.0, 3.0, 0.3, 0.0),
+        Biome::Ocean | Biome::Lake => f(2.0, 0.0, 40.0, 0.0, 3.0, 0.3, 0.0),
+        Biome::Shrubland => f(2.6, 0.0, 42.0, 0.0, 3.0, 0.4, 0.0),
+        Biome::Marsh => f(1.0, 0.0, 30.0, 0.0, 3.0, 0.15, 0.0),
     }
 }
 
@@ -69,7 +71,7 @@ pub fn cell_form(b: Biome, cx: i32, cy: i32, spread: f64) -> Form {
     let mut f = biome_form(b);
     let c = cell_hash(cx, cy, 0x1A9D);
     match b {
-        Biome::Grassland | Biome::Savanna | Biome::Tundra | Biome::Forest | Biome::Taiga | Biome::Jungle => {
+        Biome::Grassland | Biome::Savanna | Biome::Shrubland | Biome::Tundra | Biome::Forest | Biome::Taiga | Biome::Jungle => {
             if c < 0.35 {
                 // Flat plains.
                 f.amp *= 0.35;
@@ -123,7 +125,7 @@ pub fn heights(cx: &Ctx, rng: &mut Rng) -> (Grid, Grid, Grid, Grid) {
         for dy in -1..=1 {
             for dx in -1..=1 {
                 if let Some(a) = cx.around(c.0 + dx, c.1 + dy) {
-                    if a.biome != Biome::Ocean {
+                    if !a.biome.is_water() {
                         lo = lo.min(a.elev as f64);
                         hi = hi.max(a.elev as f64);
                     }

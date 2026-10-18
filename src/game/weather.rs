@@ -85,6 +85,8 @@ impl Game {
         let wet = match self.biome {
             Biome::Desert => 0.03,
             Biome::Swamp => 0.45,
+            Biome::Marsh => 0.4,
+            Biome::Shrubland => 0.08,
             Biome::Ocean | Biome::Forest => 0.3,
             Biome::Mountain | Biome::Tundra | Biome::Taiga => 0.25,
             Biome::Jungle => 0.5,
@@ -95,7 +97,7 @@ impl Game {
         };
         let cold = self.freezes() && (season == 3 || (season == 2 && matches!(self.biome, Biome::Tundra | Biome::Glacier | Biome::Taiga)) || self.biome == Biome::Glacier && season != 1);
         // A drought may grip a summer: no rain until autumn.
-        if season == 1 && self.tick % SEASON < DAY && !matches!(self.biome, Biome::Swamp | Biome::Ocean | Biome::Jungle | Biome::Glacier) && self.rng.chance(0.15) {
+        if season == 1 && self.tick % SEASON < DAY && !matches!(self.biome, Biome::Swamp | Biome::Marsh | Biome::Ocean | Biome::Jungle | Biome::Glacier) && self.rng.chance(0.15) {
             self.drought = true;
             self.msg("A drought grips the land. No rain will fall this summer.", (230, 190, 110));
             self.gossip("The old ones say they have never seen the brook so low.".into());

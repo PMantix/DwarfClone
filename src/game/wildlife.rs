@@ -17,7 +17,8 @@ impl Game {
             Biome::Badlands => (Species::Ibex, Species::Scorpion, Species::Viper),
             Biome::Savanna => (Species::Antelope, Species::Lion, Species::Lion),
             Biome::Jungle => (Species::Deer, Species::Jaguar, Species::Viper),
-            Biome::Swamp => (Species::Deer, Species::Viper, Species::Alligator),
+            Biome::Swamp | Biome::Marsh => (Species::Deer, Species::Viper, Species::Alligator),
+            Biome::Shrubland => (Species::Antelope, Species::Wolf, Species::Viper),
             _ => (Species::Deer, Species::Wolf, Species::Bear),
         }
     }
