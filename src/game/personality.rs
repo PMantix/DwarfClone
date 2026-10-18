@@ -138,7 +138,7 @@ impl Overseer {
     /// A note in its voice: "Uneasy, it saw the fortress short of…".
     pub fn voiced(&self, text: &str) -> String {
         match self.traits.first() {
-            Some(t) if text.starts_with("Saw") => format!("{} {}{}", t.voice(), text[..1].to_lowercase(), &text[1..]),
+            Some(t) if text.starts_with("Saw") || text.starts_with("Gave up") => format!("{} {}{}", t.voice(), text[..1].to_lowercase(), &text[1..]),
             _ => text.to_string(),
         }
     }

@@ -2886,6 +2886,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         // Newest at the bottom, each wrapped under its age in days.
         let n = r.height.saturating_sub(2) as usize;
         let w = (r.width as usize).saturating_sub(6).max(10);
+        // Below the notes, its plan: what it's at now, what waits, what it gave up on.
+        let plan: Vec<Line> = o
+            .plan()
+            .into_iter()
+            .take(n / 2)
+            .map(|s| Line::from(vec![Span::styled("  > ", Style::default().fg(MUTED)), Span::styled(s.chars().take(w).collect::<String>(), Style::default().fg(Color::Rgb(230, 200, 120)))]))
+            .collect();
+        let n = n - plan.len();
         let mut lines: Vec<Line> = Vec::new();
         for (t, text) in o.notes.iter().rev() {
             let mut these: Vec<Line> = wrap_words(text, w)
@@ -2902,7 +2910,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 break;
             }
         }
-        let lines: Vec<Line> = lines.split_off(lines.len().saturating_sub(n));
+        let mut lines: Vec<Line> = lines.split_off(lines.len().saturating_sub(n));
+        lines.extend(plan);
         f.render_widget(
             Paragraph::new(lines).block(
                 Block::default()
