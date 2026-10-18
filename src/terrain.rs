@@ -247,6 +247,7 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
         features: bits,
         gen_seed: seed,
         biomes: col.clone(),
+        river_beds: Vec::new(),
     };
     let bands = world.caverns.clone();
     // The rock at a level: granite and marble in the high and cold places,
@@ -504,7 +505,9 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
             }
         }
     }
-    // Cavern pools and towering mushroom trees.
+    // Cavern pools (in hollows of the floor, so they stay) and towering
+    // mushroom trees.
+    let mut pools: Vec<Pos> = Vec::new();
     for z in bands.iter().flat_map(|&(lo, hi)| lo..=hi) {
         for y in 1..h - 1 {
             for x in 1..w - 1 {
@@ -514,7 +517,7 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                     continue;
                 }
                 if pool_n.fbm2(ax as f64 / 6.0, ay as f64 / 6.0 + z as f64 * 10.0, 2) > 0.68 {
-                    world.t_mut(p).water = 7;
+                    pools.push(p);
                 } else if rng.chance(0.07) {
                     let t = world.t_mut(p);
                     t.kind = TileKind::Tree;
@@ -525,6 +528,8 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
             }
         }
     }
+
+    sink_pools(&mut world, pools, 7, false);
 
     // The magma sea: a molten layer just above the bedrock under a basalt
     // roof, with air above it, a few basalt islands and a shore around them.
@@ -625,6 +630,7 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
     // thin on the ridges, with clearings), meadows on the flats, reeds by
     // still water, nothing on bare rock; snow on the heights of cold lands.
     let (lo_s, hi_s) = (*surf.iter().min().unwrap_or(&0), *surf.iter().max().unwrap_or(&0));
+    let mut marsh: Vec<Pos> = Vec::new();
     for y in 0..h {
         for x in 0..w {
             let (ax, ay) = (x + ox, y + oy);
@@ -669,7 +675,7 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
             } else if by_water && matches!(b, Biome::Swamp | Biome::Marsh | Biome::Jungle | Biome::Forest | Biome::Taiga | Biome::Tundra | Biome::Grassland) && rng.chance(0.35) {
                 // Reeds and marsh by still water.
                 if matches!(b, Biome::Swamp | Biome::Marsh) && rng.chance(0.4) {
-                    world.t_mut(p).water = 2;
+                    marsh.push(p);
                 } else {
                     world.t_mut(p).kind = TileKind::Shrub;
                 }
@@ -678,6 +684,7 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
             }
         }
     }
+    sink_pools(&mut world, marsh, 2, true);
 
     // ---- The site's features. ----
     let surf_at = |world: &World, x: i32, y: i32| world.surface[(y * world.w + x) as usize];
@@ -757,6 +764,7 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
     }
     // Glacier and bog: ice sheets, or shallow pools among the reeds.
     if has(feat::GLACIER) || has(feat::BOG) {
+        let mut bog: Vec<Pos> = Vec::new();
         for y in 0..h {
             for x in 0..w {
                 let (ax, ay) = (x + ox, y + oy);
@@ -771,12 +779,13 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                     t.water = 7;
                     t.frozen = true;
                 } else if has(feat::BOG) && v > 0.58 {
-                    world.t_mut(p).water = 2;
+                    bog.push(p);
                 } else if has(feat::BOG) && v > 0.5 && frng.chance(0.4) {
                     world.t_mut(p).kind = TileKind::Shrub;
                 }
             }
         }
+        sink_pools(&mut world, bog, 2, true);
     }
     // Tors: crags of bare rock standing out of the ground.
     if has(feat::TORS) {
@@ -858,7 +867,7 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
     // Everything under the open sky is known, plus the cliff faces beside it.
     for y in 0..h {
         for x in 0..w {
-            let hh = surf[(y * w + x) as usize];
+            let hh = world.surface_z(x, y);
             for z in hh..d {
                 world.t_mut(Pos::new(x, y, z)).revealed = true;
             }
@@ -866,7 +875,7 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
     }
     for y in 0..h {
         for x in 0..w {
-            let hh = surf[(y * w + x) as usize];
+            let hh = world.surface_z(x, y);
             for z in hh..d {
                 for &(dx, dy) in DIRS8.iter() {
                     let q = Pos::new(x + dx, y + dy, z);
@@ -874,6 +883,22 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                         world.t_mut(q).revealed = true;
                     }
                 }
+            }
+        }
+    }
+
+    // The running water of rivers and brooks, which the river keeps up
+    // (whatever of it the features left).
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) as usize;
+            if shape.river[i] == 0 && !shape.stream[i] || shape.fill[i] > surf[i] {
+                continue;
+            }
+            let p = Pos::new(x, y, surf[i]);
+            let t = world.t(p);
+            if t.water > 0 && !t.kind.solid() && t.magma == 0 {
+                world.river_beds.push((p, t.water));
             }
         }
     }
@@ -892,6 +917,50 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
         }
     }
     (world, shape)
+}
+
+/// Sink pools a level into the ground, so they sit in hollows rather than
+/// spreading thin over the floor and drying away: each candidate's tile
+/// becomes open space over a floor (a ramp, for a pool at the surface) with
+/// `water` in it. Candidates the water could leak out of (open ground or
+/// space beside the hollow that isn't another pool) stay dry.
+fn sink_pools(world: &mut World, cands: Vec<Pos>, water: u8, surface: bool) {
+    let mut set: std::collections::HashSet<Pos> = cands.into_iter().collect();
+    loop {
+        let leaky: Vec<Pos> = set
+            .iter()
+            .copied()
+            .filter(|&p| {
+                let b = p.down();
+                b.z < 1
+                    || !world.solid(b)
+                    || DIRS8.iter().filter(|&&(dx, dy)| dx == 0 || dy == 0).any(|&(dx, dy)| {
+                        let q = b.offset(dx, dy, 0);
+                        world.in_bounds(q) && !world.solid(q) && !set.contains(&p.offset(dx, dy, 0))
+                    })
+            })
+            .collect();
+        if leaky.is_empty() {
+            break;
+        }
+        for p in leaky {
+            set.remove(&p);
+        }
+    }
+    let mut sunk: Vec<Pos> = set.into_iter().collect();
+    sunk.sort_by_key(|p| (p.z, p.y, p.x));
+    for p in sunk {
+        let revealed = world.t(p).revealed;
+        *world.t_mut(p) = Tile { revealed, ..Tile::default() };
+        let b = world.t_mut(p.down());
+        b.kind = if surface { TileKind::Ramp } else { TileKind::Floor };
+        b.water = water;
+        b.aquifer = false;
+        if surface {
+            let w = world.w;
+            world.surface[(p.y * w + p.x) as usize] = p.z - 1;
+        }
+    }
 }
 
 /// Clear the trees and crags standing between the walkable land's pieces:
@@ -1002,7 +1071,7 @@ pub fn embark_spot(w: &World) -> Pos {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn make(bits: u32, biome: Biome) -> World {

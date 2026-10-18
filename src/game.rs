@@ -34,6 +34,7 @@ mod needs;
 mod family;
 pub use family::ADULT_AGE;
 mod water;
+mod settle;
 mod clothing;
 mod farming;
 mod orders;
@@ -495,9 +496,12 @@ impl Game {
         report("Surveying the site", 0.05);
         let params = ow.embark_params(seed, sx, sy, size);
         let world = world::generate(seed ^ ((sx as u64) << 20) ^ ((sy as u64) << 40), &params);
+        report("Letting the water find its level", 0.6);
+        let mut g = Game::from_world(world, seed, ow, (sx, sy), Pos::new(0, 0, 0));
+        g.settle_water();
         report("Loading the wagon", 0.8);
-        let embark = crate::terrain::embark_spot(&world);
-        let mut g = Game::from_world(world, seed, ow, (sx, sy), embark);
+        let embark = crate::terrain::embark_spot(&g.world);
+        g.embark = embark;
         g.settle_expedition(embark, loadout);
         g.bring_animals(embark, &loadout.animal_list());
         g.place_vault();
@@ -1151,6 +1155,23 @@ impl Game {
                 self.world.tiles.iter().enumerate().filter(|(_, t)| t.water > 0).map(|(i, _)| i).collect()
             }
         };
+        // Rivers and brooks run on from and past the map: their beds stay as
+        // full as the land was made (unless frozen, walled or gated off).
+        for k in 0..self.world.river_beds.len() {
+            let (p, depth) = self.world.river_beds[k];
+            if self.world.blocks_water(p) {
+                continue;
+            }
+            let i = self.world.idx(p);
+            let t = &mut self.world.tiles[i];
+            if t.magma > 0 || t.water == depth {
+                continue;
+            }
+            if t.water == 0 {
+                cells.push(i);
+            }
+            t.water = depth;
+        }
         // Water at rest is looked at again every forty turns, in case
         // something nearby has changed (a channel dug, a gate opened).
         if self.fluid_calls % 40 == 0 && !self.water_still.is_empty() {
@@ -3016,10 +3037,11 @@ mod tests {
         // Chop every tree within 12 tiles.
         g.designate(e.offset(-12, -12, -2), e.offset(12, 12, 2), Desig::Chop);
         let trees = g.designations.len();
-        // A staircase down 6 levels next to the wagon, then a room at the bottom.
+        // A staircase down 6 levels next to the wagon (not into a cavern
+        // pool), then a room at the bottom.
         let s = (1..10)
             .map(|i| e.offset(i, 0, 0))
-            .find(|&p| g.world.t(p).kind == TileKind::Floor)
+            .find(|&p| g.world.t(p).kind == TileKind::Floor && (0..=6).all(|dz| g.world.t(p.offset(0, 0, -dz)).water == 0))
             .expect("no flat tile");
         g.designate(s, s.offset(0, 0, -6), Desig::StairUD);
         let bottom = s.offset(0, 0, -6);

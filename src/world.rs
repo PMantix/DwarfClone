@@ -256,6 +256,11 @@ pub struct World {
     /// empty in older saves.
     #[serde(default)]
     pub biomes: Vec<u8>,
+    /// The running water of rivers and brooks as the land was made: (where,
+    /// how deep). The stream keeps these filled (it runs on from and past
+    /// the map), so its bed never drains dry; empty in older saves.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub river_beds: Vec<(Pos, u8)>,
 }
 
 fn default_caverns() -> Vec<(i32, i32)> {
@@ -307,7 +312,7 @@ mod tiles_rle {
 impl World {
     /// A one-cell stand-in used before a fortress exists.
     pub fn empty() -> World {
-        World { w: 1, h: 1, d: 1, tiles: vec![Tile::default()], surface: vec![0], caverns: Vec::new(), restrict: 0, aquifer: 0, origin: (0, 0), base: None, water_level: 0, features: 0, gen_seed: 0, biomes: Vec::new() }
+        World { w: 1, h: 1, d: 1, tiles: vec![Tile::default()], surface: vec![0], caverns: Vec::new(), restrict: 0, aquifer: 0, origin: (0, 0), base: None, water_level: 0, features: 0, gen_seed: 0, biomes: Vec::new(), river_beds: Vec::new() }
     }
 
     pub fn in_bounds(&self, p: Pos) -> bool {

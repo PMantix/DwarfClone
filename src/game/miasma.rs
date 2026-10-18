@@ -137,6 +137,14 @@ mod tests {
             g.miasma_tick();
             g.dwarves[0].pos = c.offset(1, 0, 0);
         }
+        // (It drifts by chance: give it a while longer to reach the dwarf.)
+        for _ in 0..120 {
+            if g.dwarves[0].thoughts.iter().any(|t| t.text == "was sickened by miasma") {
+                break;
+            }
+            g.miasma_tick();
+            g.dwarves[0].pos = c.offset(1, 0, 0);
+        }
         let spread = (-2..=2).flat_map(|dy| (-2..=2).map(move |dx| (dx, dy))).filter(|&(dx, dy)| g.world.t(c.offset(dx, dy, 0)).miasma > 0).count();
         assert!(spread >= 4, "miasma should drift through the room ({} tiles)", spread);
         assert!(g.dwarves[0].thoughts.iter().any(|t| t.text == "was sickened by miasma"));

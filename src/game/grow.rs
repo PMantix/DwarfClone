@@ -71,6 +71,9 @@ impl Game {
         report("Raising the new land", 0.3);
         let grown = crate::terrain::generate_region(seed, &params, origin, old_base, Some((&self.world, (w, n))));
         report("Moving the fortress", 0.8);
+        // The old land's rivers run on where they were (the new land's own
+        // come with it).
+        let old_beds: Vec<(Pos, u8)> = self.world.river_beds.iter().map(|&(p, d)| (p.offset(w, n, 0), d)).collect();
         // Everything in the fortress moves with the old land.
         if w > 0 || n > 0 {
             let old_world = std::mem::replace(&mut self.world, World::empty());
@@ -86,6 +89,7 @@ impl Game {
             *self = moved;
         }
         self.world = grown;
+        self.world.river_beds.extend(old_beds);
         self.water_cells = None;
         self.magma_cells = None;
         self.fire_cells = None;

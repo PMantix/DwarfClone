@@ -437,6 +437,8 @@ mod tests {
         let z = *g.zones.keys().last().unwrap();
         g.zones.get_mut(&z).unwrap().owner = Some(id);
         assert!(g.demand_met(&m));
+        // (Past the season's first day, so no new demand comes the same day.)
+        g.tick = 5 * SEASON + DAY + 10;
         g.titles_daily();
         assert!(g.demands.iter().all(|d| d.noble != id || d != &m), "a met demand should be cleared");
         let d = g.dwarves.iter().find(|d| d.id == id).unwrap();
