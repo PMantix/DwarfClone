@@ -20,6 +20,8 @@ impl Game {
         self.ov_lessons(o);
         // The inside of the fort grows up (architect.rs, maturity.rs).
         self.ov_interior(o);
+        // The outside and the grand works:
+        self.ov_fortify(o);
         let _ = o;
     }
 
@@ -31,6 +33,7 @@ impl Game {
         self.ov_cistern_gate(o);
         self.ov_rescue(o);
         self.ov_hunts(o);
+        self.ov_towers_alert(o);
         let _ = o;
     }
 

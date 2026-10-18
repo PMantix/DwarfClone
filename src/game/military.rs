@@ -190,6 +190,12 @@ impl Game {
 
     /// Training goes on in the barracks when there is one.
     pub(super) fn go_train(&mut self, d: &mut Dwarf) {
+        // The watchman keeps watch from a tower instead (towers.rs).
+        if let Some(post) = self.watch_post(d.id) {
+            let there = d.pos.z == post.z && (d.pos.x - post.x).abs() <= 1 && (d.pos.y - post.y).abs() <= 1;
+            d.task = if there { Task::Train } else { Task::Station { pos: post } };
+            return;
+        }
         let barracks: Vec<Pos> = self
             .zones
             .values()
@@ -270,7 +276,8 @@ impl Game {
         }
         let Some(c) = self.creatures.get(&target).filter(|c| c.alive) else { return false };
         let (cpos, dpos) = (c.pos, d.pos);
-        if (cpos.x - dpos.x).abs().max((cpos.y - dpos.y).abs()) > RANGE || !self.clear_shot(dpos, cpos) {
+        // (From a tower, down over the battlements too: towers.rs.)
+        if !self.can_shoot(dpos, cpos) {
             return false;
         }
         if d.attack_cd > 0 {

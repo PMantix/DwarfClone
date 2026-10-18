@@ -44,6 +44,8 @@ pub enum Kind {
     Broken,
     Building,
     Construction,
+    /// The curtain wall, a tower, a grand work.
+    Works,
     Work,
     Tavern,
     /// A hall the overseer has just finished.
@@ -74,6 +76,7 @@ impl Kind {
             Kind::Broken => 35,
             Kind::Building => 35,
             Kind::Construction => 30,
+            Kind::Works => 25,
             Kind::Work => 20,
             Kind::Tavern => 18,
             Kind::Hall => 28,
@@ -378,7 +381,10 @@ pub fn candidates(g: &Game) -> Vec<Subject> {
                 None => continue,
             },
             Task::BuildTile { con, .. } => match g.constructions.get(con) {
-                Some(c) => (Kind::Construction, format!("{} raising a {}", d.name, lower_first(c.kind.name()))),
+                Some(c) => match g.work_at(c.pos) {
+                    Some(w) => (Kind::Construction, format!("{} raising {}", d.name, w)),
+                    None => (Kind::Construction, format!("{} raising a {}", d.name, lower_first(c.kind.name()))),
+                },
                 None => continue,
             },
             Task::Craft { bld, .. } if d.working => match g.buildings.get(bld) {
@@ -399,6 +405,17 @@ pub fn candidates(g: &Game) -> Vec<Subject> {
             _ => continue,
         };
         v.push(Subject { who: me, kind, what });
+    }
+
+    // The walls and towers: a watch kept, a tower going up.
+    for (who, at, what) in g.works_sights() {
+        let who = match who {
+            Some(id) => Who::Dwarf(id),
+            None => Who::Spot(at),
+        };
+        if v.iter().all(|s| s.who != who) {
+            v.push(Subject { who, kind: Kind::Works, what });
+        }
     }
 
     // Newcomers: migrants just in, a caravan at the depot.

@@ -1065,11 +1065,18 @@ impl Game {
         let n = self.siege_strength(foe.civ);
         let leader = self.siege_leader(&foe).1;
         let arrive = self.tick + DAY / 2 + self.rng.range(0, DAY as i32) as u64;
+        // A watch kept from a watchtower sees them further off (towers.rs).
+        let (sooner, watch) = self.watch_warning();
+        let arrive = arrive + sooner;
         let civ = self.overworld.civ(foe.civ).name.clone();
         let plural = Self::army_species(foe.race).info().plural;
         let raid = n <= 3;
         let what = if raid { format!("a raiding party of {} {}", n, plural) } else { format!("an army of {} {}", n, plural) };
         let mut text = format!("Scouts report {} of the {}, led by {}, marching on {}. They will be at the gates within a day!", what, civ, leader, self.fortress_name);
+        if let Some(tower) = watch {
+            self.count("watch.warned", 1);
+            text = format!("The watch on {} sees {} of the {}, led by {}, far off and marching on {}. They will be at the gates in a day and a half!", tower, what, civ, leader, self.fortress_name);
+        }
         // They remember how the last one went.
         if self.annals.sieges.last().map_or(false, |s| s.outcome == "routed") {
             text.push_str(" They have not forgotten their last defeat, and come in greater numbers.");

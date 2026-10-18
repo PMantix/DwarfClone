@@ -30,6 +30,7 @@ impl ZoneKind {
             ZoneKind::Tomb => "Tomb".into(),
             ZoneKind::Gathering => "Gathering area".into(),
             ZoneKind::Jail => "Jail".into(),
+            ZoneKind::Laboratory => "Laboratory".into(),
         }
     }
 
@@ -47,6 +48,7 @@ impl ZoneKind {
                 | ZoneKind::Temple
                 | ZoneKind::Tavern
                 | ZoneKind::Tomb
+                | ZoneKind::Laboratory
         )
     }
 

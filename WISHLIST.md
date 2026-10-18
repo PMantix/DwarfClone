@@ -237,8 +237,11 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 #### O04 Defences in the plan (M)
 - **Why:** DF forts are famous for moats, trap halls and walled courtyards.
 - **Steps:** [ ] the gatehouse grows with the fort: a trap corridor, then a moat under a
-  drawbridge, then towers with fortifications · [ ] Warlord and cautious overseers build them
-  sooner · [ ] a siege that breaks on the defences goes into the legends
+  drawbridge, then towers with fortifications (towers: this commit, on the surface: a curtain
+  wall with gate towers, battlements, a walkway, an arch and a drawbridge; watchtowers whose
+  watch sees armies sooner; marksdwarves shoot down from the towers) · [x] Warlord and cautious
+  overseers build them sooner (the walls and towers, this commit) · [ ] a siege that breaks on
+  the defences goes into the legends
 - **From the Bay 12 review:** [ ] Pressure plates ([ENG-06](ideas/economy.md)) · [ ] Upright spikes ([ENG-04](ideas/economy.md)) · [ ] Pits and ponds ([ENG-03](ideas/economy.md)) · [ ] Traps jammed with bodies ([ENG-01](ideas/economy.md)) · [ ] Trapdoors and chutes ([ENG-07](ideas/economy.md)) · [ ] Nets and tripwires ([ENG-08](ideas/economy.md)) · [ ] Better traps ([ENG-19](ideas/economy.md)) · [ ] Moats and wide drawbridges ([ENG-20](ideas/economy.md)) · [ ] Deliberate flooding ([ENG-02](ideas/economy.md))
 - **Done when:** a Warlord fort has a moat and a trap corridor before its third siege.
 
@@ -692,6 +695,7 @@ above; the [idea catalogue](ideas/README.md) holds hundreds more.
 
 ## Done
 
+- **Walls, towers and grand works** (this commit): a grown fort's overseer walls the stair and the fields with a curtain wall (gate towers, battlements, a walkway, an arch and a drawbridge over an always-open gate), raises watchtowers at its corners (a soldier keeps watch; a manned one sees an army half a day sooner), puts its marksdwarves on the towers in an alert to shoot down over the battlements, and (vain, pious, greedy or rich) a wizard's tower with a laboratory where dwarves go to learn; then a pillared portico over the stair, pillars round the monument and a bridge over a chasm. Built from real stone (quarried from outcrops), blocks or timber by real builders, a stretch and a storey at a time; walls and fortifications can go up on a wall top or beside something to build against, and builders may work from the level below. `k` and the director name them.
 - **Performance overlay and the overseer's doings** (this commit): `F3` shows frames per second and where the time goes (simulation by part, drawing, path searches, the slowest tick); the announcements split in two while the overseer plays, its notes on the right. Found with it: a dig that uncovered a tile of open air flooded through the whole known sky (up to 60,000 tiles) to reveal it, a 70–300 ms freeze many times a year while a fort dug in near the surface; the flood now stops at what's already known. Pathfinding keeps what it has reached in flat arrays reused between searches instead of a hash map (about 14% off a batch).
 - **The local map follows the world map** (16ad7d2; wildlife this commit): ground, plants and rock by biome (dunes and cacti, red clay, bare peaks, lasting snow, conifers, acacias, palms, reeds, evil-tainted growth); the neighbouring world cells reach onto the map with their biomes and heights (coasts, rising mountains, blended borders, carried on when the map grows); wildlife by biome (camels, scorpions, vipers, elk, ibex, antelope, lions, jaguars, alligators, polar bears) and walking husks on evil land.
 - **Big moments, side panes, game over** (7002196): dramatic and rare events pause the game, turn the camera to them and tell them in a card (the overseer's cards go by on their own); status, brain, reports, chronicle and legends open as a side pane beside a live map (`\` for full screen); when the last dwarf dies, a game-over page tells the fortress's story. S01 (cause reports, `--story`, `--out`, `--compare`; 2e3a9c5) and the fight analysis (arena, blow counts, siege replay; c7b07f9) came before.

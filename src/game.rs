@@ -88,6 +88,8 @@ mod melee;
 mod archery;
 mod hunts;
 mod larder;
+pub mod fortify;
+mod towers;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -184,6 +186,8 @@ pub enum ZoneKind {
     Gathering,
     /// Where the sheriff's prisoners serve their sentences.
     Jail,
+    /// The top of a wizard's tower: dwarves keen to learn study here.
+    Laboratory,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -379,6 +383,9 @@ pub struct Game {
     /// The sealed hall of an older people, somewhere in the rock.
     #[serde(default)]
     pub vault: Option<Vault>,
+    /// The curtain wall, towers and grand works outside (`fortify.rs`).
+    #[serde(default)]
+    pub works: fortify::Works,
     /// A vault has been looked for (older saves get one when loaded).
     #[serde(default)]
     vault_placed: bool,
@@ -575,6 +582,7 @@ impl Game {
             festival: None,
             year_log: YearLog::default(),
             vault: None,
+            works: Default::default(),
             vault_placed: false,
             expedition: None,
             gossip: Vec::new(),
