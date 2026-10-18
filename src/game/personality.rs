@@ -97,17 +97,17 @@ impl Trait {
         }
     }
 
-    /// How it puts things, at the head of a note.
-    fn voice(self) -> &'static str {
+    /// Ways it puts things, at the head of a note.
+    fn voices(self) -> &'static [&'static str] {
         match self {
-            Trait::Cautious => "Uneasy, it",
-            Trait::Bold => "Without a second thought, it",
-            Trait::Vain => "With an eye to how it looks, it",
-            Trait::Pious => "Trusting in the gods, it",
-            Trait::Greedy => "Counting the cost, it",
-            Trait::Sentimental => "With a heavy heart, it",
-            Trait::Stubborn => "Grudgingly, it",
-            Trait::Cheerful => "Whistling, it",
+            Trait::Cautious => &["Uneasy, it", "Fearing the worst, it", "Taking no chances, it", "After a long look, it", "Wary as ever, it", "Not liking it, it"],
+            Trait::Bold => &["Without a second thought, it", "Shrugging, it", "Not one to wait, it", "Straight off, it", "With a grin, it", "Rolling up its sleeves, it"],
+            Trait::Vain => &["With an eye to how it looks, it", "Thinking of the visitors, it", "Unwilling to look shabby, it", "Smoothing its beard, it", "For the fortress's good name, it", "Mindful of appearances, it"],
+            Trait::Pious => &["Trusting in the gods, it", "With a quick prayer, it", "Gods willing, it", "Murmuring a blessing, it", "Taking it as a sign, it", "Faithful as ever, it"],
+            Trait::Greedy => &["Counting the cost, it", "Tallying the stores, it", "Begrudging every coin, it", "With an eye on the ledger, it", "Weighing the price, it", "Loath to waste a thing, it"],
+            Trait::Sentimental => &["With a heavy heart, it", "Thinking of its dwarves, it", "Sighing, it", "Worried for them all, it", "Fondly, it", "Wistful, it"],
+            Trait::Stubborn => &["Grudgingly, it", "Muttering, it", "Against its own plans, it", "With bad grace, it", "Since it must, it", "Scowling, it"],
+            Trait::Cheerful => &["Whistling, it", "Humming a tune, it", "Cheerily, it", "With a wink, it", "Never one to fret, it", "Smiling, it"],
         }
     }
 }
@@ -135,12 +135,35 @@ impl Overseer {
         self.traits.iter().map(|t| t.lean(a)).sum()
     }
 
-    /// A note in its voice: "Uneasy, it saw the fortress short of…".
+    /// A note in its voice now and then: "Uneasy, it saw the fortress
+    /// short of…". About one such note in three is voiced, the rest plain.
     pub fn voiced(&self, text: &str) -> String {
-        match self.traits.first() {
-            Some(t) if text.starts_with("Saw") || text.starts_with("Gave up") => format!("{} {}{}", t.voice(), text[..1].to_lowercase(), &text[1..]),
-            _ => text.to_string(),
+        self.voiced_as(text, false)
+    }
+
+    /// `voiced`, always in its voice when `first` (a new worry): never
+    /// the same opening twice running.
+    pub fn voiced_as(&self, text: &str, first: bool) -> String {
+        let Some(t) = self.traits.first() else { return text.to_string() };
+        if !(text.starts_with("Saw") || text.starts_with("Gave up")) {
+            return text.to_string();
         }
+        let pool = t.voices();
+        let opening = |n: &str| pool.iter().position(|v| n.starts_with(v));
+        // Its last few notes of this kind, newest first: voiced or plain.
+        let recent: Vec<Option<usize>> =
+            self.notes.iter().rev().filter(|n| n.1.starts_with("Saw") || n.1.starts_with("Gave up") || opening(&n.1).is_some()).take(2).map(|n| opening(&n.1)).collect();
+        if !first && recent.iter().any(|o| o.is_some()) {
+            return text.to_string();
+        }
+        let last = self.notes.iter().rev().find_map(|n| opening(&n.1));
+        // A fixed scramble of the note and how far its notes have run.
+        let h = text.bytes().chain((self.notes.len() as u32).to_le_bytes()).fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x0100_0000_01b3));
+        let mut i = (h % pool.len() as u64) as usize;
+        if Some(i) == last {
+            i = (i + 1 + (h / 7 % (pool.len() as u64 - 1)) as usize) % pool.len();
+        }
+        format!("{} {}{}", pool[i], text[..1].to_lowercase(), &text[1..])
     }
 }
 
@@ -168,6 +191,36 @@ impl Game {
 mod tests {
     use super::*;
     use crate::game::overseer::Style;
+
+    #[test]
+    fn its_voice_varies_and_is_not_on_every_note() {
+        for t in Trait::ALL {
+            let mut o = Overseer::new(Style::Steady);
+            o.traits = vec![t];
+            let mut openings: Vec<usize> = Vec::new();
+            for i in 0..20 {
+                let text = o.voiced_as(&format!("Saw the fortress short of thing {}: did something.", i), true);
+                let k = t.voices().iter().position(|v| text.starts_with(v)).expect("voiced");
+                assert_ne!(openings.last(), Some(&k), "{:?} said {:?} twice running", t, t.voices()[k]);
+                openings.push(k);
+                o.notes.push((i, text));
+            }
+            let mut kinds = openings.clone();
+            kinds.sort();
+            kinds.dedup();
+            assert!(kinds.len() >= 4, "{:?}: only {:?}", t, kinds);
+            // Unprompted, about one note in three is in its voice.
+            o.notes.clear();
+            let mut voiced = 0;
+            for i in 0..30 {
+                let text = o.voiced(&format!("Saw the fortress short of thing {}: did something.", i));
+                voiced += !text.starts_with("Saw") as usize;
+                o.notes.push((i, text));
+            }
+            assert_eq!(voiced, 10, "{:?}", t);
+            assert_eq!(o.voiced("Dug out a room."), "Dug out a room.");
+        }
+    }
 
     #[test]
     fn every_overseer_has_a_name_and_two_traits_that_agree() {

@@ -527,9 +527,10 @@ impl Game {
             (false, true) => format!("Saw the fortress {} of {}: {}.", short, name, plan),
             (false, false) => format!("Saw the fortress {} of {}: {}. {}", short, name, plan, did.iter().map(|d| cap(d)).collect::<Vec<_>>().join(" ")),
         };
-        let text = o.voiced(&raw);
-        // (Not the very words it said lately, as a plan flickers back and forth.)
-        let key = if plan.is_empty() { text.clone() } else { format!("of {}: {}.", name, plan) };
+        let text = o.voiced_as(&raw, known.map_or(true, |w| w.noted == 0));
+        // (Not the very words it said lately, as a plan flickers back and forth;
+        // in its voice or not.)
+        let key = if plan.is_empty() { raw[1..].to_string() } else { format!("of {}: {}.", name, plan) };
         let echo = o.notes.iter().any(|n| n.1.contains(&key) && tick < n.0 + RESAY);
         let (said, noted) = if (changed || stale) && !echo {
             Self::note_ov(o, tick, text.clone());
@@ -573,8 +574,8 @@ impl Game {
                 None,
             ),
         };
-        let text = o.voiced(&raw);
-        if !o.notes.iter().any(|n| n.1 == text) {
+        let text = o.voiced_as(&raw, true);
+        if !o.notes.iter().any(|n| n.1.contains(&raw[1..])) {
             Self::note_ov(o, tick, text.clone());
         }
         Worry { lack: tops[0], plan: String::new(), status, until: tick + SEASON, buying, said: text, noted: tick, also: tops[1..].to_vec() }
@@ -907,7 +908,7 @@ mod tests {
         o.worries.push(w);
         assert_eq!(o.notes.len(), 1);
         let n = &o.notes[0].1;
-        assert!(n.starts_with("Uneasy, it gave up on cloth for now"), "{}", n);
+        assert!(n.contains(", it gave up on cloth for now"), "{}", n);
         assert!(n.contains("no thread without cloth, no cloth without thread"), "{}", n);
         assert!(o.wanted.is_empty());
         // Parked: not a word, not a fix, all season.
