@@ -622,6 +622,10 @@ impl Game {
             for dy in -reach..=reach {
                 for dx in -reach..=(reach + 8 * o.slots) {
                     let p = base.offset(dx, dy, dz);
+                    // Never the gatehouse's walls, ore or not.
+                    if Self::gatehouse(base, p) {
+                        continue;
+                    }
                     let Some(t) = self.world.get(p) else { continue };
                     // Only what a miner can stand beside: next to ground we've dug ourselves.
                     let reachable = || DIRS8.iter().any(|&(ex, ey)| self.world.get(p.offset(ex, ey, 0)).map_or(false, |q| q.dug && !q.kind.solid() && q.water <= 3));

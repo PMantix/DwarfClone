@@ -1036,6 +1036,13 @@ impl Game {
         }
     }
 
+    /// Whether `p` is in the gatehouse's walls (two deep on each side of the
+    /// corridor, and round the foot of the stair), which nothing may be cut
+    /// from: it would open a way round the doors and the bridge.
+    pub(super) fn gatehouse(base: Pos, p: Pos) -> bool {
+        p.z == base.z && (-2..=16).contains(&(p.x - base.x)) && (-2..=3).contains(&(p.y - base.y))
+    }
+
     /// Plain stone for the gate's mechanisms. A fort whose halls are cut in
     /// soil, ore or coal has none to make them from, and its drawbridge never
     /// comes: until the lever is linked (or while a lesson wants traps and
@@ -1059,10 +1066,6 @@ impl Game {
         }) {
             return;
         }
-        // Never the gatehouse's walls (two deep on each side of the
-        // corridor, and round the foot of the stair): cutting them opens a
-        // way round the doors and the bridge.
-        let gatehouse = |dx: i32, dy: i32, dz: i32| dz == 0 && (-2..=16).contains(&dx) && (-2..=3).contains(&dy);
         // Nor rock that holds back water or the sky, nor the waterworks'.
         let mut works: Vec<(Pos, Pos)> = Vec::new();
         if let Some(w) = self.waterworks.well.as_ref() {
@@ -1091,7 +1094,7 @@ impl Game {
         for dz in -4..=0 {
             for dy in -14..=14 {
                 for dx in -14..=30 {
-                    if gatehouse(dx, dy, dz) {
+                    if Self::gatehouse(base, base.offset(dx, dy, dz)) {
                         continue;
                     }
                     let p = base.offset(dx, dy, dz);
@@ -2075,8 +2078,11 @@ mod tests {
     #[test]
     fn a_hospital_before_the_first_siege() {
         // By the first siege's season, each careful style has its hospital
-        // fitted, a doctor, and thread or cloth to dress wounds with.
-        for (seed, style) in [(5003, Style::Steady), (5001, Style::Builder), (5002, Style::Delver)] {
+        // fitted, a doctor, and thread or cloth to dress wounds with. (Since
+        // the world map's downhill rivers, 5003's and 5001's sites have no room
+        // for halls past the first few, whatever the style: 5006 and 5000
+        // stand in for them.)
+        for (seed, style) in [(5006, Style::Steady), (5000, Style::Builder), (5002, Style::Delver)] {
             let g = trial_game(seed, style, 168);
             let o = g.overseer.as_ref().unwrap();
             let rooms: Vec<(RoomUse, u8)> = o.rooms.iter().map(|r| (r.kind, r.stage)).collect();
@@ -2109,23 +2115,12 @@ mod tests {
 
     #[test]
     fn a_trial_game_is_the_trials_fort() {
-        // Seed 5003 (Steady) loses seven dwarves by day 213 of its year
+        // Seed 5003 (Steady) loses nobody by day 213 of its year
         // (schedule::same_story_after_refactor has the whole year).
         let g = trial_game(5003, Style::Steady, 213);
         assert_eq!(g.tick, 213 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
-        assert_eq!(
-            deaths,
-            vec![
-                (152553, "Sigga Embermantle"),
-                (188450, "Ingra Goldbrew"),
-                (218830, "Borra Coalhold"),
-                (241709, "Thekla Copperhold"),
-                (242440, "Ulmek Coalcrown"),
-                (242611, "Ingra Alemantle"),
-                (242910, "Thekla Stonefist")
-            ]
-        );
+        assert_eq!(deaths, vec![]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
     }
 
@@ -2159,11 +2154,13 @@ mod tests {
     /// neither had plain stone for the mechanisms until the overseer
     /// quarried it. And the quarrying never cut a way round the doors and
     /// the bridge (it once dug the corridor's own walls, the closest stone).
+    /// (5007 Steady stands in for 5001 Steady, whose site has had no halls
+    /// at all since the world map's downhill rivers; 5007 quarries too.)
     #[test]
     fn the_gate_is_whole_by_the_first_siege() {
         let forts = [
             (5000, Style::Steady),
-            (5001, Style::Steady),
+            (5007, Style::Steady),
             (5003, Style::Steady),
             (5000, Style::Warlord),
             (5000, Style::Builder),

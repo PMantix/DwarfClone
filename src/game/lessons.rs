@@ -368,7 +368,9 @@ mod tests {
 
     #[test]
     fn a_siege_that_got_in_brings_traps_and_a_second_squad() {
-        let mut g = super::super::overseer::trial_game(5001, Style::Steady, 20);
+        // (Seed 5006: since the world map's downhill rivers, 5001's site has no
+        // halls at all, and so no gate.)
+        let mut g = super::super::overseer::trial_game(5006, Style::Steady, 20);
         // Fourteen grown dwarves, one squad.
         while g.dwarves.iter().filter(|d| d.alive && !d.is_child()).count() < 14 {
             let id = g.new_id();
@@ -381,7 +383,7 @@ mod tests {
         }
         g.squads.truncate(1);
         let mut o = g.overseer.take().unwrap();
-        assert!(o.did("linked"), "seed 5001 has its gate by day 20");
+        assert!(o.did("linked"), "seed 5006 has its gate by day 20");
         let base = o.base.unwrap();
         let traps = |g: &Game| {
             g.buildings.values().filter(|b| matches!(b.kind, BuildingKind::WeaponTrap | BuildingKind::StoneTrap) && (b.pos.x - base.x).abs() <= 15 && (b.pos.y - base.y).abs() <= 15).count()
