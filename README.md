@@ -140,6 +140,16 @@ of each year the overseer picks the moment of the year (★ on the reel, and a l
 The reel keeps its 24 weightiest clips and is saved with the game (a few hundred KB at most);
 filming draws no dice, so it never changes what happens (`game/reel.rs`, `ui/highlights.rs`).
 
+**A dwarf's life.** On a dwarf's sheet, `l` opens their Life page: a small portrait drawn from
+their looks (beard and hair of their own, greying past 120, a scar across the eye where their head
+was hurt, an empty sleeve or a crutch for a lost limb, the helm, breastplate, shield and weapon they
+carry, eyes shut asleep and crossed out in death, a mouth by their mood) beside who they are, and
+their story below: their temper and likes, family, closest friends and grudges, deeds, kills and
+duels, their best craft, what the chronicle and the legends say of them, the strongest memory of
+each season, their wounds, and how and when they died. When a dwarf dies the overseer remembers
+them in a line of its notes ("Remembered Urist: married Kadol, slew 3; struck down."), and the
+year's chronicle keeps a line for each notable dwarf it lost (`game/lifestory.rs`, `ui/life.rs`).
+
 Use Windows Terminal (or any truecolor + Unicode terminal) at 130x40 or larger.
 Press `?` in game for keys.
 
@@ -734,3 +744,4 @@ cargo test --release profile_year -- --ignored --nocapture
 | `app.rs`, `ui.rs` | input modes and rendering |
 | `game/moods.rs`, `ui/moodstrip.rs` | the mood strip in the top bar |
 | `game/reel.rs`, `ui/highlights.rs` | the highlight reel: filming big moments, playing them back |
+| `game/lifestory.rs`, `ui/life.rs` | a dwarf's life story, eulogies, the portrait and Life page |

@@ -287,6 +287,8 @@ pub enum Mode {
     GameOver,
     /// The highlight reel, playing clip `sel` (`ui/highlights.rs`).
     Highlights { sel: usize },
+    /// A dwarf's life story and portrait (`ui/life.rs`).
+    Life { id: u32, scroll: usize },
 }
 
 /// Timings gathered for the performance overlay, and the last second's summary.
@@ -911,7 +913,7 @@ impl App {
 
     /// Screens that can sit beside the map as a side pane.
     pub fn dockable(&self) -> bool {
-        matches!(self.mode, Mode::Status { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Chronicle { .. } | Mode::Legends { from_world: false, .. })
+        matches!(self.mode, Mode::Status { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Chronicle { .. } | Mode::Legends { from_world: false, .. } | Mode::Life { .. })
     }
 
     pub fn uses_map_cursor(&self) -> bool {
@@ -1364,10 +1366,12 @@ impl App {
                     self.flash = Some(if on { "Specialist: won't haul.".into() } else { "Will haul again.".into() });
                 }
                 KeyCode::Char('m') => self.game.toggle_soldier(id),
+                KeyCode::Char('l') => self.mode = Mode::Life { id, scroll: 0 },
                 _ => {}
             },
             Mode::Military => self.key_military(k),
             Mode::Highlights { sel } => self.key_highlights(k, sel),
+            Mode::Life { id, scroll } => self.key_life(k, id, scroll),
             Mode::KillTarget { squad } => match k.code {
                 KeyCode::Esc => self.mode = Mode::Military,
                 KeyCode::Enter => {

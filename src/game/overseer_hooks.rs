@@ -25,6 +25,7 @@ impl Game {
         // Interface flair: the row of faces.
         self.ov_mood_strip(o);
         self.ov_reel(o);
+        self.ov_eulogies(o);
         let _ = o;
     }
 

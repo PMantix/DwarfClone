@@ -437,6 +437,17 @@ mod tests {
         assert!(g.reel.clips.iter().any(|c| c.title == "A death"), "the weightier moments stay");
     }
 
+    /// An autoplay fort's first siege (seed 5003's, on day 253) is on its
+    /// reel, filmed frame by frame.
+    #[test]
+    fn an_autoplay_fort_films_its_first_siege() {
+        let g = trial_game(5003, Style::Steady, 262);
+        let c = g.reel.clips.iter().find(|c| c.title == "The first siege" || c.title.starts_with("The Battle")).expect("the siege is on the reel");
+        assert_eq!(c.frames.len(), FRAMES as usize + 1);
+        assert!(c.frames.iter().any(|f| !f.is_empty()), "someone moves in it");
+        assert!(g.annals.counters.get("highlights").copied().unwrap_or(0) >= 1);
+    }
+
     #[test]
     fn a_siege_is_named_and_the_overseer_picks_the_moment_of_the_year() {
         let mut g = Game::new(5);

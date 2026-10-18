@@ -17,6 +17,7 @@ use std::collections::{HashMap, HashSet};
 
 mod health;
 mod highlights;
+mod life;
 mod moodstrip;
 
 const SIDEBAR_W: u16 = 38;
@@ -1008,7 +1009,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
     let mut v: Vec<Line> = Vec::new();
     let title;
     match &app.mode {
-        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GrowMap { .. } | Mode::GameOver | Mode::Highlights { .. } => {
+        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GrowMap { .. } | Mode::GameOver | Mode::Highlights { .. } | Mode::Life { .. } => {
             title = "Main".to_string();
             v.extend(stocks(g));
             v.push(Line::default());
@@ -1881,7 +1882,7 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
         v.push(plain(format!("· {}", t.text), col));
     }
     v.push(Line::default());
-    v.push(plain("c: center on dwarf · Esc: back".into(), MUTED));
+    v.push(plain("l: life story · c: center on dwarf · Esc: back".into(), MUTED));
     v
 }
 
@@ -1910,7 +1911,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("z", "fortress status: population, stocks, health"),
         k("b", "build workshops, furniture; C constructions"),
         k("q", "query building: queue work orders"),
-        k("u / v", "unit list / view dwarf (m drafts)"),
+        k("u / v", "unit list / view dwarf (m drafts, l life story)"),
         k("y", "labors: who does what, work details"),
         k("w / o", "burrows / traffic designations"),
         k("m", "military: squads, orders, uniforms, alerts"),
@@ -3122,6 +3123,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::Reports { filter, scroll } => draw_reports(f, area, &app.game, filter, scroll),
         Mode::BuildMenu => draw_build_menu(f, area),
         Mode::Highlights { sel } => highlights::draw(f, area, app, sel),
+        Mode::Life { id, scroll } => life::draw(f, area, &app.game, id, scroll),
         Mode::Help => {
             popup(f, area, 60, 48, " Help ", help_text());
         }
@@ -3143,7 +3145,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         _ => {}
     }
     // Full-screen views sit over everything else.
-    if matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GameOver | Mode::Highlights { .. }) {
+    if matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GameOver | Mode::Highlights { .. } | Mode::Life { .. }) {
         add_target(area, Target::Block);
     }
     if let Some(p) = pane {

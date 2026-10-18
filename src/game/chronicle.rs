@@ -151,6 +151,8 @@ impl Game {
             self.milestone("nodeath", "A whole year without a death");
         } else {
             lines.push(format!("We mourn {}.", list(&log.deaths)));
+            // The notable dead, a line each (lifestory.rs).
+            lines.extend(self.death_scenes(self.tick.saturating_sub(YEAR)));
         }
         let title = log.title();
         self.msg(&format!("A new year dawns. The chronicler has written of {} (c).", title.to_lowercase().replacen("the ", "", 1)), (230, 210, 150));

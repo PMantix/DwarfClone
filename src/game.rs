@@ -92,6 +92,7 @@ pub mod fortify;
 mod towers;
 pub mod moods;
 pub mod reel;
+pub mod lifestory;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
