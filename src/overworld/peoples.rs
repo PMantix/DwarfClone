@@ -217,6 +217,14 @@ impl Overworld {
         self.figures[maker as usize].civ = Some(id);
         self.figures[maker as usize].title = Some(format!("maker of the {}", plural));
         self.log(year, format!("In the Tower of {}, {} twisted {} into a new people: the {}, {}. They were called the {}.", first, mname, from, cap(&plural), body, cname));
+        // Their maker's dark god, if the world's gods are known already
+        // (the same god the pantheon gives them).
+        if !self.gods.is_empty() {
+            let gid = self.gods.len() as u32;
+            if let Some(g) = crate::worldgen::myth::made_god(self, id, gid) {
+                self.gods.push(g);
+            }
+        }
         // Their first town, beside the tower.
         let home = self.free_spot_near(r, tx, ty, 3, base).or_else(|| self.any_spot_near(r, tx, ty, 4));
         let Some((x, y)) = home else {

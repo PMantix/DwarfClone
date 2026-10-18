@@ -209,6 +209,13 @@ pub fn pantheon(ow: &Overworld) -> Vec<God> {
     let mut rng = Rng::new(ow.seed ^ 0x6D79_7468_6F73);
     let mut gods: Vec<God> = Vec::new();
     for civ in &ow.civs {
+        // A people a villain made kneels to the dark god its maker served
+        // (on a stream of its own, so the other peoples' gods come out the
+        // same whether or not it was made).
+        if ow.made_of(civ.id).is_some() {
+            gods.extend(made_god(ow, civ.id, gods.len() as u32));
+            continue;
+        }
         let lean = leanings(civ.race);
         let n = match civ.race {
             Race::Dwarf => 3 + rng.chance(0.5) as usize,
@@ -244,6 +251,24 @@ pub fn pantheon(ow: &Overworld) -> Vec<God> {
         }
     }
     gods
+}
+
+/// The dark god of a people a villain made: god of night or death (and
+/// perhaps war or fire), who whispered to their maker in the tower.
+pub fn made_god(ow: &Overworld, civ: u32, id: u32) -> Option<God> {
+    let m = ow.made_of(civ)?;
+    let c = ow.civs.get(civ as usize)?;
+    let mut rng = Rng::new(ow.seed ^ 0x6D61_6465_676F_64 ^ (civ as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    let first = *rng.pick(&[Sphere::Night, Sphere::Death]);
+    let mut spheres = vec![first];
+    if rng.chance(0.6) {
+        spheres.push(*rng.pick(&[Sphere::War, Sphere::Fire]));
+    }
+    let name = crate::overworld::person_name(&mut rng, c.race).split(' ').next().unwrap_or("Nameless").to_string();
+    let title = rng.pick(first.titles()).to_string();
+    let maker = ow.figures.get(m.maker as usize).and_then(|f| f.name.split(' ').next()).unwrap_or("their maker");
+    let myth = format!("{} whispered to {} in the dark of the tower, and the {} were made in {}'s image.", name, maker, m.plural, name);
+    Some(God { id, name, title, spheres, female: rng.chance(0.5), taboo: first.taboo(), civs: vec![civ], myth })
 }
 
 #[cfg(test)]
