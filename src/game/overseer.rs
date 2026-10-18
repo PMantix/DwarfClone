@@ -1963,6 +1963,10 @@ mod tests {
     #[test]
     fn the_overseer_buries_its_dead() {
         let mut g = Game::new(5);
+        // A plain round the wagon to dig into (the land itself may be a
+        // valley the halls would have to cross).
+        let e = g.embark;
+        g.level_ground(e.x - 35, e.y - 25, e.x + 35, e.y + 25, e.z);
         g.set_overseer(Some(Style::Steady));
         for _ in 0..DAY * 3 {
             g.step();

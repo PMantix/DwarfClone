@@ -1732,6 +1732,10 @@ mod tests {
     #[test]
     fn each_land_has_its_own_wildlife() {
         let mut g = Game::new(11);
+        // The biome's own animals: no region populations to draw on.
+        for r in g.overworld.regions.iter_mut() {
+            r.fauna.clear();
+        }
         let kinds = |g: &mut Game| {
             let mut seen = std::collections::BTreeSet::new();
             for _ in 0..400 {

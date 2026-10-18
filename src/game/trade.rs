@@ -445,7 +445,8 @@ mod tests {
     fn biomes_shape_the_map() {
         let ow = crate::overworld::Overworld::generate(8);
         let find = |b: Biome| {
-            (0..ow.h).flat_map(|y| (0..ow.w).map(move |x| (x, y))).find(|&(x, y)| ow.embarkable(x, y) && ow.cell(x, y).biome == b && !ow.cell(x, y).evil)
+            // A site whose whole map lies in that biome (it runs two cells east and one south).
+            (0..ow.h - 1).flat_map(|y| (0..ow.w - 2).map(move |x| (x, y))).find(|&(x, y)| ow.embarkable(x, y) && (0..3).all(|dx| (0..2).all(|dy| ow.cell(x + dx, y + dy).biome == b && !ow.cell(x + dx, y + dy).evil)))
         };
         let trees = |g: &Game| g.world.tiles.iter().filter(|t| t.kind == TileKind::Tree && t.mat == Mat::Wood).count();
         if let (Some(f), Some(gr)) = (find(Biome::Forest), find(Biome::Grassland)) {

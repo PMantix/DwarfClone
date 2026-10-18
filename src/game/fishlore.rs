@@ -31,7 +31,7 @@ impl Game {
         if self.big_fish.is_none() {
             let kind = match self.biome {
                 Biome::Ocean => "sea serpent",
-                Biome::Swamp => "bog eel",
+                Biome::Swamp | Biome::Marsh => "bog eel",
                 Biome::Jungle => "river crocodile",
                 Biome::Glacier | Biome::Tundra | Biome::Taiga => "ice char",
                 _ => "great pike",

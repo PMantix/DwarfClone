@@ -20,6 +20,7 @@ mod terrain_gen;
 mod title;
 mod ui;
 mod world;
+mod worldgen;
 
 use anyhow::Result;
 use app::App;

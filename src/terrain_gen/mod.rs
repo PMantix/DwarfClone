@@ -11,6 +11,7 @@ pub mod connect;
 pub mod erosion;
 pub mod field;
 pub mod hydro;
+pub mod region;
 pub mod relief;
 pub mod rivers;
 
@@ -106,6 +107,9 @@ pub struct Shape {
     /// The rivers' courses on the map, upstream first: (x, y, bed level).
     #[cfg_attr(not(test), allow(dead_code))]
     pub courses: Vec<Vec<(i32, i32, i32)>>,
+    /// World elevation to levels, when the land came from region tiles.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub zmap: Option<region::ZMap>,
 }
 
 /// How likely a hollow in this biome holds water.
@@ -113,13 +117,13 @@ pub fn lake_odds(b: Biome) -> f64 {
     match b {
         Biome::Desert => 0.0,
         Biome::Badlands => 0.1,
-        Biome::Savanna => 0.35,
+        Biome::Savanna | Biome::Shrubland => 0.35,
         Biome::Glacier => 0.3,
         Biome::Mountain => 0.55,
         Biome::Grassland | Biome::Hills => 0.6,
         Biome::Tundra | Biome::Forest => 0.75,
         Biome::Taiga | Biome::Jungle => 0.85,
-        Biome::Swamp | Biome::Ocean => 1.0,
+        Biome::Swamp | Biome::Marsh | Biome::Ocean | Biome::Lake => 1.0,
     }
 }
 
@@ -128,10 +132,11 @@ pub fn rainfall(b: Biome) -> f32 {
     match b {
         Biome::Desert | Biome::Badlands => 0.1,
         Biome::Savanna | Biome::Glacier => 0.4,
+        Biome::Shrubland => 0.3,
         Biome::Grassland | Biome::Tundra | Biome::Mountain => 0.6,
         Biome::Hills => 0.7,
         Biome::Forest | Biome::Taiga => 0.9,
-        Biome::Jungle | Biome::Swamp | Biome::Ocean => 1.0,
+        Biome::Jungle | Biome::Swamp | Biome::Marsh | Biome::Ocean | Biome::Lake => 1.0,
     }
 }
 
@@ -140,7 +145,15 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
     let (w, h) = (cx.w, cx.h);
     let n = (w * h) as usize;
     let mut rng = Rng::new(cx.seed ^ 0x7E44);
-    let (mut hg, hard, ter, step) = relief::heights(cx, &mut rng);
+    // From the region tiles where the world has them, else from the world
+    // cells' forms.
+    let rt = cx.p.region.as_deref();
+    let zm = rt.map(|rt| region::zmap(cx, rt));
+    let (mut hg, hard, ter, step) = match (rt, &zm) {
+        (Some(rt), Some(zm)) => region::heights(cx, rt, zm),
+        _ => relief::heights(cx, &mut rng),
+    };
+    let tile_water = rt.map(|rt| region::water(cx, rt));
 
     // The sea: ocean columns, and one side of a coast.
     let mut sea = vec![false; n];
@@ -148,7 +161,10 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
         for x in 0..w {
             let i = (y * w + x) as usize;
             let (ax, ay) = ((x + cx.ox) as f64, (y + cx.oy) as f64);
-            let mut s = cx.biome(i) == Biome::Ocean;
+            let mut s = match &tile_water {
+                Some(v) => v[i],
+                None => cx.biome(i).is_water(),
+            };
             if cx.p.features & crate::terrain::feat::COAST != 0 {
                 let (bw, bh) = (cx.base.0 as f64, cx.base.1 as f64);
                 let t = match cx.coast_side {
@@ -163,7 +179,7 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
         }
     }
     let shore = shore_distance(&sea, w, h);
-    fit(&mut hg, &sea, &shore, cx);
+    fit(&mut hg, &sea, &shore, cx, rt.is_some());
     let bench_floor = if sea.iter().any(|&s| s) { cx.sea as f32 } else { cx.lo as f32 + 2.0 };
     relief::terrace(&mut hg, &hard, &ter, &step, bench_floor);
     if sea.iter().any(|&s| s) {
@@ -176,7 +192,10 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
         for x in 0..w {
             let i = (y * w + x) as usize;
             let wet = match cx.biome(i) {
-                Biome::Swamp => 1.0,
+                // The world's wetlands lie wherever its fields say, flat or
+                // not: deeper pools so they hold on a tilt.
+                Biome::Swamp | Biome::Marsh if rt.is_some() => 1.8,
+                Biome::Swamp | Biome::Marsh => 1.0,
                 Biome::Jungle | Biome::Taiga | Biome::Forest | Biome::Tundra => 0.45,
                 Biome::Grassland => 0.3,
                 _ => 0.0,
@@ -235,7 +254,10 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
     let fixed_opt = keep.map(|_| &fixed[..]);
 
     // The world's rivers cut their valleys.
-    let net = rivers::network(cx, &hg);
+    let net = match (rt, &zm) {
+        (Some(rt), Some(zm)) => region::network(cx, rt, zm, &hg),
+        _ => rivers::network(cx, &hg),
+    };
     let near = rivers::nearest(&net, w, h, 26.0);
     rivers::carve_valley(&net, &near, &mut hg, &hard, fixed_opt);
 
@@ -402,6 +424,15 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
             stream[i] = true;
         }
     }
+    // The world's brooks, along their courses on the tiles.
+    if let Some(rt) = rt {
+        let brook = region::brooks(cx, rt);
+        for i in 0..n {
+            if brook[i] && !out[i] && !fixed[i] && !sea[i] {
+                stream[i] = true;
+            }
+        }
+    }
 
     // Every piece of land within reach.
     let mut wet: Vec<Wet> = (0..n)
@@ -448,6 +479,30 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
                 pass[i] = true;
             }
             connect::Change::Path(i) => pass[i] = true,
+        }
+    }
+
+    // A grown map: whatever the joining-up did, dry land beside the old
+    // edge stays within a level of it.
+    if keep.is_some() {
+        let mut order: Vec<usize> = (0..n).filter(|&i| !fixed[i] && seam[i] <= 6 && river[i] == 0 && fill[i] <= surf[i]).collect();
+        order.sort_by_key(|&i| seam[i]);
+        for &i in &order {
+            let (x, y) = (i as i32 % w, i as i32 / w);
+            let (mut lo, mut hi) = (i32::MIN, i32::MAX);
+            for &(ddx, ddy) in crate::geom::DIRS8.iter() {
+                let (nx, ny) = (x + ddx, y + ddy);
+                if nx >= 0 && ny >= 0 && nx < w && ny < h {
+                    let j = (ny * w + nx) as usize;
+                    if seam[j] < seam[i] {
+                        lo = lo.max(surf[j] - 1);
+                        hi = hi.min(surf[j] + 1);
+                    }
+                }
+            }
+            if lo != i32::MIN {
+                surf[i] = if lo <= hi { surf[i].clamp(lo, hi) } else { lo };
+            }
         }
     }
 
@@ -499,13 +554,13 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
             v
         })
         .collect();
-    Shape { surf, fill, river, stream, sea, hard: hard.v, alluvium: wear.deposit.v, scree: scree.v, moist, water_level, pass, courses }
+    Shape { surf, fill, river, stream, sea, hard: hard.v, alluvium: wear.deposit.v, scree: scree.v, moist, water_level, pass, courses, zmap: zm }
 }
 
 /// Fit the land between the sea (or the lowest level) and the sky: lifted
 /// if it lies too low, its relief pressed flatter if it stands too tall,
 /// and dry land kept above the sea, flattening into a shore beside it.
-fn fit(hg: &mut Grid, sea: &[bool], shore: &[f32], cx: &Ctx) {
+fn fit(hg: &mut Grid, sea: &[bool], shore: &[f32], cx: &Ctx, mapped: bool) {
     let any_sea = sea.iter().any(|&s| s);
     let mut land: Vec<f32> = (0..hg.v.len()).filter(|&i| !sea[i]).map(|i| hg.v[i]).collect();
     if land.is_empty() {
@@ -516,9 +571,11 @@ fn fit(hg: &mut Grid, sea: &[bool], shore: &[f32], cx: &Ctx) {
     let high = *land.last().unwrap();
     let lo_w = if any_sea { cx.sea as f32 + 1.0 } else { cx.lo as f32 + 1.0 };
     let hi_w = (cx.top - 2) as f32;
-    let lift = (lo_w - low).max(0.0);
+    // Land from region tiles comes already fitted (see `region::zmap`),
+    // but for easing onto the shore.
+    let lift = if mapped { 0.0 } else { (lo_w - low).max(0.0) };
     let high = high + lift;
-    let k = if high > hi_w { (hi_w - lo_w) / (high - lo_w) } else { 1.0 };
+    let k = if high > hi_w && !mapped { (hi_w - lo_w) / (high - lo_w) } else { 1.0 };
     for i in 0..hg.v.len() {
         let mut z = hg.v[i] + lift;
         if z > lo_w {

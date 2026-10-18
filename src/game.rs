@@ -591,7 +591,8 @@ impl Game {
             siege_race: None,
             siege_routed: false,
             mandate: None,
-            savagery: (params.savagery + if cell.evil { 0.3 } else { 0.0 }) * ow.savagery,
+            // The savagery field (where the world has one) makes the land wilder or tamer.
+            savagery: (params.savagery + if cell.evil { 0.3 } else { 0.0 }) * ow.savagery * ow.fields.savage.get((sy * ow.w + sx) as usize).map_or(1.0, |&v| 0.6 + v as f64 / 125.0),
             biome: cell.biome,
             evil: cell.evil,
             overworld: ow,

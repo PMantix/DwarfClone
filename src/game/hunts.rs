@@ -420,9 +420,9 @@ mod tests {
         (g, s, ids)
     }
 
-    /// Open ground about `r` tiles from the embark: the beasts' spot.
+    /// Open ground about `r` tiles from the fort's stair: the beasts' spot.
     fn out_by(g: &Game, r: i32) -> Pos {
-        let e = g.embark;
+        let e = g.overseer.as_ref().and_then(|o| o.top).unwrap_or(g.embark);
         (0..64)
             .flat_map(|k| {
                 let a = k as f64 * std::f64::consts::TAU / 64.0;
@@ -449,6 +449,8 @@ mod tests {
             d.fight_xp = 3000;
         }
         let at = g.open_patch(4, 3, 8).offset(1, 1, 0);
+        // Open, level ground all round them, so the chase is a fair one.
+        g.level_ground(at.x - 7, at.y - 7, at.x + 7, at.y + 7, at.z);
         let pack = wolves(&mut g, at, 2);
         let start = g.tick;
         while g.tick < start + 100 && !matches!(g.squads[s].order, SquadOrder::Kill(_)) {
@@ -609,8 +611,11 @@ mod tests {
     #[test]
     fn an_army_calls_the_hunt_off() {
         let (mut g, s, _) = fort(21, Style::Steady);
-        // On open ground a way off the fort, where it can be seen and run down.
+        // On open ground a way off the fort's stair, where it can be seen and run down.
+        let wagon = g.embark;
+        g.embark = g.overseer.as_ref().and_then(|o| o.top).unwrap_or(wagon);
         let at = g.open_patch(3, 3, 18).offset(1, 1, 0);
+        g.embark = wagon;
         wolves(&mut g, at, 1);
         let start = g.tick;
         while g.tick < start + 100 && g.hunts.on.is_none() {

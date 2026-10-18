@@ -50,6 +50,7 @@ impl Game {
         if self.world.biomes.is_empty() {
             // An older map, made before the neighbours blended in: keep it one biome.
             params.around.clear();
+            params.region = None;
         }
         params.aquifer = self.world.aquifer;
         params.features = self.world.features;
@@ -145,6 +146,12 @@ mod tests {
                     let (a, b) = (g.world.surface_z(x, y), g.world.surface_z(nx, ny));
                     let (kx, ky) = if old(x, y) { (x, y) } else { (nx, ny) };
                     let wet = g.world.t(Pos::new(x, y, a)).water > 0 || g.world.t(Pos::new(nx, ny, b)).water > 0;
+                    if !((a - b).abs() <= 1 || wet || old_cliff(kx, ky)) {
+                        for yy in y - 3..=y + 3 {
+                            let row: Vec<String> = (x - 6..=x + 4).map(|xx| { let t = g.world.t(Pos::new(xx, yy, g.world.surface_z(xx, yy))); format!("{}{}{}", g.world.surface_z(xx, yy), if t.water > 0 { "~" } else { " " }, if old(xx, yy) { "o" } else { " " }) }).collect();
+                            eprintln!("DBG {} {}", yy, row.join(" "));
+                        }
+                    }
                     assert!((a - b).abs() <= 1 || wet || old_cliff(kx, ky), "a cliff at the seam ({}, {}): {} vs {}", x, y, a, b);
                 }
             }
