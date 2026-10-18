@@ -2763,14 +2763,16 @@ fn legends_lines(ow: &Overworld, tab: usize) -> Vec<Line<'static>> {
             let sites = ow.sites.iter().filter(|s| s.civ == Some(c.id) && !s.ruined).count();
             let ruler = c.ruler.map(|r| ow.figures[r as usize].name.clone()).unwrap_or_else(|| "none".into());
             let enemies: Vec<String> = c.enemies.iter().map(|e| ow.civ(*e).name.clone()).collect();
-            vec![
+            let mut v = vec![
                 Line::from(Span::styled(
                     format!("{} ({}){}", c.name, c.race.plural(), if c.alive { "" } else { " — fallen" }),
                     Style::default().fg(if c.alive { c.race.color() } else { MUTED }).add_modifier(Modifier::BOLD),
                 )),
                 plain(format!("   {} sites, ruler: {}", sites, ruler), TEXT),
                 plain(format!("   at war with: {}", if enemies.is_empty() { "nobody".into() } else { enemies.join(", ") }), MUTED),
-            ]
+            ];
+            v.extend(ow.arts_lines(c.id).into_iter().map(|l| plain(format!("   {}", l), Color::Rgb(200, 180, 255))));
+            v
         }).collect(),
         2 => ow.sites.iter().map(|s| {
             let owner = s.civ.map_or("—".to_string(), |c| ow.civ(c).race.plural().to_string());

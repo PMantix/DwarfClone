@@ -1,4 +1,5 @@
 mod app;
+mod arts;
 mod body;
 mod buildings;
 mod creature;
