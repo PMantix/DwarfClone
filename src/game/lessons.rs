@@ -368,9 +368,10 @@ mod tests {
 
     #[test]
     fn a_siege_that_got_in_brings_traps_and_a_second_squad() {
-        // (Seed 5006: since the world map's downhill rivers, 5001's site has no
-        // halls at all, and so no gate.)
-        let mut g = super::super::overseer::trial_game(5006, Style::Steady, 20);
+        // (The first fort from seed 5000 on with its gate linked by day 20:
+        // the forts it named before lost their gates when the land changed.)
+        let (found, passed) = super::super::overseer::fort_where(Style::Steady, 5000, 12, 20, |g| g.overseer.as_ref().map_or(false, |o| o.did("linked")));
+        let Some((seed, mut g)) = found else { panic!("no fort from 5000 on had its gate linked by day 20 (passed over {:?})", passed) };
         // Fourteen grown dwarves, one squad.
         while g.dwarves.iter().filter(|d| d.alive && !d.is_child()).count() < 14 {
             let id = g.new_id();
@@ -383,7 +384,7 @@ mod tests {
         }
         g.squads.truncate(1);
         let mut o = g.overseer.take().unwrap();
-        assert!(o.did("linked"), "seed 5006 has its gate by day 20");
+        assert!(o.did("linked"), "seed {} has its gate by day 20", seed);
         let base = o.base.unwrap();
         let traps = |g: &Game| {
             g.buildings.values().filter(|b| matches!(b.kind, BuildingKind::WeaponTrap | BuildingKind::StoneTrap) && (b.pos.x - base.x).abs() <= 15 && (b.pos.y - base.y).abs() <= 15).count()

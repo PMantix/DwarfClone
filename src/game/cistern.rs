@@ -676,14 +676,27 @@ mod tests {
     use super::*;
 
     /// A fort with its halls dug and its shelter marked, and a pocket of
-    /// water put two levels under a corner of one of them.
-    fn fort_over_water(seed: u64) -> (Game, Pos) {
+    /// water put two levels under a corner of one of them: the first Steady
+    /// fort from seed 5000 on, at day 40, that has its shelter and no well
+    /// or water below yet, and a corner with sealed rock under it. (It
+    /// named a seed once, and lost it when the land changed.)
+    fn fort_over_water() -> (Game, Pos) {
+        for seed in 5000..5012 {
+            if let Some(found) = fort_over_water_at(seed) {
+                return found;
+            }
+        }
+        panic!("no fort from 5000 on to put water under");
+    }
+
+    fn fort_over_water_at(seed: u64) -> Option<(Game, Pos)> {
         let mut g = trial_game(seed, Style::Steady, 40);
         // (Whatever it began by the water outside is put aside.)
         g.waterworks = Waterworks::default();
         let o = g.overseer.clone().unwrap();
-        assert!(o.did("burrow") && !o.did("well"));
-        assert!(g.find_well_spot(&o).is_none(), "already water below");
+        if !o.did("burrow") || o.did("well") || g.find_well_spot(&o).is_some() {
+            return None;
+        }
         let tiles: Vec<Pos> = o.rooms.iter().filter(|r| r.stage >= 1).flat_map(|r| if r.tiles.is_empty() { box_iter(r.a, r.b).collect() } else { r.tiles.clone() }).collect();
         for p in tiles {
             let q = p.offset(0, 0, -2);
@@ -697,16 +710,16 @@ mod tests {
             g.world.t_mut(q).water = 7;
             if g.find_well_spot(&o).map_or(false, |w| w.top == p) {
                 g.water_cells = None;
-                return (g, p);
+                return Some((g, p));
             }
             *g.world.t_mut(q) = before;
         }
-        panic!("no corner to put water under");
+        None
     }
 
     #[test]
     fn the_overseer_sinks_a_well_over_water() {
-        let (mut g, top) = fort_over_water(5004);
+        let (mut g, top) = fort_over_water();
         let e = g.embark;
         g.spawn_item(ItemKind::Bucket, Mat::Wood, e);
         g.spawn_item(ItemKind::Block, Mat::Granite, e);
