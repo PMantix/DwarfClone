@@ -76,10 +76,11 @@ impl Game {
             (None, Some(p)) => format!(" and {}", p.title()),
             _ => String::new(),
         };
-        let mut s = format!("{} is a {}{}{} of {}.", who, age, d.profession().to_lowercase(), post, self.fortress_name);
-        if !d.alive {
-            s = s.replacen(" is a ", " was a ", 1);
-        }
+        let what = format!("{}{}", age, d.profession().to_lowercase());
+        // "an engraver", "an 8-year-old", "an 18-year-old".
+        let vowel = what.starts_with(|c| "aeiou8".contains(c)) || what.starts_with("11-") || what.starts_with("18-");
+        let a = if vowel { "an" } else { "a" };
+        let mut s = format!("{} {} {} {}{} of {}.", who, if d.alive { "is" } else { "was" }, a, what, post, self.fortress_name);
         let traits = d.personality.describe();
         if !traits.is_empty() {
             let t: Vec<&str> = traits.iter().take(3).copied().collect();
@@ -225,11 +226,24 @@ impl Game {
     }
 
     /// Daily, from the overseer's round: it remembers each dwarf who died
-    /// since yesterday in a line of its notes, and the lines are kept for the
-    /// year's chronicle.
+    /// since its last round in a line of its notes, and the lines are kept
+    /// for the year's chronicle. The round comes early in a step, so a death
+    /// later in that step (on the same tick) is caught next time.
     pub(super) fn ov_eulogies(&mut self, o: &mut Overseer) {
-        let since = self.tick.saturating_sub(DAY);
-        let lines: Vec<String> = self.dwarves.iter().filter(|d| !d.ghost && d.died.map_or(false, |t| t > since)).map(|d| self.eulogy(d)).collect();
+        let since = if o.eulogy_from == 0 { self.tick.saturating_sub(DAY) + 1 } else { o.eulogy_from };
+        let now = self.tick;
+        let dead: Vec<(u32, u64, String)> = self
+            .dwarves
+            .iter()
+            .filter(|d| !d.ghost && !o.eulogized.contains(&d.id) && d.died.map_or(false, |t| t >= since))
+            .map(|d| (d.id, d.died.unwrap_or(0), self.eulogy(d)))
+            .collect();
+        if since != now {
+            o.eulogized.clear();
+        }
+        o.eulogy_from = now;
+        o.eulogized.extend(dead.iter().filter(|x| x.1 >= now).map(|x| x.0));
+        let lines: Vec<String> = dead.into_iter().map(|x| x.2).collect();
         for l in lines {
             Self::note_ov(o, self.tick, format!("Remembered {}", l));
             self.count("eulogies", 1);
@@ -290,13 +304,11 @@ mod tests {
         // craft is, and an expert is "an expert".
         g.dwarves[0].relations.push((b, 90));
         g.dwarves[0].skills[0] = 1_000_000;
-        let story = g.life_story(&g.dwarves[0]).join("
-");
+        let story = g.life_story(&g.dwarves[0]).join("\n");
         assert!(story.contains(" closest friend is ") && story.contains(" is a legendary "), "{}", story);
         g.dwarves[0].skills[0] = (0..1_000_000).find(|x| crate::dwarf::skill_rank(*x) == "Expert").unwrap();
         g.dwarves[0].skills.iter_mut().skip(1).for_each(|s| *s = 0);
-        assert!(g.life_story(&g.dwarves[0]).join("
-").contains(" is an expert "));
+        assert!(g.life_story(&g.dwarves[0]).join("\n").contains(" is an expert "));
         // Dead: how and when.
         g.tick = SEASON * 3;
         let mut d = std::mem::take(&mut g.dwarves[0]);
@@ -331,5 +343,31 @@ mod tests {
         g.tick += 10;
         g.ov_eulogies(&mut o);
         assert!(o.notes.iter().any(|n| n.1.starts_with("Remembered") && n.1.contains(&name)), "{:?}", o.notes);
+        // A death later in the step of a round (on its tick) is remembered
+        // at the next round, and nobody twice.
+        let round = g.tick;
+        let mut d = std::mem::take(&mut g.dwarves[3]);
+        g.kill_for_test(&mut d, "was struck down");
+        d.died = Some(round);
+        let late = d.name.clone();
+        g.dwarves[3] = d;
+        g.tick += DAY;
+        g.ov_eulogies(&mut o);
+        g.tick += DAY;
+        g.ov_eulogies(&mut o);
+        let count = |who: &str| o.notes.iter().filter(|n| n.1.starts_with("Remembered") && n.1.contains(who)).count();
+        assert_eq!((count(&name), count(&late)), (1, 1), "{:?}", o.notes);
+    }
+
+    #[test]
+    fn an_engraver_is_an_engraver() {
+        let mut g = Game::new(5);
+        g.dwarves[0].age = None;
+        let p = g.dwarves[0].profession().to_lowercase();
+        let first = g.life_story(&g.dwarves[0])[0].clone();
+        let a = if p.starts_with(|c| "aeiou".contains(c)) { " is an " } else { " is a " };
+        assert!(first.contains(&format!("{}{}", a, p)), "{}", first);
+        g.dwarves[0].age = Some(80);
+        assert!(g.life_story(&g.dwarves[0])[0].contains(" is an 80-year-old "));
     }
 }

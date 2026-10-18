@@ -213,6 +213,12 @@ pub struct Overseer {
     /// How the inside of the fort grows up (`architect`, `maturity`).
     #[serde(default)]
     pub interior: super::architect::Interior,
+    /// The eulogies: deaths are looked at from this tick on (0: from a day
+    /// back), less those already remembered on that tick.
+    #[serde(default)]
+    pub eulogy_from: u64,
+    #[serde(default)]
+    pub eulogized: Vec<u32>,
 }
 
 impl Overseer {
@@ -256,6 +262,8 @@ impl Overseer {
             stalls: 0,
             resites: 0,
             interior: Default::default(),
+            eulogy_from: 0,
+            eulogized: Vec::new(),
         }
     }
 
