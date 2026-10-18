@@ -101,7 +101,10 @@ pub struct Shape {
     /// 0..1: how wet the ground is (run-off, rivers and lakes nearby).
     pub moist: Vec<f32>,
     pub water_level: i32,
+    /// Columns on a way cut through to join the land up (no trees there).
+    pub pass: Vec<bool>,
     /// The rivers' courses on the map, upstream first: (x, y, bed level).
+    #[cfg_attr(not(test), allow(dead_code))]
     pub courses: Vec<Vec<(i32, i32, i32)>>,
 }
 
@@ -294,7 +297,14 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
         if near.dist[i] <= s.half {
             bed[i] = (s.level.floor() as i32).clamp(cx.lo, cx.top - 1);
             surf[i] = bed[i];
-            river[i] = if (s.along as i32).rem_euclid(21) < 3 { 2 } else { 6 };
+            // Fords: a riffle a level up, shallow water over stones, that holds the
+            // deep water back in pools between them.
+            if (s.along as i32).rem_euclid(21) < 3 {
+                river[i] = 2;
+                surf[i] = bed[i] + 1;
+            } else {
+                river[i] = 6;
+            }
         }
     }
     for y in 0..h {
@@ -426,10 +436,18 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
             lo
         })
         .collect();
+    let mut pass = vec![false; n];
     for c in connect::join(&mut surf, &mut wet, &brim, &lowest, &fixed, w, h) {
         match c {
-            connect::Change::Ford(i) => river[i] = 2,
-            connect::Change::Causeway(i) => fill[i] = 0,
+            connect::Change::Ford(i) => {
+                river[i] = 2;
+                surf[i] = bed[i] + 1;
+            }
+            connect::Change::Causeway(i) => {
+                fill[i] = 0;
+                pass[i] = true;
+            }
+            connect::Change::Path(i) => pass[i] = true,
         }
     }
 
@@ -481,7 +499,7 @@ pub fn shape(cx: &Ctx, keep: Option<(&World, (i32, i32))>) -> Shape {
             v
         })
         .collect();
-    Shape { surf, fill, river, stream, sea, hard: hard.v, alluvium: wear.deposit.v, scree: scree.v, moist, water_level, courses }
+    Shape { surf, fill, river, stream, sea, hard: hard.v, alluvium: wear.deposit.v, scree: scree.v, moist, water_level, pass, courses }
 }
 
 /// Fit the land between the sea (or the lowest level) and the sky: lifted

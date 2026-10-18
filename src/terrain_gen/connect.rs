@@ -22,6 +22,8 @@ pub enum Wet {
 pub enum Change {
     Ford(usize),
     Causeway(usize),
+    /// A column on a way cut through (kept clear of trees and crags).
+    Path(usize),
 }
 
 /// Label the walkable surface: columns joined when both are dry (or
@@ -181,6 +183,7 @@ pub fn join(surf: &mut [i32], wet: &mut [Wet], brim: &[i32], lowest: &[i32], fix
                         cut = true;
                     }
                     Wet::Dry => {
+                        changes.push(Change::Path(i));
                         let nt = t[pi].max(lowest[i]);
                         if nt < surf[i] {
                             surf[i] = nt;

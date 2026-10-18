@@ -608,7 +608,9 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
             let ridge = (drop_at(x, y) as f64 * 0.12).min(0.4);
             let cluster = forest_n.fbm2(ax as f64 / 16.0, ay as f64 / 16.0, 3) + (m - 0.35) * 0.35 - ridge;
             let density = trees * (0.35 + 0.9 * m);
-            if cluster > 0.52 && rng.chance((0.34 * density).min(0.8)) || rng.chance(0.012 * trees) {
+            if shape.pass[i] {
+                // A way cut through stays open.
+            } else if cluster > 0.52 && rng.chance((0.34 * density).min(0.8)) || rng.chance(0.012 * trees) {
                 let t = world.t_mut(p);
                 t.kind = TileKind::Tree;
                 t.mat = Mat::Wood;
@@ -735,7 +737,7 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                 }
                 let hh = surf_at(&world, tx, ty);
                 let p = Pos::new(tx, ty, hh);
-                if world.t(p).kind == TileKind::Floor && world.t(p).water == 0 {
+                if world.t(p).kind == TileKind::Floor && world.t(p).water == 0 && !shape.pass[(ty * w + tx) as usize] {
                     let t = world.t_mut(p);
                     t.kind = TileKind::Wall;
                     t.mat = Mat::Granite;
@@ -787,6 +789,12 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
         }
     }
 
+    // A tree or a crag that shuts a narrow way between two pieces of land
+    // falls (the land must stay one piece to walk).
+    if keep.is_none() {
+        open_ways(&mut world);
+    }
+
     // The caves, kept clear of where the wagon will stop (the fortress
     // grows round it).
     if keep.is_none() && tunnels > 0 {
@@ -832,6 +840,52 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
         }
     }
     (world, shape)
+}
+
+/// Clear the trees and crags standing between the walkable land's pieces:
+/// any whose neighbours belong to more than one piece goes, until the
+/// land is one (or nothing more can be opened).
+fn open_ways(world: &mut World) {
+    for _ in 0..6 {
+        let (piece, main) = crate::terrain_gen::connect::surface_pieces(world);
+        let pieces = piece.iter().filter(|&&p| p != u32::MAX && p != main).count();
+        if pieces == 0 {
+            return;
+        }
+        let (w, h) = (world.w, world.h);
+        let mut opened = 0;
+        for y in 0..h {
+            for x in 0..w {
+                let p = Pos::new(x, y, world.surface_z(x, y));
+                let t = *world.t(p);
+                if !(t.kind == TileKind::Tree || t.kind == TileKind::Wall && t.water == 0) {
+                    continue;
+                }
+                let mut seen: Vec<u32> = Vec::new();
+                for &(dx, dy) in DIRS8.iter() {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx < 0 || ny < 0 || nx >= w || ny >= h {
+                        continue;
+                    }
+                    let k = piece[(ny * w + nx) as usize];
+                    if k != u32::MAX && (world.surface_z(nx, ny) - p.z).abs() <= 1 && !seen.contains(&k) {
+                        seen.push(k);
+                    }
+                }
+                if seen.len() >= 2 {
+                    let t = world.t_mut(p);
+                    t.kind = TileKind::Floor;
+                    if t.mat == Mat::Wood || t.mat.is_building_stone() {
+                        t.mat = Mat::Grass;
+                    }
+                    opened += 1;
+                }
+            }
+        }
+        if opened == 0 {
+            return;
+        }
+    }
 }
 
 /// Pick a dry, open spot near the middle of the map for the wagon: on the
