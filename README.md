@@ -110,6 +110,21 @@ Press `A` in a fortress to hand it over (or take it back), or pick
 by side and reports how each ended (`--runs`, `--years`, `--style`, `--seed`). Most end in
 ruin; that's the fun of it.
 
+**The arena.** *Arena* on the title screen sets up a battle: two sides, each any species (or
+dwarves with a fighting skill from Dabbling up), how many, their training, a weapon (axe, sword,
+spear, hammer, pick or crossbow, with bolts) and armour (helm, mail, shield) and what each is
+made of, and a field: open ground, a corridor with a door (beasts must batter it down), a
+cavern, a bridge over a chasm (a heavy blow can send someone over the edge) or a walled yard.
+Enter plays the bout on its own little map with the same blows, blood, severed parts and
+finishing blows as a siege; nobody eats, sleeps or works. Space pauses, `+`/`-` set the speed,
+`.` steps a tick, Tab follows a fighter (their kit, wounds and kills beside the map; `f` lets
+the camera follow the blood instead), `v` shows the whole combat log, `e` skips to the end. At
+the end a summary tells who won, first blood, the fighter of the bout, and every fighter's
+wounds, severed parts and kills. `r` reruns a matchup headless 10–500 times (`n` picks how many)
+for win rates, with a table of every rerun so far; `s` saves the matchup to
+`saves/<name>.arena.json` and `l` loads one (or one of ten presets: `p` steps through them,
+`?` makes one up). `b` picks a winner before the bout, and the screen keeps your record.
+
 **The director.** Leave the keys and mouse alone for 20 seconds while the overseer plays and
 the camera tours the fort like a screensaver: to a fight (staying with the fighter until it
 ends), a siege and the gate it comes for, a beast of legend or a monster near the walls, a
@@ -713,3 +728,5 @@ cargo test --release profile_year -- --ignored --nocapture
 | `buildings.rs`, `items.rs`, `material.rs` | data definitions and recipes |
 | `path.rs` | A* and nearest-goal Dijkstra search |
 | `app.rs`, `ui.rs` | input modes and rendering |
+| `game/arena.rs`, `game/arena/` | the arena: matchups, fields, the bout's own loop, reruns, saved matchups |
+| `app/arena.rs`, `ui/arena.rs` | the arena's screens: setup, the bout, summary, report, win rates |

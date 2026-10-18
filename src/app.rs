@@ -12,9 +12,11 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent,
 use ratatui::layout::Rect;
 use std::collections::HashSet;
 
+pub mod arena;
+
 pub const SPEEDS: [u32; 6] = [1, 2, 5, 10, 25, 60];
 pub const SAVE_DIR: &str = "saves";
-pub const TITLE_MENU: [&str; 5] = ["New world", "Continue", "Load game", "Watch a fort", "Quit"];
+pub const TITLE_MENU: [&str; 6] = ["New world", "Continue", "Load game", "Watch a fort", "Arena", "Quit"];
 
 /// Rows of the world settings screen.
 pub const SETUP_ROWS: [&str; 8] = ["Preset", "Seed", "World size", "History", "Civilizations", "Savagery", "Minerals", "Generate world"];
@@ -285,6 +287,8 @@ pub enum Mode {
     ConfirmQuit,
     /// Every dwarf is dead: the fortress has fallen.
     GameOver,
+    /// The arena: set up a battle and watch it (`app::arena`).
+    Arena,
 }
 
 /// Timings gathered for the performance overlay, and the last second's summary.
@@ -387,6 +391,8 @@ pub struct App {
     pub director: crate::director::Director,
     /// Seconds since the last frame (set by the main loop; tests use the default).
     pub frame_dt: f64,
+    /// The arena's screens, once opened.
+    pub arena: Option<Box<arena::ArenaScreen>>,
 }
 
 impl App {
@@ -450,6 +456,7 @@ impl App {
             pan_from: (0, 0),
             director: crate::director::Director::default(),
             frame_dt: 1.0 / 30.0,
+            arena: None,
         }
     }
 
@@ -458,6 +465,9 @@ impl App {
     /// Advance one frame: finish jobs, run the simulation, autosave.
     pub fn frame(&mut self) {
         self.poll_job();
+        if self.mode == Mode::Arena {
+            return self.arena_frame();
+        }
         if self.mode == Mode::WorldGen {
             if let Some(g) = self.worldgen.as_mut() {
                 // The world is made a step at a time, well ahead of the show
@@ -552,6 +562,7 @@ impl App {
                 | Mode::Embark { .. }
                 | Mode::Prepare { .. }
                 | Mode::Legends { from_world: true, .. }
+                | Mode::Arena
         )
     }
 
@@ -814,6 +825,7 @@ impl App {
                     }
                 }
                 3 => self.start_watch(),
+                4 => self.open_arena(),
                 _ => self.quit = true,
             },
             _ => {}
@@ -1161,6 +1173,7 @@ impl App {
             Mode::Prepare { x, y, sel, col } => return self.key_prepare(k, x, y, sel, col),
             Mode::Title { sel } => return self.key_title(k, sel),
             Mode::LoadMenu { sel, confirm } => return self.key_load_menu(k, sel, confirm),
+            Mode::Arena => return self.key_arena(k),
             _ => {}
         }
         if self.uses_map_cursor() && self.move_cursor(&k) {
@@ -1190,7 +1203,7 @@ impl App {
         }
         let mode = self.mode.clone();
         match mode {
-            Mode::GameOver => {}
+            Mode::GameOver | Mode::Arena => {}
             Mode::Normal => self.key_normal(k),
             Mode::Designate { kind, corner } => match k.code {
                 KeyCode::Enter => self.confirm(),

@@ -13,8 +13,7 @@ use std::path::{Path, PathBuf};
 
 mod fields;
 mod fight;
-#[allow(unused_imports)] // (until the arena screens use them)
-pub use fight::{run_many, Battle, Outcome, Tally, Warrior, LIMIT};
+pub use fight::{Battle, Tally, SIDE_COLORS};
 
 /// Who fights on a side.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,13 +83,6 @@ impl Kin {
         match self {
             Kin::Dwarf => '☻',
             Kin::Beast(s) => s.info().glyph,
-        }
-    }
-
-    pub fn color(self) -> (u8, u8, u8) {
-        match self {
-            Kin::Dwarf => (240, 200, 120),
-            Kin::Beast(s) => s.info().color,
         }
     }
 

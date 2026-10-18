@@ -282,6 +282,15 @@ impl Battle {
     /// Their blows as the game's combat sees them (a creature's training
     /// adds to its skill).
     pub(in crate::game) fn fighter(&self, i: usize) -> Fighter {
+        self.fighter_of(i)
+    }
+
+    /// A fighter's skill as their blows use it.
+    pub fn skill(&self, i: usize) -> u32 {
+        self.fighter_of(i).skill
+    }
+
+    fn fighter_of(&self, i: usize) -> Fighter {
         let w = &self.warriors[i];
         match w.kin {
             Kin::Dwarf => self.g.dwarf_fighter(&self.g.dwarves[w.slot]),
@@ -812,6 +821,7 @@ impl Tally {
 }
 
 /// `n` bouts of a matchup, one after another from its seed (headless).
+#[cfg(test)]
 pub fn run_many(m: &Matchup, n: u32) -> Tally {
     let mut t = Tally::default();
     for k in 0..n {
@@ -825,6 +835,7 @@ pub fn run_many(m: &Matchup, n: u32) -> Tally {
 #[cfg(test)]
 mod tests {
     use super::super::{presets, SideSpec};
+    pub use super::run_many;
     use super::*;
 
     #[test]
