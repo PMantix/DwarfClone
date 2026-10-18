@@ -18,6 +18,8 @@ impl Game {
         self.ov_larder(o);
         self.ov_hospital(o);
         self.ov_lessons(o);
+        // The inside of the fort grows up (architect.rs, maturity.rs).
+        self.ov_interior(o);
         let _ = o;
     }
 

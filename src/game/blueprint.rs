@@ -380,6 +380,9 @@ pub(super) fn wants(kind: RoomUse) -> &'static [Class] {
         RoomUse::Hospital | RoomUse::Barracks | RoomUse::Tomb => &[Medium, Large, Small],
         RoomUse::Office | RoomUse::Jail => &[Small, Medium],
         RoomUse::Grand => &[],
+        RoomUse::Suite | RoomUse::Industry => &[Large, Medium],
+        RoomUse::Library => &[Medium, Large, Small],
+        RoomUse::Parlour => &[Small, Medium],
     }
 }
 
@@ -433,7 +436,7 @@ impl Game {
         if bp.slots.is_empty() {
             return None;
         }
-        for &class in wants(kind) {
+        for class in super::architect::classes(o, kind) {
             for (i, s) in bp.slots.iter().enumerate() {
                 if s.class != class || o.plan_taken.contains(&(k, i as u32)) {
                     continue;
@@ -448,13 +451,15 @@ impl Game {
                     continue;
                 }
                 o.plan_taken.push((k, i as u32));
-                for &p in halls.iter().chain(s.doors.iter()).chain(s.tiles.iter()) {
+                let (w, h) = s.shape.size();
+                let kind = if kind == RoomUse::Bedrooms && s.beds.is_empty() { RoomUse::Dormitory } else { kind };
+                // A grand taste leaves pillars standing in a big hall.
+                let (shape, tiles) = super::architect::restyle(o, kind, s.shape, s.a, &s.tiles);
+                for &p in halls.iter().chain(s.doors.iter()).chain(tiles.iter()) {
                     if self.world.get(p).map_or(false, |t| t.kind.solid()) {
                         self.designate(p, p, Desig::Dig);
                     }
                 }
-                let (w, h) = s.shape.size();
-                let kind = if kind == RoomUse::Bedrooms && s.beds.is_empty() { RoomUse::Dormitory } else { kind };
                 let mut way = halls;
                 way.extend(s.doors.iter().copied());
                 return Some((
@@ -463,8 +468,8 @@ impl Game {
                         a: s.a,
                         b: s.a.offset(w - 1, h - 1, 0),
                         stage: 0,
-                        tiles: s.tiles.clone(),
-                        shape: Some(s.shape),
+                        tiles,
+                        shape: Some(shape),
                         since: self.tick,
                         doors: s.doors.clone(),
                         beds: s.beds.clone(),

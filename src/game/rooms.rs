@@ -202,7 +202,22 @@ impl Game {
             match kind {
                 Some(ZoneKind::Dormitory | ZoneKind::Hospital) => self.buildings.get_mut(&bid).unwrap().owner = None,
                 Some(ZoneKind::Bedroom) if owner.is_some() => {
-                    let o = owner.unwrap();
+                    // The room's first bed is its owner's; a second is for
+                    // the owner's husband or wife (couples share).
+                    let zid = self.world.t(pos).zone;
+                    let first = self.buildings.values().filter(|b| b.kind == BuildingKind::Bed && b.built && self.world.t(b.pos).zone == zid).map(|b| b.id).min();
+                    let o = if first == Some(bid) {
+                        owner.unwrap()
+                    } else {
+                        let o = owner.unwrap();
+                        match self.dwarves.iter().find(|d| d.id == o).and_then(|d| d.spouse).filter(|s| self.dwarves.iter().any(|d| d.id == *s && d.alive) && !self.zones.values().any(|z| z.kind == ZoneKind::Bedroom && z.owner == Some(*s))) {
+                            Some(s) => s,
+                            None => {
+                                self.buildings.get_mut(&bid).unwrap().owner = None;
+                                continue;
+                            }
+                        }
+                    };
                     // Their other beds go back into the pool.
                     for b in self.buildings.values_mut() {
                         if b.owner == Some(o) && b.id != bid && b.kind == BuildingKind::Bed {

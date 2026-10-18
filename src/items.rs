@@ -68,6 +68,9 @@ pub enum ItemKind {
     Flour,
     /// A severed limb, head or teeth, labelled with whose ("Urist's left arm").
     BodyPart,
+    Cabinet,
+    Chest,
+    Statue,
 }
 
 /// Items that fit in a barrel or a bin, ten to a container.
@@ -81,7 +84,7 @@ pub enum Slot {
 }
 
 impl ItemKind {
-    pub const ALL: [ItemKind; 51] = [
+    pub const ALL: [ItemKind; 54] = [
         ItemKind::Boulder,
         ItemKind::Log,
         ItemKind::Block,
@@ -133,6 +136,9 @@ impl ItemKind {
         ItemKind::Fish,
         ItemKind::Flour,
         ItemKind::BodyPart,
+        ItemKind::Cabinet,
+        ItemKind::Chest,
+        ItemKind::Statue,
     ];
 
     /// Plural name for lists ("logs", "metal bars").
@@ -189,6 +195,9 @@ impl ItemKind {
             ItemKind::Fish => "fish",
             ItemKind::Flour => "flour",
             ItemKind::BodyPart => "body parts",
+            ItemKind::Cabinet => "cabinets",
+            ItemKind::Chest => "chests",
+            ItemKind::Statue => "statues",
         }
     }
 
@@ -225,7 +234,8 @@ impl ItemKind {
             Block | Leather | Bucket => 3,
             Barrel | Bin => 5,
             Meal => 6,
-            Bed | Table | Chair | Door => 10,
+            Bed | Table | Chair | Door | Cabinet | Chest => 10,
+            Statue => 30,
             Bar => 10,
             Craft => 20,
             Pick | Axe | Sword | Spear | Hammer => 25,
@@ -361,7 +371,7 @@ impl StockFilter {
             StockFilter::Stone => matches!(k, Boulder | Block),
             StockFilter::Wood => k == Log,
             StockFilter::Food => matches!(k, Plant | Drink | Seed | Meat | Meal | Fish | Flour),
-            StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin | Cage | Coffin | Slab | Bucket),
+            StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin | Cage | Coffin | Slab | Bucket | Cabinet | Chest | Statue),
             StockFilter::Metal => matches!(k, Bar | Charcoal),
             StockFilter::Goods => {
                 matches!(
@@ -505,6 +515,9 @@ impl Item {
             Crutch => format!("{} crutch", m.adj()),
             Coffin => format!("{} coffin", m.adj()),
             Slab => format!("{} slab", m.adj()),
+            Cabinet => format!("{} cabinet", m.adj()),
+            Chest => format!("{} chest", m.adj()),
+            Statue => format!("{} statue", m.adj()),
             Bucket if self.label.as_deref() == Some("water") => format!("{} bucket of water", m.adj()),
             Bucket => format!("{} bucket", m.adj()),
             Cage => match self.label.as_deref() {
@@ -584,6 +597,9 @@ impl Item {
             BodyPart if self.mat == Mat::Bone => ',',
             BodyPart if self.label.as_deref().map_or(false, |l| l.ends_with("head")) => 'ö',
             BodyPart => '⌐',
+            Cabinet => 'π',
+            Chest => '■',
+            Statue => '♀',
         };
         let col = match self.kind {
             Drink => Color::Rgb(230, 170, 60),
