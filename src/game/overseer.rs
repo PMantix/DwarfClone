@@ -185,6 +185,23 @@ pub struct Overseer {
     /// Goods it means to buy from the next caravan (to break a circle).
     #[serde(default)]
     pub wanted: Vec<ItemKind>,
+    /// Rooms it found nowhere to cut, and when (not asked for again soon).
+    #[serde(default)]
+    pub blocked: Vec<(RoomUse, u64)>,
+    /// Since when its rooms have found nowhere to go (0: they do).
+    #[serde(default)]
+    pub stuck_since: u64,
+    /// The watchdog's mark: rooms fitted and buildings built, and since
+    /// when they've stayed the same.
+    #[serde(default)]
+    pub stall_mark: (usize, usize),
+    #[serde(default)]
+    pub stall_since: u64,
+    /// How many times the watchdog has had to step in, and moved the stair.
+    #[serde(default)]
+    pub stalls: u32,
+    #[serde(default)]
+    pub resites: u32,
 }
 
 impl Overseer {
@@ -221,7 +238,24 @@ impl Overseer {
             lessons: Vec::new(),
             worries: Vec::new(),
             wanted: Vec::new(),
+            blocked: Vec::new(),
+            stuck_since: 0,
+            stall_mark: (0, 0),
+            stall_since: 0,
+            stalls: 0,
+            resites: 0,
         }
+    }
+
+    /// Whether it digs rooms anywhere round its halls, not just east of the
+    /// gatehouse (once the watchdog has had to step in).
+    pub(super) fn anywhere(&self) -> bool {
+        self.stalls > 0
+    }
+
+    /// Whether it found nowhere for a room of `kind` lately (this season).
+    pub(super) fn blocked_lately(&self, kind: RoomUse, tick: u64) -> bool {
+        self.blocked.iter().any(|&(k, t)| k == kind && tick < t + SEASON)
     }
 
     pub fn nudge(&self, a: Ambition) -> i8 {
@@ -234,8 +268,28 @@ impl Overseer {
     }
 }
 
+/// What a room is called in its notes.
+pub(super) fn room_name(k: RoomUse) -> &'static str {
+    match k {
+        RoomUse::Workshops => "workshop hall",
+        RoomUse::Stockpile => "storeroom",
+        RoomUse::Dining => "dining hall",
+        RoomUse::Dormitory => "dormitory",
+        RoomUse::Meeting => "meeting hall",
+        RoomUse::Tavern => "tavern",
+        RoomUse::Temple => "temple",
+        RoomUse::Hospital => "hospital",
+        RoomUse::Tomb => "tomb",
+        RoomUse::Barracks => "barracks",
+        RoomUse::Office => "office",
+        RoomUse::Jail => "jail",
+        RoomUse::Grand => "grand hall",
+        RoomUse::Bedrooms => "row of bedrooms",
+    }
+}
+
 /// The order rooms are dug in, by style.
-fn plan(style: Style) -> Vec<RoomUse> {
+pub(super) fn plan(style: Style) -> Vec<RoomUse> {
     use RoomUse::*;
     match style {
         // (A hospital right after the first beds: it must be ready before the first siege.)
@@ -291,6 +345,11 @@ impl Game {
     }
 
     fn note(o: &mut Overseer, tick: u64, text: String) {
+        // The very same words again so soon say nothing new: once a half
+        // season at most (what still holds says "still", see `troubles`).
+        if o.notes.iter().any(|n| n.1 == text && tick < n.0 + SEASON / 2) {
+            return;
+        }
         o.notes.push((tick, text));
         if o.notes.len() > 60 {
             o.notes.remove(0);
@@ -370,7 +429,36 @@ impl Game {
         if let Some(m) = self.candidates(Position::Manager).first().copied() {
             self.appoint(Position::Manager, Some(m));
         }
-        let depth = if o.style == Style::Delver { 4 } else { 3 };
+        let Some((s, depth)) = self.stair_site(o.style, None) else {
+            self.overseer = None;
+            return;
+        };
+        let base = s.offset(0, 0, -depth);
+        if base.z < 2 {
+            return;
+        }
+        self.designate(s, base, Desig::StairUD);
+        // The gatehouse: the corridor every way in passes through.
+        self.designate(base.offset(1, 0, 0), base.offset(14, 1, 0), Desig::Dig);
+        o.top = Some(s);
+        o.base = Some(base);
+        o.slots = 0;
+        o.layout = self.pick_layout(o);
+        Self::note(o, tick, format!("It means to lay the fortress out as {}.", o.layout.name()));
+        if let Some(m) = self.candidates(Position::Manager).first().copied() {
+            self.appoint(Position::Manager, Some(m));
+        }
+        Self::note(o, tick, format!("Struck the earth: a stair down {} levels, farms and a stockpile by the wagon.", depth));
+    }
+
+    /// Where the stair goes down from the surface, and how deep: on open
+    /// ground near the wagon, far from water, with rock for the gatehouse
+    /// and room for the halls east of it. With `avoid` (a stair whose halls
+    /// came to nothing), only somewhere away from it, and no making do with
+    /// a site that fails the gatehouse's checks.
+    pub(super) fn stair_site(&self, style: Style, avoid: Option<Pos>) -> Option<(Pos, i32)> {
+        let e = self.embark;
+        let depth = if style == Style::Delver { 4 } else { 3 };
         let open = |g: &Game, p: Pos| g.world.get(p).map_or(false, |t| t.kind == TileKind::Floor && t.building == 0 && t.zone == 0 && t.water == 0);
         // Somewhere water can't pour in: as far from any as can be (a river
         // beside the stair floods the whole fort), high above the waterline,
@@ -447,30 +535,14 @@ impl Game {
             .filter(|p| self.world.in_bounds(Pos::new(p.x, p.y, 0)))
             .map(|p| Pos::new(p.x, p.y, self.world.surface_z(p.x, p.y)))
             .filter(|&p| open(self, p))
+            .filter(|p| avoid.map_or(true, |a| (p.x - a.x).abs().max((p.y - a.y).abs()) >= 8))
             .filter_map(|p| score(self, p).map(|s| (s, p)))
             .max_by_key(|&((s, _), p)| (s, -(p.x - e.x).abs() - (p.y - e.y).abs()))
-            .map(|((_, k), p)| (p, k))
-            .or_else(|| (1..12).flat_map(|i| [e.offset(i, 0, 0), e.offset(0, i, 0), e.offset(-i, 0, 0)]).find(|&p| open(self, p)).map(|p| (p, reach(self, p).max(1))));
-        let Some((s, depth)) = s else {
-            self.overseer = None;
-            return;
-        };
-        let base = s.offset(0, 0, -depth);
-        if base.z < 2 {
-            return;
+            .map(|((_, k), p)| (p, k));
+        if avoid.is_some() {
+            return s;
         }
-        self.designate(s, base, Desig::StairUD);
-        // The gatehouse: the corridor every way in passes through.
-        self.designate(base.offset(1, 0, 0), base.offset(14, 1, 0), Desig::Dig);
-        o.top = Some(s);
-        o.base = Some(base);
-        o.slots = 0;
-        o.layout = self.pick_layout(o);
-        Self::note(o, tick, format!("It means to lay the fortress out as {}.", o.layout.name()));
-        if let Some(m) = self.candidates(Position::Manager).first().copied() {
-            self.appoint(Position::Manager, Some(m));
-        }
-        Self::note(o, tick, format!("Struck the earth: a stair down {} levels, farms and a stockpile by the wagon.", depth));
+        s.or_else(|| (1..12).flat_map(|i| [e.offset(i, 0, 0), e.offset(0, i, 0), e.offset(-i, 0, 0)]).find(|&p| open(self, p)).map(|p| (p, reach(self, p).max(1))))
     }
 
     /// Whether a dwarf could walk from the foot of the stair into the room.
@@ -524,7 +596,9 @@ impl Game {
                 (k, w)
             }
         });
-        if let Some((kind, wanted)) = next.filter(|_| (o.rooms.len() < want || !o.wants.is_empty()) && digging < 2 && dig_jobs < 120) {
+        // (Once nothing has fit, it only looks again daily: it's a long search.)
+        let retry = o.stuck_since == 0 || self.tick % DAY < 150;
+        if let Some((kind, wanted)) = next.filter(|_| (o.rooms.len() < want || !o.wants.is_empty()) && digging < 2 && dig_jobs < 120 && retry) {
             match self.plan_room(o, kind) {
                 Some(room) => {
                     let what = match (room.kind, room.shape) {
@@ -533,6 +607,8 @@ impl Game {
                         (_, Some(s)) if !matches!(s, Shape::Rect { .. }) => format!("Dug out a {} for a {:?}.", s.describe(), kind).to_lowercase().replace("dug out", "Dug out"),
                         _ => format!("Dug out a room for a {:?}.", kind).to_lowercase().replace("dug out", "Dug out"),
                     };
+                    o.blocked.retain(|b| b.0 != room.kind);
+                    o.stuck_since = 0;
                     o.rooms.push(room);
                     o.slots = (o.rooms.len() as i32 + 1) / 2;
                     if wanted {
@@ -543,7 +619,18 @@ impl Game {
                     Self::note(o, tick, what);
                 }
                 None => {
-                    o.wants.clear();
+                    // Nowhere for it. A want is put by for the season (not
+                    // asked for again daily); the plan itself stuck is the
+                    // watchdog's business.
+                    if !wanted && o.stuck_since == 0 {
+                        o.stuck_since = tick;
+                    }
+                    if wanted {
+                        let k = o.wants.remove(0);
+                        o.blocked.retain(|b| b.0 != k);
+                        o.blocked.push((k, tick));
+                        Self::note(o, tick, format!("Found no rock to cut a {} from, for now.", room_name(k)));
+                    }
                 }
             }
         }
@@ -559,13 +646,17 @@ impl Game {
                 let r = o.rooms[i].clone();
                 self.ov_fit(o, &r);
                 o.rooms[i].stage = 1;
-            } else if daily && self.tick > o.rooms[i].since + DAY * 15 && !self.room_reachable(o, &o.rooms[i]) {
-                // Still out of reach after a fortnight: give it up.
+            } else if daily && self.tick > o.rooms[i].since + DAY * if self.dwarves.iter().any(|d| matches!(d.task, Task::Dig { .. })) { 40 } else { 15 } && !self.room_reachable(o, &o.rooms[i]) {
+                // Still out of reach after a fortnight (longer while the
+                // miners are at work: a fort short of picks digs slowly): give it up.
                 let r = o.rooms[i].clone();
                 let tiles = if r.tiles.is_empty() { box_iter(r.a, r.b).collect() } else { r.tiles.clone() };
                 for p in tiles {
                     self.designate(p, p, Desig::None);
                 }
+                // (And no new tunnel heads for its door or middle: they'll
+                // never be dug, and a room tunnelled to them never reached.)
+                o.anchors.retain(|a| !(a.z == r.a.z && a.x >= r.a.x - 1 && a.x <= r.b.x + 1 && a.y >= r.a.y - 1 && a.y <= r.b.y + 1));
                 o.rooms[i].stage = 2;
                 Self::note(o, tick, format!("Gave up on a {:?} nobody could reach.", r.kind).to_lowercase().replace("gave", "Gave"));
             }
@@ -603,9 +694,28 @@ impl Game {
         }
         if let Some(t) = o.rooms.iter().find(|r| r.kind == RoomUse::Tomb && r.stage == 1).cloned() {
             self.ov_grid(&t, BuildingKind::Coffin, 2, 2, unburied - free);
+        } else if o.blocked_lately(RoomUse::Tomb, self.tick) {
+            // No rock for a tomb: coffins set out by the wagon will do.
+            self.ov_coffins_outside(o, unburied - free);
         } else if !o.rooms.iter().any(|r| r.kind == RoomUse::Tomb && r.stage == 0) && !o.wants.contains(&RoomUse::Tomb) {
             o.wants.insert(0, RoomUse::Tomb);
             Self::note(o, self.tick, "The dead lie unburied. Ordered a tomb dug.".into());
+        }
+    }
+
+    /// Coffins on open ground near the wagon, for the dead a tomb can't
+    /// take (there's no rock left to cut one from).
+    fn ov_coffins_outside(&mut self, o: &mut Overseer, n: usize) {
+        let e = self.embark;
+        let mut placed = 0;
+        for _ in 0..n.min(8) {
+            let Some(p) = self.ov_spot(BuildingKind::Coffin, e.offset(-6, -12, 0), 14) else { break };
+            if self.place_building(BuildingKind::Coffin, p) {
+                placed += 1;
+            }
+        }
+        if placed > 0 {
+            Self::note(o, self.tick, "Found no rock for a tomb: had coffins set out by the wagon for the dead.".into());
         }
     }
 
@@ -754,6 +864,11 @@ impl Game {
         // Coffins for the dead, and a couple in hand.
         let unburied = self.items.values().filter(|it| it.free() && self.burial_corpse(it)).count() as u32;
         orders.push((Recipe::WoodCoffin, 2 + unburied));
+        // With no wood to spare, the mason cuts them from stone: a tomb
+        // without coffins buries nobody.
+        if unburied > 0 && self.stock_of(ItemKind::Log) < 4 {
+            orders.push((Recipe::StoneCoffin, 2 + unburied));
+        }
         orders.push((Recipe::WoodDoor, 2 + o.rooms.iter().filter(|r| r.stage == 0).map(|r| r.doors.len() as u32).sum::<u32>()));
         // Wooden crossbows until there's a forge; then a few for practice.
         let forge = self.buildings.values().any(|b| b.built && matches!(b.kind, BuildingKind::Forge | BuildingKind::MagmaForge));
@@ -1324,6 +1439,8 @@ impl Game {
         }
         // And whatever it has its heart set on.
         self.ov_ambition(o);
+        // Stuck? Step in (watchdog.rs).
+        self.ov_watchdog(o);
         // Whatever the items add (overseer_hooks.rs).
         self.ov_daily_hooks(o);
         let _ = tick;
@@ -1987,6 +2104,24 @@ mod tests {
         assert!(o.rooms.iter().any(|r| r.kind == RoomUse::Tomb), "no tomb dug: {:?}", o.notes.iter().rev().take(8).collect::<Vec<_>>());
         assert!(g.dwarves[0].rested, "{} still lies unburied after {} days", name, days);
         eprintln!("{} buried after {} days", name, days);
+        // With the tomb ready, the next to die is buried within days.
+        let i = g.dwarves.iter().position(|d| d.alive && !d.soldier).unwrap();
+        let mut d = std::mem::take(&mut g.dwarves[i]);
+        g.kill(&mut d, "was struck down");
+        let name = d.name.clone();
+        g.dwarves[i] = d;
+        let mut days = 0;
+        while !g.dwarves[i].rested && days < 5 {
+            for _ in 0..DAY {
+                g.step();
+                g.creatures.retain(|_, c| c.tame || !c.hostile());
+            }
+            days += 1;
+        }
+        let tomb = g.overseer.as_ref().unwrap().rooms.iter().find(|r| r.kind == RoomUse::Tomb).cloned().unwrap();
+        let coffins: Vec<_> = g.buildings.values().filter(|b| b.kind == BuildingKind::Coffin).map(|b| (b.pos, b.built, b.occupant)).collect();
+        assert!(g.dwarves[i].rested, "{} lies unburied {} days with the tomb ready ({:?} stage {}): coffins {:?}", name, days, tomb.a, tomb.stage, coffins);
+        crate::game::watchdog::tests::assert_no_repeats(g.overseer.as_ref().unwrap());
     }
 
     #[test]
@@ -2005,7 +2140,7 @@ mod tests {
         let workshops = g.buildings.values().filter(|b| b.kind.is_workshop() && b.built).count();
         assert!(workshops >= 4, "only {} workshops built", workshops);
         let base = o.base.unwrap();
-        assert!(g.zones.values().any(|z| z.tiles.iter().any(|p| p.z == base.z)), "nothing zoned below");
+        assert!(g.zones.values().any(|z| z.tiles.iter().any(|p| p.z == base.z)), "nothing zoned below: {:?} {:?}", o.rooms.iter().map(|r| (r.kind, r.a, r.stage)).collect::<Vec<_>>(), o.notes);
     }
 
     #[test]
@@ -2463,6 +2598,161 @@ mod tests {
         eprintln!("==== sorted");
         for r in rows {
             eprintln!("{}", r.2);
+        }
+    }
+
+    /// A saved fort's overseer, looked over: why it stalls, and whether it
+    /// gets going again over DAYS days (MAP draws the levels round the
+    /// stair; PEACE keeps enemies away). With PEACE and DAYS >= 40 it checks
+    /// the fort got going: a room fitted out, the dead buried, no line said
+    /// twice in half a season.
+    /// `FORT=path/to/save.json DAYS=40 PEACE=1 cargo test --release stuck_save -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn stuck_save() {
+        let path = std::env::var("FORT").unwrap();
+        let days: u64 = std::env::var("DAYS").ok().and_then(|s| s.parse().ok()).unwrap_or(30);
+        let mut g: Game = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        g.after_load();
+        let show = |g: &Game| {
+            let o = g.overseer.as_ref().unwrap();
+            let idle = g.dwarves.iter().filter(|d| d.alive && matches!(d.task, crate::dwarf::Task::Idle)).count();
+            eprintln!(
+                "day {} style {:?} layout {:?} level {} base {:?} top {:?} planned {} wants {:?} plan_len {} taken {} anchors {} rooms {} (fitted {}) desig {} alive {} idle {} buildings {}",
+                g.tick / DAY, o.style, o.layout, o.level, o.base, o.top, o.planned, o.wants, o.plan_len, o.plan_taken.len(), o.anchors.len(),
+                o.rooms.len(), o.rooms.iter().filter(|r| r.stage == 1).count(), g.designations.len(), g.alive_count(), idle, g.buildings.len()
+            );
+        };
+        show(&g);
+        let start = g.tick;
+        {
+            let o = g.overseer.as_ref().unwrap();
+            eprintln!("done {:?}", o.done.iter().filter(|d| !d.starts_with("farm")).collect::<Vec<_>>());
+            eprintln!("rooms {:?}", o.rooms.iter().map(|r| (r.kind, r.a, r.stage)).collect::<Vec<_>>());
+            eprintln!("caverns {:?} aquifer {} water_level {} map {}x{}x{}", g.world.caverns, g.world.aquifer, g.world.water_level, g.world.w, g.world.h, g.world.d);
+            let mut last = String::new();
+            for n in &o.notes {
+                if n.1 != last {
+                    eprintln!("  d{} {}", n.0 / DAY, n.1);
+                }
+                last = n.1.clone();
+            }
+        }
+        // The levels round the foot of the stair, drawn.
+        if std::env::var("MAP").is_ok() {
+            let o = g.overseer.as_ref().unwrap();
+            let b = o.base.unwrap();
+            for z in [b.z + 1, b.z, b.z - 1, b.z - 2] {
+                eprintln!("== z {} (base.z {:+})  # rock . dug/floor ' ' air ~ water A aquifer X bedrock + desig s soil", z, z - b.z);
+                let mut s = String::new();
+                for y in 0..g.world.h {
+                    for x in 0..g.world.w {
+                        let p = Pos::new(x, y, z);
+                        let t = g.world.t(p);
+                        s.push(if p == b { '@' } else if t.water > 0 { '~' } else if t.aquifer { 'A' } else if t.desig != Desig::None { '+' } else if t.kind.solid() {
+                            if t.mat == Mat::Bedrock { 'X' } else if !t.mat.is_building_stone() { 's' } else { '#' }
+                        } else if t.kind.has_floor() { '.' } else { ' ' });
+                    }
+                    s.push(char::from(10u8));
+                }
+                eprintln!("{}", s);
+            }
+        }
+        // The dead: where each lies, and whether a hauler could get there.
+        {
+            let b = g.overseer.as_ref().unwrap().base.unwrap();
+            for it in g.items.values().filter(|it| it.kind == ItemKind::Corpse) {
+                let ours = g.burial_corpse(it);
+                let path = path::astar(&g.world, b, it.pos, 40_000, Mover::Dwarf).is_some();
+                let t = g.world.t(it.pos);
+                eprintln!("corpse {:?} ours {} at {:?} free {} forbidden {} claimed {:?} carried {:?} reach {} water {} outside {}", it.label, ours, it.pos, it.free(), it.forbidden, it.claimed_by, it.carried_by, path, t.water, g.world.outside(it.pos));
+            }
+            for c in g.buildings.values().filter(|c| c.kind == BuildingKind::Coffin) {
+                eprintln!("coffin {:?} built {} occupant {:?} worker {:?}", c.pos, c.built, c.occupant, c.worker);
+            }
+            eprintln!("haulers {} unrested dead {:?}", g.dwarves.iter().filter(|d| d.alive && d.has(Labor::Hauling)).count(), g.dwarves.iter().filter(|d| !d.alive && !d.rested).map(|d| (d.name.clone(), d.ghost)).collect::<Vec<_>>());
+        }
+        // Each level the planner would look at, and what stops it there.
+        {
+            let mut g2: Game = serde_json::from_str(&std::fs::read_to_string(std::env::var("FORT").unwrap()).unwrap()).unwrap();
+            g2.after_load();
+            let o = g2.overseer.take().unwrap();
+            let b = o.base.unwrap();
+            let roof = g2.world.caverns.iter().map(|c| c.1).max().unwrap_or(0);
+            for k in 0..=o.level + 2 {
+                let z = Game::level_z(&o, k);
+                let bp = o.layout.planned().then(|| g2.plan_slot(&mut o.clone(), RoomUse::Hospital, k).map(|r| r.0.a));
+                eprintln!("level {} z {} (cavern roof {}) base.z {} plan_slot {:?}", k, z, roof, b.z, bp);
+            }
+            for kind in [RoomUse::Hospital, RoomUse::Tomb, RoomUse::Workshops] {
+                let r = g2.plan_room(&mut o.clone(), kind);
+                eprintln!("plan_room({:?}): {:?}", kind, r.map(|r| (r.a, r.b)));
+            }
+        }
+        {
+            let o = g.overseer.as_ref().unwrap();
+            eprintln!("hostiles on the map {} (siege {})", g.creatures.values().filter(|c| c.alive && c.hostile()).count(), g.creatures.values().filter(|c| c.alive && c.hostile() && c.siege).count());
+            eprintln!("a new stair: {:?}; the first choice now: {:?}", g.stair_site(o.style, o.top), g.stair_site(o.style, None));
+        }
+        // (PEACE: no enemies, to see the overseer's building alone.)
+        let peace = std::env::var("PEACE").is_ok();
+        for day in 0..days {
+            for _ in 0..DAY {
+                g.step();
+                if peace {
+                    g.creatures.retain(|_, c| c.tame || !c.hostile());
+                    g.incoming = None;
+                }
+            }
+            if day < 5 || day % 5 == 4 || day + 1 == days {
+                show(&g);
+            }
+        }
+        {
+            let picks = g.items.values().filter(|it| it.kind == ItemKind::Pick).count();
+            let miners: Vec<String> = g.dwarves.iter().filter(|d| d.alive && d.has(Labor::Mining)).map(|d| format!("{} {:?}", d.name, d.task)).collect();
+            eprintln!("picks {} miners {:?}", picks, miners);
+            let o = g.overseer.as_ref().unwrap();
+            let b = o.base.unwrap();
+            let mut kinds = BTreeMap::<String, (usize, usize)>::new();
+            for &p in g.designations.iter() {
+                let t = g.world.t(p);
+                let reach = g.work_targets(p).into_iter().any(|_| true) && crate::geom::DIRS8.iter().any(|&(dx, dy)| path::astar(&g.world, b, p.offset(dx, dy, 0), 20_000, Mover::Dwarf).is_some());
+                let e = kinds.entry(format!("{:?} z{}", t.desig, p.z)).or_default();
+                e.0 += 1;
+                if reach {
+                    e.1 += 1;
+                }
+            }
+            eprintln!("designations (all, reachable from the base): {:?}", kinds);
+            eprintln!("rooms {:?}", o.rooms.iter().map(|r| (r.kind, r.a, r.stage, g.room_dug(r))).collect::<Vec<_>>());
+            eprintln!(
+                "unrested dead {} coffins {} built {} filled {} coffin items {} logs {}",
+                g.dwarves.iter().filter(|d| !d.alive && !d.rested).count(),
+                g.buildings.values().filter(|b| b.kind == BuildingKind::Coffin).count(),
+                g.buildings.values().filter(|b| b.kind == BuildingKind::Coffin && b.built).count(),
+                g.buildings.values().filter(|b| b.kind == BuildingKind::Coffin && b.occupant.is_some()).count(),
+                g.stock_of(ItemKind::Coffin),
+                g.stock_of(ItemKind::Log)
+            );
+        }
+        for d in g.annals.deaths.iter().filter(|d| d.tick >= start) {
+            eprintln!("  died d{} {} {} {:?} outside {}", d.tick / DAY, d.name, d.cause, d.killer, d.outside);
+        }
+        let o = g.overseer.as_ref().unwrap();
+        let mut last = String::new();
+        for n in o.notes.iter().rev().take(30).rev() {
+            if n.1 != last {
+                eprintln!("  d{} {}", n.0 / DAY, n.1);
+            }
+            last = n.1.clone();
+        }
+        if peace && days >= 40 {
+            assert!(o.rooms.iter().any(|r| r.stage == 1), "no room fitted out in {} days", days);
+            assert!(g.dwarves.iter().all(|d| d.alive || d.rested), "the dead still lie unburied");
+            let mut since = o.clone();
+            since.notes.retain(|n| n.0 >= start);
+            crate::game::watchdog::tests::assert_no_repeats(&since);
         }
     }
 }
