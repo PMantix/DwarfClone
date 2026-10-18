@@ -22,6 +22,8 @@ impl Game {
         self.ov_interior(o);
         // The outside and the grand works:
         self.ov_fortify(o);
+        // Myth and magic: temples dedicated, a temple for a devout fort.
+        self.ov_faith(o);
         let _ = o;
     }
 

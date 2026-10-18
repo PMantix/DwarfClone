@@ -58,6 +58,8 @@ impl Game {
             self.check_mandate();
             // M1 (survival), daily:
             self.shift_daily();
+            // Myth and magic (magic.rs), daily:
+            self.magic_daily();
         }
         if tick % SEASON == 0 { self.season_turns(); }
     }

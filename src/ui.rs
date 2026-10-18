@@ -1919,7 +1919,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("A", "autoplay: the overseer plays (pick a style)"),
         k("  (hands off)", "20 s untouched while it plays: the camera tours"),
         k("B", "the overseer's brain: senses, ambitions, nudges"),
-        k("L", "legends: history, civs, sites, figures"),
+        k("L", "legends: history, civs, sites, figures, regions, gods"),
         k("Tab", "jump to next dwarf"),
         k("H", "jump back to the wagon"),
         k("F5 / F9", "save / load"),
@@ -2728,6 +2728,9 @@ fn cap_first(s: &str) -> String {
 }
 
 fn legends_lines(ow: &Overworld, tab: usize) -> Vec<Line<'static>> {
+    if tab == 5 {
+        return crate::game::magic::gods_lines(ow);
+    }
     if tab == 4 {
         let mut regions: Vec<&crate::overworld::Region> = ow.regions.iter().collect();
         regions.sort_by(|a, b| b.size.cmp(&a.size));
@@ -2805,7 +2808,7 @@ fn draw_legends(f: &mut Frame, area: Rect, ow: &Overworld, tab: usize, scroll: u
     let visible = h.saturating_sub(4) as usize;
     let max = lines.len().saturating_sub(visible);
     let scroll = scroll.min(max);
-    let names = ["1 History", "2 Civilizations", "3 Sites", "4 Figures", "5 Regions"];
+    let names = ["1 History", "2 Civilizations", "3 Sites", "4 Figures", "5 Regions", "6 Gods"];
     let mut tabs: Vec<Span> = Vec::new();
     for (i, n) in names.iter().enumerate() {
         let st = if i == tab { Style::default().fg(BLACK).bg(KEY) } else { Style::default().fg(TEXT) };
@@ -2823,7 +2826,7 @@ fn draw_legends(f: &mut Frame, area: Rect, ow: &Overworld, tab: usize, scroll: u
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(KEY))
                     .title(Span::styled(format!(" Legends of {} ", ow.name), Style::default().fg(KEY)))
-                    .title_bottom(Span::styled(" Tab/1-5 switch · ↑↓ PgUp/PgDn scroll · Esc back ", Style::default().fg(MUTED))),
+                    .title_bottom(Span::styled(" Tab/1-6 switch · ↑↓ PgUp/PgDn scroll · Esc back ", Style::default().fg(MUTED))),
             ),
         r,
     );
@@ -3408,6 +3411,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 if let Some(t) = d.thoughts.last() {
                     v.push(plain(format!("Recently {}.", t.text), detail_col));
                 }
+                for line in g.magic_dwarf_lines(d.id) {
+                    v.push(plain(line, Color::Rgb(255, 225, 150)));
+                }
                 v.push(plain("Enter: full dwarf screen".into(), MUTED));
             }
         }
@@ -3581,6 +3587,9 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
             let (r, gg, b) = s.rgb();
             let bright = |v: u8| (v as u16 * 3 / 2 + 60).min(255) as u8;
             v.push(plain(cap(&s.describe()), Color::Rgb(bright(r), bright(gg), bright(b))));
+        }
+        for line in g.magic_tile_lines(p) {
+            v.push(plain(line, Color::Rgb(255, 225, 150)));
         }
         let k = g.smoke_at(p);
         if k > 0 {

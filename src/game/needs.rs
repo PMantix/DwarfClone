@@ -32,6 +32,9 @@ impl Game {
         if leisure {
             if let Some(k) = self.zone_kind_at(d.pos).and_then(zone_need) {
                 d.satisfy(k, 120);
+                if k == NeedKind::Pray {
+                    self.at_prayer(d);
+                }
             }
         }
         let tick = self.tick;

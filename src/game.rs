@@ -90,6 +90,8 @@ mod hunts;
 mod larder;
 pub mod fortify;
 mod towers;
+pub mod magic;
+mod faith;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -459,6 +461,9 @@ pub struct Game {
     /// Blood, smoke and the last battlefield (`gore.rs`).
     #[serde(default)]
     pub gore: gore::Gore,
+    /// Gods, temples and strange powers (`magic.rs`).
+    #[serde(default)]
+    pub magic: magic::Magic,
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
@@ -579,6 +584,7 @@ impl Game {
             reach_cache: Default::default(),
             flames: Vec::new(),
             gore: Default::default(),
+            magic: Default::default(),
             festival: None,
             year_log: YearLog::default(),
             vault: None,

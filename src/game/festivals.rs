@@ -119,6 +119,7 @@ impl Game {
         self.msg(&text, (255, 215, 60));
         self.festival = Some(Festival { kind, until, venue, attended: Vec::new(), mugs: Vec::new(), told: 0 });
         self.year_log.festivals.push(kind.name().to_string());
+        self.festival_blessing(kind);
         self.milestone("festival", "The fortress's first festival");
     }
 

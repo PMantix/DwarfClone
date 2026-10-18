@@ -1632,9 +1632,9 @@ impl App {
                 };
                 match k.code {
                     KeyCode::Esc | KeyCode::Char('q') => self.mode = back,
-                    KeyCode::Tab | KeyCode::Right => self.mode = Mode::Legends { tab: (tab + 1) % 5, scroll: 0, from_world },
-                    KeyCode::Left => self.mode = Mode::Legends { tab: (tab + 4) % 5, scroll: 0, from_world },
-                    KeyCode::Char(c @ '1'..='5') => {
+                    KeyCode::Tab | KeyCode::Right => self.mode = Mode::Legends { tab: (tab + 1) % 6, scroll: 0, from_world },
+                    KeyCode::Left => self.mode = Mode::Legends { tab: (tab + 5) % 6, scroll: 0, from_world },
+                    KeyCode::Char(c @ '1'..='6') => {
                         self.mode = Mode::Legends { tab: c as usize - '1' as usize, scroll: 0, from_world }
                     }
                     KeyCode::Up => self.mode = Mode::Legends { tab, scroll: scroll.saturating_sub(1), from_world },

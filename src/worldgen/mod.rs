@@ -5,6 +5,7 @@
 //! built from.
 
 pub mod fields;
+pub mod myth;
 pub mod regions;
 pub mod rivers;
 pub mod tiles;
