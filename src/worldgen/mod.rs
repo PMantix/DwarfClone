@@ -5,6 +5,7 @@
 //! built from.
 
 pub mod fields;
+pub mod regions;
 pub mod rivers;
 
 use crate::overworld::Biome;

@@ -2539,6 +2539,13 @@ fn world_info(ow: &Overworld, x: i32, y: i32, flash: &Option<String>) -> Vec<Lin
     ];
     if let Some(r) = ow.region_at(x, y) {
         v.push(plain(format!("{}, a {} of {} cells", r.name, r.kind.name(), r.size), Color::Rgb(170, 200, 230)));
+        if !r.fauna.is_empty() {
+            let names: Vec<&str> = r.fauna.iter().take(5).map(|s| s.info().plural).collect();
+            v.push(plain(format!("Its wildlife: {}", names.join(", ")), MUTED));
+        }
+        if !r.plants.is_empty() {
+            v.push(plain(format!("It grows {}", r.plants.join(", ")), MUTED));
+        }
     }
     if let Some(r) = ow.river_at(x, y) {
         let note = match r.joins {
@@ -2665,10 +2672,20 @@ fn legends_lines(ow: &Overworld, tab: usize) -> Vec<Line<'static>> {
         return regions
             .into_iter()
             .map(|r| {
+                let land: Vec<&str> = r.biomes.iter().take(3).map(|b| b.0.name()).collect();
+                let beasts: Vec<&str> = r.fauna.iter().take(4).map(|s| s.info().plural).collect();
+                let mut more = String::new();
+                if land.len() > 1 {
+                    more.push_str(&format!("  {}", land.join("/")));
+                }
+                if !beasts.is_empty() {
+                    more.push_str(&format!("  ({})", beasts.join(", ")));
+                }
                 Line::from(vec![
                     Span::styled(format!("{:<34}", r.name), Style::default().fg(TEXT)),
                     Span::styled(format!("{:<16}", r.kind.name()), Style::default().fg(Color::Rgb(170, 200, 230))),
                     Span::styled(format!("{:>6} cells  around ({}, {})", r.size, r.x, r.y), Style::default().fg(MUTED)),
+                    Span::styled(more, Style::default().fg(MUTED)),
                 ])
             })
             .collect();
@@ -5321,6 +5338,21 @@ mod tests {
         // Ctrl+Z puts the box back as it was.
         app.on_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::CONTROL));
         assert_eq!(app.game.designations.len(), before, "undo takes back the last designation ({} -> {})", before, after);
+    }
+
+    #[test]
+    fn the_world_info_and_legends_name_the_regions_and_their_wildlife() {
+        let ow = Overworld::generate(42);
+        let text = |lines: &[Line]| lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect::<String>()).collect::<Vec<_>>().join("
+");
+        // A cell in a big named land region.
+        let r = ow.regions.iter().filter(|r| !r.kind.is_water() && !r.fauna.is_empty()).max_by_key(|r| r.size).unwrap();
+        let info = text(&world_info(&ow, r.x, r.y, &None));
+        assert!(info.contains(&r.name), "no region name in {}", info);
+        assert!(info.contains("Its wildlife:") && info.contains(r.fauna[0].info().plural), "no wildlife in {}", info);
+        let legends = text(&legends_lines(&ow, 4));
+        assert!(ow.regions.iter().all(|r| legends.contains(&r.name)));
+        assert!(legends.contains(r.fauna[0].info().plural));
     }
 
     #[test]

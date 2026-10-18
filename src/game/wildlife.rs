@@ -9,6 +9,21 @@ impl Game {
     /// What lives in this land: something to graze, something that hunts
     /// in packs, and something rare and dangerous.
     pub fn fauna(&self) -> (Species, Species, Species) {
+        use crate::worldgen::regions::{role, Role};
+        let base = self.biome_fauna();
+        let (sx, sy) = self.site;
+        if sx < 0 || sy < 0 || sx >= self.overworld.w || sy >= self.overworld.h || self.overworld.cells.len() <= 1 {
+            return base;
+        }
+        // The region's own animals where it has them, the land's usual
+        // ones where it doesn't.
+        let Some(r) = self.overworld.region_at(sx, sy) else { return base };
+        let pick = |want: Role| r.fauna.iter().copied().find(|&s| role(s) == Some(want));
+        (pick(Role::Grazer).unwrap_or(base.0), pick(Role::Hunter).unwrap_or(base.1), pick(Role::Rare).unwrap_or(base.2))
+    }
+
+    /// The usual animals of the site's biome.
+    fn biome_fauna(&self) -> (Species, Species, Species) {
         match self.biome {
             Biome::Taiga => (Species::Elk, Species::Wolf, Species::Bear),
             Biome::Tundra | Biome::Glacier => (Species::Elk, Species::Wolf, Species::PolarBear),
