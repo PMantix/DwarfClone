@@ -360,7 +360,16 @@ the way and setting trees, grass and wooden things alight; slay it and it leaves
 treasure, and the hoard it carried.
 Once you've broken into the caverns, a cave horror may crawl up out of them: a one-of-a-kind
 creature with its own name and look ("a bloated spider of crystal with many eyes") that hunts
-until it's killed. Skulkers are thieves: unseen, they make for the most valuable thing lying
+until it's killed. Its look is no idle talk (`game/horrors.rs`): each horror has one to three
+powers that fit it, fixed by the world's seed: it **breathes fire**, **spits webs** that hold a
+dwarf fast (the strands left about catch the careless), **bites with venom** that works on the
+worst wound for a day and can kill, **knits its wounds shut** (not while fire burns beside it),
+**turns flesh to stone** with its gaze for a while, **roars** until all but hardened soldiers
+run, or wears a **hide like armour**. The spotlight card and the look panel show the signs
+("Embers glow between its teeth", "Its hide is plated like armour"); what they mean the fort
+learns in the first clash ("Now we know: Ozthra the cave horror breathes fire!"), the legends
+keep it, and `k` lists what is known and how many powers are still a mystery. A webbed or
+stony dwarf shows it in the look panel, and webs show on the map as `#`. Skulkers are thieves: unseen, they make for the most valuable thing lying
 about, grab it and run for the edge of the map. A dwarf who comes within five tiles spots
 them, and once spotted they flee and can be fought; killing one drops what it stole.
 

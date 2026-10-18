@@ -39,6 +39,8 @@ impl Game {
         // M1 (survival):
         if tick % 150 == 77 { self.doctor_check(); }
         if tick % 50 == 35 { self.watch_siege(); }
+        // Horrors: powers, webs, venom (horrors.rs).
+        if tick % horrors::HORROR_TICK == 11 { self.horrors_tick(); }
     }
 
     /// After the dwarves and creatures have moved: wildlife, the day's
@@ -96,6 +98,8 @@ impl Game {
         self.check_carried(d);
         self.maybe_press(d);
         self.fit_body(d);
+        // Held fast in a web, or stiff from a gaze (horrors.rs).
+        self.held_fast(d);
     }
 }
 

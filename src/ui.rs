@@ -571,6 +571,10 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                     }
                 }
             }
+            if t.revealed && g.web_at(p) {
+                ch = '#';
+                fg = Color::Rgb(225, 225, 235);
+            }
             if t.fire > 0 && t.revealed {
                 let flick = hash2(wx + (g.tick / 4) as i32 % 50, wy) % 3;
                 ch = if flick == 0 { '▲' } else { '^' };
@@ -3405,6 +3409,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 ));
                 v.push(plain(task_desc(g, d), KEY));
                 v.push(plain(mood.to_string(), rgb(mc)));
+                for line in g.affliction_lines(d) {
+                    v.push(plain(line, Color::Rgb(200, 230, 120)));
+                }
                 if let Some(t) = d.thoughts.last() {
                     v.push(plain(format!("Recently {}.", t.text), detail_col));
                 }
@@ -3435,6 +3442,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 v.push(plain(state.into(), if c.hostile() { Color::Rgb(255, 100, 90) } else { detail_col }));
                 if let Some(mood) = g.wild_mood(c) {
                     v.push(plain(mood, Color::Rgb(255, 190, 110)));
+                }
+                for line in g.horror_lines(c) {
+                    v.push(plain(line, Color::Rgb(230, 160, 255)));
                 }
                 if let Some(w) = c.weapon.and_then(|id| g.items.get(&id)) {
                     v.push(plain(format!("Wields {}", w.name()), detail_col));

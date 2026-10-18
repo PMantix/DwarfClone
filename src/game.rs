@@ -90,6 +90,7 @@ mod hunts;
 mod larder;
 pub mod fortify;
 mod towers;
+pub mod horrors;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -450,6 +451,9 @@ pub struct Game {
     /// The overseer's hunt for prowling beasts (`hunts.rs`).
     #[serde(default)]
     pub hunts: hunts::Hunts,
+    /// Horrors' powers, webs, venom, kin and the thing in the night (`horrors.rs`).
+    #[serde(default)]
+    pub horrors: horrors::Horrors,
     /// A new page has been written and should be shown.
     #[serde(skip)]
     pub chronicle_ready: bool,
@@ -604,6 +608,7 @@ impl Game {
             waterworks: Default::default(),
             siege_watch: None,
             hunts: Default::default(),
+            horrors: Default::default(),
             chronicle_ready: false,
             creatures: BTreeMap::new(),
             station: None,

@@ -172,6 +172,7 @@ impl Game {
             teeth: c.species.person() || c.species == Species::Troglodyte,
         };
         self.apply_gear(&mut f, c.weapon, &c.armor, c.body.can_hold());
+        self.gifted_fighter(c, &mut f);
         f
     }
 
@@ -397,6 +398,7 @@ impl Game {
         let (hp0, siege): (i32, bool) = (body.hp.iter().sum(), c.siege);
         let (cpos, species, owner, seen) = (c.pos, c.species, super::gore::owner_of_creature(c), a_or_name(c));
         let blow = self.strike(&att, &def, &mut body);
+        self.struck_horror(cid);
         if siege {
             let hurt = body.hp.iter().sum::<i32>() < hp0;
             self.note_blow(if d.soldier { super::annals::BY_SOLDIER } else { super::annals::BY_CIVILIAN }, hurt);
@@ -1024,6 +1026,7 @@ impl Game {
         c.siege = true;
         c.label = Some(label);
         c.desc = Some(desc);
+        self.gift_horror(id, 1, 3);
         id
     }
 
@@ -1363,6 +1366,8 @@ impl Game {
         } else if c.hostile() {
             self.msg(&format!("The {} has been slain.", info.name), (160, 230, 160));
         }
+        // Horrors, made peoples, the thing in the night (horrors.rs).
+        self.horror_died(&c);
         if c.siege && !c.legendary() {
             self.check_rout();
         }
@@ -1488,6 +1493,10 @@ impl Game {
             if !c.siege && !near(dpos, c.pos, info.aggro * 2 + 2) {
                 c.target = None;
                 c.path.clear();
+                return true;
+            }
+            // A horror's powers (horrors.rs).
+            if self.power_turn(c, dpos) {
                 return true;
             }
             // A dragon breathes fire down a clear line at whoever it hunts.
@@ -1696,6 +1705,8 @@ impl Game {
         let blow = self.strike(&att, &def, &mut d.body);
         d.attacker = Some((c.id, self.tick));
         self.note_wound(&mut d, c, &before);
+        let hurt = d.body.hp.iter().sum::<i32>() < hp0;
+        self.gifted_blow(c, &mut d, hurt);
         if c.siege {
             let hurt = d.body.hp.iter().sum::<i32>() < hp0;
             self.note_blow(if d.soldier { super::annals::ON_SOLDIER } else { super::annals::ON_CIVILIAN }, hurt);

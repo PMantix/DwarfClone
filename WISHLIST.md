@@ -419,7 +419,7 @@ Goal: the world map is alive. What happens out there reaches the fort, and the f
 
 #### B22 Beasts of legend (L)
 - **Why:** Monsters should have names, habits and powers that the fort learns about, and hunters who come for them.
-- **Steps:** [ ] Forgotten beasts with powers ([CRE-05](ideas/myth-and-depths.md)) · [ ] Man-eaters become legends ([CRE-08](ideas/myth-and-depths.md)) · [ ] Disturbed lairs ([CRE-09](ideas/myth-and-depths.md)) · [ ] Cyclic beasts ([CRE-10](ideas/myth-and-depths.md)) · [ ] Monster hunters ([CRE-07](ideas/myth-and-depths.md)) · [ ] Flying snatchers ([CRE-13](ideas/myth-and-depths.md)) · [ ] Dragon lairs and hoards ([CRE-18](ideas/myth-and-depths.md)) · [ ] Hydras fight on ([CRE-21](ideas/myth-and-depths.md)) · [ ] Megabeasts take fallen forts ([CRE-19](ideas/myth-and-depths.md)) · [ ] Generated megabeasts that breed and bargain ([CRE-25](ideas/myth-and-depths.md))
+- **Steps:** [x] Forgotten beasts with powers ([CRE-05](ideas/myth-and-depths.md), this commit) · [ ] Man-eaters become legends ([CRE-08](ideas/myth-and-depths.md)) · [ ] Disturbed lairs ([CRE-09](ideas/myth-and-depths.md)) · [ ] Cyclic beasts ([CRE-10](ideas/myth-and-depths.md)) · [ ] Monster hunters ([CRE-07](ideas/myth-and-depths.md)) · [ ] Flying snatchers ([CRE-13](ideas/myth-and-depths.md)) · [ ] Dragon lairs and hoards ([CRE-18](ideas/myth-and-depths.md)) · [ ] Hydras fight on ([CRE-21](ideas/myth-and-depths.md)) · [ ] Megabeasts take fallen forts ([CRE-19](ideas/myth-and-depths.md)) · [ ] Generated megabeasts that breed and bargain ([CRE-25](ideas/myth-and-depths.md))
 - **Done when:** A cave horror's generated power changes how it fights, and the fort learns it after the first clash.
 
 #### B23 The restless dead (L)
