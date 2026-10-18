@@ -6,7 +6,15 @@
 mod caravan;
 mod caverns;
 mod dragon;
+mod festival;
+mod flood;
+mod forge;
 mod fortress;
+mod gorge;
+mod harbour;
+mod magma;
+mod mine;
+mod necro;
 mod ruins;
 #[cfg(test)]
 mod snapshot;
@@ -62,7 +70,7 @@ struct Scene {
     taglines: &'static [&'static str],
 }
 
-const SCENES: [Scene; 8] = [
+const SCENES: [Scene; 16] = [
     Scene { name: "fortress", draw: fortress::draw, taglines: fortress::TAGLINES },
     Scene { name: "siege", draw: siege::draw, taglines: siege::TAGLINES },
     Scene { name: "dragon", draw: dragon::draw, taglines: dragon::TAGLINES },
@@ -71,6 +79,14 @@ const SCENES: [Scene; 8] = [
     Scene { name: "tavern", draw: tavern::draw, taglines: tavern::TAGLINES },
     Scene { name: "winter", draw: winter::draw, taglines: winter::TAGLINES },
     Scene { name: "ruins", draw: ruins::draw, taglines: ruins::TAGLINES },
+    Scene { name: "forge", draw: forge::draw, taglines: forge::TAGLINES },
+    Scene { name: "mine", draw: mine::draw, taglines: mine::TAGLINES },
+    Scene { name: "magma", draw: magma::draw, taglines: magma::TAGLINES },
+    Scene { name: "harbour", draw: harbour::draw, taglines: harbour::TAGLINES },
+    Scene { name: "necro", draw: necro::draw, taglines: necro::TAGLINES },
+    Scene { name: "festival", draw: festival::draw, taglines: festival::TAGLINES },
+    Scene { name: "gorge", draw: gorge::draw, taglines: gorge::TAGLINES },
+    Scene { name: "flood", draw: flood::draw, taglines: flood::TAGLINES },
 ];
 
 /// How many scenes there are to choose from.
@@ -441,6 +457,43 @@ impl Canvas<'_> {
         }
     }
 
+    /// Blend `col` into a cell's background by `f`, keeping its glyph.
+    fn glow(&mut self, x: i32, y: i32, col: Rgb, f: f32) {
+        if self.inside(x, y) && f > 0.0 {
+            let bg = self.bg_at(x, y);
+            self.tint(x, y, mix(bg, col, f));
+        }
+    }
+
+    /// A soft round light (twice as wide as tall, as cells are) blended
+    /// into the backgrounds around (`cx`, `cy`).
+    fn halo(&mut self, cx: i32, cy: i32, r: f32, col: Rgb, f: f32) {
+        let r = r.max(0.5);
+        let (rx, ry) = ((r * 2.0).ceil() as i32, r.ceil() as i32);
+        for y in cy - ry..=cy + ry {
+            for x in cx - rx..=cx + rx {
+                let (dx, dy) = ((x - cx) as f32 * 0.5, (y - cy) as f32);
+                let d = (dx * dx + dy * dy).sqrt() / r;
+                if d < 1.0 {
+                    self.glow(x, y, col, f * (1.0 - d) * (1.0 - d));
+                }
+            }
+        }
+    }
+
+    /// A filled disc of background colour (a sun, a moon).
+    fn disc(&mut self, cx: i32, cy: i32, r: f32, col: Rgb) {
+        let (rx, ry) = ((r * 2.0).ceil() as i32, r.ceil() as i32);
+        for y in cy - ry..=cy + ry {
+            for x in cx - rx..=cx + rx {
+                let (dx, dy) = ((x - cx) as f32 * 0.5, (y - cy) as f32);
+                if dx * dx + dy * dy <= r * r {
+                    self.tint(x, y, rgb(col));
+                }
+            }
+        }
+    }
+
     /// Rows of text drawn over the scene, spaces left see-through.
     fn sprite(&mut self, x: i32, y: i32, rows: &[&str], fg: Color) {
         for (dy, r) in rows.iter().enumerate() {
@@ -482,7 +535,7 @@ impl Canvas<'_> {
 mod tests {
     use super::*;
 
-    const SIZES: [(u16, u16); 3] = [(20, 8), (80, 24), (200, 60)];
+    const SIZES: [(u16, u16); 5] = [(20, 8), (80, 24), (120, 40), (200, 60), (300, 100)];
 
     /// The banner's place as the title screen lays it out.
     fn keep(w: u16) -> Rect {
@@ -560,6 +613,67 @@ mod tests {
     }
 
     #[test]
+    fn the_scenes_are_all_there_and_named_once() {
+        assert_eq!(SCENE_COUNT, 16);
+        for (i, a) in SCENES.iter().enumerate() {
+            assert!(SCENES.iter().skip(i + 1).all(|b| b.name != a.name), "{} twice", a.name);
+        }
+        for name in ["forge", "mine", "magma", "harbour", "necro", "festival", "gorge", "flood"] {
+            assert!(SCENES.iter().any(|s| s.name == name), "{} is missing", name);
+        }
+    }
+
+    /// Each new scene's turn of events shows up over a couple of minutes:
+    /// the thing it is about is on screen at some frames and not others,
+    /// or always there for the scenes that never stop.
+    #[test]
+    fn the_new_scenes_tell_their_stories() {
+        let idx = |name: &str| SCENES.iter().position(|s| s.name == name).unwrap();
+        // (scene, glyph, comes and goes)
+        let cases = [
+            ("forge", '■', false),
+            ("mine", '♦', true),
+            ("magma", '●', true),
+            ("harbour", 'o', false),
+            ("necro", '☻', false),
+            ("festival", '*', true),
+            ("gorge", '↑', false),
+            ("flood", '║', true),
+        ];
+        for (name, glyph, comes_and_goes) in cases {
+            for seed in [4u64, 8, 15] {
+                let seen: Vec<bool> = (0..3000u64).step_by(40).map(|t| text(&render(idx(name), seed, 120, 40, t)).contains(glyph)).collect();
+                assert!(seen.iter().any(|&s| s), "{} never shows {:?} (seed {})", name, glyph, seed);
+                if comes_and_goes {
+                    assert!(seen.iter().any(|&s| !s), "{} always shows {:?} (seed {})", name, glyph, seed);
+                }
+            }
+        }
+    }
+
+    /// A frame of any scene stays well inside a 30 fps budget at 200x60
+    /// (best of a few tries, so a busy machine doesn't trip it; looser for
+    /// unoptimised builds).
+    #[test]
+    fn frames_are_quick() {
+        let limit = if cfg!(debug_assertions) { 150.0 } else { 10.0 };
+        let area = Rect::new(0, 0, 200, 60);
+        let mut b = Buffer::empty(area);
+        for scene in 0..SCENE_COUNT {
+            let best = (0..5u64)
+                .map(|k| {
+                    let t0 = std::time::Instant::now();
+                    for t in 0..6u64 {
+                        draw_pick(&mut b, area, 300 + k * 97 + t, keep(200), Pick { scene, seed: 7 + k });
+                    }
+                    t0.elapsed().as_secs_f64() * 1000.0 / 6.0
+                })
+                .fold(f64::MAX, f64::min);
+            assert!(best < limit, "{} takes {:.2} ms a frame", SCENES[scene].name, best);
+        }
+    }
+
+    #[test]
     fn the_fortress_keeps_its_dwarves_and_magma() {
         for seed in [1u64, 5, 9] {
             let s = text(&render(0, seed, 80, 24, 100));
@@ -580,10 +694,23 @@ mod tests {
         // And over many launches every scene turns up.
         let mut seen = [false; SCENE_COUNT];
         let mut last = None;
-        for seed in 0..200u64 {
+        for seed in 0..1000u64 {
             let s = choose(splitmix(seed), last);
             seen[s] = true;
             last = Some(s);
+        }
+        assert!(seen.iter().all(|&s| s));
+        // Nor does a long stay ever dissolve into the same scene again.
+        let mut seen = [false; SCENE_COUNT];
+        for seed in 0..40u64 {
+            let p = Pick { scene: (seed % SCENE_COUNT as u64) as usize, seed: splitmix(seed) };
+            let mut cur = p;
+            for k in 1..30u64 {
+                let n = showing(p, k * HOLD + 5).0;
+                assert_ne!(n.scene, cur.scene);
+                seen[n.scene] = true;
+                cur = n;
+            }
         }
         assert!(seen.iter().all(|&s| s));
     }
@@ -645,10 +772,15 @@ mod tests {
             })
             .unwrap_or((120u16, 40u16));
         let t: u64 = std::env::var("FRAME").ok().and_then(|s| s.parse().ok()).unwrap_or(333);
-        // Contact sheets too, when they fit in one buffer.
-        let sheet = (w as u32 * 2 + 1) * (h as u32 * 4 + 3) <= u16::MAX as u32;
-        let mut sheets: Vec<Buffer> = (0..if sheet { 3 } else { 0 }).map(|_| Buffer::empty(Rect::new(0, 0, w * 2 + 1, h * 4 + 3))).collect();
+        // Contact sheets too, eight scenes to a page, when they fit in one buffer.
+        let only = std::env::var("SCENE").ok();
+        let pages = (SCENE_COUNT + 7) / 8;
+        let sheet = only.is_none() && (w as u32 * 2 + 1) * (h as u32 * 4 + 3) <= u16::MAX as u32;
+        let mut sheets: Vec<Buffer> = (0..if sheet { 3 * pages } else { 0 }).map(|_| Buffer::empty(Rect::new(0, 0, w * 2 + 1, h * 4 + 3))).collect();
         for scene in 0..SCENE_COUNT {
+            if only.as_deref().map_or(false, |o| !o.split(',').any(|n| n == SCENES[scene].name)) {
+                continue;
+            }
             for (k, seed) in [11u64, 12, 13].into_iter().enumerate() {
                 let mut b = render(scene, seed, w, h, t);
                 let gold = Color::Rgb(250, 200, 80);
@@ -668,19 +800,21 @@ mod tests {
                 }
                 let path = std::path::PathBuf::from(format!("target/title/{}-{}-{}x{}-t{}.png", SCENES[scene].name, seed, w, h, t));
                 snapshot::save(&b, &path);
-                let (ox, oy) = ((scene as u16 % 2) * (w + 1), (scene as u16 / 2) * (h + 1));
                 if !sheet {
                     continue;
                 }
+                let at = scene % 8;
+                let (ox, oy) = ((at as u16 % 2) * (w + 1), (at as u16 / 2) * (h + 1));
                 for y in 0..h {
                     for x in 0..w {
-                        *sheets[k].get_mut(ox + x, oy + y) = b.get(x, y).clone();
+                        *sheets[k * pages + scene / 8].get_mut(ox + x, oy + y) = b.get(x, y).clone();
                     }
                 }
             }
         }
-        for (k, sheet) in sheets.iter().enumerate() {
-            snapshot::save(sheet, &std::path::PathBuf::from(format!("target/title/sheet-{}-{}x{}-t{}.png", k, w, h, t)));
+        for (i, sheet) in sheets.iter().enumerate() {
+            let (k, page) = (i / pages, i % pages);
+            snapshot::save(sheet, &std::path::PathBuf::from(format!("target/title/sheet-{}-p{}-{}x{}-t{}.png", k, page, w, h, t)));
         }
     }
 
@@ -709,15 +843,23 @@ mod tests {
     #[test]
     #[ignore]
     fn show_the_scenes() {
-        let only: Option<usize> = std::env::var("SCENE").ok().and_then(|s| s.parse().ok());
+        // SCENE picks one by number or by name; SIZE=WxH as for the pictures.
+        let only = std::env::var("SCENE").ok();
         let t: u64 = std::env::var("FRAME").ok().and_then(|s| s.parse().ok()).unwrap_or(333);
+        let (w, h) = std::env::var("SIZE")
+            .ok()
+            .and_then(|s| {
+                let (a, b) = s.split_once('x')?;
+                Some((a.parse().ok()?, b.parse().ok()?))
+            })
+            .unwrap_or((120u16, 40u16));
         for scene in 0..SCENE_COUNT {
-            if only.map_or(false, |o| o != scene) {
+            if only.as_deref().map_or(false, |o| !o.split(',').any(|n| n == SCENES[scene].name || n.parse() == Ok(scene))) {
                 continue;
             }
             for seed in [11u64, 12] {
                 println!("=== {} (seed {}) ===", SCENES[scene].name, seed);
-                println!("{}", text(&render(scene, seed, 120, 40, t)));
+                println!("{}", text(&render(scene, seed, w, h, t)));
             }
         }
     }
