@@ -543,24 +543,49 @@ impl Game {
     }
 
     /// A walled yard round the top of the stair, with a door in it, once.
+    /// The door goes in the middle of a side where the ground runs level
+    /// through it and on to the wagon: on rough land, walls on the three
+    /// sides that can take them and a door that can't be hung (the ground
+    /// falling away under it) shut the stair in, and the fort out of its
+    /// own halls.
     pub(super) fn plan_yard(&mut self, o: &mut Overseer) {
         let top = o.top.unwrap();
-        if !o.did("yard") {
-            let r = 3;
-            let mut n = 0;
-            for (a, b) in [
-                (top.offset(-r, -r, 0), top.offset(r, -r, 0)),
-                (top.offset(-r, r, 0), top.offset(r, r, 0)),
-                (top.offset(r, -r, 0), top.offset(r, r, 0)),
-                (top.offset(-r, -r, 0), top.offset(-r, -1, 0)),
-                (top.offset(-r, 1, 0), top.offset(-r, r, 0)),
-            ] {
-                n += self.plan_constructions(a, b, super::ConstructKind::Wall, super::BuildMat::Any);
-            }
-            self.place_building(BuildingKind::Door, top.offset(-r, 0, 0));
-            o.done.push("yard".into());
-            Self::note_ov(o, self.tick, format!("Planned a walled yard round the stair ({} wall sections) with a gate.", n));
+        if o.did("yard") {
+            return;
         }
+        let r = 3;
+        let e = self.embark;
+        let gate = [(-1, 0), (0, 1), (0, -1), (1, 0)]
+            .iter()
+            .map(|&(ux, uy)| (top.offset(ux * r, uy * r, 0), top.offset(ux * (r + 1), uy * (r + 1), 0)))
+            .find(|&(g, out)| {
+                self.world.walkable(g)
+                    && self.world.walkable(out)
+                    && self.can_place(BuildingKind::Door, g)
+                    && path::astar(&self.world, top, g, 2_000, Mover::Dwarf).is_some()
+                    && path::astar(&self.world, out, e, 20_000, Mover::Dwarf).is_some()
+            })
+            .map(|x| x.0);
+        o.done.push("yard".into());
+        let Some(gate) = gate else {
+            Self::note_ov(o, self.tick, "Meant to wall the yard round the stair, but the ground gives it no level way in.".into());
+            return;
+        };
+        let mut n = 0;
+        for (a, b) in [
+            (top.offset(-r, -r, 0), top.offset(r, -r, 0)),
+            (top.offset(-r, r, 0), top.offset(r, r, 0)),
+            (top.offset(r, -r + 1, 0), top.offset(r, r - 1, 0)),
+            (top.offset(-r, -r + 1, 0), top.offset(-r, r - 1, 0)),
+        ] {
+            for p in box_iter(a, b) {
+                if p != gate {
+                    n += self.plan_constructions(p, p, super::ConstructKind::Wall, super::BuildMat::Any);
+                }
+            }
+        }
+        self.place_building(BuildingKind::Door, gate);
+        Self::note_ov(o, self.tick, format!("Planned a walled yard round the stair ({} wall sections) with a gate.", n));
     }
 
     /// Work orders the ambition adds or raises.
@@ -641,6 +666,12 @@ impl Game {
         }
     }
 
+    /// Whether a delver may dig into the caverns' reach yet (after its
+    /// first four months).
+    pub(super) fn delving_deep(&self) -> bool {
+        self.tick as f64 >= self.knob("delve.caverns_day", 120.0) * DAY as f64
+    }
+
     /// Sink the exploring shaft another few levels, with a tunnel at the bottom.
     pub(super) fn ov_shaft(&mut self, o: &mut Overseer) {
         let base = o.base.unwrap();
@@ -650,8 +681,12 @@ impl Game {
         let shaft = if self.world.kind(old).map_or(false, |k| matches!(k, TileKind::StairUD | TileKind::StairDown)) { base.offset(-1, 0, 0) } else { base.offset(11, 1, 0) };
         let deep = (1..=base.z).rev().take_while(|&z| self.world.kind(Pos::new(shaft.x, shaft.y, z)).map_or(false, |k| matches!(k, TileKind::StairUD | TileKind::StairDown))).last().unwrap_or(base.z);
         let digging = self.designations.iter().filter(|p| p.x == shaft.x && p.y == shaft.y).count();
-        if deep > 3 && digging == 0 && self.designations.len() < 80 {
-            let to = Pos::new(shaft.x, shaft.y, (deep - 4).max(2));
+        // Not into the caverns' reach in the fort's first months: a shaft
+        // that opens one in the first weeks lets the spiders up before
+        // there is a soldier to meet them.
+        let floor = if self.delving_deep() { 2 } else { self.world.caverns.iter().map(|c| c.1).max().unwrap_or(0) + 2 };
+        if deep > 3 && deep - 1 >= floor && digging == 0 && self.designations.len() < 80 {
+            let to = Pos::new(shaft.x, shaft.y, (deep - 4).max(2).max(floor));
             self.designate(Pos::new(shaft.x, shaft.y, deep), to, Desig::StairUD);
             // Tunnels west and north-south only, well clear of the halls to the east.
             self.designate(to.offset(-14, 0, 0), to, Desig::Dig);
