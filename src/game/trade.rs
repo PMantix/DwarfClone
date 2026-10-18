@@ -38,7 +38,7 @@ impl Game {
         self.depot().map_or(false, |d| d.tiles().contains(&p))
     }
 
-    fn caravan_goods(&mut self, race: Race) -> Vec<Item> {
+    pub(super) fn caravan_goods(&mut self, race: Race) -> Vec<Item> {
         use ItemKind::*;
         let list: Vec<(ItemKind, Mat, u32)> = match race {
             Race::Dwarf => vec![
@@ -115,7 +115,8 @@ impl Game {
         let civ = if want == Race::Dwarf {
             self.civ
         } else {
-            self.neighbors.iter().find(|n| n.race == want && n.dist <= 30).map(|n| n.civ)
+            // (A people made by a villain keeps its own season: kin.rs.)
+            self.neighbors.iter().find(|n| n.race == want && n.dist <= 30 && self.overworld.made_of(n.civ).is_none()).map(|n| n.civ)
         };
         let Some(civ) = civ else { return };
         if !self.overworld.civ(civ).alive {

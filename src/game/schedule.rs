@@ -88,6 +88,8 @@ impl Game {
         self.maybe_strange_mood();
         self.word_season();
         // M1 (survival), seasonal:
+        // A made people's traders in winter (kin.rs).
+        self.kin_caravan(season);
     }
 
     /// Each living dwarf, every tick, just after their wounds have bled (and

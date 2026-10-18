@@ -43,6 +43,9 @@ pub enum Species {
     PolarBear,
     /// A dead thing that walks where evil lies on the land.
     Husk,
+    /// One of a people made by a villain (`overworld/peoples.rs`): its
+    /// name, look and gift come from its people.
+    Spawn,
 }
 
 pub struct SpeciesInfo {
@@ -86,7 +89,7 @@ impl Species {
 
     /// People rather than beasts: they leave corpses, not carcasses.
     pub fn person(self) -> bool {
-        matches!(self, Species::Goblin | Species::Merchant | Species::Human | Species::Elf | Species::Raider | Species::Visitor)
+        matches!(self, Species::Goblin | Species::Merchant | Species::Human | Species::Elf | Species::Raider | Species::Visitor | Species::Spawn)
     }
 
     /// Animals that can be kept (people and cave folk can't).
@@ -535,6 +538,21 @@ impl Species {
                 skill: 3,
                 mover: Mover::Goblin,
                 edged: false,
+            },
+            Species::Spawn => SpeciesInfo {
+                name: "spawn",
+                plural: "spawn",
+                glyph: '&',
+                color: (190, 150, 210),
+                scale: 1.0,
+                damage: 5.0,
+                verb: "claws",
+                move_delay: 3,
+                attack_delay: 10,
+                aggro: 999,
+                skill: 3,
+                mover: Mover::Goblin,
+                edged: true,
             },
             Species::Goblin => SpeciesInfo {
                 name: "goblin",

@@ -116,6 +116,12 @@ pub struct Horrors {
     pub held: Vec<Hold>,
     #[serde(default)]
     pub venom: Vec<Venom>,
+    /// Creatures of a made people (soldiers, merchants), by id: their civ.
+    #[serde(default)]
+    pub kin: BTreeMap<u32, u32>,
+    /// What the fort knows of each made people's gift: (civ, power).
+    #[serde(default)]
+    pub kin_known: Vec<(u32, Power)>,
 }
 
 /// How often the horrors' round runs (schedule.rs).
@@ -170,6 +176,14 @@ impl Game {
             return;
         }
         g.known.push(p);
+        // Seen in one of a made people, it's known of them all (kin.rs).
+        let title = match self.kin_of(id) {
+            Some((civ, all)) => {
+                self.kin_learned(civ, p);
+                all
+            }
+            None => title.to_string(),
+        };
         self.count("horrors.learned", 1);
         let fort = self.fortress_name.clone();
         self.msg(&format!("Now we know: {} {}!", title, p.known()), (230, 160, 255));
@@ -177,9 +191,10 @@ impl Game {
     }
 
     /// A creature has died (the end of `creature_died`): its powers go
-    /// with it.
+    /// with it, and one of a made people's body is named for them.
     pub(super) fn horror_died(&mut self, c: &Creature) {
         self.horrors.gifts.remove(&c.id);
+        self.kin_died(c);
     }
 
     /// Before it closes or strikes: a power aimed at the dwarf it hunts, at

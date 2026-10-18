@@ -1072,7 +1072,7 @@ impl Game {
         let (sooner, watch) = self.watch_warning();
         let arrive = arrive + sooner;
         let civ = self.overworld.civ(foe.civ).name.clone();
-        let plural = Self::army_species(foe.race).info().plural;
+        let plural = self.army_plural(foe.civ, Self::army_species(foe.race));
         let raid = n <= 3;
         let what = if raid { format!("a raiding party of {} {}", n, plural) } else { format!("an army of {} {}", n, plural) };
         let mut text = format!("Scouts report {} of the {}, led by {}, marching on {}. They will be at the gates within a day!", what, civ, leader, self.fortress_name);
@@ -1131,7 +1131,7 @@ impl Game {
 
     /// Who leads them: a living figure of their civilization, or a new name.
     fn siege_leader(&mut self, foe: &Neighbor) -> (Option<u32>, String) {
-        let kind = format!("{:?}", foe.race).to_lowercase();
+        let kind = self.leader_kind(foe.civ, foe.race);
         let year = self.start_year + (self.tick / YEAR) as i32;
         let known: Vec<u32> = self
             .overworld
@@ -1143,7 +1143,7 @@ impl Game {
         let general = if known.is_empty() { None } else { Some(*self.rng.pick(&known)) };
         let name = match general {
             Some(f) => self.overworld.figures[f as usize].name.clone(),
-            None => crate::overworld::person_name(&mut self.rng, foe.race),
+            None => self.leader_name(foe.civ, foe.race),
         };
         (general, name)
     }
@@ -1172,6 +1172,8 @@ impl Game {
             Race::Elf => (Species::Elf, &[Mat::Wood], &[ItemKind::Spear, ItemKind::Sword], [0.3, 0.0, 0.4]),
             Race::Dwarf => (Species::Raider, &[Mat::Bronze, Mat::Iron, Mat::Iron], &[ItemKind::Axe, ItemKind::Hammer], [0.9, 0.7, 0.4]),
         };
+        // A people made by a villain comes as its own kind (kin.rs).
+        let species = self.army_kind(foe.civ, species);
         let stay = DAY * 5;
         // A living figure of theirs leads, or a new one rises to it (the one
         // the scouts named, if they did).
@@ -1204,6 +1206,7 @@ impl Game {
                 c.general = Some(general.unwrap_or(u32::MAX));
                 c.body = crate::body::Body::new(species.info().scale * 1.3);
             }
+            self.dress_kin(id, foe.civ, leads);
             for k in gear {
                 let iid = self.spawn_item(k, mat, p);
                 if let Some(it) = self.items.get_mut(&iid) {
@@ -1220,11 +1223,11 @@ impl Game {
         }
         self.siege_size = n as u32;
         self.siege_routed = false;
-        self.note_siege(species.info().plural, n as u32, &general_name);
+        let plural = self.army_plural(foe.civ, species);
+        self.note_siege(&plural, n as u32, &general_name);
         self.annals.sieges.last_mut().unwrap().civ = Some(foe.civ);
         self.siege_race = Some(foe.race);
         self.year_log.siege = Some(civ_name.clone());
-        let plural = species.info().plural;
         let text = if foe.race == Race::Goblin {
             format!("A vile force of darkness has arrived! {} {}, led by {}.", n, plural, general_name)
         } else {
@@ -1253,6 +1256,7 @@ impl Game {
             Some(Race::Dwarf) => "raiders",
             _ => "goblins",
         };
+        let who = self.routed_kin().unwrap_or_else(|| who.to_string());
         self.msg(&format!("The {} are fleeing!", who), (120, 255, 120));
         let fort = self.fortress_name.clone();
         self.spotlight("The siege is broken", &format!("The {} are fleeing from {}!", who, fort), None, (120, 255, 120));

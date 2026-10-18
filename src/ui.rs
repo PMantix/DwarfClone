@@ -427,6 +427,8 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
             ('D', (255, 90, 40))
         } else if c.species == crate::creature::Species::Undead && c.general.is_some() {
             ('N', (190, 110, 240))
+        } else if let Some(look) = g.kin_look(c) {
+            look
         } else {
             (info.glyph, info.color)
         };
@@ -1513,7 +1515,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             for n in g.neighbors.iter().take(4) {
                 let war = g.civ.map_or(false, |c| g.overworld.civ(c).enemies.contains(&n.civ)) || n.race == Race::Goblin;
                 v.push(plain(
-                    format!("  {} {} away{}", n.race.plural(), n.dist, if war { " (hostile)" } else { "" }),
+                    format!("  {} {} away{}", g.overworld.people(n.civ), n.dist, if war { " (hostile)" } else { "" }),
                     if war { Color::Rgb(240, 110, 90) } else { rgb_of(n.race.color()) },
                 ));
             }
@@ -2147,7 +2149,7 @@ fn embark_summary(ow: &Overworld, seed: u64, x: i32, y: i32) -> Vec<Line<'static
             ("friendly traders", TEXT)
         };
         v.push(Line::from(vec![
-            Span::styled(format!("{} ({}), {} away: ", civ.name, n.race.plural(), n.dist), Style::default().fg(n.race.color())),
+            Span::styled(format!("{} ({}), {} away: ", civ.name, ow.people(n.civ), n.dist), Style::default().fg(n.race.color())),
             Span::styled(note, Style::default().fg(nc)),
         ]));
     }
@@ -2662,7 +2664,7 @@ fn world_info(ow: &Overworld, x: i32, y: i32, flash: &Option<String>) -> Vec<Lin
             Race::Dwarf => " — your kin",
             _ => " — traders",
         };
-        v.push(plain(format!("{} ({}), {} away{}", civ.name, n.race.plural(), n.dist, note), n.race.color()));
+        v.push(plain(format!("{} ({}), {} away{}", civ.name, ow.people(n.civ), n.dist, note), n.race.color()));
     }
     v.push(Line::default());
     let parent = ow.parent_civ(x, y).map(|c| ow.civ(c).name.clone());
@@ -2767,17 +2769,19 @@ fn legends_lines(ow: &Overworld, tab: usize) -> Vec<Line<'static>> {
             let sites = ow.sites.iter().filter(|s| s.civ == Some(c.id) && !s.ruined).count();
             let ruler = c.ruler.map(|r| ow.figures[r as usize].name.clone()).unwrap_or_else(|| "none".into());
             let enemies: Vec<String> = c.enemies.iter().map(|e| ow.civ(*e).name.clone()).collect();
-            vec![
+            let mut v = vec![
                 Line::from(Span::styled(
-                    format!("{} ({}){}", c.name, c.race.plural(), if c.alive { "" } else { " — fallen" }),
+                    format!("{} ({}){}", c.name, ow.people(c.id), if c.alive { "" } else { " — fallen" }),
                     Style::default().fg(if c.alive { c.race.color() } else { MUTED }).add_modifier(Modifier::BOLD),
                 )),
                 plain(format!("   {} sites, ruler: {}", sites, ruler), TEXT),
                 plain(format!("   at war with: {}", if enemies.is_empty() { "nobody".into() } else { enemies.join(", ") }), MUTED),
-            ]
+            ];
+            v.extend(ow.made_lines(c.id).into_iter().map(|l| plain(l, Color::Rgb(210, 160, 255))));
+            v
         }).collect(),
         2 => ow.sites.iter().map(|s| {
-            let owner = s.civ.map_or("—".to_string(), |c| ow.civ(c).race.plural().to_string());
+            let owner = s.civ.map_or("—".to_string(), |c| ow.people(c));
             Line::from(vec![
                 Span::styled(format!("{} ", if s.ruined { '×' } else { s.kind.glyph() }), Style::default().fg(KEY)),
                 Span::styled(format!("{:<20}", s.name), Style::default().fg(TEXT)),

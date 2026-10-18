@@ -91,6 +91,7 @@ mod larder;
 pub mod fortify;
 mod towers;
 pub mod horrors;
+mod kin;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;

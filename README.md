@@ -204,6 +204,20 @@ your embark site; the biome shapes the map (relief, forest, lakes, savage wildli
 nearby goblins, and any civilization at war with yours in the world's history, decide how
 often sieges come.
 
+**Peoples made by villains.** In most worlds a necromancer or a dark wizard raises a tower
+somewhere lonely and twists prisoners, beasts or the dead into a new people
+(`overworld/peoples.rs`): a generated name ("the qydrooths"), a body ("squat, horned things
+with rust-brown skin"), a letter and colour of their own, a temper (warlike, wary, or given to
+trade) and one power every one of them has (webs, venom, a roar, a hide like armour...). From
+then on they are a civilization like any other, named in their own tongue: they found towns,
+go to war, buy peace, turn on their maker or lose them to a hero, and the legends keep it all
+(the civilization list says who made them, from what, and what they can do). Their tale is
+told over the world's history after the rest of it is written, on dice of its own, so a world
+is otherwise the same with or without them. Near your fort, the warlike besiege it as their
+own kind, led by one of theirs, each with the maker's gift (learned of them all at the first
+clash); the others send traders in the dead of winter, when nobody else comes, with strange
+goods of their own (`game/kin.rs`).
+
 **The world map.** One character a cell, tight like the old game's atlas: each region is a
 solid texture of one glyph family in two or three shades of its colour (green `∩` `n` hills,
 `♣` forests, `"` grass, grey and white `▲` `^` mountains with snow on the high peaks, `↑`
