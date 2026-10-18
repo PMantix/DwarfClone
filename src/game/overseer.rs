@@ -248,6 +248,14 @@ fn plan(style: Style) -> Vec<RoomUse> {
     }
 }
 
+/// How far round the foot of the stair the quarry looks for stone (west,
+/// east, and north or south: the halls spread east of the stair), and the
+/// longest tunnel through soil it cuts to reach some.
+const QUARRY_DX0: i32 = 40;
+const QUARRY_DX1: i32 = 80;
+const QUARRY_DY: i32 = 45;
+const QUARRY_TUNNEL: i32 = 30;
+
 const WORKSHOPS: [BuildingKind; 12] = [
     BuildingKind::Carpenter,
     BuildingKind::Mason,
@@ -777,6 +785,26 @@ impl Game {
                 None => orders.push((r, keep)),
             }
         }
+        // Stone short and the gate still wanting its mechanisms: none of it
+        // goes on blocks or crafts until they're made (a fort cut in soil
+        // once turned all the stone it quarried for them into blocks).
+        if self.gate_wants_stone(o) {
+            let held = [Recipe::Blocks, Recipe::StoneCraft];
+            for x in orders.iter_mut().filter(|x| held.contains(&x.0)) {
+                x.1 = 0;
+            }
+            for w in self.work_orders.iter_mut().filter(|w| held.contains(&w.recipe)) {
+                w.keep = 0;
+            }
+            for b in self.buildings.values_mut() {
+                let busy = b.worker.is_some() as usize;
+                let mut i = 0;
+                b.orders.retain(|x| {
+                    i += 1;
+                    i <= busy || !held.contains(&x.recipe)
+                });
+            }
+        }
         // Only what some workshop can make (the rest would just complain).
         for (r, keep) in orders {
             if keep > 0 && self.buildings.values().any(|b| b.built && b.kind.recipes().contains(&r)) {
@@ -1075,6 +1103,28 @@ impl Game {
         }
     }
 
+    /// Whether the gate still wants mechanisms and stone is short: it holds
+    /// the stone for them.
+    pub(super) fn gate_wants_stone(&self, o: &Overseer) -> bool {
+        if o.style == Style::Reckless || o.base.is_none() {
+            return false;
+        }
+        let want = if o.did("linked") { self.gate_parts_missing(o) } else { 3 };
+        let mechs = self.stock_of(ItemKind::Mechanism);
+        let loose = self.items.values().filter(|it| it.kind == ItemKind::Boulder && it.mat.is_building_stone() && it.free()).count();
+        mechs < want && loose < 12
+    }
+
+    /// Parts of the gate's drawbridge and lever not standing built (a half
+    /// lost to a siege, say), each needing a mechanism to put back.
+    pub(super) fn gate_parts_missing(&self, o: &Overseer) -> usize {
+        let Some(base) = o.base else { return 0 };
+        [(BuildingKind::Bridge, base.offset(2, 0, 0)), (BuildingKind::Bridge, base.offset(2, 1, 0)), (BuildingKind::Lever, base.offset(3, 1, 0))]
+            .iter()
+            .filter(|&&(k, p)| !self.buildings.values().any(|b| b.kind == k && b.pos == p && b.built))
+            .count()
+    }
+
     /// Whether `p` is in the gatehouse's walls (two deep on each side of the
     /// corridor, and round the foot of the stair), which nothing may be cut
     /// from: it would open a way round the doors and the bridge.
@@ -1084,12 +1134,13 @@ impl Game {
 
     /// Plain stone for the gate's mechanisms. A fort whose halls are cut in
     /// soil, ore or coal has none to make them from, and its drawbridge never
-    /// comes: until the lever is linked (or while a lesson wants traps and
-    /// none are set), keep a few boulders of it in hand,
-    /// quarried where it shows beside the halls, or else down the inner stair
-    /// at the first layer of stone.
+    /// comes: until the lever is linked and every part of the gate stands
+    /// (or while a lesson wants traps and none are set), keep a few boulders
+    /// of it in hand, quarried where it shows beside the halls, else at the
+    /// end of a tunnel cut through the soil to the nearest, or else down a
+    /// stair at the first layer of stone.
     fn ov_quarry(&mut self, o: &mut Overseer) {
-        if o.did("linked") && !self.traps_wanted(o) {
+        if o.did("linked") && self.gate_parts_missing(o) == 0 && !self.traps_wanted(o) {
             return;
         }
         let base = o.base.unwrap();
@@ -1128,11 +1179,11 @@ impl Game {
             })
         };
         // Stone in sight, beside ground already dug (the main level, or the
-        // quarry below it).
+        // quarry below it), anywhere round the halls.
         let mut seen: Vec<(i32, Pos)> = Vec::new();
         for dz in -4..=0 {
-            for dy in -14..=14 {
-                for dx in -14..=30 {
+            for dy in -QUARRY_DY..=QUARRY_DY {
+                for dx in -QUARRY_DX0..=QUARRY_DX1 {
                     if Self::gatehouse(base, base.offset(dx, dy, dz)) {
                         continue;
                     }
@@ -1157,30 +1208,146 @@ impl Game {
             }
             return;
         }
-        // None: sink the inner stair to the first layer of stone (not into an
-        // aquifer, nor into the caverns) and cut a pocket there.
-        if o.did("quarry") {
-            return;
-        }
-        let (sx, sy) = (base.x + 9, base.y + 1);
-        let roof = self.world.caverns.iter().map(|c| c.1).max().unwrap_or(0);
-        let wet = |g: &Game, p: Pos| g.world.get(p).map_or(true, |t| t.aquifer || t.water > 0);
-        for dz in 1..=4 {
-            let z = base.z - dz;
-            if z < 3 || z <= roof + 1 || wet(self, Pos::new(sx, sy, z)) {
-                return;
-            }
-            let pocket: Vec<Pos> = box_iter(Pos::new(sx - 2, sy - 1, z), Pos::new(sx + 2, sy + 1, z)).collect();
-            if pocket.iter().any(|&p| wet(self, p)) {
+        // None beside the halls (a fort cut in soil soon quarries what showed
+        // there): tunnel through the soil from the halls to the nearest stone
+        // on their levels.
+        let cuttable = |g: &Game, p: Pos| {
+            !Self::gatehouse(base, p)
+                && g.world.get(p).map_or(false, |t| t.kind == TileKind::Wall && t.mat != Mat::Bedrock && !t.aquifer && t.desig == Desig::None && t.built_from.is_none())
+                && !g.world.outside(p)
+                && !exposed(p)
+                && !by_works(p)
+        };
+        let mut best: Option<(i32, Vec<Pos>)> = None;
+        for dz in -4..=0i32 {
+            let z = base.z + dz;
+            let (x0, x1) = ((base.x - QUARRY_DX0).max(0), (base.x + QUARRY_DX1).min(self.world.w - 1));
+            let (y0, y1) = ((base.y - QUARRY_DY).max(0), (base.y + QUARRY_DY).min(self.world.h - 1));
+            if z < 1 || x0 > x1 || y0 > y1 {
                 continue;
             }
-            if pocket.iter().filter(|&&p| stone(self.world.t(p))).count() >= 4 {
-                self.designate(pocket[0], *pocket.last().unwrap(), Desig::Dig);
-                self.designate(Pos::new(sx, sy, base.z), Pos::new(sx, sy, z), Desig::StairUD);
+            let w = (x1 - x0 + 1) as usize;
+            let idx = |p: Pos| (p.y - y0) as usize * w + (p.x - x0) as usize;
+            let mut from: Vec<u32> = vec![u32::MAX; w * (y1 - y0 + 1) as usize];
+            let mut queue = std::collections::VecDeque::new();
+            for y in y0..=y1 {
+                for x in x0..=x1 {
+                    let p = Pos::new(x, y, z);
+                    let t = self.world.t(p);
+                    if t.dug && !t.kind.solid() && !self.world.outside(p) {
+                        from[idx(p)] = idx(p) as u32;
+                        queue.push_back((p, 0i32));
+                    }
+                }
+            }
+            let mut hit = None;
+            while let Some((p, d)) = queue.pop_front() {
+                if d > 0 && stone(self.world.t(p)) {
+                    hit = Some((p, d));
+                    break;
+                }
+                if d >= QUARRY_TUNNEL {
+                    continue;
+                }
+                for &(ex, ey) in crate::geom::DIRS4.iter() {
+                    let q = p.offset(ex, ey, 0);
+                    if q.x < x0 || q.x > x1 || q.y < y0 || q.y > y1 || from[idx(q)] != u32::MAX || !cuttable(self, q) {
+                        continue;
+                    }
+                    from[idx(q)] = idx(p) as u32;
+                    queue.push_back((q, d + 1));
+                }
+            }
+            if let Some((p, d)) = hit {
+                let cost = d - dz * 4;
+                if best.as_ref().map_or(true, |b| cost < b.0) {
+                    let mut path = vec![p];
+                    let mut i = idx(p);
+                    while from[i] as usize != i {
+                        i = from[i] as usize;
+                        let q = Pos::new(x0 + (i % w) as i32, y0 + (i / w) as i32, z);
+                        if self.world.t(q).kind.solid() {
+                            path.push(q);
+                        }
+                    }
+                    best = Some((cost, path));
+                }
+            }
+        }
+        if let Some((_, path)) = best {
+            // And a few more of the stone round its end.
+            let mut more: Vec<Pos> = vec![path[0]];
+            let mut i = 0;
+            while i < more.len() && more.len() < 6 {
+                for &(ex, ey) in crate::geom::DIRS4.iter() {
+                    let q = more[i].offset(ex, ey, 0);
+                    if more.len() < 6 && !more.contains(&q) && cuttable(self, q) && stone(self.world.t(q)) {
+                        more.push(q);
+                    }
+                }
+                i += 1;
+            }
+            for &p in path.iter().chain(more.iter()) {
+                self.designate(p, p, Desig::Dig);
+            }
+            self.count("gate.quarry", 1);
+            self.count("gate.tunnel", 1);
+            if !o.did("quarry") {
                 o.done.push("quarry".into());
-                self.count("gate.quarry", 1);
-                Self::note(o, self.tick, format!("No plain stone in the halls for the gate's mechanisms: sank the inner stair {} levels to quarry some.", dz));
-                return;
+            }
+            Self::note(o, self.tick, format!("No plain stone left beside the halls: had a tunnel of {} cut to the nearest, for the gate's mechanisms.", path.len() - 1));
+            return;
+        }
+        // None at all on those levels: sink the inner stair to the first
+        // layer of stone (not into an aquifer, nor into the caverns) and cut a
+        // pocket there.
+        if o.did("quarry-stair") {
+            return;
+        }
+        let roof = self.world.caverns.iter().map(|c| c.1).max().unwrap_or(0);
+        let wet = |g: &Game, p: Pos| g.world.get(p).map_or(true, |t| t.aquifer || t.water > 0);
+        // The inner stair's spot first; else a bare floor of the halls, the
+        // nearest first (the inner stair may stand over a cavern).
+        let mut spots: Vec<(i32, Pos)> = Vec::new();
+        for dy in -QUARRY_DY..=QUARRY_DY {
+            for dx in -QUARRY_DX0..=QUARRY_DX1 {
+                let p = base.offset(dx, dy, 0);
+                if Self::gatehouse(base, p) || !self.world.in_bounds(p) {
+                    continue;
+                }
+                let t = self.world.t(p);
+                if t.dug && t.kind == TileKind::Floor && t.building == 0 && t.zone == 0 && t.desig == Desig::None && !self.world.outside(p) {
+                    spots.push((dx.abs() + dy.abs(), p));
+                }
+            }
+        }
+        spots.sort();
+        let inner = base.offset(9, 1, 0);
+        for s in std::iter::once(inner).chain(spots.into_iter().map(|s| s.1).take(300)) {
+            let (sx, sy) = (s.x, s.y);
+            for dz in 1..=4 {
+                let z = base.z - dz;
+                // (The level just over a cavern will do, where the rock under
+                // the pocket is whole: the halls often sit right on one.)
+                if z < 3 || z <= roof || wet(self, Pos::new(sx, sy, z)) || !self.world.solid(Pos::new(sx, sy, z)) {
+                    break;
+                }
+                let pocket: Vec<Pos> = box_iter(Pos::new(sx - 2, sy - 1, z), Pos::new(sx + 2, sy + 1, z)).collect();
+                if pocket.iter().any(|&p| wet(self, p) || !self.world.in_bounds(p) || (z == roof + 1 && !self.world.solid(p.down()))) {
+                    continue;
+                }
+                if pocket.iter().filter(|&&p| stone(self.world.t(p))).count() >= 4 {
+                    self.designate(pocket[0], *pocket.last().unwrap(), Desig::Dig);
+                    self.designate(Pos::new(sx, sy, base.z), Pos::new(sx, sy, z), Desig::StairUD);
+                    if !o.did("quarry") {
+                        o.done.push("quarry".into());
+                    }
+                    o.done.push("quarry-stair".into());
+                    self.count("gate.quarry", 1);
+                    let what = if s == inner { "the inner stair" } else { "a stair from the halls" };
+                    Self::note(o, self.tick, format!("No plain stone in the halls for the gate's mechanisms: sank {} {} levels to quarry some.", what, dz));
+                    return;
+                }
             }
         }
     }
