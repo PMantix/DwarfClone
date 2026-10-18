@@ -152,7 +152,10 @@ impl Game {
         if w.deaths_outside >= 2 {
             learned.push((Lesson::WallTheYard, format!("{} of ours died under the open sky. A wall round the yard, now.", w.deaths_outside)));
         }
-        if (w.soldiers > 0 && w.soldiers_lost * 2 >= w.soldiers) || slain < 1 {
+        // (Slaying none counts only if they were met: a gate that kept the
+        // army out entirely taught the soldiers nothing.)
+        let met = w.first_contact.is_some() || w.soldiers_lost > 0;
+        if (w.soldiers > 0 && w.soldiers_lost * 2 >= w.soldiers) || (slain < 1 && met) {
             let how = if w.soldiers_lost > 0 { format!("we lost {} of {} soldiers", w.soldiers_lost, w.soldiers) } else { "our soldiers slew none of them".to_string() };
             learned.push((Lesson::ArmBetter, format!("{}. Helms, breastplates and shields from the forge.", how)));
             if self.squads.len() < 2 {
@@ -225,7 +228,9 @@ impl Game {
                 let mut cands: Vec<(u32, u32)> = self
                     .dwarves
                     .iter()
+                    // Not the fort's doctors or miners: the fort needs them at work.
                     .filter(|d| d.alive && !d.is_child() && !d.insane && d.noble.is_none() && self.position_of(d.id).is_none() && self.squad_of(d.id).is_none())
+                    .filter(|d| !d.has(Labor::Medicine) && !d.has(Labor::Mining))
                     .map(|d| (d.fight_xp, d.id))
                     .collect();
                 cands.sort_by(|a, b| b.cmp(a));
@@ -294,7 +299,7 @@ impl Game {
         if self.tick >= t + SEASON {
             return None;
         }
-        let level = 1.0 - (self.tick - t) as f64 / SEASON as f64;
+        let level = 1.0 - self.tick.saturating_sub(t) as f64 / SEASON as f64;
         let mut pulls = vec![(Ambition::Fortify, 1.0)];
         if o.lessons.iter().any(|l| l.0 == t && matches!(l.1, Lesson::ArmBetter | Lesson::SecondSquad)) {
             pulls.push((Ambition::Muster, 0.8));
