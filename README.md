@@ -165,6 +165,26 @@ mountains next door lift the land toward them, and a big embark spanning several
 blends their biomes along ragged borders. Growing the map (`M`) carries on into the
 neighbours the same way.
 
+The land itself is made by processes, one after another (`src/terrain_gen/`). The world cells'
+heights set the level and the tilt across the map, and each cell's biome, with a character of
+its own, picks the landform: flat plains or rolling hill country, steep hills, ridged mountain
+ranges on broad massifs, stepped mesas in the badlands, dunes in the desert, the sea floor
+offshore; sometimes a fault lifts one side of the map into an escarpment, worn through in
+places. The world's rivers come in and go out across the sides the world map links, run from
+the higher cell to the lower, meander, and cut their valleys first: broad in soft ground, a
+gorge in hard rock, their water never rising along the way. Then the rain wears the land:
+droplets carve gullies and lay alluvium in the flats, and slopes too steep for their rock
+crumble to scree, so cliffs stand only where the rock is hard. Water gathers where the land
+says: streams where the run-off collects, ponds and lakes in the hollows (fewer in dry
+country, where the water stands below the brim), the sea with its beaches. Forests grow
+thickest where the ground is wet and thin on ridges, with clearings and meadows; reeds edge
+still water; cliffs and crags are bare rock; snow lies on cold heights. Underneath, tunnels and
+caves wind through the upper rock, some opening on a cliff face, lava tubes run from a volcano,
+and the caverns, aquifer (likelier under wet lowland) and magma sea lie below as before. Cliffs
+or not, every piece of land can be walked to (a gully is cut down a scarp, a ford through a
+river where nothing else will do), and the wagon stops on dry, level, reachable ground with
+room round it, the caves kept clear of where the fortress will grow.
+
 Wildlife follows the land too: deer, wolves and bears in the forests and hills; elk, wolves
 and bears in the taiga; elk and polar bears on the tundra and glaciers; ibex in the mountains
 and badlands; camels, giant scorpions and vipers in the desert; antelope and lions on the
