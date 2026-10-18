@@ -12,7 +12,7 @@ pub const GONE_DAYS: u16 = 40;
 
 impl Game {
     fn rots(it: &Item) -> bool {
-        matches!(it.kind, ItemKind::Corpse | ItemKind::Carcass) && it.carried_by.is_none() && it.container.is_none()
+        (matches!(it.kind, ItemKind::Corpse | ItemKind::Carcass) || it.kind == ItemKind::BodyPart && it.mat == Mat::Flesh) && it.carried_by.is_none() && it.container.is_none()
     }
 
     /// Daily: bodies rot (an item's `wear` counts its days of rot), and old

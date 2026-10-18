@@ -72,6 +72,8 @@ impl Game {
                     helm: 0,
                     mail: 0,
                     shield: false,
+                    size: if stone { 2.0 } else { 1.0 },
+                    teeth: false,
                 };
                 for _ in 0..hits {
                     let Some(c) = self.creatures.get(&cid) else { break };
@@ -80,9 +82,12 @@ impl Game {
                     }
                     let def = self.creature_fighter(c);
                     let mut body = c.body.clone();
-                    if let Some(m) = self.strike(&att, &def, &mut body) {
-                        self.msg(&m, (235, 200, 130));
+                    let (cpos, csp, owner, seen) = (c.pos, c.species, super::gore::owner_of_creature(c), super::melee::a_or_name(c));
+                    let blow = self.strike(&att, &def, &mut body);
+                    if let Some(m) = blow.msg.as_ref().filter(|_| blow.notable) {
+                        self.msg(m, (235, 200, 130));
                     }
+                    self.aftermath(&blow, cpos, cpos, &owner, &seen, Some(csp), false);
                     let dead = body.dead;
                     if let Some(c) = self.creatures.get_mut(&cid) {
                         c.body = body;

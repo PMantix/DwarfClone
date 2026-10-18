@@ -78,6 +78,11 @@ impl Game {
             }
             self.world.tiles[i].fire -= 1;
             self.burn_tile(p);
+            // Smoke rises off it, thickest in the halls.
+            self.puff(p, 4);
+            if self.world.in_bounds(p.up()) && !self.world.solid(p.up()) {
+                self.puff(p.up(), 3);
+            }
             if self.world.tiles[i].fire == 0 {
                 self.burnt_out(p);
                 continue;

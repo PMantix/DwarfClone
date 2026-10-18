@@ -117,14 +117,18 @@ impl Game {
         let def = self.creature_fighter(c);
         let hp0: i32 = c.body.hp.iter().sum();
         self.msg(&format!("{} catches {} as it turns to run.", d.called(), c.title()), (235, 225, 130));
-        let msg = self.strike(&att, &def, &mut c.body);
+        let blow = self.strike(&att, &def, &mut c.body);
         let hurt = c.body.hp.iter().sum::<i32>() < hp0;
         self.note_blow(super::annals::BY_SOLDIER, hurt);
         self.count("parting_swings", 1);
         d.fight_xp += 8;
-        if let Some(m) = msg {
-            self.msg(&m, (235, 225, 130));
+        if blow.notable {
+            if let Some(m) = &blow.msg {
+                self.msg(m, (235, 225, 130));
+            }
         }
+        let (owner, seen) = (super::gore::owner_of_creature(c), super::melee::a_or_name(c));
+        self.aftermath(&blow, d.pos, c.pos, &owner, &seen, Some(c.species), false);
         let dead = c.body.dead;
         if dead {
             self.credit_kill(&mut d, c);

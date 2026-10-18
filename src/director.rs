@@ -35,6 +35,8 @@ pub enum Kind {
     Rescue,
     FirstAid,
     Mood,
+    /// Where blood was freshly spilled: bodies, parts, pools.
+    Battlefield,
     Arrivals,
     Care,
     Caravan,
@@ -62,6 +64,7 @@ impl Kind {
             Kind::Rescue => 70,
             Kind::FirstAid => 65,
             Kind::Mood => 60,
+            Kind::Battlefield => 58,
             Kind::Arrivals => 55,
             Kind::Care => 45,
             Kind::Caravan => 45,
@@ -299,7 +302,8 @@ pub fn fight_of(g: &Game, id: u32) -> Option<(u32, bool)> {
 }
 
 fn fights(g: &Game) -> Vec<Subject> {
-    g.dwarves
+    let mut v: Vec<Subject> = g
+        .dwarves
         .iter()
         .filter(|d| d.alive)
         .filter_map(|d| {
@@ -308,7 +312,17 @@ fn fights(g: &Game) -> Vec<Subject> {
             let what = if close { format!("{} trades blows with {}", d.name, a_creature(c)) } else { format!("{} charges at {}", d.name, a_creature(c)) };
             Some(Subject { who: Who::Dwarf(d.id), kind: Kind::Fight, what })
         })
-        .collect()
+        .collect();
+    // Beasts and armies at each other's throats, where the fort can see.
+    for c in g.creatures.values().filter(|c| seen(g, c)) {
+        let Some(o) = c.foe.and_then(|f| g.creatures.get(&f)).filter(|o| seen(g, o) && o.pos.z == c.pos.z && dist(o.pos, c.pos) <= 1) else { continue };
+        if v.iter().any(|s| s.who == Who::Creature(o.id)) || v.len() >= 6 {
+            continue;
+        }
+        let what = format!("{} fights {}", cap(&a_creature(c)), a_creature(o));
+        v.push(Subject { who: Who::Creature(c.id), kind: Kind::Fight, what });
+    }
+    v
 }
 
 /// The middle of the fort: the gate the overseer built, or the wagon.
@@ -408,6 +422,19 @@ pub fn candidates(g: &Game) -> Vec<Subject> {
         if let Some(d) = g.dwarves.iter().filter(|d| d.alive && !matches!(d.task, Task::Sleep { .. })).find(|d| z.tiles.contains(&d.pos)) {
             v.push(Subject { who: Who::Dwarf(d.id), kind: Kind::Tavern, what: format!("the tavern, {} among the drinkers", d.name) });
             break;
+        }
+    }
+
+    // The field of a fight just over, while the blood is fresh.
+    if v.iter().all(|s| s.kind != Kind::Fight) {
+        if let Some(p) = g.fresh_battlefield() {
+            let parts = g.items.values().filter(|it| it.kind == crate::items::ItemKind::BodyPart && it.carried_by.is_none() && dist(it.pos, p) <= 6 && it.pos.z == p.z).count();
+            let what = match parts {
+                0 => "the field of the last fight, still red".to_string(),
+                1 => "the field of the last fight, a severed limb in the blood".to_string(),
+                n => format!("the field of the last fight, {} severed parts in the blood", n),
+            };
+            v.push(Subject { who: Who::Spot(p), kind: Kind::Battlefield, what });
         }
     }
 

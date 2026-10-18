@@ -299,13 +299,18 @@ impl Game {
             helm: 0,
             mail: 0,
             shield: false,
+            size: 1.0,
+            teeth: true,
         };
         let def = self.creature_fighter(c);
         let mut body = c.body.clone();
         let (hp0, siege): (i32, bool) = (body.hp.iter().sum(), c.siege);
-        if let Some(m) = self.strike(&att, &def, &mut body) {
-            self.msg(&m, (235, 225, 130));
+        let (cpos, csp, owner, seen) = (c.pos, c.species, super::gore::owner_of_creature(c), super::melee::a_or_name(c));
+        let blow = self.strike(&att, &def, &mut body);
+        if let Some(m) = blow.msg.as_ref().filter(|_| blow.notable) {
+            self.msg(m, (235, 225, 130));
         }
+        self.aftermath(&blow, d.pos, cpos, &owner, &seen, Some(csp), false);
         if siege {
             let hurt = body.hp.iter().sum::<i32>() < hp0;
             self.note_blow(super::annals::BY_BOLT, hurt);
@@ -452,6 +457,8 @@ mod tests {
                 helm: 0,
                 mail: 0,
                 shield: false,
+                size: 1.0,
+                teeth: true,
             };
             let mut lost = 0;
             for _ in 0..400 {

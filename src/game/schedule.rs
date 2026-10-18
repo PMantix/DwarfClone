@@ -18,6 +18,8 @@ impl Game {
         self.prof_add(0, t);
         if tick % 300 == 75 { self.weather_thoughts(); self.lightning(); }
         if tick % 10 == 5 && self.fire_cells.as_ref().map_or(true, |c| !c.is_empty()) { self.fires(); }
+        if tick % gore::SMOKE_TICK == 8 { self.smoke_tick(); }
+        if tick % gore::GORE_TICK == 45 { self.gore_tick(); }
         if tick % 50 == 0 { self.count_fits(); }
         if tick % 50 == 10 { self.annals_tick(); }
         if tick % 25 == 20 { self.army_arrives(); }

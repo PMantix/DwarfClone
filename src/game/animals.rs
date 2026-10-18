@@ -224,9 +224,12 @@ impl Game {
         let att = self.creature_fighter(c);
         let def = self.creature_fighter(t);
         let mut body = t.body.clone();
-        if let Some(m) = self.strike(&att, &def, &mut body) {
+        let (tpos, tsp, owner, seen) = (t.pos, t.species, super::gore::owner_of_creature(t), super::melee::a_or_name(t));
+        let blow = self.strike(&att, &def, &mut body);
+        if let Some(m) = blow.msg.as_ref().filter(|_| blow.notable) {
             self.msg(&format!("The war dog: {}", m.trim_start_matches("The ").trim_start_matches("the ")), (235, 225, 130));
         }
+        self.aftermath(&blow, c.pos, tpos, &owner, &seen, Some(tsp), false);
         let dead = body.dead;
         if let Some(t) = self.creatures.get_mut(&target) {
             t.body = body;

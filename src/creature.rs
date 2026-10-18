@@ -640,6 +640,9 @@ pub struct Creature {
     /// Hurt, it keeps its distance until this tick (0: never hurt yet).
     #[serde(default)]
     pub wary_until: u64,
+    /// Another creature it is fighting (or hunting): see `game::combat`.
+    #[serde(default)]
+    pub foe: Option<u32>,
 }
 
 fn yes() -> bool {
@@ -687,6 +690,7 @@ impl Creature {
             pack: 0,
             stalk: None,
             wary_until: 0,
+            foe: None,
         }
     }
 

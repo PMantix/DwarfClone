@@ -5,6 +5,7 @@ use crate::body::{Body, Part, Wound};
 use crate::creature::{Creature, Species};
 use crate::items::Slot;
 use crate::world::{DOOR_LOCKED, DOOR_NONE};
+use super::melee::a_or_name;
 
 pub(super) struct Fighter {
     pub name: String,
@@ -15,9 +16,88 @@ pub(super) struct Fighter {
     pub helm: i32,
     pub mail: i32,
     pub shield: bool,
+    /// Body size (a dwarf is 1): big things hit harder and send small ones sprawling.
+    pub size: f32,
+    /// Has teeth worth knocking out (people).
+    pub teeth: bool,
 }
 
-fn cap(s: &str) -> String {
+/// What one blow did, for the one who struck it to deal with: the log line
+/// (only `notable` ones are told), and the mess it makes (`aftermath`).
+#[derive(Clone, Debug, Default)]
+pub(super) struct Blow {
+    pub msg: Option<String>,
+    /// It drew blood or broke something worth telling.
+    pub notable: bool,
+    /// How much blood it threw (0..=6).
+    pub blood: u8,
+    /// A part cut or torn off (the head, too).
+    pub severed: Option<Part>,
+    /// Teeth knocked out.
+    pub teeth: u8,
+    /// Sent sprawling a tile back.
+    pub sprawl: bool,
+    /// The weapon arm ruined: whatever it held falls.
+    pub disarmed: bool,
+}
+
+/// Who fights whom among the creatures (dwarves are another matter: see
+/// `Creature::hostile`). Enough to set beasts and armies on each other
+/// without turning the map into a slaughterhouse.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Faction {
+    /// Kept by the fortress.
+    Fort,
+    /// Merchants, guests, thieves.
+    Neutral,
+    /// A people's soldiers.
+    Army(Species),
+    /// Wild things that hunt.
+    Predator,
+    /// Wild things that graze.
+    Prey,
+    /// Megabeasts, cave horrors, anything out of legend.
+    Monster,
+    /// The walking dead.
+    Dead,
+    /// Troglodytes and spiders of the deep.
+    Cave,
+}
+
+pub(super) fn faction(c: &Creature) -> Faction {
+    if c.tame || c.pet_of.is_some() {
+        return Faction::Fort;
+    }
+    match c.species {
+        Species::Merchant | Species::Visitor | Species::Skulker => Faction::Neutral,
+        Species::Undead | Species::Husk => Faction::Dead,
+        Species::CaveHorror | Species::Megabeast => Faction::Monster,
+        _ if c.figure.is_some() => Faction::Monster,
+        Species::Troglodyte | Species::GiantSpider => Faction::Cave,
+        s if c.siege || s.person() => Faction::Army(s),
+        s if s.info().aggro > 0 => Faction::Predator,
+        _ => Faction::Prey,
+    }
+}
+
+/// Whether one of faction `a` goes for one of faction `b`.
+pub(super) fn hostile_to(a: Faction, b: Faction) -> bool {
+    use Faction::*;
+    match (a, b) {
+        (Fort | Neutral | Prey, _) | (_, Fort | Neutral) => false,
+        (Dead, Dead) | (Monster, Monster) => false,
+        (Dead | Monster, _) => true,
+        (Army(x), Army(y)) => x != y,
+        (Army(_), Prey) => false,
+        (Army(_), _) => true,
+        (Predator, Prey | Army(_) | Dead) => true,
+        (Predator, _) => false,
+        (Cave, Army(_) | Prey) => true,
+        (Cave, _) => false,
+    }
+}
+
+pub(super) fn cap(s: &str) -> String {
     let mut c = s.chars();
     match c.next() {
         Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
@@ -70,6 +150,8 @@ impl Game {
             helm: 0,
             mail: 0,
             shield: false,
+            size: if d.is_child() { 0.6 } else { 1.0 },
+            teeth: true,
         };
         self.apply_gear(&mut f, d.held, &d.armor, d.body.can_hold());
         f
@@ -86,52 +168,170 @@ impl Game {
             helm: 0,
             mail: 0,
             shield: false,
+            size: c.body.max_blood as f32 / 100.0,
+            teeth: c.species.person() || c.species == Species::Troglodyte,
         };
         self.apply_gear(&mut f, c.weapon, &c.armor, c.body.can_hold());
         f
     }
 
-    /// Resolve one blow. Returns a log line for anything worth reporting.
-    pub(super) fn strike(&mut self, att: &Fighter, def: &Fighter, body: &mut Body) -> Option<String> {
+    /// Resolve one blow: what it did to `body`, and what's worth telling.
+    /// The harder and heavier the blow, the worse: an edged one may take a
+    /// limb (or a head), a blunt one breaks bones and knocks out teeth, a
+    /// big beast's sends the one struck sprawling.
+    pub(super) fn strike(&mut self, att: &Fighter, def: &Fighter, body: &mut Body) -> Blow {
+        let mut b = Blow::default();
         // An opening: one who lies senseless can't dodge or block, and the
         // blow goes where it ends things (openings.rs).
         let downed = body.unconscious();
         let chance = (0.55 + 0.05 * (att.skill as f64 - def.skill as f64)).clamp(0.15, 0.95);
         if !self.rng.chance(if downed { self.knob("opening.hit", 0.95) } else { chance }) {
-            return None;
+            return b;
         }
         if !downed && def.shield && self.rng.chance(0.25) {
-            return Some(format!("{} blocks {}'s attack with a shield.", cap(&def.name), att.name));
+            b.msg = Some(format!("{} blocks {}'s attack with a shield.", cap(&def.name), att.name));
+            return b;
         }
         let part = if downed { self.opening_part() } else { body.pick_part(&mut self.rng) };
         let roll = 0.6 + self.rng.f64() as f32 * 0.8;
-        let armor = match part {
+        let mut armor = match part {
             Part::Head => def.helm,
             Part::UpperBody | Part::LowerBody => def.mail,
             _ => def.mail / 2,
         };
+        // A heavy edged blow sometimes bites through the armour.
+        let cleave = armor > 0 && att.edged && roll > 1.25 && att.dmg >= armor as f32 * 1.5;
+        if cleave {
+            armor /= 2;
+        }
         let mult = if downed { self.knob("opening.dmg", 1.5) as f32 } else { 1.0 };
-        let dmg = ((att.dmg * roll + att.skill as f32 * 0.5) * mult).round() as i32 - armor;
+        // Weight tells: a bear's swipe lands harder on a dwarf than a goblin's.
+        let heft = (att.size / def.size.max(0.2)).max(1.0).sqrt().min(2.0);
+        let dmg = ((att.dmg * roll + att.skill as f32 * 0.5) * mult * heft).round() as i32 - armor;
         if dmg <= 0 {
-            return Some(format!(
-                "{} {} {} in the {}, but the armor deflects the blow.",
-                cap(&att.name),
-                att.verb,
-                def.name,
-                part.name()
-            ));
+            b.msg = Some(format!("{} {} {} in the {}, but the armor deflects the blow.", cap(&att.name), att.verb, def.name, part.name()));
+            return b;
         }
-        let suffix = match body.wound_with(part, dmg, att.edged, &self.bleed_params()) {
-            Wound::Bruise => "",
-            Wound::Gash => if att.edged { ", tearing the flesh" } else { ", bruising the muscle" },
-            Wound::Mangle => ", mangling it!",
-            Wound::Sever => ", severing it!",
-            Wound::Fatal => " — a fatal blow!",
+        let bp = self.bleed_params();
+        let max = body.max[part.idx()];
+        let mut w = body.wound_with(part, dmg, att.edged, &bp);
+        // A ruined limb comes off to a heavy edge, or to a beast big enough to tear it away.
+        if w == Wound::Mangle && part.is_limb() && !body.lost[part.idx()] {
+            let p = if att.verb == "shoots" {
+                0.0
+            } else if att.edged {
+                self.knob("gore.sever", 0.3) * heft as f64
+            } else if heft >= 1.5 {
+                0.25
+            } else {
+                0.0
+            };
+            let p = if dmg >= max { p * 1.5 } else { p };
+            if p > 0.0 && self.rng.chance(p.min(0.8)) {
+                body.sever_with(part, &bp);
+                w = Wound::Sever;
+            }
+        }
+        let decap = w == Wound::Fatal && part == Part::Head && att.edged && (dmg >= max * 3 / 2 || self.rng.chance(self.knob("gore.decap", 0.3)));
+        if decap {
+            body.lost[Part::Head.idx()] = true;
+        }
+        if part == Part::Head && !att.edged && def.teeth && matches!(w, Wound::Gash | Wound::Mangle) && self.rng.chance(self.knob("gore.teeth", 0.35)) {
+            b.teeth = 1 + self.rng.range(0, 3) as u8;
+        }
+        let devastating = dmg >= max * 3 / 2 && w != Wound::Bruise;
+        b.sprawl = !body.dead && !downed && heft >= 1.2 && dmg * 2 >= max && self.rng.chance(if devastating { 0.6 } else { 0.35 });
+        b.severed = match w {
+            Wound::Sever => Some(part),
+            _ if decap => Some(Part::Head),
+            _ => None,
         };
-        if downed {
-            return Some(self.finishing_words(att, def, part, body, suffix));
+        b.disarmed = part == Part::RightArm && matches!(w, Wound::Mangle | Wound::Sever);
+        b.blood = match w {
+            Wound::Bruise => att.edged as u8,
+            Wound::Gash => 1 + att.edged as u8,
+            Wound::Mangle => 3,
+            Wound::Sever => 5,
+            Wound::Fatal => {
+                if decap {
+                    6
+                } else {
+                    4
+                }
+            }
+        };
+        let mut suffix = match w {
+            Wound::Bruise if cleave => ", cutting through the armor",
+            Wound::Bruise => "",
+            Wound::Gash if att.edged => ", tearing the flesh",
+            Wound::Gash => ", bruising the muscle",
+            Wound::Mangle if att.edged => ", mangling it!",
+            Wound::Mangle if part.is_limb() => ", shattering the bone!",
+            Wound::Mangle => ", crushing it!",
+            Wound::Sever if att.edged => ", severing it!",
+            Wound::Sever => ", tearing it clean off!",
+            Wound::Fatal if decap => ", cutting off the head!",
+            Wound::Fatal if part == Part::Head && !att.edged => ", caving in the skull!",
+            Wound::Fatal => " — a fatal blow!",
         }
-        Some(format!("{} {} {} in the {}{}", cap(&att.name), att.verb, def.name, part.name(), suffix))
+        .to_string();
+        if b.teeth > 0 {
+            let t = if b.teeth == 1 { "a tooth".to_string() } else { format!("{} teeth", b.teeth) };
+            let joint = if suffix.is_empty() { "," } else { " and" };
+            suffix = format!("{}{} knocking out {}!", suffix.trim_end_matches('!'), joint, t);
+        }
+        if devastating && w != Wound::Fatal {
+            suffix = format!("{} A devastating blow!", if suffix.ends_with('!') { suffix.clone() } else { format!("{}.", suffix) });
+        }
+        if b.sprawl {
+            let end = if suffix.ends_with('!') { suffix.clone() } else { format!("{}.", suffix) };
+            suffix = format!("{} {} is sent sprawling!", end, cap(&def.name));
+        }
+        if cleave && w != Wound::Bruise {
+            suffix = match suffix.strip_prefix(", ") {
+                Some(rest) => format!(", cutting through the armor and {}", rest),
+                None => format!(", cutting through the armor{}", suffix),
+            };
+        }
+        b.notable = cleave || devastating || b.sprawl || b.teeth > 0 || matches!(w, Wound::Mangle | Wound::Sever | Wound::Fatal);
+        b.msg = Some(if downed {
+            self.finishing_words(att, def, part, body, &suffix)
+        } else {
+            format!("{} {} {} in the {}{}", cap(&att.name), att.verb, def.name, part.name(), suffix)
+        });
+        b
+    }
+
+    /// The mess a blow leaves where it landed, struck from `from` at one
+    /// standing at `at`: their blood (`who`, None for a dwarf), a part cut
+    /// off lying nearby as "`owner`'s left arm", teeth on the floor, and the
+    /// dwarves who saw it. Returns where the one struck was knocked to, if
+    /// they were sent sprawling. `seen` names them for the witnesses
+    /// ("Urist", "a goblin").
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn aftermath(&mut self, b: &Blow, from: Pos, at: Pos, owner: &str, seen: &str, who: Option<Species>, big: bool) -> Option<Pos> {
+        if b.blood > 0 {
+            self.spatter(at, from, who, b.blood);
+        }
+        if let Some(p) = b.severed {
+            self.drop_part(owner, p, 0, at, from);
+            self.count("gore.severed", 1);
+            let whose = super::gore::possessive(seen);
+            let what = format!("saw {} {} cut off", whose, p.name());
+            let weight = if who.is_none() { 18 } else if p == Part::Head { 10 } else { 6 };
+            self.witness(at, &what, weight, None);
+        }
+        if b.teeth > 0 {
+            self.drop_part(owner, Part::Head, b.teeth, at, from);
+        }
+        if b.notable {
+            self.mark_battlefield(at);
+        }
+        if b.sprawl {
+            self.knock_back(at, from, big)
+        } else {
+            None
+        }
     }
 
     pub(super) fn creature_active(&self, c: &Creature) -> bool {
@@ -195,7 +395,8 @@ impl Game {
         let def = self.creature_fighter(c);
         let mut body = c.body.clone();
         let (hp0, siege): (i32, bool) = (body.hp.iter().sum(), c.siege);
-        let msg = self.strike(&att, &def, &mut body);
+        let (cpos, species, owner, seen) = (c.pos, c.species, super::gore::owner_of_creature(c), a_or_name(c));
+        let blow = self.strike(&att, &def, &mut body);
         if siege {
             let hurt = body.hp.iter().sum::<i32>() < hp0;
             self.note_blow(if d.soldier { super::annals::BY_SOLDIER } else { super::annals::BY_CIVILIAN }, hurt);
@@ -203,13 +404,29 @@ impl Game {
         d.attack_cd = 9 + d.body.limp();
         d.fight_xp += 8;
         d.satisfy(crate::dwarf::NeedKind::Fight, 60);
-        if let Some(m) = msg {
-            self.msg(&m, (235, 225, 130));
+        if blow.notable {
+            if let Some(m) = &blow.msg {
+                self.msg(m, (235, 225, 130));
+            }
         }
+        let knocked = self.aftermath(&blow, d.pos, cpos, &owner, &seen, Some(species), false);
         let dead = body.dead;
+        let mut dropped = None;
         if let Some(c) = self.creatures.get_mut(&cid) {
             c.body = body;
             c.target = c.target.or(Some(d.id));
+            if let Some(q) = knocked {
+                c.pos = q;
+                c.path.clear();
+                c.move_cd += 12;
+                c.attack_cd += 12;
+            }
+            if blow.disarmed && !dead {
+                dropped = c.weapon.take().map(|w| (w, c.pos));
+            }
+        }
+        if let Some((w, at)) = dropped {
+            self.drop_item(w, at);
         }
         if dead {
             if let Some(c) = self.creatures.remove(&cid) {
@@ -329,6 +546,24 @@ impl Game {
         };
         if self.archer_attack(d, target, cpos) {
             return;
+        }
+        // Close quarters: a foe beside them is fought where they stand,
+        // rather than walked away from towards the one they meant to fight.
+        if !adjacent(cpos, d.pos) {
+            let beside = self
+                .creatures
+                .values()
+                .filter(|c| c.alive && (c.hostile() || c.siege) && !c.body.unconscious() && adjacent(c.pos, d.pos) && self.creature_active(c))
+                .map(|c| c.id)
+                .min();
+            if let Some(other) = beside {
+                d.task = Task::Attack { target: other };
+                d.path.clear();
+                if d.attack_cd == 0 {
+                    self.dwarf_attack(d, other);
+                }
+                return;
+            }
         }
         if adjacent(cpos, d.pos) {
             if d.attack_cd == 0 {
@@ -618,6 +853,7 @@ impl Game {
         for &p in &swept {
             self.flames.push((p, tick));
             self.ignite(p);
+            self.puff(p, 5);
             for i in 0..self.dwarves.len() {
                 if self.dwarves[i].alive && self.dwarves[i].pos == p {
                     let part = self.dwarves[i].body.pick_part(&mut self.rng);
@@ -997,6 +1233,7 @@ impl Game {
         for o in self.creatures.values_mut().filter(|o| o.siege && !o.legendary()) {
             o.leaving = true;
             o.target = None;
+            o.foe = None;
             o.path.clear();
         }
         self.parting_swings_on_rout();
@@ -1054,6 +1291,10 @@ impl Game {
         if c.species == Species::Merchant {
             self.merchant_died(&c);
         }
+        // Where it fell, a pool of its blood (the walking dead have little left to spill).
+        let big = c.body.max_blood >= 150;
+        self.death_pool(c.pos, Some(c.species), big);
+        self.mark_battlefield(c.pos);
         let kind = if c.species.person() { ItemKind::Corpse } else { ItemKind::Carcass };
         let id = self.spawn_item(kind, Mat::Flesh, c.pos);
         if let Some(it) = self.items.get_mut(&id) {
@@ -1145,7 +1386,11 @@ impl Game {
             return false;
         }
         if self.tick % 10 == 0 {
-            c.body.tick_with(&self.bleed_params(), !c.path.is_empty() || c.target.is_some());
+            c.body.tick_with(&self.bleed_params(), !c.path.is_empty() || c.target.is_some() || c.foe.is_some());
+            let rate = c.body.bleed_rate();
+            if rate > 0 {
+                self.blood_trail(c.pos, Some(c.species), rate);
+            }
             if c.body.dead {
                 self.creature_died(c.clone());
                 return false;
@@ -1172,6 +1417,7 @@ impl Game {
         if c.hostile() && !c.leaving && breaking && !c.species.dwells_underground() {
             c.leaving = true;
             c.target = None;
+            c.foe = None;
             c.path.clear();
             self.msg(&format!("The wounded {} flees!", info.name), (160, 230, 160));
             if c.siege && !self.parting_swing(c) {
@@ -1221,6 +1467,11 @@ impl Game {
             c.think_cd -= 1;
         }
 
+        // Close quarters: a foe at arm's length is fought before anything
+        // else, and nobody walks away from one.
+        if self.close_quarters(c) {
+            return true;
+        }
         if let Some(tid) = c.target {
             let Some(di) = self.dwarves.iter().position(|d| d.id == tid && d.alive) else {
                 c.target = None;
@@ -1244,25 +1495,25 @@ impl Game {
                     c.think_cd = 0;
                     return true;
                 }
+                // Crowded onto one tile with another attacker: step round
+                // to a free side of the quarry (several surround one).
+                self.spread_out(c, dpos);
                 if c.attack_cd == 0 {
                     c.attack_cd = info.attack_delay + c.body.limp();
                     self.creature_attack(c, di);
                 }
                 return true;
             }
-            if c.move_cd == 0 && c.path.first() != Some(&dpos) {
-                match path::astar(&self.world, c.pos, dpos, 8000, info.mover) {
-                    Some(p) => c.path = p.into_iter().rev().collect(),
-                    None => {
-                        // No way there: give it a rest before trying again.
-                        c.target = None;
-                        c.path.clear();
-                        c.think_cd = 90;
-                        return true;
-                    }
-                }
+            if c.move_cd == 0 && self.needs_approach(c, dpos) && !self.close_in(c, dpos) {
+                // No way there: give it a rest before trying again.
+                c.target = None;
+                c.path.clear();
+                c.think_cd = 90;
+                return true;
             }
             self.creature_step(c, info.move_delay);
+        } else if c.foe.is_some() {
+            self.pursue_foe(c);
         } else if let Some(door) = c.bash {
             if self.world.t(door).door != DOOR_LOCKED {
                 c.bash = None;
@@ -1338,8 +1589,13 @@ impl Game {
             }
             return;
         }
+        // Other creatures it would fight (or hunt), close by.
+        self.seek_foe(c);
         if info.aggro == 0 {
-            // Skittish animals bolt from anyone nearby.
+            // Skittish animals bolt from anyone nearby, and from whatever hunts them.
+            let me = c.id;
+            let hunters: Vec<(u32, Pos)> = self.creatures.values().filter(|o| o.foe == Some(me) && o.alive && near(o.pos, c.pos, 6)).map(|o| (o.id, o.pos)).collect();
+            let dwarves: Vec<(u32, Pos)> = dwarves.into_iter().chain(hunters).collect();
             if dwarves.iter().any(|(_, p)| near(*p, c.pos, 4)) {
                 let score = |q: Pos| dwarves.iter().map(|(_, p)| dist2(*p, q)).min().unwrap_or(0);
                 let mut nb = Vec::new();
@@ -1419,7 +1675,9 @@ impl Game {
             }
             return;
         }
-        self.predator_think(c);
+        if c.foe.is_none() {
+            self.predator_think(c);
+        }
     }
 
     fn creature_attack(&mut self, c: &Creature, di: usize) {
@@ -1428,15 +1686,29 @@ impl Game {
         let def = self.dwarf_fighter(&d);
         let hp0: i32 = d.body.hp.iter().sum();
         let before = d.body.clone();
-        let msg = self.strike(&att, &def, &mut d.body);
+        let blow = self.strike(&att, &def, &mut d.body);
         d.attacker = Some((c.id, self.tick));
         self.note_wound(&mut d, c, &before);
         if c.siege {
             let hurt = d.body.hp.iter().sum::<i32>() < hp0;
             self.note_blow(if d.soldier { super::annals::ON_SOLDIER } else { super::annals::ON_CIVILIAN }, hurt);
         }
-        if let Some(m) = msg {
-            self.msg(&m, (255, 120, 100));
+        if blow.notable {
+            if let Some(m) = &blow.msg {
+                self.msg(m, (255, 120, 100));
+            }
+        }
+        let first = d.name.split(' ').next().unwrap_or("someone").to_string();
+        if let Some(q) = self.aftermath(&blow, c.pos, d.pos, &first, &first, None, att.size >= 2.0) {
+            d.pos = q;
+            d.path.clear();
+            d.move_cd += 12;
+            d.attack_cd += 12;
+        }
+        if blow.disarmed && !d.body.dead {
+            if let Some(w) = d.held.take() {
+                self.drop_item(w, d.pos);
+            }
         }
         if d.asleep {
             self.release_task(&mut d);
@@ -1632,8 +1904,104 @@ mod tests {
         }
 
         fn df_clone(f: &Fighter) -> Fighter {
-            Fighter { name: f.name.clone(), skill: f.skill, dmg: f.dmg, verb: f.verb, edged: f.edged, helm: f.helm, mail: f.mail, shield: f.shield }
+            Fighter { name: f.name.clone(), skill: f.skill, dmg: f.dmg, verb: f.verb, edged: f.edged, helm: f.helm, mail: f.mail, shield: f.shield, size: f.size, teeth: f.teeth }
         }
+    }
+
+    /// A siege fought to its end, then the field it was fought on as plain
+    /// text (cargo test show_battlefield -- --ignored --nocapture).
+    #[test]
+    #[ignore]
+    fn show_battlefield() {
+        let seed: u64 = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(21);
+        let mut g = Game::new(seed);
+        g.creatures.retain(|_, c| c.species.dwells_underground());
+        let e = g.embark;
+        let ids: Vec<u32> = g.dwarves.iter().take(4).map(|d| d.id).collect();
+        for _ in 0..4 {
+            g.spawn_item(ItemKind::Axe, Mat::Iron, e);
+            g.spawn_item(ItemKind::Helm, Mat::Iron, e);
+        }
+        for id in &ids {
+            g.toggle_soldier(*id);
+        }
+        run(&mut g, 600);
+        g.tick = SEASON * 2 + 1;
+        force_siege(&mut g);
+        let start = g.log.len();
+        for _ in 0..(DAY * 3) {
+            g.step();
+            if g.creatures.values().all(|c| !c.siege) {
+                break;
+            }
+        }
+        // The densest patch of blood.
+        let at = g
+            .gore
+            .stains
+            .keys()
+            .max_by_key(|p| {
+                let parts = g.items.values().filter(|it| matches!(it.kind, ItemKind::BodyPart | ItemKind::Corpse) && it.pos.z == p.z && (it.pos.x - p.x).abs() <= 10 && (it.pos.y - p.y).abs() <= 6).count();
+                g.gore.stains.keys().filter(|q| q.z == p.z && (q.x - p.x).abs() <= 10 && (q.y - p.y).abs() <= 6).count() + 3 * parts
+            })
+            .copied()
+            .unwrap_or(e);
+        let (w, h) = (48, 18);
+        let mut out = String::new();
+        for y in at.y - h / 2..at.y + h / 2 {
+            for x in at.x - w / 2..at.x + w / 2 {
+                let p = Pos::new(x, y, at.z);
+                if !g.world.in_bounds(p) {
+                    out.push(' ');
+                    continue;
+                }
+                let t = g.world.t(p);
+                let unit = g.dwarves.iter().find(|d| d.alive && d.pos == p).map(|_| '@').or_else(|| g.creatures.values().find(|c| c.alive && c.pos == p).map(|c| c.species.info().glyph));
+                let item = g.items.values().filter(|it| it.pos == p && it.carried_by.is_none() && it.container.is_none()).map(|it| match it.kind {
+                    ItemKind::Corpse | ItemKind::Carcass => '&',
+                    ItemKind::BodyPart if it.mat == Mat::Bone => ',',
+                    ItemKind::BodyPart if it.name().ends_with("head") => 'o',
+                    ItemKind::BodyPart => '~',
+                    k if k.weapon_damage().is_some() => '/',
+                    k if k.armor_slot().is_some() => '[',
+                    _ => '*',
+                }).min_by_key(|c| match c { '&' => 0, 'o' => 1, '~' => 2, ',' => 3, '/' => 4, '[' => 5, _ => 6 });
+                let stain = g.stain_at(p).map(|s| match (s.blood() == crate::game::gore::Blood::Red, s.amt >= crate::game::gore::POOL) {
+                    (true, true) => 'B',
+                    (true, false) => 'b',
+                    (false, true) => 'X',
+                    (false, false) => 'x',
+                });
+                let ground = if t.kind.solid() {
+                    if t.kind == TileKind::Tree { 'T' } else { '#' }
+                } else if t.building != 0 {
+                    if t.door != world::DOOR_NONE { '+' } else { '=' }
+                } else if g.smoke_at(p) > 0 {
+                    '%'
+                } else if !t.kind.has_floor() {
+                    // Open air: the ground a level down, if that's where it is.
+                    if g.world.in_bounds(p.down()) && g.world.t(p.down()).kind.has_floor() { ':' } else { ' ' }
+                } else {
+                    '.'
+                };
+                out.push(unit.or(item).or(stain).unwrap_or(ground));
+            }
+            out.push('\n');
+        }
+        eprintln!("{}", out);
+        eprintln!("key: @ dwarf  g goblin  & corpse  ~ severed limb  o severed head  , teeth  / weapon  [ armour");
+        eprintln!("     B pool of blood  b spatter/trail  X/x ichor  # rock  T tree  + door  = furniture  . floor  : ground a level down  * other items");
+        let told: Vec<&str> = g.log[start..].iter().map(|l| l.text.as_str()).filter(|t| t.contains(" in the ") || t.contains("kills") || t.contains("slain") || t.contains("smashed")).collect();
+        for l in told.iter().take(25) {
+            eprintln!("  {}", l);
+        }
+        eprintln!(
+            "{} stains, {} body parts, {} blows told of {} lines",
+            g.gore.stains.len(),
+            g.items.values().filter(|it| it.kind == ItemKind::BodyPart).count(),
+            told.len(),
+            g.log.len() - start
+        );
     }
 
     /// Bring a siege now: wait out the scouts' warning.
@@ -1940,8 +2308,8 @@ mod tests {
 
         // The blow itself: a senseless body is hit nearly every time, on the
         // head or chest, and harder than one on its feet.
-        let att = Fighter { name: "a dwarf".into(), skill: 2, dmg: 3.0 * Mat::Copper.weapon_mult(), verb: "hacks", edged: true, helm: 0, mail: 0, shield: false };
-        let def = Fighter { name: "the goblin".into(), skill: 2, dmg: 3.0, verb: "punches", edged: false, helm: 0, mail: 0, shield: true };
+        let att = Fighter { name: "a dwarf".into(), skill: 2, dmg: 3.0 * Mat::Copper.weapon_mult(), verb: "hacks", edged: true, helm: 0, mail: 0, shield: false, size: 1.0, teeth: true };
+        let def = Fighter { name: "the goblin".into(), skill: 2, dmg: 3.0, verb: "punches", edged: false, helm: 0, mail: 0, shield: true, size: 0.9, teeth: true };
         let fresh = Body::new(Species::Goblin.info().scale);
         let (mut up, mut down, mut hits, mut limbs) = (0, 0, 0, 0);
         for _ in 0..400 {

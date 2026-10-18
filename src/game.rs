@@ -80,6 +80,8 @@ mod rescue;
 mod hospital;
 pub mod lessons;
 mod openings;
+pub mod gore;
+mod melee;
 mod archery;
 mod hunts;
 mod larder;
@@ -444,6 +446,9 @@ pub struct Game {
     /// Tiles a dragon's breath just swept, with the tick, for drawing.
     #[serde(skip)]
     pub flames: Vec<(Pos, u64)>,
+    /// Blood, smoke and the last battlefield (`gore.rs`).
+    #[serde(default)]
+    pub gore: gore::Gore,
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
@@ -563,6 +568,7 @@ impl Game {
             miasma_cells: None,
             reach_cache: Default::default(),
             flames: Vec::new(),
+            gore: Default::default(),
             festival: None,
             year_log: YearLog::default(),
             vault: None,
@@ -1387,6 +1393,7 @@ impl Game {
         }
         if self.tick % 10 == 0 {
             d.body.tick_with(&self.bleed_params(), !d.path.is_empty() || d.attack_cd > 0);
+            self.gore_underfoot(d);
             if d.body.dead {
                 self.kill(d, "has bled to death");
                 return;
@@ -1583,6 +1590,11 @@ impl Game {
         if let Some(it) = self.items.get_mut(&id) {
             it.label = Some(d.name.clone());
         }
+        // Struck down or bled out: they die in a pool of their blood.
+        if cause.contains("struck") || d.body.blood * 3 < d.body.max_blood * 2 || d.body.lost.iter().any(|&l| l) {
+            self.death_pool(pos, None, false);
+            self.mark_battlefield(pos);
+        }
         let name = d.name.clone();
         self.msg(&format!("{} {}.", name, cause), (255, 60, 60));
         self.note_death(d, cause);
@@ -1673,7 +1685,7 @@ impl Game {
                 }
             }
             Task::FirstAid { .. } | Task::Rescue { .. } => self.release_care(d),
-            Task::Harvest { pos } | Task::Gather { pos } => {
+            Task::Harvest { pos } | Task::Gather { pos } | Task::Clean { pos } => {
                 self.claimed.remove(&pos);
             }
             Task::Eat { item } | Task::DrinkItem { item } | Task::Equip { item } => self.unclaim(item),
@@ -2653,6 +2665,7 @@ impl Game {
                 }
             }
             Task::Gather { pos } => self.do_gather(d, pos),
+            Task::Clean { pos } => self.do_clean(d, pos),
             Task::Fish { stand } => self.do_fish(d, stand),
             Task::Plant { pos, .. } | Task::Harvest { pos } => {
                 let harvest = matches!(d.task, Task::Harvest { .. });
