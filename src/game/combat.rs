@@ -2251,8 +2251,18 @@ mod tests {
             }
             farm += g.add_zone(e.offset(dx, dy, -2), e.offset(dx + 8, dy + 6, 2), ZoneKind::Farm);
         }
-        // Dig straight down into the caverns to wake whatever lives there.
-        let s = (1..10).map(|i| e.offset(i, 0, 0)).find(|&p| g.world.t(p).kind == TileKind::Floor).unwrap();
+        // Dig straight down into the caverns to wake whatever lives there,
+        // but not right into a lair: a stair that opens beside a giant
+        // spider on the first morning tells only whether three untrained
+        // spearmen beat it, not how a fort lives through a year. (Which
+        // spot that is depends on the map; the settled worlds put one under
+        // the stair at seeds 34 and 35.)
+        let lair = |g: &Game, p: Pos| g.creatures.values().any(|c| c.species.dwells_underground() && (c.pos.x - p.x).abs().max((c.pos.y - p.y).abs()) <= 12);
+        let s = (1..10)
+            .map(|i| e.offset(i, 0, 0))
+            .chain((1..20).flat_map(|r| (-r..=r).flat_map(move |dy| (-r..=r).map(move |dx| e.offset(dx, dy, 0)))))
+            .find(|&p| g.world.t(p).kind == TileKind::Floor && g.world.t(p).zone == 0 && !lair(&g, p))
+            .unwrap();
         g.designate(s, Pos::new(s.x, s.y, 5), Desig::StairUD);
         run(&mut g, YEAR);
         let slain = g.log.iter().filter(|l| l.text.contains("has been slain")).count();
