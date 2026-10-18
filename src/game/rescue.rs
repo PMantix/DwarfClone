@@ -97,6 +97,21 @@ impl Game {
         None
     }
 
+    /// A doctor other than `not`, free for work (idle, or wandering once
+    /// their break is over), within 20 tiles of `p`.
+    fn free_doctor_near(&self, p: Pos, not: u32) -> bool {
+        self.dwarves.iter().any(|o| {
+            o.alive
+                && o.id != not
+                && o.has(Labor::Medicine)
+                && !o.soldier
+                && !o.is_child()
+                // (Not one on a break: they don't look for work till it's over.)
+                && (o.task == Task::Idle || matches!(o.task, Task::Wander { .. }) && self.tick >= o.break_until)
+                && combat::near(o.pos, p, 20)
+        })
+    }
+
     /// A finder: any grown dwarf who doctors or hauls goes to a wounded
     /// dwarf nearby who is bleeding with nobody seeing to them and no foe
     /// within seven tiles, bringing a bandage if there's one to hand.
@@ -105,9 +120,18 @@ impl Game {
             return false;
         }
         let min = self.knob("firstaid.min", 2.0);
+        // The wounded abed are the doctor's to suture (`find_patient`), when
+        // there is thread for it: a doctor leaves them to that, and so does
+        // anyone else with a free doctor near.
+        let doctor = d.has(Labor::Medicine);
+        let thread = self.items.values().any(|it| it.kind == ItemKind::Thread && it.free());
         let mut wounded: HashMap<Pos, (u32, bool)> = HashMap::new();
         for p in self.dwarves.iter() {
             if !p.alive || p.id == d.id || p.carried_by.is_some() || self.treating.contains(&p.id) || self.care_waits(p.id, false) {
+                continue;
+            }
+            let abed = p.asleep && matches!(p.task, Task::Rest { .. });
+            if abed && thread && (doctor || self.free_doctor_near(p.pos, d.id)) {
                 continue;
             }
             if (p.body.bleed_rate() as f64) < min || matches!(p.task, Task::Flee | Task::Attack { .. } | Task::Berserk) {
@@ -206,9 +230,11 @@ impl Game {
         if used.is_some() {
             p.body.bandage(part);
             p.think(&format!("was bandaged by {} in the field", helper), -4, tick);
+            super::medicine::chart(p, tick, format!("bandaged by {}", helper));
         } else {
             p.body.press(part);
             p.think(&format!("had a wound held closed by {}", helper), -2, tick);
+            super::medicine::chart(p, tick, format!("wound held closed by {}", helper));
         }
         let text = match used {
             Some(k @ (ItemKind::Shirt | ItemKind::Trousers)) => {
@@ -351,21 +377,9 @@ impl Game {
             return false;
         }
         let doctor = d.has(Labor::Medicine);
-        let free_doctor_near = |g: &Game, p: Pos| {
-            g.dwarves.iter().any(|o| {
-                o.alive
-                    && o.id != d.id
-                    && o.has(Labor::Medicine)
-                    && !o.soldier
-                    && !o.is_child()
-                    // (Not one on a break: they don't look for work till it's over.)
-                    && (o.task == Task::Idle || matches!(o.task, Task::Wander { .. }) && g.tick >= o.break_until)
-                    && combat::near(o.pos, p, 20)
-            })
-        };
         let targets: HashMap<Pos, u32> = down
             .into_iter()
-            .filter(|&(_, p)| (doctor || only.is_some() || !free_doctor_near(self, p)) && self.safe_to_fetch(p, d))
+            .filter(|&(_, p)| (doctor || only.is_some() || !self.free_doctor_near(p, d.id)) && self.safe_to_fetch(p, d))
             .map(|(id, p)| (p, id))
             .collect();
         if targets.is_empty() {
@@ -511,6 +525,8 @@ impl Game {
         if arrived {
             p.think(&format!("was carried to safety by {}", rescuer), -8, tick);
             p.adjust_regard(d.id, 10);
+            let place = if hospital { "the hospital" } else if bed.is_some() { "a bed" } else { "shelter" };
+            super::medicine::chart(p, tick, format!("carried to {} by {}", place, rescuer));
         }
         if let Some(b) = bed.and_then(|b| self.buildings.get_mut(&b)) {
             b.occupant = Some(patient);
@@ -662,6 +678,10 @@ mod tests {
         assert_eq!(bandaged.len(), 3, "bandaged: {:?}", bandaged);
         assert!(g.annals.counters.get("bandages").copied().unwrap_or(0) >= 3, "{:?}", g.annals.counters);
         assert!(g.log.iter().any(|l| l.text.contains("tears up a shirt")), "the shirt went unused");
+        // Each one's medical history says who bound them.
+        for d in g.dwarves.iter().filter(|d| ids.contains(&d.id)) {
+            assert!(d.med.iter().any(|m| m.1.starts_with("bandaged by ")), "{}: {:?}", d.name, d.med);
+        }
     }
 
     #[test]
@@ -725,6 +745,7 @@ mod tests {
         assert!(g.dwarves.iter().all(|d| d.carrying_dwarf.is_none()));
         assert_eq!(g.annals.counters.get("rescues"), Some(&1));
         assert_eq!(g.year_log.carried, 1);
+        assert!(p.med.iter().any(|m| m.1.starts_with("carried to the hospital by ")), "history: {:?}", p.med);
         g.tick = YEAR;
         g.write_chronicle();
         assert!(g.chronicles.last().unwrap().lines.iter().any(|l| l.contains("carried from the field")));
