@@ -163,6 +163,8 @@ impl Game {
             FestivalKind::Midwinter => &[Sphere::Fire, Sphere::Night],
             FestivalKind::Founding => &[Sphere::Stone, Sphere::Craft, Sphere::Deep],
             FestivalKind::Dedication => &[Sphere::Craft, Sphere::Stone],
+            FestivalKind::Wedding => &[Sphere::Love, Sphere::Fortune],
+            FestivalKind::Victory => &[Sphere::War, Sphere::Death],
         };
         let gods = self.fort_gods();
         for s in want {
