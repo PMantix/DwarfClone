@@ -22,6 +22,8 @@ impl Game {
         self.ov_interior(o);
         // The outside and the grand works:
         self.ov_fortify(o);
+        // A culture of its own: instruments for the tavern.
+        self.ov_culture(o);
         let _ = o;
     }
 

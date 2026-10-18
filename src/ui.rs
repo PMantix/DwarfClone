@@ -3518,6 +3518,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                     v.push(header(&cap(&it.name())));
                 }
                 v.push(plain(format!("{}, worth ☼{}", cap(it.mat.name()), it.value()), detail_col));
+                for l in g.art_lines(id).iter().flat_map(|l| wrap_words(l, 40)) {
+                    v.push(plain(l, Color::Rgb(200, 180, 255)));
+                }
                 if let Some(d) = it.claimed_by.and_then(|o| g.dwarves.iter().find(|d| d.id == o)) {
                     v.push(plain(format!("Wanted by {}", d.name), detail_col));
                 }

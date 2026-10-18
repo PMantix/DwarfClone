@@ -71,6 +71,8 @@ pub enum ItemKind {
     Cabinet,
     Chest,
     Statue,
+    /// A musical instrument, labelled with its people's name for it (`arts.rs`).
+    Instrument,
 }
 
 /// Items that fit in a barrel or a bin, ten to a container.
@@ -84,7 +86,7 @@ pub enum Slot {
 }
 
 impl ItemKind {
-    pub const ALL: [ItemKind; 54] = [
+    pub const ALL: [ItemKind; 55] = [
         ItemKind::Boulder,
         ItemKind::Log,
         ItemKind::Block,
@@ -139,6 +141,7 @@ impl ItemKind {
         ItemKind::Cabinet,
         ItemKind::Chest,
         ItemKind::Statue,
+        ItemKind::Instrument,
     ];
 
     /// Plural name for lists ("logs", "metal bars").
@@ -198,6 +201,7 @@ impl ItemKind {
             ItemKind::Cabinet => "cabinets",
             ItemKind::Chest => "chests",
             ItemKind::Statue => "statues",
+            ItemKind::Instrument => "musical instruments",
         }
     }
 
@@ -214,7 +218,7 @@ impl ItemKind {
         use ItemKind::*;
         match self {
             Plant | Drink | Seed | Meat | Meal | Tallow | Fish | Flour => Some(Barrel),
-            Bar | Charcoal | Craft | Gem | Bone | Leather | Block | Cloth | Shirt | Trousers | Shoes | Ash | Soap => Some(Bin),
+            Bar | Charcoal | Craft | Instrument | Gem | Bone | Leather | Block | Cloth | Shirt | Trousers | Shoes | Ash | Soap => Some(Bin),
             k if k.is_equipment() => Some(Bin),
             _ => None,
         }
@@ -238,6 +242,7 @@ impl ItemKind {
             Statue => 30,
             Bar => 10,
             Craft => 20,
+            Instrument => 25,
             Pick | Axe | Sword | Spear | Hammer => 25,
             Helm | Shield => 25,
             Breastplate => 40,
@@ -376,7 +381,7 @@ impl StockFilter {
             StockFilter::Goods => {
                 matches!(
                     k,
-                    Craft | Gem | Bone | Leather | Mechanism | Thread | Splint | Crutch | Cloth | Shirt | Trousers | Shoes | Ash | Tallow | Soap
+                    Craft | Instrument | Gem | Bone | Leather | Mechanism | Thread | Splint | Crutch | Cloth | Shirt | Trousers | Shoes | Ash | Tallow | Soap
                 )
             }
             StockFilter::Refuse => matches!(k, Corpse | Carcass | Hide | BodyPart),
@@ -518,6 +523,7 @@ impl Item {
             Cabinet => format!("{} cabinet", m.adj()),
             Chest => format!("{} chest", m.adj()),
             Statue => format!("{} statue", m.adj()),
+            Instrument => format!("{} {}", m.adj(), self.label.as_deref().unwrap_or("instrument")),
             Bucket if self.label.as_deref() == Some("water") => format!("{} bucket of water", m.adj()),
             Bucket => format!("{} bucket", m.adj()),
             Cage => match self.label.as_deref() {
@@ -600,6 +606,7 @@ impl Item {
             Cabinet => 'π',
             Chest => '■',
             Statue => '♀',
+            Instrument => '♫',
         };
         let col = match self.kind {
             Drink => Color::Rgb(230, 170, 60),

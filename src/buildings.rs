@@ -335,7 +335,7 @@ impl BuildingKind {
                 ForgeCrossbow,
                 ForgeBolts,
             ],
-            BuildingKind::Craftsdwarf => &[StoneCraft, BoneCraft, CutGem, SpinThread],
+            BuildingKind::Craftsdwarf => &[StoneCraft, BoneCraft, CutGem, SpinThread, Instrument],
             BuildingKind::Tannery => &[Tan],
             BuildingKind::Leatherworks => &[LeatherArmor, LeatherHelm, LeatherCraft, LeatherShoes],
             BuildingKind::Loom => &[Weave],
@@ -552,6 +552,8 @@ pub enum Recipe {
     WoodCabinet,
     WoodChest,
     Statue,
+    /// One of the fortress's people's instruments (`arts.rs`).
+    Instrument,
 }
 
 impl Recipe {
@@ -612,6 +614,7 @@ impl Recipe {
             WoodCabinet => "Make wooden cabinet",
             WoodChest => "Make wooden chest",
             Statue => "Carve a statue",
+            Instrument => "Make a musical instrument",
         }
     }
 
@@ -663,6 +666,7 @@ impl Recipe {
             WoodCabinet => 'i',
             WoodChest => 'e',
             Statue => 'a',
+            Instrument => 'i',
         }
     }
 
@@ -691,13 +695,14 @@ impl Recipe {
             ForgeCrossbow | ForgeBolts => Labor::Smithing,
             WoodCabinet | WoodChest => Labor::Carpentry,
             Statue => Labor::Masonry,
+            Instrument => Labor::Crafting,
         }
     }
 
     pub fn inputs(self) -> &'static [Input] {
         use Recipe::*;
         match self {
-            WoodBed | WoodTable | WoodChair | WoodDoor | Barrel | Bin | Charcoal | WoodCage | WoodCrossbow | Bolts | Splint | Crutch | WoodCoffin | Bucket | WoodCabinet | WoodChest => {
+            WoodBed | WoodTable | WoodChair | WoodDoor | Barrel | Bin | Charcoal | WoodCage | WoodCrossbow | Bolts | Splint | Crutch | WoodCoffin | Bucket | WoodCabinet | WoodChest | Instrument => {
                 &[Input::Log]
             }
             SpinThread => &[Input::Fiber],
@@ -817,6 +822,7 @@ impl Recipe {
             WoodCabinet => one(ItemKind::Cabinet),
             WoodChest => one(ItemKind::Chest),
             Statue => one(ItemKind::Statue),
+            Instrument => one(ItemKind::Instrument),
             MakeSoap => {
                 let fat = inputs.get(1).and_then(|i| i.label.clone());
                 vec![(ItemKind::Soap, Mat::Flesh, fat.clone()), (ItemKind::Soap, Mat::Flesh, fat)]
