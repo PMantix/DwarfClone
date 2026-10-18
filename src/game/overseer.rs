@@ -2139,11 +2139,13 @@ mod tests {
     /// neither had plain stone for the mechanisms until the overseer
     /// quarried it. And the quarrying never cut a way round the doors and
     /// the bridge (it once dug the corridor's own walls, the closest stone).
+    /// (5007 Steady stands in for 5001 Steady, whose site has had no halls
+    /// at all since the world map's downhill rivers; 5007 quarries too.)
     #[test]
     fn the_gate_is_whole_by_the_first_siege() {
         let forts = [
             (5000, Style::Steady),
-            (5001, Style::Steady),
+            (5007, Style::Steady),
             (5003, Style::Steady),
             (5000, Style::Warlord),
             (5000, Style::Builder),
