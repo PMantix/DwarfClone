@@ -268,6 +268,33 @@ impl Overseer {
     }
 }
 
+/// Where new fields go around the wagon (offsets of an 8 by 6 plot), each
+/// tried once.
+const FIELD_SPOTS: [(i32, i32); 8] = [(-20, -8), (12, -8), (-20, 6), (12, 6), (-8, -18), (2, -18), (-8, 14), (2, 14)];
+
+/// Which of the field spots a "done" entry tells of: "farm{i}" for a field
+/// laid out there, "farm{i}x" for a spot that took none (no soil, nothing
+/// free or seen).
+fn field_entry(d: &str) -> Option<usize> {
+    d.strip_prefix("farm")?.trim_end_matches('x').parse().ok()
+}
+
+impl Game {
+    /// Lay out a field at the next spot not yet tried; whether one was made.
+    /// Once all eight are used or refused there are no more to try. (Saves
+    /// from before kept a "farm{k}" for every day's try, hundreds of them:
+    /// those past the eight spots are dropped.)
+    pub(super) fn ov_more_fields(&mut self, o: &mut Overseer) -> bool {
+        o.done.retain(|d| field_entry(d).map_or(true, |i| i < FIELD_SPOTS.len()));
+        let Some(i) = (0..FIELD_SPOTS.len()).find(|&i| !o.done.iter().any(|d| field_entry(d) == Some(i))) else { return false };
+        let (dx, dy) = FIELD_SPOTS[i];
+        let e = self.embark;
+        let made = self.add_zone(e.offset(dx, dy, -1), e.offset(dx + 7, dy + 5, 1), ZoneKind::Farm) > 0;
+        o.done.push(if made { format!("farm{}", i) } else { format!("farm{}x", i) });
+        made
+    }
+}
+
 /// What a room is called in its notes.
 pub(super) fn room_name(k: RoomUse) -> &'static str {
     match k {
@@ -1549,10 +1576,7 @@ impl Game {
         // More fields as the fortress grows.
         let farm: usize = self.zones.values().filter(|z| z.kind == ZoneKind::Farm).map(|z| z.tiles.len()).sum();
         if farm < self.alive_count() * 4 {
-            let k = o.done.iter().filter(|d| d.starts_with("farm")).count() as i32;
-            let (dx, dy) = [(-20, -8), (12, -8), (-20, 6), (12, 6), (-8, -18), (2, -18), (-8, 14), (2, 14)][(k % 8) as usize];
-            self.add_zone(e.offset(dx, dy, -1), e.offset(dx + 7, dy + 5, 1), ZoneKind::Farm);
-            o.done.push(format!("farm{}", k));
+            self.ov_more_fields(o);
         }
         // A depot for the caravans, and trade when they come.
         if !o.did("depot") {
@@ -1990,6 +2014,38 @@ pub fn run_trial(seed: u64, style: Style, years: u64, knobs: &Knobs) -> Trial {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// New fields go to each of the eight spots at most once: a spot that
+    /// takes no field is put aside, the fields made are counted, and the
+    /// list of what's done stops growing (a save once had 408 "farm"s).
+    #[test]
+    fn more_fields_try_each_spot_once() {
+        let mut g = trial_game(5000, Style::Steady, 2);
+        let mut o = g.overseer.take().unwrap();
+        // Nothing can be farmed at three of the spots: their ground is bare rock.
+        let e = g.embark;
+        for &(dx, dy) in &FIELD_SPOTS[1..4] {
+            for p in box_iter(e.offset(dx, dy, -1), e.offset(dx + 7, dy + 5, 1)) {
+                if g.world.in_bounds(p) && g.world.t(p).mat.is_soil() {
+                    g.world.t_mut(p).mat = crate::material::Mat::Granite;
+                }
+            }
+        }
+        let zones = g.zones.len();
+        let made = (0..40).filter(|_| g.ov_more_fields(&mut o)).count();
+        let farms: Vec<&String> = o.done.iter().filter(|d| d.starts_with("farm")).collect();
+        assert_eq!(farms.len(), 8, "one entry per spot: {:?}", farms);
+        assert!(farms.iter().filter(|d| d.ends_with('x')).count() >= 3, "the rock spots weren't refused: {:?}", farms);
+        assert_eq!(made, farms.iter().filter(|d| !d.ends_with('x')).count());
+        assert_eq!(g.zones.len(), zones + made);
+        // An old save's hundreds of entries are pruned, and nothing more is tried.
+        for k in 8..408 {
+            o.done.push(format!("farm{}", k));
+        }
+        assert!(!g.ov_more_fields(&mut o));
+        assert_eq!(o.done.iter().filter(|d| d.starts_with("farm")).count(), 8);
+        assert_eq!(g.zones.len(), zones + made);
+    }
 
     /// Replay a batch fort through one of its sieges, a few lines a tick:
     /// SEED, STYLE, SIEGE (which one, from 1) in the environment.

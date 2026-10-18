@@ -464,12 +464,9 @@ impl Game {
         let e = self.embark;
         match a {
             Ambition::Provision => {
-                let k = o.done.iter().filter(|d| d.starts_with("farm")).count() as i32;
-                let (dx, dy) = [(-20, -8), (12, -8), (-20, 6), (12, 6), (-8, -18), (2, -18), (-8, 14), (2, 14)][(k % 8) as usize];
-                if k < 12 && self.add_zone(e.offset(dx, dy, -1), e.offset(dx + 7, dy + 5, 1), ZoneKind::Farm) > 0 {
+                if self.ov_more_fields(o) {
                     Self::note_ov(o, tick, "Sowed new fields.".into());
                 }
-                o.done.push(format!("farm{}", k));
                 let fishers = self.dwarves.iter().filter(|d| d.alive && d.has(Labor::Fishing)).count();
                 if fishers < 2 {
                     if let Some(id) = self.dwarves.iter().filter(|d| d.alive && !d.is_child() && !d.soldier && !d.has(Labor::Fishing)).max_by_key(|d| d.skills[Labor::Fishing.idx()]).map(|d| d.id) {
