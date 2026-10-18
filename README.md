@@ -49,7 +49,14 @@ what they set out to do and are slow to take a hint. The traits are a sense in i
 temper"), sway its layout, and colour its notes; `A` shows who it is and `r` there rolls another.
 It also reads the announcements: whatever the fortress is short of (stone, wood, blocks,
 mechanisms, drink, food, a workshop, a manager, what a dwarf in a fey mood demands), it notices
-sooner or later by its style and traits and sees to it, and says so in its notes.
+sooner or later by its style and traits and sees to it, and says so in its notes. It works in
+order: each shortage is followed down to what it waits on (mechanisms need stone and a
+mechanic's workshop, the workshop needs stone, stone needs a pick...), it sees to the first
+things first and parks the rest ("short of mechanisms: first stone, then a mechanic's
+workshop"), the thirsty and the moody before comforts. A shortage that waits on itself (no
+stone without a pick, no pick without a forge, no forge without stone) is bought from the next
+caravan if one sells a link of it, or given up for a season. Each worry is noted once and again
+when its plan changes, and its plan stands under the notes.
 While it plays, the announcements share the bottom of the screen with what the overseer has
 been doing: each note it made and how many days ago.
 

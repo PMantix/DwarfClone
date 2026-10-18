@@ -179,6 +179,12 @@ pub struct Overseer {
     /// What sieges have taught it, and when (`lessons.rs`).
     #[serde(default)]
     pub lessons: Vec<(u64, super::lessons::Lesson)>,
+    /// Shortages it is seeing to, each as a whole chain (`troubles`).
+    #[serde(default)]
+    pub worries: Vec<super::troubles::Worry>,
+    /// Goods it means to buy from the next caravan (to break a circle).
+    #[serde(default)]
+    pub wanted: Vec<ItemKind>,
 }
 
 impl Overseer {
@@ -213,6 +219,8 @@ impl Overseer {
             traits: Vec::new(),
             notes: Vec::new(),
             lessons: Vec::new(),
+            worries: Vec::new(),
+            wanted: Vec::new(),
         }
     }
 
@@ -1300,11 +1308,13 @@ impl Game {
             return;
         }
         // Food and drink first, then metal, cloth and the rest.
+        // (What it meant to buy to break a circle of troubles, before all.)
         let rank = |k: ItemKind| match k {
-            ItemKind::Drink | ItemKind::Meal | ItemKind::Meat | ItemKind::Plant | ItemKind::Fish => 0,
-            ItemKind::Bar => 1,
-            ItemKind::Cloth | ItemKind::Leather | ItemKind::Thread => 2,
-            _ => 3,
+            _ if o.wanted.contains(&k) => 0,
+            ItemKind::Drink | ItemKind::Meal | ItemKind::Meat | ItemKind::Plant | ItemKind::Fish => 1,
+            ItemKind::Bar => 2,
+            ItemKind::Cloth | ItemKind::Leather | ItemKind::Thread => 3,
+            _ => 4,
         };
         let mut goods: Vec<(u8, u32, u32)> = self.caravan.as_ref().unwrap().goods.iter().map(|g| (rank(g.kind), g.value(), g.id)).collect();
         goods.sort();
