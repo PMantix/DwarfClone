@@ -1043,16 +1043,45 @@ impl Game {
         }) {
             return;
         }
+        // Never the gatehouse's walls (two deep on each side of the
+        // corridor, and round the foot of the stair): cutting them opens a
+        // way round the doors and the bridge.
+        let gatehouse = |dx: i32, dy: i32, dz: i32| dz == 0 && (-2..=16).contains(&dx) && (-2..=3).contains(&dy);
+        // Nor rock that holds back water or the sky, nor the waterworks'.
+        let mut works: Vec<(Pos, Pos)> = Vec::new();
+        if let Some(w) = self.waterworks.well.as_ref() {
+            works.push((Pos::new(w.top.x, w.top.y, w.water_z), w.top));
+            works.extend(w.stair.map(|s| (s, s)));
+        }
+        if let Some(c) = self.waterworks.cistern.as_ref() {
+            works.push(c.chamber);
+            works.extend([c.well, c.stair, c.shaft, c.drop, c.gate, c.breach].map(|p| (p, p)));
+            works.extend(c.way.iter().map(|&p| (p, p)));
+        }
+        let by_works = |p: Pos| {
+            works.iter().any(|&(a, b)| {
+                p.x >= a.x.min(b.x) - 2 && p.x <= a.x.max(b.x) + 2 && p.y >= a.y.min(b.y) - 2 && p.y <= a.y.max(b.y) + 2 && p.z >= a.z.min(b.z) - 1 && p.z <= a.z.max(b.z) + 1
+            })
+        };
+        let exposed = |p: Pos| {
+            DIRS8.iter().any(|&(ex, ey)| {
+                let q = p.offset(ex, ey, 0);
+                self.world.get(q).map_or(true, |t| t.water > 0 || t.magma > 0) || self.world.outside(q)
+            })
+        };
         // Stone in sight, beside ground already dug (the main level, or the
         // quarry below it).
         let mut seen: Vec<(i32, Pos)> = Vec::new();
         for dz in -4..=0 {
             for dy in -14..=14 {
                 for dx in -14..=30 {
+                    if gatehouse(dx, dy, dz) {
+                        continue;
+                    }
                     let p = base.offset(dx, dy, dz);
                     let Some(t) = self.world.get(p) else { continue };
-                    let beside = || DIRS8.iter().any(|&(ex, ey)| self.world.get(p.offset(ex, ey, 0)).map_or(false, |q| q.dug && !q.kind.solid() && q.water <= 3));
-                    if t.revealed && t.desig == Desig::None && stone(t) && beside() {
+                    let beside = || DIRS8.iter().any(|&(ex, ey)| self.world.get(p.offset(ex, ey, 0)).map_or(false, |q| q.dug && !q.kind.solid()));
+                    if t.revealed && t.desig == Desig::None && stone(t) && !self.world.outside(p) && beside() && !exposed(p) && !by_works(p) {
                         seen.push((dx.abs() + dy.abs() - dz * 4, p));
                     }
                 }
@@ -2031,26 +2060,62 @@ mod tests {
 
     #[test]
     fn a_trial_game_is_the_trials_fort() {
-        // Seed 5003 (Steady) loses three dwarves by day 213 of its year
-        // (schedule::same_story_after_refactor has the whole year).
-        let g = trial_game(5003, Style::Steady, 213);
-        assert_eq!(g.tick, 213 * DAY);
+        // Seed 5003 (Steady) loses two dwarves to a wolf on day 230 of its
+        // year (schedule::same_story_after_refactor has the whole year).
+        let g = trial_game(5003, Style::Steady, 231);
+        assert_eq!(g.tick, 231 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
-        assert_eq!(deaths, vec![(203435, "Sigga Stonehold"), (211250, "Gruni Goldbrew"), (212430, "Borra Embergrip")]);
+        assert_eq!(deaths, vec![(276400, "Ostra Hammerbeard"), (276592, "Borra Embergrip")]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
+    }
+
+    /// Whether open ground on the gate's level leads from the foot of the
+    /// stair to the corridor behind the bridge without passing the doors
+    /// (base+(1,0..1)) or the bridge (base+(2,0..1)).
+    fn way_round_the_gate(g: &Game, base: Pos) -> bool {
+        let blocked = |p: Pos| p.y - base.y >= 0 && p.y - base.y <= 1 && (p.x == base.x + 1 || p.x == base.x + 2);
+        let goal = base.offset(6, 0, 0);
+        let mut seen = std::collections::HashSet::from([base]);
+        let mut todo = vec![base];
+        while let Some(p) = todo.pop() {
+            if p == goal {
+                return true;
+            }
+            for &(dx, dy) in DIRS8.iter() {
+                let q = p.offset(dx, dy, 0);
+                if blocked(q) || seen.contains(&q) || !g.world.get(q).map_or(false, |t| !t.kind.solid()) {
+                    continue;
+                }
+                seen.insert(q);
+                todo.push(q);
+            }
+        }
+        false
     }
 
     /// The gate is whole, its drawbridge linked to the lever, before the
     /// first army can come (day 168), whatever rock the halls are cut in:
     /// 5000's main level is clay, 5003's gatehouse hematite and coal, and
     /// neither had plain stone for the mechanisms until the overseer
-    /// quarried it.
+    /// quarried it. And the quarrying never cut a way round the doors and
+    /// the bridge (it once dug the corridor's own walls, the closest stone).
     #[test]
     fn the_gate_is_whole_by_the_first_siege() {
-        for (seed, style) in [(5000, Style::Steady), (5003, Style::Steady), (5000, Style::Warlord), (5003, Style::Builder), (5000, Style::Delver)] {
+        let forts = [
+            (5000, Style::Steady),
+            (5001, Style::Steady),
+            (5003, Style::Steady),
+            (5000, Style::Warlord),
+            (5000, Style::Builder),
+            (5003, Style::Builder),
+            (5000, Style::Delver),
+            (5001, Style::Delver),
+        ];
+        for (seed, style) in forts {
             let g = trial_game(seed, style, 168);
             let o = g.overseer.as_ref().unwrap();
             assert!(o.did("linked"), "{} {}: no linked drawbridge by day 168 (done {:?})", style.name(), seed, o.done);
+            assert!(!way_round_the_gate(&g, o.base.unwrap()), "{} {}: a way round the gate by day 168", style.name(), seed);
         }
     }
 }

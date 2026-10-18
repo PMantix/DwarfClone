@@ -108,18 +108,18 @@ mod tests {
         assert_eq!(
             deaths,
             vec![
-                (203435, "Sigga Stonehold", "struck down"),
-                (211250, "Gruni Goldbrew", "bled to death"),
-                (212430, "Borra Embergrip", "bled to death"),
-                (304397, "Kolvar Hammergrip", "struck down"),
+                (276400, "Ostra Hammerbeard", "bled to death"),
+                (276592, "Borra Embergrip", "struck down"),
             ]
         );
         let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
-        assert_eq!(sieges, vec![(202845, "goblins", 3, "routed"), (304170, "goblins", 6, "routed")]);
-        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (13, 8129, 33));
+        assert_eq!(sieges, vec![]);
+        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (14, 5285, 34));
         assert_eq!(
             t.ambitions,
-            ["Revel", "Fortify", "Muster", "Revel", "Prosper", "Revel", "Expand", "Fortify", "Delve", "Fortify", "Revel", "Fortify", "Provision", "Revel", "Fortify", "Provision", "Muster"]
+            [
+                "Revel", "Fortify", "Expand", "Revel", "Architect", "Muster", "Muster", "Provision", "Muster", "Fortify", "Expand", "Muster", "Expand", "Architect", "Revel", "Architect", "Revel", "Expand", "Expand", "Muster", "Provision", "Architect", "Expand", "Prosper", "Expand"
+            ]
         );
     }
 
