@@ -144,6 +144,7 @@ impl Game {
             _ => None,
         };
         let siege = self.annals.sieges.iter().rposition(|s| s.ended.is_none());
+        self.story_death(d, siege);
         if let Some(i) = siege {
             self.annals.sieges[i].dwarves_lost += 1;
             self.watch_death(i, d, &cause);

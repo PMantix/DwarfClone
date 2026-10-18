@@ -57,5 +57,7 @@ impl Game {
         // M1 (survival):
         self.captives_after_siege(i);
         self.learn_from_siege(i);
+        // Stories: the fight gets a name.
+        self.name_siege(i);
     }
 }

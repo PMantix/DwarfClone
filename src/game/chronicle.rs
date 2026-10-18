@@ -30,6 +30,13 @@ pub struct YearLog {
     /// The wounded carried from the field to a bed.
     #[serde(default)]
     pub carried: u32,
+    /// The year's named battle, massacre or hunt, the latest (`stories.rs`).
+    #[serde(default)]
+    pub battle: Option<String>,
+    /// The year's stories as the chronicle tells them: named battles,
+    /// weddings, children named for heroes.
+    #[serde(default)]
+    pub stories: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -66,6 +73,9 @@ impl YearLog {
         }
         if let Some(m) = &self.monument {
             return format!("The Year of {}", cap(m));
+        }
+        if let Some(b) = &self.battle {
+            return format!("The Year of {}", b);
         }
         if let Some(r) = &self.ruin {
             return format!("The Year of {}", cap(r));
@@ -139,11 +149,12 @@ impl Game {
         if log.carried > 0 {
             lines.push(if log.carried == 1 { "A wounded dwarf was carried from the field.".to_string() } else { format!("{} dwarves were carried from the field.", log.carried) });
         }
+        lines.extend(log.stories.iter().cloned());
         if log.crimes > 0 {
             lines.push(format!("{} crime{} went on the record.", log.crimes, if log.crimes == 1 { "" } else { "s" }));
         }
         // The great deeds and events, as the legends tell them.
-        let told: Vec<String> = self.overworld.events.iter().filter(|e| e.year == year && e.text.contains(&fort)).map(|e| e.text.clone()).collect();
+        let told: Vec<String> = self.overworld.events.iter().filter(|e| e.year == year && e.text.contains(&fort) && !log.stories.contains(&e.text)).map(|e| e.text.clone()).collect();
         let skip = told.len().saturating_sub(10);
         lines.extend(told.into_iter().skip(skip));
         if log.deaths.is_empty() {

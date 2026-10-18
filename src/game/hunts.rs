@@ -364,6 +364,7 @@ impl Game {
         }
         let squad = self.squads[s].name.clone();
         let fort = self.fortress_name.clone();
+        self.name_hunt(&squad, &h.name, &h.plural, h.kills, h.legend);
         if h.kills > 0 && h.legend {
             let text = format!("{} slew {} at the gates of {}.", squad, h.name, fort);
             self.msg(&text, (255, 200, 90));
