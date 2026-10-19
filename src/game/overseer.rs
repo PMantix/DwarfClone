@@ -1365,21 +1365,7 @@ impl Game {
             return;
         }
         // Nor rock that holds back water or the sky, nor the waterworks'.
-        let mut works: Vec<(Pos, Pos)> = Vec::new();
-        if let Some(w) = self.waterworks.well.as_ref() {
-            works.push((Pos::new(w.top.x, w.top.y, w.water_z), w.top));
-            works.extend(w.stair.map(|s| (s, s)));
-        }
-        if let Some(c) = self.waterworks.cistern.as_ref() {
-            works.push(c.chamber);
-            works.extend([c.well, c.stair, c.shaft, c.drop, c.gate, c.breach].map(|p| (p, p)));
-            works.extend(c.way.iter().map(|&p| (p, p)));
-        }
-        let by_works = |p: Pos| {
-            works.iter().any(|&(a, b)| {
-                p.x >= a.x.min(b.x) - 2 && p.x <= a.x.max(b.x) + 2 && p.y >= a.y.min(b.y) - 2 && p.y <= a.y.max(b.y) + 2 && p.z >= a.z.min(b.z) - 1 && p.z <= a.z.max(b.z) + 1
-            })
-        };
+        let by_works = |p: Pos| self.by_waterworks(p);
         let exposed = |p: Pos| {
             DIRS8.iter().any(|&(ex, ey)| {
                 let q = p.offset(ex, ey, 0);
@@ -2657,9 +2643,9 @@ mod tests {
         let g = trial_game(5003, Style::Steady, 262);
         assert_eq!(g.tick, 262 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
-        assert_eq!(deaths, vec![(202960, "Dorna Copperfist"), (240080, "Nothar Silverhold")]);
+        assert_eq!(deaths, vec![(202616, "Borra Embergrip"), (304186, "Nothar Anvilhearth")]);
         let sieges: Vec<(u64, &str)> = g.annals.sieges.iter().map(|s| (s.tick, s.foe.as_str())).collect();
-        assert_eq!(sieges, vec![(202695, "goblins"), (302420, "goblins")]);
+        assert_eq!(sieges, vec![(202395, "goblins"), (303945, "goblins")]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
     }
 

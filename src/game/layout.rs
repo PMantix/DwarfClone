@@ -223,7 +223,7 @@ impl Game {
         for y in -1..=h {
             for x in -1..=w {
                 let Some(t) = self.world.get(o0.offset(x, y, 0)) else { return false };
-                if t.kind != TileKind::Wall || t.dug || t.built_from.is_some() || t.desig != Desig::None || t.water > 0 || t.aquifer || t.mat == Mat::Bedrock {
+                if t.kind != TileKind::Wall || t.dug || t.built_from.is_some() || t.desig != Desig::None || t.water > 0 || t.aquifer || t.mat == Mat::Bedrock || self.by_waterworks(o0.offset(x, y, 0)) {
                     return false;
                 }
             }
