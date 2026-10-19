@@ -14,7 +14,18 @@ cargo run --release -- --autoplay --runs 10 --years 5   # let the overseer play 
 cargo run --release -- --autoplay --runs 25 --years 3 --seed 5000 --story --out after.json
 cargo run --release -- --compare batches/baseline-v0.2.0.json after.json
 cargo run --release -- --sound-check   # play a few seconds of sound and say if the device works
+cargo run --release -- --window        # play in a window of square tiles instead of the terminal
 ```
+
+**Window mode.** `--window` opens the game in its own window with square cells, so walls,
+water and floors join into a solid map whatever the terminal's font. Text comes from the
+system's monospace font (Cascadia Mono, then Consolas, then Lucida Console; `--font PATH`
+picks another .ttf), stretched to fill the cell's height; box lines, blocks, walls, water,
+ramps and trees are our own tiles, drawn in code. `Ctrl +` / `Ctrl -` or Ctrl and the mouse
+wheel zoom the tiles from 8 to 32 pixels; resizing the window changes how much map fits.
+`--window --screenshot out.png [--seed N] [--days D] [--size 1920x1080] [--cell 16]` watches a
+seeded fort for a few days, saves how the window would show it and prints the drawing time.
+`--no-default-features` leaves the window out (the `window` feature), as it does the sound.
 
 A batch ends with a report on why forts fall: how many were still standing at the end of each
 year, deaths by cause and by killer (a dwarf who bleeds out is put down to whoever wounded

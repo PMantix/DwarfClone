@@ -702,7 +702,11 @@ impl App {
 
     /// A fresh world and fortress, played by the overseer in a random style.
     pub fn start_watch(&mut self) {
-        let seed = random_seed();
+        self.start_watch_seeded(random_seed());
+    }
+
+    /// Watch a fort from a given seed (the window's `--screenshot`).
+    pub fn start_watch_seeded(&mut self, seed: u64) {
         self.seed = seed;
         let style = crate::game::Style::ALL[(seed % crate::game::Style::ALL.len() as u64) as usize];
         self.run_job("Embarking", move |report| {
