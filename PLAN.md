@@ -45,6 +45,27 @@ alongside it; adventurer mode follows Milestones 4 and 8, whose living world and
 6. **Report and pause.** After each wave: what merged, the batch comparison, and the tokens the
    wave used, with a running total. The next wave starts when the user says so.
 
+## Rules for tuning packages
+
+Balance work is measured, not written, and each measurement costs wall-clock time: a 30-fort,
+three-year batch takes 10-15 minutes, the full test suite 5-12, a golden re-record 15-25. The
+Milestone 1 close-out (October 2026) spent six hours on about fifteen of them and committed
+one of its three fixes. So:
+
+- **One balance goal per agent.** Wells, Reckless survival and Warlord losses were three
+  packages in one brief; give each its own.
+- **A time box and a stopping rule.** Two hours per goal. After three variants that miss the
+  target, stop, commit what helps, and report the goal as open with what was learned.
+- **Small batches to explore, one big batch to confirm.** Explore with 10 forts over 2 years
+  of the one style in question; run the 50-fort release batch once, at the end.
+- **Commit each measured step as it lands,** with its batch numbers in the message, so a long
+  run never ends with the work uncommitted.
+- **Trace with the build that made the batch.** Any change that draws from the random stream
+  reshuffles every fort after it; rebuild and rerun before tracing a fort from an older batch.
+- **Never kill processes by image name** (`taskkill /IM dwarfclone.exe` also closes the user's
+  own game). Stop a batch through its task, or use `DwarfClone-wt/killbatch.ps1`, which only
+  touches executables under `DwarfClone-wt`.
+
 ## Rules that keep parallel branches mergeable
 
 These are gathered from all six plans. Wave 0 of each milestone puts them in place before any
