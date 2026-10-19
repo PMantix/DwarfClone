@@ -121,12 +121,16 @@ impl Saga {
         let has = |b: Beat| self.chapters.iter().any(|c| c.beat == b);
         match self.kind {
             SagaKind::Pride => n >= 2 && (has(Beat::Escalation) || has(Beat::Turn) || has(Beat::Ending)),
-            SagaKind::Grudge => n >= 3,
-            SagaKind::Hero => n >= 2 && self.weight >= 2,
+            // Two duels at least, and an end: a death or a peace.
+            SagaKind::Grudge => {
+                let duels = self.chapters.iter().filter(|c| c.beat == Beat::Turn).count();
+                self.ended.is_some() && (duels >= 3 || (self.doom && duels >= 2))
+            }
+            SagaKind::Hero => n >= 2 && self.weight >= 3,
             SagaKind::Omen => n >= 3,
             SagaKind::Curse => n >= 2 && self.ended.is_some(),
-            SagaKind::Hunt => n >= 2 && self.weight >= 2,
-            SagaKind::Siege => n >= 3 && self.weight >= 3,
+            SagaKind::Hunt => n >= 2 && self.weight >= 3,
+            SagaKind::Siege => n >= 3 && self.weight >= 4,
             SagaKind::LastStand => n >= 2,
         }
     }
@@ -325,7 +329,10 @@ impl Game {
         let foe = self.annals.sieges.get(siege).map_or("the enemy".to_string(), |s| s.foe.clone());
         let fort = self.fortress_name.clone();
         let text = if won {
-            format!("The sally from {} broke the {} at the gate: {} rode out, {} did not come back.", fort, foe, soldiers, lost)
+            match lost {
+                0 => format!("The sally from {} broke the {} at the gate: {} rode out, and all came back.", fort, foe, soldiers),
+                _ => format!("The sally from {} broke the {} at the gate: {} rode out, {} did not come back.", fort, foe, soldiers, lost),
+            }
         } else {
             format!("The sally against the {} was broken before the gate; the bridge was raised behind the few who came back.", foe)
         };
@@ -414,8 +421,11 @@ impl Game {
             return;
         }
         let Some(i) = self.saga_find(SagaKind::Siege, siege as u64) else { return };
-        self.sagas.list[i].weight += s.dwarves_lost.min(3) + if s.bridge { 1 } else { 0 };
-        if s.bridge {
+        // A siege is a saga for its dead, its size, its fallen leader, or
+        // a wall it broke on.
+        let held = s.bridge && s.dwarves_lost <= 1;
+        self.sagas.list[i].weight += if s.dwarves_lost >= 3 { 3 } else { 0 } + if held { 1 } else { 0 };
+        if held {
             self.saga_add(i, Beat::Escalation, "The bridge was raised, and they broke on the walls.".to_string());
         }
         let text = format!("The {} {}: {} of them slain, {}.{}", s.foe, how, s.foes_slain, lost, called);
@@ -526,7 +536,8 @@ impl Game {
     pub(super) fn saga_hunt_out(&mut self, lair: Option<usize>, beast: u32, what: &str, text: &str) {
         let key = lair.map_or(beast as u64 | (1 << 40), |l| l as u64);
         match self.saga_find(SagaKind::Hunt, key) {
-            Some(i) => self.saga_add(i, Beat::Escalation, text.to_string()),
+            // Back to the same den: the same hunt, told once.
+            Some(_) => {}
             None => {
                 let i = self.saga_open(SagaKind::Hunt, key, what, Beat::Cause, text.to_string());
                 if lair.is_none() {
@@ -549,9 +560,19 @@ impl Game {
         self.sagas.list[i].weight += kills.min(3);
         if legend {
             self.saga_end(i, false, Some(text), "Its head hangs in the hall, and the children are told of it.".into());
+            return;
+        }
+        // Each sortie's kills go into one tally.
+        let s = &mut self.sagas.list[i];
+        s.due = self.tick + YEAR;
+        let tally = s.chapters.iter().filter(|c| c.beat == Beat::Turn).count();
+        if tally > 0 {
+            if let Some(c) = s.chapters.iter_mut().rev().find(|c| c.beat == Beat::Turn) {
+                c.text = format!("{} (sortie {} of the hunt)", text.trim_end_matches('.'), tally + 1);
+                c.tick = self.tick;
+            }
         } else {
             self.saga_add(i, Beat::Turn, text);
-            self.sagas.list[i].due = self.tick + YEAR;
         }
     }
 
@@ -570,7 +591,7 @@ impl Game {
         let siege = self.annals.sieges.iter().rposition(|s| s.ended.is_none());
         let killer = self.annals.deaths.last().and_then(|n| n.killer.clone());
         let how = match &killer {
-            Some(k) if !cause.contains(k.as_str()) => format!("{} {} ({})", name, cause, k),
+            Some(k) if !cause.contains(k.as_str()) => format!("{} {}, at the hands of {} {}", name, cause, a(k), k),
             _ => format!("{} {}", name, cause),
         };
         // A hero's end.
@@ -597,7 +618,7 @@ impl Game {
             }
         }
         // An omen's toll.
-        if let Some(i) = self.sagas.list.iter().rposition(|s| s.kind == SagaKind::Omen && s.open() && s.due > 0) {
+        if let Some(i) = self.sagas.list.iter().rposition(|s| s.kind == SagaKind::Omen && s.open() && s.due > 0).filter(|_| siege.is_some() || killer.is_some()) {
             self.sagas.list[i].weight += 1;
             if self.sagas.list[i].weight == 1 {
                 self.saga_add(i, Beat::Turn, format!("{}.", how));
@@ -643,7 +664,7 @@ impl Game {
                 SagaKind::Curse => self.saga_drop(i),
                 SagaKind::Hunt => {
                     let w = self.sagas.list[i].weight;
-                    if w >= 2 {
+                    if w >= 3 {
                         self.saga_end(i, false, None, "The beasts were few after, and the hunters had their songs.".into());
                     } else {
                         self.saga_drop(i);
@@ -724,6 +745,26 @@ impl Game {
         if great.is_none() {
             great = self.sagas.list.iter().rev().find(|s| s.told() && s.doom && s.ended.map_or(false, |t| t + SEASON >= tick)).map(|s| s.id);
         }
+        // Else the fall is a saga of its own: the last deaths, as they came.
+        if great.is_none() {
+            let last: Vec<annals::DeathNote> = self.annals.deaths.iter().rev().take_while(|d| d.tick + MONTH >= tick).take(4).cloned().collect();
+            if let Some(first) = last.last() {
+                let tell = |d: &annals::DeathNote| death_words(d);
+                let i = self.saga_open(SagaKind::LastStand, KEY_LAST, &fort, Beat::Cause, tell(first));
+                self.sagas.list[i].chapters[0].tick = first.tick;
+                let n = last.len();
+                for (k, d) in last.iter().rev().enumerate().skip(1) {
+                    let beat = if k + 1 == n { Beat::Ending } else if k + 2 == n { Beat::Turn } else { Beat::Escalation };
+                    self.sagas.list[i].chapters.push(Chapter { tick: d.tick, beat, text: tell(d) });
+                }
+                if n == 1 {
+                    self.sagas.list[i].chapters.push(Chapter { tick, beat: Beat::Ending, text: format!("And then there was no one left in {}.", fort) });
+                }
+                let id = self.sagas.list[i].id;
+                self.saga_end(i, true, None, format!("The last lamp of {} went out.", fort));
+                great = self.saga(id).map(|s| s.id);
+            }
+        }
         self.sagas.fell_by = great;
         self.sagas.fall_told = true;
         if let Some(s) = great.and_then(|id| self.saga(id)).cloned() {
@@ -748,9 +789,23 @@ impl Game {
         s.bridge = true;
         s.ended = Some(tick);
         s.outcome = "routed".into();
-        s.dwarves_lost = 2;
+        s.dwarves_lost = 1;
         s.foes_slain = 17;
         self.saga_siege_end(i);
+    }
+}
+
+/// "Urist was struck down by a cave horror." from the annals' plain facts.
+fn death_words(d: &annals::DeathNote) -> String {
+    let by = d.killer.as_ref().map(|k| format!("{} {}", a(k), k));
+    match (d.cause.as_str(), by) {
+        ("struck down", Some(k)) => format!("{} was struck down by {}.", d.name, k),
+        ("bled to death", Some(k)) => format!("{} bled to death from the wounds of {}.", d.name, k),
+        ("thirst", _) | ("starvation", _) | ("old age", _) => format!("{} died of {}.", d.name, d.cause),
+        ("other", Some(k)) => format!("{} was killed by {}.", d.name, k),
+        ("other", None) => format!("{} died.", d.name),
+        (c, Some(k)) => format!("{} {} ({}).", d.name, c, k),
+        (c, None) => format!("{} {}.", d.name, c),
     }
 }
 
@@ -892,8 +947,10 @@ mod tests {
         let mut g = quiet(34);
         let (a, b) = (g.dwarves[0].id, g.dwarves[1].id);
         let (an, bn) = (g.dwarves[0].called(), g.dwarves[1].called());
-        g.saga_challenge(a, b, &an, &bn);
-        g.saga_duel(a, b, "At dawn, they fought. A won; B yielded, bloodied.", false);
+        for _ in 0..2 {
+            g.saga_challenge(a, b, &an, &bn);
+            g.saga_duel(a, b, "At dawn, they fought. A won; B yielded, bloodied.", false);
+        }
         let mut d = std::mem::take(&mut g.dwarves[1]);
         g.saga_epithet(d.id, &bn, &format!("{} the Grim", bn), "slew ten foes", 2);
         g.saga_epithet(d.id, &bn, &format!("{} the Dragonslayer", bn), "slew a dragon", 5);

@@ -805,6 +805,10 @@ impl App {
                         self.game = Game::placeholder(Overworld::empty());
                         self.mode = Mode::Title { sel: 1 };
                     }
+                    AfterSave::World => {
+                        let (x, y) = self.game.site;
+                        self.mode = Mode::WorldMap { x, y };
+                    }
                 }
             }
             Ok(JobDone::Grown(g, (dx, dy))) => {
@@ -1205,6 +1209,7 @@ impl App {
                     KeyCode::Char('h') => self.mode = Mode::Highlights { sel: usize::MAX },
                     KeyCode::Char('s') | KeyCode::Char('S') => self.mode = Mode::Sagas { sel: 0, open: self.game.great_saga().is_some(), from_end: true },
                     KeyCode::Char('t') => self.start_save(false, AfterSave::Title),
+                    KeyCode::Char('n') => self.start_save(false, AfterSave::World),
                     KeyCode::Char('w') | KeyCode::Esc => self.mode = Mode::Normal,
                     _ => {}
                 }

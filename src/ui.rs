@@ -3513,6 +3513,7 @@ fn draw_game_over(f: &mut Frame, area: Rect, g: &Game) {
     }
     keys.push(key_line("w", "Look upon the ruins", false));
     keys.push(key_line("t", "Return to the title (the ruin is saved)", false));
+    keys.push(key_line("n", "Found a new fort in this world, which remembers its sagas", false));
     v.extend(keys);
     let v = wrap_lines(v, 74);
     let h = v.len() as u16 + 2;

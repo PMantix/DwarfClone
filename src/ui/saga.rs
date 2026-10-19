@@ -365,8 +365,8 @@ pub fn draw_screen(f: &mut Frame, area: Rect, g: &Game, sel: usize, open: bool) 
         return;
     }
     let sel = sel.min(pages.len() - 1);
-    let side = area.width >= 90 && !open;
-    let list_w = if open { 0 } else if side { 40 } else { area.width };
+    let side = area.width >= 100 && !open;
+    let list_w = if open { 0 } else if side { 50 } else { area.width };
     if list_w > 0 {
         let mut lines = vec![Line::from(Span::styled(format!(" The Sagas of {}", g.fortress_name), title)), Line::default()];
         let mut sel_row = 0;
@@ -379,7 +379,9 @@ pub fn draw_screen(f: &mut Frame, area: Rect, g: &Game, sel: usize, open: bool) 
                 sel_row = lines.len();
             }
             let hi = if i == sel { Style::default().bg(Color::Rgb(60, 46, 26)) } else { Style::default() };
-            let glyphs: String = p.chapters.iter().map(|c| c.1.glyph(p.doom && c.1 == Beat::Ending)).collect();
+            // The progress glyphs: the first and the last few.
+            let all: Vec<char> = p.chapters.iter().map(|c| c.1.glyph(p.doom && c.1 == Beat::Ending)).collect();
+            let glyphs: String = if all.len() > 6 { all[..2].iter().chain(['…'].iter()).chain(all[all.len() - 3..].iter()).collect() } else { all.iter().collect() };
             let mark = if p.fell { "☠" } else if p.open { "…" } else { " " };
             let t: String = p.title.chars().take((list_w as usize).saturating_sub(glyphs.chars().count() + 6)).collect();
             lines.push(Line::from(vec![
@@ -390,7 +392,7 @@ pub fn draw_screen(f: &mut Frame, area: Rect, g: &Game, sel: usize, open: bool) 
         }
         lines.push(Line::default());
         lines.push(Line::from(Span::styled(" ↑↓ choose · Enter: read · Esc: back", Style::default().fg(MUTED))));
-        lines.push(Line::from(Span::styled(" ○ cause  ◘ rising  ● turn  ☼ glory  † doom", Style::default().fg(FADED))));
+        lines.push(Line::from(Span::styled(" ○ cause ◘ rising ● turn ☼ glory † doom", Style::default().fg(FADED))));
         let h = area.height as usize;
         let skip = sel_row.saturating_sub(h.saturating_sub(4));
         let r = Rect::new(area.x, area.y, list_w.min(area.width), area.height);

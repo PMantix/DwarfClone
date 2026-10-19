@@ -13,6 +13,9 @@ pub enum AfterSave {
     Resume,
     Quit,
     Title,
+    /// To the world map, to found a new fort in the same world (whose
+    /// legends keep the fallen fort's sagas).
+    World,
 }
 
 pub enum JobDone {
