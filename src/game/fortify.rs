@@ -1605,12 +1605,14 @@ mod tests {
     /// A grown Warlord fort under a cautious overseer walls its fields:
     /// gate towers, a curtain wall with battlements, a watchtower; and an
     /// army can still walk to its gate. (The first of a few forts that
-    /// lives that long.)
+    /// lives that long. Few do by day 440, and which ones shifts whenever
+    /// the year's events do: of seeds 5000-5023, 5003 and 5009 did before
+    /// MAGIC, HORRORS, CULTURE and FLAIR came in, 5013 after.)
     #[test]
     fn a_wary_warlord_walls_its_fields_and_raises_a_watchtower() {
         let day = 440;
         let mut tried = Vec::new();
-        for seed in [5003u64, 5000, 5004, 5001] {
+        for seed in [5013u64, 5003, 5009] {
             let mut g = Game::new(seed);
             g.set_overseer(Some(Style::Warlord));
             g.overseer.as_mut().unwrap().traits = vec![Trait::Cautious, Trait::Vain];
