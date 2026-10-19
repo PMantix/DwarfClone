@@ -292,11 +292,11 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O02 Plans that fit the land (M)
 - **Why:** every plan runs east from the gate; on a narrow site most of it is wasted.
-- **Steps:** [ ] a plan can face east, west, north or south, and the overseer picks the side with
-  the most solid rock · [ ] a level's plan stretches to the space available, and deeper levels
-  get their own layout (workshops on one, bedrooms on another, like DF forts) (partly: the plan
-  runs east as far as the map allows, blueprint.rs; every level gets the same layout) · [ ] `p` shows the
-  plan as a ghost overlay on the map: halls and rooms still to come
+- **Steps:** [x] a plan can face east, west, north or south, and the overseer picks the side with
+  the most solid rock (3bd2848; the plan turns, the gatehouse itself still runs east) · [x] a level's plan stretches to the space available, and deeper levels
+  get their own layout (workshops on one, bedrooms on another, like DF forts) (3bd2848: levels
+  for bedrooms, workshops, stores and great halls, each with its own layout and rooms) · [x] `P` (`p` is stockpiles) shows the
+  plan as a ghost overlay on the map: halls and rooms still to come (3bd2848)
 - **Done when:** on a site with rock only to the west, a planned fort still fills its plan.
 
 #### O03 Halls that look lived in (M)
