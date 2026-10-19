@@ -78,6 +78,8 @@ pub mod captives;
 pub mod breakdowns;
 pub mod readiness;
 mod cistern;
+mod levy;
+mod sally;
 mod rescue;
 mod hospital;
 mod watchdog;
@@ -486,6 +488,9 @@ pub struct Game {
     /// The overseer's last war-game of a coming siege (`wargame.rs`).
     #[serde(default)]
     pub wargame: Option<wargame::WarGame>,
+    /// A Warlord's sallies against an army at the gate (`sally.rs`).
+    #[serde(default)]
+    pub sallies: sally::Sallies,
     /// Horrors' powers, webs, venom, kin and the thing in the night (`horrors.rs`).
     #[serde(default)]
     pub horrors: horrors::Horrors,
@@ -681,6 +686,7 @@ impl Game {
             hunts: Default::default(),
             lairs: Vec::new(),
             wargame: None,
+            sallies: Default::default(),
             horrors: Default::default(),
             chronicle_ready: false,
             creatures: BTreeMap::new(),

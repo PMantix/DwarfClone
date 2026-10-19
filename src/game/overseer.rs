@@ -1026,20 +1026,11 @@ impl Game {
         if o.ambition == Some(Ambition::Muster) {
             want = want.max(self.muster_target(o));
         }
-        // The reckless keep a few under arms once there are hands enough
-        // (no gate, no traps: just someone to meet what comes), and take up
-        // arms anyway once they've been attacked.
+        // The reckless keep a few under arms (no gate, no traps: just
+        // someone to meet what comes), and raise a levy when something
+        // does come (levy.rs).
         if o.style == Style::Reckless {
-            let few = self.knob("reckless.squad", 3.0) as usize;
-            if adults >= self.knob("reckless.squad_from", 8.0) as usize {
-                want = few;
-            }
-            if self.siege_size > 0 {
-                // Once attacked, a share of the adults (as a guess at what
-                // the next army will be).
-                let share = (adults as f64 * self.knob("reckless.share", 0.2)).ceil() as usize;
-                want = want.max(2).max(share);
-            }
+            want = self.reckless_standing(adults).max(self.reckless_levy(o, adults));
         }
         if want == 0 {
             return;
@@ -1129,7 +1120,7 @@ impl Game {
             .filter(|b| {
                 b.kind == BuildingKind::Door
                     && b.built
-                    && b.locked != close
+                    && b.locked != (close && !self.sallying())
                     && (((b.pos.x - base.x).abs() <= 1 && (b.pos.y - base.y).abs() <= 1 && b.pos.z == base.z) || b.pos == top.offset(-3, 0, 0))
             })
             .map(|b| b.id)
@@ -1156,7 +1147,9 @@ impl Game {
             }
             let waited = any && self.tick > o.army_since + self.bar_patience(o);
             let long = self.tick > o.raised_at + DAY * 4;
-            let want = any && (at_gate || inside || waited) && !(long && !at_gate && o.raised_at > 0);
+            // (Not while the squads are out on a sally: sally.rs. Called
+            // back, they're left to hunt down any who got inside.)
+            let want = any && (at_gate || inside || waited) && !(long && !at_gate && o.raised_at > 0) && !self.sallying();
             let bridges = self.gate_bridges(base);
             let raised = bridges.iter().any(|id| self.buildings.get(id).map_or(false, |b| b.raised));
             if let Some(lever) = self.gate_lever(base) {
@@ -1188,7 +1181,9 @@ impl Game {
                 if !danger && marching == Some(self.squads[s].id) {
                     continue;
                 }
-                if danger && !charge && !holding {
+                // (Nor the reckless levy sent at a beast: levy.rs.)
+                let levied = o.style == Style::Reckless && matches!(self.squads[s].order, super::SquadOrder::Kill(_));
+                if danger && !charge && !holding && self.sallies.on.is_none() && !levied {
                     // Marksdwarves hold back from the gate with a clear shot at it (archery.rs).
                     let st = self.archer_station(s, base).unwrap_or(base.offset(4 + s as i32, 0, 0));
                     self.order_station(s, st);
@@ -1228,7 +1223,7 @@ impl Game {
         self.buildings.values().find(|b| b.kind == BuildingKind::Lever && b.built && b.pos == base.offset(3, 1, 0)).map(|b| b.id)
     }
 
-    fn gate_bridges(&self, base: Pos) -> Vec<u32> {
+    pub(super) fn gate_bridges(&self, base: Pos) -> Vec<u32> {
         self.buildings.values().filter(|b| b.kind == BuildingKind::Bridge && b.pos.z == base.z && b.pos.x == base.x + 2 && (b.pos.y - base.y).abs() <= 1).map(|b| b.id).collect()
     }
 
@@ -1890,7 +1885,9 @@ pub fn run_trial(seed: u64, style: Style, years: u64, knobs: &Knobs) -> Trial {
                     || t.contains("are fleeing")
                     || t.contains("bashes down")
                     || t.contains("Milestone")
-                    || t.contains("raises the dead");
+                    || t.contains("raises the dead")
+                    || t.contains("sally")
+                    || t.contains("levy");
                 // (Not the seasons, nor the merchants.)
                 let routine = t.contains("Merchants") || ["Spring", "Summer", "Autumn", "Winter"].iter().any(|s| t.starts_with(s));
                 if tell && !routine && story.len() < 400 {
@@ -2643,9 +2640,9 @@ mod tests {
         let g = trial_game(5003, Style::Steady, 262);
         assert_eq!(g.tick, 262 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
-        assert_eq!(deaths, vec![(202616, "Borra Embergrip"), (304186, "Nothar Anvilhearth")]);
+        assert_eq!(deaths, vec![(202543, "Borra Embergrip")]);
         let sieges: Vec<(u64, &str)> = g.annals.sieges.iter().map(|s| (s.tick, s.foe.as_str())).collect();
-        assert_eq!(sieges, vec![(202395, "goblins"), (303945, "goblins")]);
+        assert_eq!(sieges, vec![(202395, "goblins")]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
     }
 

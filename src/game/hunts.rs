@@ -299,7 +299,7 @@ impl Game {
     }
 
     /// A legendary beast near the fort (as the alert check reckons it), the nearest.
-    fn legend_about(&self, top: Pos, base: Pos) -> Option<u32> {
+    pub(super) fn legend_about(&self, top: Pos, base: Pos) -> Option<u32> {
         let near = |p: Pos| {
             let by = |q: Pos| (p.x - q.x).abs() <= NEAR && (p.y - q.y).abs() <= NEAR;
             (by(top) || by(base)) && p.z >= base.z - 2 && p.z <= top.z + 2
