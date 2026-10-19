@@ -204,19 +204,22 @@ pub fn body(p: &Page, inner: usize, reveal: Option<usize>) -> Vec<Vec<Span<'stat
     rows.push(centred(&p.sub, inner, Style::default().fg(FADED).bg(PARCHMENT).add_modifier(Modifier::ITALIC)));
     rows.push(pad(vec![], 0, inner));
     // The text: the first chapter's first letter is the drop cap.
-    let gutter = 9usize;
+    // (On a narrow page, no drop cap: a slim margin for the glyphs.)
+    let narrow = inner < 44;
+    let gutter = if narrow { 3 } else { 9usize };
     let tw = inner.saturating_sub(gutter + 1).max(8);
     let mut budget = reveal.unwrap_or(usize::MAX);
     let mut text_rows: Vec<(Option<char>, Vec<Span<'static>>)> = Vec::new();
-    let mut first_letter = ' ';
+    // The cap is the first chapter's first letter, which its text then
+    // goes on from (with the date after); a chapter opening on a number
+    // keeps it, and the cap is the title's initial.
+    let opening = p.chapters.first().and_then(|c| c.2.chars().next()).filter(|c| c.is_alphabetic() && !narrow);
+    let first_letter = opening.or_else(|| p.title.trim_start_matches("The ").chars().next()).unwrap_or(' ');
     for (k, (date, beat, text)) in p.chapters.iter().enumerate() {
-        let mut t = text.clone();
-        if k == 0 {
-            let mut cs = t.chars();
-            first_letter = cs.next().unwrap_or(' ');
-            t = cs.as_str().to_string();
-        }
-        let dated = format!("{} — {}", date, t);
+        let dated = match opening {
+            Some(_) if k == 0 => format!("{} — {}", text.chars().skip(1).collect::<String>(), date),
+            _ => format!("{} — {}", date, text),
+        };
         let lines = wrap_words(&dated, tw);
         for (j, l) in lines.iter().enumerate() {
             if budget == 0 {
@@ -225,7 +228,7 @@ pub fn body(p: &Page, inner: usize, reveal: Option<usize>) -> Vec<Vec<Span<'stat
             let shown: String = l.chars().take(budget).collect();
             budget = budget.saturating_sub(l.chars().count());
             // The date in faded ink, the rest dark on the parchment.
-            let spans = if j == 0 {
+            let spans = if j == 0 && !(k == 0 && opening.is_some()) {
                 let d = date.chars().count().min(shown.chars().count());
                 let (a, b): (String, String) = (shown.chars().take(d).collect(), shown.chars().skip(d).collect());
                 vec![Span::styled(a, Style::default().fg(FADED).bg(PARCHMENT)), Span::styled(b, Style::default().fg(INK).bg(PARCHMENT))]
@@ -238,7 +241,7 @@ pub fn body(p: &Page, inner: usize, reveal: Option<usize>) -> Vec<Vec<Span<'stat
             text_rows.push((None, vec![]));
         }
     }
-    let cap = drop_cap(first_letter, p.doom);
+    let cap = if narrow { Vec::new() } else { drop_cap(first_letter, p.doom) };
     let n = text_rows.len().max(cap.len());
     for i in 0..n {
         let mut spans: Vec<Span<'static>> = vec![Span::styled(" ", bg)];
@@ -247,7 +250,8 @@ pub fn body(p: &Page, inner: usize, reveal: Option<usize>) -> Vec<Vec<Span<'stat
             spans.push(Span::styled(" ", bg));
         } else {
             let g = text_rows.get(i).and_then(|r| r.0);
-            spans.push(Span::styled(format!("    {}   ", g.unwrap_or(' ')), gold));
+            let g = g.unwrap_or(' ');
+            spans.push(Span::styled(if narrow { format!("{} ", g) } else { format!("    {}   ", g) }, gold));
         }
         if let Some((_, t)) = text_rows.get(i) {
             spans.extend(t.iter().cloned());
