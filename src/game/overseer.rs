@@ -937,6 +937,10 @@ impl Game {
         if o.style != Style::Reckless {
             orders.push((Recipe::WoodCrossbow, if forge { 1 } else { 3 }));
             orders.push((Recipe::Bolts, if forge { 2 } else { 6 }));
+        } else if self.knob("reckless.arms", 1.0) > 0.0 && !self.squads.is_empty() {
+            // Its few soldiers get crossbows, and that is all the thought it gives war.
+            orders.push((Recipe::WoodCrossbow, 2));
+            orders.push((Recipe::Bolts, 3));
         }
         if forge {
             orders.push((Recipe::ForgeAxe, 2));
@@ -1022,9 +1026,20 @@ impl Game {
         if o.ambition == Some(Ambition::Muster) {
             want = want.max(self.muster_target(o));
         }
-        // Even the reckless take up arms once they've been attacked.
-        if o.style == Style::Reckless && self.siege_size > 0 {
-            want = 2;
+        // The reckless keep a few under arms once there are hands enough
+        // (no gate, no traps: just someone to meet what comes), and take up
+        // arms anyway once they've been attacked.
+        if o.style == Style::Reckless {
+            let few = self.knob("reckless.squad", 3.0) as usize;
+            if adults >= self.knob("reckless.squad_from", 8.0) as usize {
+                want = few;
+            }
+            if self.siege_size > 0 {
+                // Once attacked, a share of the adults (as a guess at what
+                // the next army will be).
+                let share = (adults as f64 * self.knob("reckless.share", 0.2)).ceil() as usize;
+                want = want.max(2).max(share);
+            }
         }
         if want == 0 {
             return;
@@ -1083,7 +1098,12 @@ impl Game {
                 c.alive
                     && c.hostile()
                     && !c.sneaking
-                    && ((c.siege && !c.legendary()) || ((c.siege || c.legendary()) && near_fort(c.pos) && (self.can_reach(c, top, 20000) || self.can_reach(c, base, 20000))))
+                    // (A beaten besieger that can find no way off the map,
+                    // shut out by the raised bridge, is danger only if it can
+                    // get in: else the alert would hold the bridge up, and it
+                    // there, until the fort died of thirst.)
+                    && ((c.siege && !c.legendary() && !(c.leaving && c.path_fails >= 2))
+                        || ((c.siege || c.legendary()) && near_fort(c.pos) && (self.can_reach(c, top, 20000) || self.can_reach(c, base, 20000))))
             });
         if danger != self.alert {
             self.alert = danger;
@@ -1924,6 +1944,8 @@ pub fn run_trial(seed: u64, style: Style, years: u64, knobs: &Knobs) -> Trial {
                 g.items.len()
             );
             prof_nodes = n;
+            let f: Vec<String> = super::finders::prof_take().iter().take(6).map(|(k, ms, n, h)| format!("{} {:.3} ({}/{})", k, ms / per, h, n)).collect();
+            eprintln!("            finders ms/tick: {}", f.join(", "));
         }
         if g.tick % DAY == 0 && std::env::var("TRIAL_PACE").is_ok() {
             eprintln!("  day {} at {:?}: {} rooms, {} designations, {} creatures", g.tick / DAY, std::time::Instant::now(), g.overseer.as_ref().map_or(0, |o| o.rooms.len()), g.designations.len(), g.creatures.len());
@@ -2053,6 +2075,20 @@ pub fn run_trial(seed: u64, style: Style, years: u64, knobs: &Knobs) -> Trial {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_reckless_keep_a_few_under_arms() {
+        let soldiers = |squad: f64| {
+            let mut g = Game::new(5);
+            g.knobs.set.insert("reckless.squad_from".into(), 1.0);
+            g.knobs.set.insert("reckless.squad".into(), squad);
+            let mut o = Overseer::new(Style::Reckless);
+            g.ov_army(&mut o);
+            g.dwarves.iter().filter(|d| d.alive && g.squad_of(d.id).is_some()).count()
+        };
+        assert_eq!(soldiers(3.0), 3, "three under arms once there are hands enough");
+        assert_eq!(soldiers(0.0), 0, "and none with the knob at zero");
+    }
 
     /// A cave horror walled up in a pocket of rock beside the halls sounds
     /// no alarm (the fort would shelter from it until it died of thirst);
@@ -2615,15 +2651,15 @@ mod tests {
 
     #[test]
     fn a_trial_game_is_the_trials_fort() {
-        // Seed 5003 (Steady) has seen two small sieges and lost one dwarf
+        // Seed 5003 (Steady) has seen two small sieges and lost two dwarves
         // by day 262 of its year (schedule::same_story_after_refactor has
         // the whole year).
         let g = trial_game(5003, Style::Steady, 262);
         assert_eq!(g.tick, 262 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
-        assert_eq!(deaths, vec![]);
+        assert_eq!(deaths, vec![(202960, "Dorna Copperfist"), (240080, "Nothar Silverhold")]);
         let sieges: Vec<(u64, &str)> = g.annals.sieges.iter().map(|s| (s.tick, s.foe.as_str())).collect();
-        assert_eq!(sieges, vec![(303845, "goblins")]);
+        assert_eq!(sieges, vec![(202695, "goblins"), (302420, "goblins")]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
     }
 

@@ -69,8 +69,9 @@ pub mod personality;
 mod miasma;
 pub mod knobs;
 mod schedule;
-mod finders;
+pub mod finders;
 mod overseer_hooks;
+mod path_throttle;
 mod wildlife;
 mod beasts;
 pub mod captives;
@@ -393,6 +394,10 @@ pub struct Game {
     /// (creature, its spot, the place) -> (when, answer, dig version).
     #[serde(skip)]
     reach_cache: std::cell::RefCell<HashMap<(u32, i32, i32, i32, i32, i32, i32), (u64, bool, u64)>>,
+    /// Routine finders that found nothing for a dwarf lately (finders.rs):
+    /// (dwarf, finder) -> (look again at, dig version, misses in a row).
+    #[serde(skip)]
+    finder_fail: HashMap<(u32, u8), (u64, u64, u8)>,
     /// Tiles with miasma in them, rebuilt from the map when missing.
     #[serde(skip)]
     miasma_cells: Option<Vec<usize>>,
@@ -639,6 +644,7 @@ impl Game {
             fire_cells: None,
             miasma_cells: None,
             reach_cache: Default::default(),
+            finder_fail: Default::default(),
             flames: Vec::new(),
             gore: Default::default(),
             stories: Default::default(),
@@ -1588,10 +1594,18 @@ impl Game {
                 d.idle_cd = 20 + self.rng.range(0, 20) as u32;
                 self.idle_activity(d);
             } else {
+                let t = self.prof.is_some().then(std::time::Instant::now);
                 self.choose_task(d);
+                if let Some(t) = t {
+                    finders::prof_note("(choose_task)", t, d.task != Task::Idle);
+                }
                 if d.task == Task::Idle {
                     d.idle_cd = 20 + self.rng.range(0, 20) as u32;
+                    let t = self.prof.is_some().then(std::time::Instant::now);
                     self.idle_activity(d);
+                    if let Some(t) = t {
+                        finders::prof_note("(idle)", t, false);
+                    }
                 }
             }
         }
@@ -1609,7 +1623,11 @@ impl Game {
             }
         }
         if d.task != Task::Idle {
+            let t = self.prof.is_some().then(std::time::Instant::now);
             self.do_task(d);
+            if let Some(t) = t {
+                finders::prof_note("(do_task)", t, false);
+            }
         }
         self.carry_follow(d);
     }
@@ -1954,8 +1972,18 @@ impl Game {
             return;
         }
         // Then work, from the finder table (finders.rs), most urgent first.
-        for (_, find) in finders::FINDERS {
-            if find(self, d) {
+        let timing = self.prof.is_some();
+        for (k, (name, find)) in finders::FINDERS.iter().enumerate() {
+            if self.finder_resting(d.id, k) {
+                continue;
+            }
+            let t = timing.then(std::time::Instant::now);
+            let hit = find(self, d);
+            if let Some(t) = t {
+                finders::prof_note(name, t, hit);
+            }
+            self.finder_done(d.id, k, hit);
+            if hit {
                 return;
             }
         }
