@@ -2261,10 +2261,20 @@ mod tests {
         assert!(!g.world.passable(door, Mover::Goblin));
     }
 
+    /// Two forts in three live through a year. Nine forts, not three: a
+    /// cave horror comes up at the turn of autumn about one year in three,
+    /// and one with venom and an armoured hide that meets a fort's three
+    /// copper spears ends it (seed 35, once the merged features shifted its
+    /// year), so three forts tell more about that one roll than about the
+    /// fort's year.
     #[test]
     fn year_with_wildlife_and_caverns_runs() {
-        let survived = [33, 34, 35].iter().filter(|&&seed| year(seed)).count();
-        assert!(survived >= 2, "only {} of 3 fortresses survived a year", survived);
+        let seeds = [33u64, 34, 35, 36, 37, 38, 39, 40, 41];
+        let survived = std::thread::scope(|s| {
+            let runs: Vec<_> = seeds.iter().map(|&seed| s.spawn(move || year(seed))).collect();
+            runs.into_iter().map(|r| r.join().unwrap()).filter(|&alive| alive).count()
+        });
+        assert!(survived * 3 >= seeds.len() * 2, "only {} of {} fortresses survived a year", survived, seeds.len());
     }
 
     fn year(seed: u64) -> bool {
