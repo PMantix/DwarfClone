@@ -129,6 +129,7 @@ impl Game {
                 let at = (tick / DAY + 1) * DAY + DAY / 10;
                 self.duels.push(Duel { a: iid, b: jid, at });
                 self.msg(&format!("{} has challenged {} to a duel at dawn!", an, bn), (255, 170, 90));
+                self.saga_challenge(iid, jid, &an, &bn);
                 self.gossip(format!("{} has challenged {} to a duel at dawn.", an, bn));
             }
         }
@@ -173,12 +174,14 @@ impl Game {
         self.dwarves[l].think(&format!("lost a duel to {}", wn), 20, tick);
         let mut text = format!("At dawn, {} and {} fought their duel. {} won; {} yielded, bloodied.", wn, ln, wn, ln);
         // Sometimes blood settles it.
-        if self.rng.chance(0.5) {
+        let peace = self.rng.chance(0.5);
+        if peace {
             self.dwarves[w].relations.retain(|r| r.0 != lid);
             self.dwarves[l].relations.retain(|r| r.0 != wid);
             text.push_str(" They shook hands, and the grudge is over.");
         }
         self.msg(&text, (255, 170, 90));
+        self.saga_duel(wid, lid, &text, peace);
         self.gossip(text);
         let mut d = std::mem::take(&mut self.dwarves[w]);
         self.duels_won(&mut d);

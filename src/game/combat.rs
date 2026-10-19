@@ -1393,6 +1393,7 @@ impl Game {
             self.legend(format!("{}, {}, fell at {}.", label, c.desc.clone().unwrap_or_default(), fort));
             self.msg(&format!("{}, who led the attack, has fallen!", label), (255, 215, 60));
             self.spotlight("Their leader falls", &format!("{}, who led the attack, has fallen!", label), Some(c.pos), (255, 215, 60));
+            self.saga_leader_fell(&label);
             let tick = self.tick;
             for d in self.dwarves.iter_mut().filter(|d| d.alive) {
                 d.think(&format!("cheered the fall of {}", label), -8, tick);

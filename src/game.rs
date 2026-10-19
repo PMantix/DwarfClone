@@ -116,6 +116,7 @@ pub mod reel;
 pub mod lifestory;
 pub mod sounds;
 pub mod drills;
+pub mod sagas;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -507,6 +508,9 @@ pub struct Game {
     /// Named battles and places, weddings and feasts (`stories.rs`).
     #[serde(default)]
     pub stories: stories::Stories,
+    /// Story arcs the fort has noticed (`sagas.rs`).
+    #[serde(default)]
+    pub sagas: sagas::Sagas,
     /// Gods, temples and strange powers (`magic.rs`).
     #[serde(default)]
     pub magic: magic::Magic,
@@ -657,6 +661,7 @@ impl Game {
             flames: Vec::new(),
             gore: Default::default(),
             stories: Default::default(),
+            sagas: Default::default(),
             magic: Default::default(),
             reel: Default::default(),
             beasts_seen: Vec::new(),

@@ -83,6 +83,7 @@ impl Game {
         // swears another.)
         self.sallies.sworn.remove(&civ);
         self.count("sally.hosts", 1);
+        self.saga_oath(i);
         let ids: Vec<u32> = self.creatures.values().filter(|c| c.alive && c.siege && !c.leaving && !c.legendary() && c.hostile()).map(|c| c.id).collect();
         for id in ids {
             let (pos, mut gear) = {
@@ -266,6 +267,7 @@ impl Game {
                 let note = o.voiced("The sally broke them: let the next army know what waits at our gate.");
                 Self::note_ov(o, self.tick, note);
                 self.count("sally.won", 1);
+                self.saga_sally(sally.siege, sally.soldiers, lost, true);
                 self.sallies.won += 1;
                 // Those who sent them swear to avenge it.
                 if let Some(civ) = self.annals.sieges.get(sally.siege).and_then(|s| s.civ) {

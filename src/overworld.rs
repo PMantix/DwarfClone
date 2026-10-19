@@ -504,6 +504,9 @@ pub struct Overworld {
     /// New forms of art devised in play, and who took them up (`arts.rs`).
     #[serde(default, skip_serializing_if = "crate::arts::WorldArts::is_empty")]
     pub arts: crate::arts::WorldArts,
+    /// Finished sagas of the forts played in this world (`game/sagas.rs`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sagas: Vec<crate::game::sagas::WorldSaga>,
 }
 
 /// How a clash ended for the place attacked.
@@ -677,6 +680,7 @@ impl WorldGen {
             gods: Vec::new(),
             made: Vec::new(),
             arts: Default::default(),
+            sagas: Vec::new(),
         };
         WorldGen { params, ow, rng, land: None, row: 0, stage: GenStage::Terrain, rivers: Vec::new(), trace: None }
     }
@@ -1559,6 +1563,7 @@ impl Overworld {
             gods: Vec::new(),
             made: Vec::new(),
             arts: Default::default(),
+            sagas: Vec::new(),
         }
     }
 

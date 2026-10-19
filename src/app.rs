@@ -294,6 +294,10 @@ pub enum Mode {
     Highlights { sel: usize },
     /// A dwarf's life story and portrait (`ui/life.rs`).
     Life { id: u32, scroll: usize },
+    /// The fort's sagas and those the world remembers (`ui/saga.rs`):
+    /// `open` shows the selected one's page alone; `from_end` returns to
+    /// the game-over screen.
+    Sagas { sel: usize, open: bool, from_end: bool },
     /// Sound on or off and the volumes (`app/sound.rs`), over the screen
     /// it was opened from.
     Sound { sel: usize },
@@ -536,9 +540,10 @@ impl App {
         }
         // A big moment: turn the camera to it and tell it. When the overseer
         // plays, the card goes by on its own after a few seconds.
-        if let Some((_, frames)) = self.spot.as_mut() {
+        if let Some((s, frames)) = self.spot.as_mut() {
             *frames += 1;
-            if self.game.overseer.is_some() && *frames > 100 {
+            let stay = if s.saga.is_some() { 260 } else { 100 };
+            if self.game.overseer.is_some() && *frames > stay {
                 self.spot = None;
             }
         }
@@ -1198,6 +1203,7 @@ impl App {
                     KeyCode::Char('l') => self.mode = Mode::Legends { tab: 0, scroll: usize::MAX, from_world: false },
                     KeyCode::Char('r') => self.mode = Mode::Reports { filter: 0, scroll: 0 },
                     KeyCode::Char('h') => self.mode = Mode::Highlights { sel: usize::MAX },
+                    KeyCode::Char('s') | KeyCode::Char('S') => self.mode = Mode::Sagas { sel: 0, open: self.game.great_saga().is_some(), from_end: true },
                     KeyCode::Char('t') => self.start_save(false, AfterSave::Title),
                     KeyCode::Char('w') | KeyCode::Esc => self.mode = Mode::Normal,
                     _ => {}
@@ -1416,6 +1422,7 @@ impl App {
             Mode::Military => self.key_military(k),
             Mode::Highlights { sel } => self.key_highlights(k, sel),
             Mode::Life { id, scroll } => self.key_life(k, id, scroll),
+            Mode::Sagas { sel, open, from_end } => self.key_sagas(k, sel, open, from_end),
             Mode::KillTarget { squad } => match k.code {
                 KeyCode::Esc => self.mode = Mode::Military,
                 KeyCode::Enter => {
@@ -1776,6 +1783,7 @@ impl App {
             KeyCode::Char('Q') => self.mode = Mode::ConfirmQuit,
             KeyCode::Char('H') => self.cursor = self.game.embark,
             KeyCode::Char('h') => self.mode = Mode::Highlights { sel: usize::MAX },
+            KeyCode::Char('S') => self.mode = Mode::Sagas { sel: 0, open: false, from_end: false },
             KeyCode::F(5) => self.start_save(false, AfterSave::Resume),
             KeyCode::F(9) => {
                 // Reload this fortress's latest save.
@@ -1787,6 +1795,22 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    /// The Sagas screen: choose one, read it, and back.
+    fn key_sagas(&mut self, k: KeyEvent, sel: usize, open: bool, from_end: bool) {
+        let n = crate::ui::saga_count(&self.game);
+        let back = if from_end { Mode::GameOver } else { Mode::Normal };
+        self.mode = match k.code {
+            KeyCode::Esc | KeyCode::Char('q') if open && !from_end => Mode::Sagas { sel, open: false, from_end },
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('S') => back,
+            KeyCode::Enter | KeyCode::Char(' ') => Mode::Sagas { sel, open: !open, from_end },
+            KeyCode::Up => Mode::Sagas { sel: sel.saturating_sub(1), open, from_end },
+            KeyCode::Down => Mode::Sagas { sel: (sel + 1).min(n.saturating_sub(1)), open, from_end },
+            KeyCode::Home => Mode::Sagas { sel: 0, open, from_end },
+            KeyCode::End => Mode::Sagas { sel: n.saturating_sub(1), open, from_end },
+            _ => Mode::Sagas { sel, open, from_end },
+        };
     }
 
     fn key_labors(&mut self, k: KeyEvent, row: usize, col: usize, detail: usize) {

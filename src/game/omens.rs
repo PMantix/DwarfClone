@@ -188,6 +188,7 @@ impl Game {
                 self.magic.year.push(format!("{} cursed {} for {}.", god.called(), name, taboo.name()));
                 self.legend(format!("{} cursed {} of {} for {}.", god.called(), name, fort, taboo.name()));
                 self.count("magic.curses", 1);
+                self.saga_curse(id, &name, &god.called(), taboo.name());
             }
             None => {
                 self.msg(&format!("{} is angered by {} in {}: {}.", god.called(), taboo.name(), fort, sight), (255, 140, 90));
@@ -237,6 +238,7 @@ impl Game {
         d.think(&format!("atoned before {}", god), -30, self.tick);
         let name = d.name.clone();
         self.msg(&format!("{} has atoned before {}, and the curse is lifted.", name, god), (190, 220, 255));
+        self.saga_atoned(d.id, &name, &god);
         self.magic.year.push(format!("{} atoned before {}.", name, god));
     }
 
@@ -282,6 +284,7 @@ impl Game {
         self.magic.omen = Some(Omen { kind, seen: tick, due, noted: false });
         let sight = kind.sight(&fort);
         self.msg(&format!("An omen: {}. The dwarves mutter that {}.", cap(&sight), kind.meaning()), (255, 200, 140));
+        self.saga_omen(kind);
         let season = SEASONS[((tick / SEASON) % 4) as usize].to_lowercase();
         self.magic.year.push(format!("In the {}, {}.", season, sight));
         self.count("magic.omens", 1);
@@ -360,6 +363,7 @@ impl Game {
             }
             OmenKind::Wrath => true,
         };
+        self.saga_omen_kept(o.kind, came);
         if came {
             self.msg(&format!("The omen has come true: {}.", o.kind.meaning()), (255, 200, 140));
             if let Some(l) = self.magic.year.iter_mut().rev().find(|l| l.contains(&o.kind.sight(&self.fortress_name))) {

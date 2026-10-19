@@ -258,6 +258,7 @@ impl Game {
         self.msg(&format!("The woods to the {} have gone quiet: the {} of {} are no more.", wher, plural, name), (200, 200, 150));
         self.legend(format!("The {} of {} were hunted out by the folk of {}.", plural, name, fort));
         self.spotlight("The woods fall silent", &format!("The last of the {} of {} is dead. Nothing stirs there now.", plural, name), Some(pos), (200, 200, 150));
+        self.saga_lair_silent(i, format!("The last of the {} of {} was killed, and nothing stirs there now.", plural, name));
     }
 
     /// The turn of a season: each lair not hunted out grows by one (knob
