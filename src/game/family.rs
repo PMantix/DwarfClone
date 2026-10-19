@@ -254,6 +254,9 @@ impl Game {
             let fort = self.fortress_name.clone();
             self.legend(format!("{} was born in {} to {}.", cname, fort, mname));
             self.year_log.births += 1;
+            let mid = self.dwarves[i].id;
+            let kin: Vec<u32> = [id, mid, father].into_iter().filter(|&x| x != 0).collect();
+            self.record(super::memory::MemoryKind::Born, &kin, Some(pos), format!("{} was born to {}.", cname, mname), 4);
             self.milestone("birth", &format!("The first child born in the fortress: {}", cname));
         }
         // Weddings, between close friends of age.

@@ -26,6 +26,10 @@ pub struct DeathNote {
     /// The madness was melancholy (which can lift).
     #[serde(default)]
     pub melancholy: bool,
+    /// What they said as they died (O05, last words). Left out of the
+    /// batch file while unset, so old batches compare the same.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_words: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -55,6 +59,30 @@ pub struct SiegeNote {
     /// The civilization that sent them (index into the world's civs).
     #[serde(default)]
     pub civ: Option<u32>,
+    // Milestone 2 (O04 defences, O09 legends): left out of the batch file
+    // while unset, so old batches compare the same.
+    /// Foes caught by traps other than cages, fallen into pits, drowned.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub trapped: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub fell: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub drowned: u32,
+    /// What it broke on ("the drawbridge", "the trap hall").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub broke_on: Option<String>,
+    /// Its name, once it has one (`stories.rs` names the episode).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub broke_at: Option<Pos>,
+    /// Where its foes fell, for remembering the battlefield.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub kill_spots: Vec<Pos>,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// Indices into `SiegeNote::blows`.
@@ -166,14 +194,17 @@ impl Game {
             soldier: d.soldier,
             mad: d.insane,
             melancholy: d.insane && d.melancholy,
+            last_words: None,
         });
         self.annals.wounded_by.retain(|w| w.0 != d.id);
         self.saga_death(d, text.trim_end_matches('.'));
+        self.record(super::memory::MemoryKind::Died, &[d.id], Some(d.pos), format!("{} {}", d.called(), text.trim_end_matches('.')), if d.epithet.is_some() { 6 } else { 3 });
     }
 
     pub(super) fn note_siege(&mut self, foe: &str, size: u32, leader: &str) {
         self.annals.sieges.push(SiegeNote { tick: self.tick, foe: foe.into(), size, leader: leader.into(), ..Default::default() });
         self.saga_siege_start(self.annals.sieges.len() - 1);
+        self.record(super::memory::MemoryKind::Siege, &[], None, format!("{} {} came against the fort, led by {}.", size, foe, leader), 5);
     }
 
     /// A blow in a siege: which kind, and whether it drew blood.
@@ -221,6 +252,9 @@ impl Game {
             .into();
             self.on_siege_end(i);
             self.saga_siege_end(i);
+            let s = &self.annals.sieges[i];
+            let text = format!("The siege of the {} ended: {}.", s.foe, s.outcome);
+            self.record(super::memory::MemoryKind::SiegeEnd, &[], None, text, 5);
         }
     }
 }

@@ -159,6 +159,9 @@ impl Game {
                 dump: false,
                 wear: 0,
                 forbidden: false,
+                kills: 0,
+                maker: None,
+                decor: None,
             });
         }
         let mut merchants = Vec::new();

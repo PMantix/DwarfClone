@@ -260,7 +260,7 @@ fn crops_grow_by_season_and_place() {
     let grain = Mat::Hollowgrain.crop().unwrap();
     assert!(grain.grows(false, 2) && !grain.grows(true, 2) && !grain.grows(false, 0));
     assert!(Mat::Stoutcap.crop().unwrap().grows(true, 3), "stoutcaps grow anywhere, all year");
-    let it = |m| Item { id: 0, kind: ItemKind::Plant, mat: m, pos: Pos::default(), carried_by: None, claimed_by: None, label: None, container: None, quality: 0, to_depot: false, dump: false, wear: 0, forbidden: false };
+    let it = |m| Item { id: 0, kind: ItemKind::Plant, mat: m, pos: Pos::default(), carried_by: None, claimed_by: None, label: None, container: None, quality: 0, to_depot: false, dump: false, wear: 0, forbidden: false, kills: 0, maker: None, decor: None };
     assert!(it(Mat::Sunberry).is_food() && !it(Mat::Goldoat).is_food(), "grain isn't eaten raw");
     assert_eq!(it(Mat::Sunberry).name(), "sunberries");
 }

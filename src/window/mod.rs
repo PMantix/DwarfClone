@@ -275,7 +275,7 @@ pub fn screenshot(args: &[String]) -> Result<()> {
         if card {
             let s = app.game.told_sagas()[0];
             let color = if s.doom { (220, 50, 60) } else { (240, 190, 70) };
-            let spot = crate::game::spotlight::Spotlight { title: "A saga is told".into(), text: s.title.clone(), at: None, color, saga: Some(s.id) };
+            let spot = crate::game::spotlight::Spotlight { title: "A saga is told".into(), text: s.title.clone(), at: None, color, saga: Some(s.id), actions: Vec::new() };
             app.spot = Some((spot, 10_000));
         } else {
             app.mode = crate::app::Mode::Sagas { sel: 0, open: false, from_end: false };

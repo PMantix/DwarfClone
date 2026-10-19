@@ -424,6 +424,20 @@ pub struct Item {
     /// Left alone: nobody hauls, uses or eats it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub forbidden: bool,
+    // Milestone 2 (wave 0), filled in by O03's crafts (P4):
+    /// Foes it has killed (a weapon is named at five).
+    #[serde(default, skip_serializing_if = "is_zero16")]
+    pub kills: u16,
+    /// Who made it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maker: Option<u32>,
+    /// What it is encrusted or decorated with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decor: Option<Mat>,
+}
+
+fn is_zero16(n: &u16) -> bool {
+    *n == 0
 }
 
 pub const ARTIFACT: u8 = 6;

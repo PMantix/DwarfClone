@@ -14,6 +14,7 @@ use std::collections::HashSet;
 
 pub mod arena;
 pub mod sound;
+pub mod m2;
 
 pub const SPEEDS: [u32; 6] = [1, 2, 5, 10, 25, 60];
 pub const SAVE_DIR: &str = "saves";
@@ -301,6 +302,19 @@ pub enum Mode {
     /// Sound on or off and the volumes (`app/sound.rs`), over the screen
     /// it was opened from.
     Sound { sel: usize },
+    // Milestone 2 (keys in `app/m2.rs`, drawn by `ui/overseer.rs`):
+    /// Pick the overseer's traits by hand (O01).
+    #[cfg_attr(not(test), allow(dead_code))] // wave 0: opened by its package
+    OverseerTraits { sel: usize },
+    /// The overseer's journal, a year at a time (O07).
+    #[cfg_attr(not(test), allow(dead_code))] // wave 0: opened by its package
+    Journal { year: usize },
+    /// A dwarf's family tree (O06).
+    #[cfg_attr(not(test), allow(dead_code))] // wave 0: opened by its package
+    Family { id: u32, sel: usize },
+    /// Which announcements pause, recentre or hide (O05).
+    #[cfg_attr(not(test), allow(dead_code))] // wave 0: opened by its package
+    Announce { sel: usize },
 }
 
 /// Timings gathered for the performance overlay, and the last second's summary.
@@ -416,6 +430,13 @@ pub struct App {
     /// Frames the sound has followed, and the big moment it last played for.
     pub sound_frames: u64,
     pub audio_spot: Option<(String, String)>,
+    // Milestone 2 (app/m2.rs):
+    /// Announcement control (O05, UI-07).
+    #[allow(dead_code)] // wave 0: P6 reads it
+    pub announce: m2::Announce,
+    /// Ticks still to run of a step taken while paused (O05, UI-32).
+    #[allow(dead_code)] // wave 0: P6 reads it
+    pub step_pending: u32,
 }
 
 impl App {
@@ -480,6 +501,8 @@ impl App {
             world_blocks: false,
             pan_from: (0, 0),
             director: crate::director::Director::default(),
+            announce: m2::Announce::default(),
+            step_pending: 0,
             frame_dt: 1.0 / 30.0,
             arena: None,
             audio: crate::audio::Audio::silent(),
@@ -1434,6 +1457,7 @@ impl App {
             Mode::Highlights { sel } => self.key_highlights(k, sel),
             Mode::Life { id, scroll } => self.key_life(k, id, scroll),
             Mode::Sagas { sel, open, from_end } => self.key_sagas(k, sel, open, from_end),
+            Mode::OverseerTraits { .. } | Mode::Journal { .. } | Mode::Family { .. } | Mode::Announce { .. } => self.key_m2_screen(k),
             Mode::KillTarget { squad } => match k.code {
                 KeyCode::Esc => self.mode = Mode::Military,
                 KeyCode::Enter => {
@@ -1734,6 +1758,10 @@ impl App {
     }
 
     fn key_normal(&mut self, k: KeyEvent) {
+        // Milestone 2's keys first (app/m2.rs).
+        if self.key_m2(k) {
+            return;
+        }
         match k.code {
             KeyCode::Char('d') => self.mode = Mode::Designate { kind: Desig::Dig, corner: None },
             KeyCode::Char('p') => self.mode = Mode::Stockpile { filter: Some(StockFilter::All), corner: None },

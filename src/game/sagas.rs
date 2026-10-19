@@ -299,7 +299,7 @@ impl Game {
         self.sagas.list[i].shown = Some(beat);
         let color = if doom { (220, 50, 60) } else { (240, 190, 70) };
         self.spotlights.retain(|x| x.saga != Some(id));
-        self.spotlights.push(spotlight::Spotlight { title: "A saga is told".into(), text: title, at: None, color, saga: Some(id) });
+        self.spotlights.push(spotlight::Spotlight { title: "A saga is told".into(), text: title, at: None, color, saga: Some(id), actions: Vec::new() });
         self.pause_request = true;
     }
 

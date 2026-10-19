@@ -613,6 +613,9 @@ pub struct Dwarf {
     /// by a goblin"), the last few kept (`medicine::chart`).
     #[serde(default)]
     pub med: Vec<(u64, String)>,
+    /// Buried under rubble by a cave-in, waiting to be dug out (O10).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub buried: bool,
 }
 
 impl Dwarf {

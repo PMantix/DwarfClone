@@ -901,6 +901,30 @@ pub struct Building {
     /// Who may work at this workshop (empty: anyone with the labor).
     #[serde(default)]
     pub workers: Vec<u32>,
+    // Milestone 2 (wave 0), each filled in by the package named:
+    /// A name the player or the overseer gave it (O11).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// The workshop's master (O08, workshop masters and apprentices).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub master: Option<u32>,
+    /// The least skill a worker needs here (O08).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub min_skill: u32,
+    /// Links a mechanic still has to make, to these buildings (O11, better levers).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pending_links: Vec<u32>,
+    /// A countdown for whatever the building is doing over time (O04 triggers, O12 automatons).
+    #[serde(default, skip_serializing_if = "is_zero64")]
+    pub timer: u64,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+fn is_zero64(n: &u64) -> bool {
+    *n == 0
 }
 
 impl Building {

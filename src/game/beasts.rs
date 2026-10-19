@@ -1248,6 +1248,9 @@ mod tests {
                 dump: false,
                 wear: 0,
                 forbidden: false,
+                kills: 0,
+                maker: None,
+                decor: None,
             };
             Recipe::Butcher.produce(&[it])
         };

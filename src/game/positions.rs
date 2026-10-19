@@ -229,6 +229,8 @@ impl Game {
         self.positions.retain(|(q, id)| *q != p && Some(*id) != dwarf);
         if let Some(id) = dwarf {
             self.positions.push((p, id));
+            let name = self.dwarves.iter().find(|d| d.id == id).map_or(String::new(), |d| d.called());
+            self.record(super::memory::MemoryKind::Appointed, &[id], None, format!("{} was made {}.", name, p.title().to_lowercase()), 3);
         }
         self.count_fits();
     }

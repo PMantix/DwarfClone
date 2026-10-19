@@ -224,6 +224,39 @@ pub struct Overseer {
     pub eulogy_from: u64,
     #[serde(default)]
     pub eulogized: Vec<u32>,
+    // Milestone 2 (wave 0): each filled in by the package named.
+    /// The dwarf the overseer is (O07, reign.rs).
+    #[serde(default)]
+    pub dwarf: Option<u32>,
+    /// The fort's faith in it, 0..100 (O07, reign.rs).
+    #[serde(default = "super::reign::sixty")]
+    pub faith: i32,
+    /// What moved its faith lately: (tick, change, why), the last dozen (O07).
+    #[serde(default)]
+    pub faith_log: Vec<(u64, i32, String)>,
+    /// The overseers before this one, and this one's reign (O07).
+    #[serde(default)]
+    pub reigns: Vec<super::reign::Reign>,
+    /// Its journal, a page a season (O07, OVR-06).
+    #[serde(default)]
+    pub journal: Vec<super::reign::JournalPage>,
+    /// How far the gatehouse has grown: trap hall, pit bridge, towers (O04, gatehouse.rs).
+    #[serde(default)]
+    pub gate_stage: u8,
+    /// Work orders it has looked over (O08).
+    #[serde(default)]
+    pub orders_seen: u32,
+    /// Deaths and sieges it has reflected on so far (O01, `annals` lengths).
+    #[serde(default)]
+    pub seen_deaths: usize,
+    #[serde(default)]
+    pub seen_sieges: usize,
+    /// Commands given it from cards and keys, with when (O01, commands.rs).
+    #[serde(default)]
+    pub commands: Vec<(super::commands::Command, u64)>,
+    /// A dwarf's blueprint it has taken up as its own (O12, inspire.rs).
+    #[serde(default)]
+    pub adopted: Option<u32>,
 }
 
 impl Overseer {
@@ -270,6 +303,17 @@ impl Overseer {
             interior: Default::default(),
             eulogy_from: 0,
             eulogized: Vec::new(),
+            dwarf: None,
+            faith: super::reign::sixty(),
+            faith_log: Vec::new(),
+            reigns: Vec::new(),
+            journal: Vec::new(),
+            gate_stage: 0,
+            orders_seen: 0,
+            seen_deaths: 0,
+            seen_sieges: 0,
+            commands: Vec::new(),
+            adopted: None,
         }
     }
 
@@ -367,7 +411,7 @@ const QUARRY_DX1: i32 = 80;
 const QUARRY_DY: i32 = 45;
 const QUARRY_TUNNEL: i32 = 30;
 
-const WORKSHOPS: [BuildingKind; 12] = [
+pub(super) const WORKSHOPS: [BuildingKind; 12] = [
     BuildingKind::Carpenter,
     BuildingKind::Mason,
     // Mechanisms early: the gate's drawbridge and traps need them before the first siege.
@@ -409,7 +453,7 @@ impl Game {
         Self::note(o, tick, text);
     }
 
-    fn note(o: &mut Overseer, tick: u64, text: String) {
+    pub(super) fn note(o: &mut Overseer, tick: u64, text: String) {
         // The very same words again so soon say nothing new: once a half
         // season at most (what still holds says "still", see `troubles`).
         if o.notes.iter().any(|n| n.1 == text && tick < n.0 + SEASON / 2) {
@@ -627,7 +671,7 @@ impl Game {
         dug as f64 / r.tiles.len() as f64
     }
 
-    fn dug_share(&self, a: Pos, b: Pos) -> f64 {
+    pub(super) fn dug_share(&self, a: Pos, b: Pos) -> f64 {
         let mut n = 0;
         let mut dug = 0;
         for p in box_iter(a, b) {
@@ -787,7 +831,7 @@ impl Game {
     }
 
     /// Place up to `max` of `kind` across a room in a grid.
-    fn ov_grid(&mut self, r: &Room, kind: BuildingKind, sx: i32, sy: i32, max: usize) -> usize {
+    pub(super) fn ov_grid(&mut self, r: &Room, kind: BuildingKind, sx: i32, sy: i32, max: usize) -> usize {
         let mut n = 0;
         let mut y = r.a.y;
         while y <= r.b.y && n < max {
@@ -812,86 +856,21 @@ impl Game {
             self.place_building(BuildingKind::Door, d);
         }
         let z = match r.kind {
-            RoomUse::Bedrooms => {
-                for &p in &r.beds {
-                    self.place_building(BuildingKind::Bed, p);
-                }
-                None
-            }
-            RoomUse::Workshops => {
-                let have: Vec<BuildingKind> = self.buildings.values().map(|b| b.kind).collect();
-                let todo: Vec<BuildingKind> = WORKSHOPS.iter().copied().filter(|k| !have.contains(k)).collect();
-                let mut placed = 0;
-                for (dx, dy) in [(0, 0), (4, 0), (0, 3), (4, 3), (8, 0), (8, 3)] {
-                    let Some(&kind) = todo.get(placed) else { break };
-                    let p = r.a.offset(dx, dy, 0);
-                    if p.x + 2 <= r.b.x && p.y + 2 <= r.b.y && self.place_building(kind, p) {
-                        placed += 1;
-                    }
-                }
-                None
-            }
+            RoomUse::Bedrooms => self.fit_bedrooms(o, r),
+            RoomUse::Workshops => self.fit_workshops(o, r),
             RoomUse::Stockpile => zone(ZoneKind::Stockpile(StockFilter::All)),
-            RoomUse::Dining => {
-                self.ov_grid(r, BuildingKind::Table, 3, 2, 12);
-                let tables: Vec<Pos> = self.buildings.values().filter(|b| b.kind == BuildingKind::Table && box_iter(r.a, r.b).any(|p| p == b.pos)).map(|b| b.pos).collect();
-                for t in tables {
-                    self.place_building(BuildingKind::Chair, t.offset(1, 0, 0));
-                }
-                zone(ZoneKind::Dining)
-            }
-            RoomUse::Dormitory => {
-                self.ov_grid(r, BuildingKind::Bed, 2, 2, 12);
-                zone(ZoneKind::Dormitory)
-            }
+            RoomUse::Dining => self.fit_dining(o, r),
+            RoomUse::Dormitory => self.fit_dormitory(o, r),
             RoomUse::Meeting => zone(ZoneKind::Meeting),
-            RoomUse::Tavern => {
-                self.ov_grid(r, BuildingKind::Table, 3, 3, 4);
-                zone(ZoneKind::Tavern)
-            }
+            RoomUse::Tavern => self.fit_tavern(o, r),
             RoomUse::Temple => zone(ZoneKind::Temple),
-            RoomUse::Hospital => {
-                self.ov_grid(r, BuildingKind::Bed, 3, 3, 3);
-                // Its last row keeps the thread, cloth and splints to hand.
-                self.add_zone(Pos::new(r.a.x, r.b.y, r.a.z), r.b, ZoneKind::Stockpile(StockFilter::Medical));
-                zone(ZoneKind::Hospital)
-            }
-            RoomUse::Tomb => {
-                self.ov_grid(r, BuildingKind::Coffin, 2, 2, 8);
-                zone(ZoneKind::Tomb)
-            }
-            RoomUse::Barracks => {
-                self.place_building(BuildingKind::ArcheryTarget, r.a);
-                zone(ZoneKind::Barracks)
-            }
+            RoomUse::Hospital => self.fit_hospital(o, r),
+            RoomUse::Tomb => self.fit_tomb(o, r),
+            RoomUse::Barracks => self.fit_barracks(o, r),
             RoomUse::Office => zone(ZoneKind::Office),
             RoomUse::Jail => zone(ZoneKind::Jail),
             RoomUse::Suite | RoomUse::Library | RoomUse::Parlour | RoomUse::Industry => self.fit_interior(o, r),
-            RoomUse::Grand => match r.shape {
-                // A great hall to feast in, among the pillars.
-                Some(Shape::Pillared { .. }) => {
-                    self.ov_grid(r, BuildingKind::Table, 3, 2, 20);
-                    let tables: Vec<Pos> = self.buildings.values().filter(|b| b.kind == BuildingKind::Table && r.tiles.contains(&b.pos)).map(|b| b.pos).collect();
-                    for t in tables {
-                        self.place_building(BuildingKind::Chair, t.offset(1, 0, 0));
-                    }
-                    zone(ZoneKind::Dining)
-                }
-                // A rotunda with the monument at its heart.
-                Some(Shape::Round { r: rad }) => {
-                    if !o.did("monument") && self.place_building(BuildingKind::Monument, r.a.offset(rad - 1, rad - 1, 0)) {
-                        o.done.push("monument".into());
-                    }
-                    zone(ZoneKind::Meeting)
-                }
-                // A cross: a temple.
-                Some(Shape::Cross { .. }) => zone(ZoneKind::Temple),
-                // The long gallery: every wall carved.
-                _ => {
-                    self.designate(r.a.offset(-1, -1, 0), r.b.offset(1, 1, 0), Desig::Smooth);
-                    zone(ZoneKind::Meeting)
-                }
-            },
+            RoomUse::Grand => self.fit_grand(o, r),
         };
         if let Some(k) = z {
             self.add_zone(r.a, r.b, k);
@@ -1111,69 +1090,8 @@ impl Game {
         if o.style != Style::Reckless && self.alert_burrow.is_some() && danger != self.civ_alert {
             let _ = self.toggle_civ_alert();
         }
-        // Bar the gate when they're close (not before, so those outside can
-        // still get in).
-        let close = self.creatures.values().any(|c| {
-            c.alive && c.hostile() && !c.sneaking && (c.siege || c.legendary()) && {
-                let p = c.pos;
-                let by = |q: Pos, r: i32| (p.x - q.x).abs() <= r && (p.y - q.y).abs() <= r && (p.z - q.z).abs() <= 1;
-                by(top, 10) || by(base, 12)
-            }
-        });
-        let gate: Vec<u32> = self
-            .buildings
-            .values()
-            .filter(|b| {
-                b.kind == BuildingKind::Door
-                    && b.built
-                    && b.locked != (close && !self.sallying())
-                    && (((b.pos.x - base.x).abs() <= 1 && (b.pos.y - base.y).abs() <= 1 && b.pos.z == base.z) || b.pos == top.offset(-3, 0, 0))
-            })
-            .map(|b| b.id)
-            .collect();
-        for id in gate {
-            self.toggle_lock(id);
-        }
-        // Raise the drawbridge against an army, once everyone's inside or
-        // when they're close; not for days on end without one at the gate.
-        if o.did("linked") {
-            let inside = self.dwarves.iter().filter(|d| d.alive && !d.soldier).all(|d| d.pos.z <= base.z && !self.world.outside(d.pos));
-            let army = |near: bool| {
-                self.creatures.values().any(|c| {
-                    c.alive && c.siege && !c.legendary() && c.hostile() && (!near || ((c.pos.x - top.x).abs() <= 40 && (c.pos.y - top.y).abs() <= 40))
-                })
-            };
-            let (any, at_gate) = (army(false) || coming, army(true));
-            // How long the army has been on the map: a little while for those
-            // outside to run in, then the bridge goes up regardless.
-            if any && o.army_since == 0 {
-                o.army_since = self.tick;
-            } else if !any {
-                o.army_since = 0;
-            }
-            let waited = any && self.tick > o.army_since + self.bar_patience(o);
-            let long = self.tick > o.raised_at + DAY * 4;
-            // (Not while the squads are out on a sally: sally.rs. Called
-            // back, they're left to hunt down any who got inside.)
-            let want = any && (at_gate || inside || waited) && !(long && !at_gate && o.raised_at > 0) && !self.sallying();
-            let bridges = self.gate_bridges(base);
-            let raised = bridges.iter().any(|id| self.buildings.get(id).map_or(false, |b| b.raised));
-            if let Some(lever) = self.gate_lever(base) {
-                // Anyone standing by the lever (the squad holds station there) throws it at once.
-                let lp = self.buildings[&lever].pos;
-                let by = self.dwarves.iter().any(|d| d.alive && d.pos.z == lp.z && (d.pos.x - lp.x).abs() <= 1 && (d.pos.y - lp.y).abs() <= 1);
-                if raised != want && by {
-                    self.pull_lever(lever);
-                } else if raised != want && !self.buildings[&lever].pull {
-                    self.request_pull(lever);
-                }
-                if want && !raised {
-                    o.raised_at = self.tick;
-                } else if !want && !raised {
-                    o.raised_at = 0;
-                }
-            }
-        }
+        // The gate: barred, and its bridge raised (gatehouse.rs).
+        self.ov_gate_alert(o, top, base, coming);
         // Soldiers hold the corridor behind the gate, unless they're strong
         // enough (and bold enough) to go out and meet them.
         if !self.squads.is_empty() {
@@ -1218,127 +1136,11 @@ impl Game {
     }
 
     /// What building stands on `p` (planned or built), if any.
-    fn building_at(&self, p: Pos) -> Option<BuildingKind> {
+    pub(super) fn building_at(&self, p: Pos) -> Option<BuildingKind> {
         match self.world.get(p).map_or(0, |t| t.building) {
             0 => None,
             id => self.buildings.get(&id).map(|b| b.kind),
         }
-    }
-
-    fn gate_lever(&self, base: Pos) -> Option<u32> {
-        self.buildings.values().find(|b| b.kind == BuildingKind::Lever && b.built && b.pos == base.offset(3, 1, 0)).map(|b| b.id)
-    }
-
-    pub(super) fn gate_bridges(&self, base: Pos) -> Vec<u32> {
-        self.buildings.values().filter(|b| b.kind == BuildingKind::Bridge && b.pos.z == base.z && b.pos.x == base.x + 2 && (b.pos.y - base.y).abs() <= 1).map(|b| b.id).collect()
-    }
-
-    /// The gate at the foot of the stair, and a corridor of cage traps
-    /// behind it.
-    fn ov_defences(&mut self, o: &mut Overseer) {
-        if o.style == Style::Reckless {
-            return;
-        }
-        self.ov_quarry(o);
-        let base = o.base.unwrap();
-        // The gate: a door on each row of the two-wide corridor. It isn't a
-        // gate until both are there, and a door broken down is hung again.
-        if self.dug_share(base.offset(1, 0, 0), base.offset(6, 1, 0)) >= 1.0 {
-            let mut hung = 0;
-            for dy in 0..2 {
-                let p = base.offset(1, dy, 0);
-                if self.building_at(p) == Some(BuildingKind::Door) || self.place_building(BuildingKind::Door, p) {
-                    hung += 1;
-                }
-            }
-            if hung == 2 && !o.did("gate") {
-                o.done.push("gate".into());
-                Self::note(o, self.tick, "Hung a gate at the foot of the stair, to bar when enemies come.".into());
-            }
-        }
-        // Where the miners broke into a cavern, a door: beasts can't open one.
-        // (Never on the gate's own tiles: a door where the bridge or lever
-        // goes keeps the drawbridge from ever being built.)
-        let gate_part = |p: Pos| p.z == base.z && (1..=3).contains(&(p.x - base.x)) && (0..=1).contains(&(p.y - base.y));
-        for q in std::mem::take(&mut self.breaches) {
-            let spots = std::iter::once(q).chain(crate::geom::DIRS4.iter().map(|&(dx, dy)| q.offset(dx, dy, 0)));
-            let fit: Vec<Pos> = spots.filter(|&p| !gate_part(p) && self.world.get(p).map_or(false, |t| t.dug && t.kind == TileKind::Floor && t.building == 0)).collect();
-            let hung = fit.into_iter().any(|p| self.place_building(BuildingKind::Door, p));
-            if hung {
-                Self::note(o, self.tick, "Hung a door where the miners broke into the caverns.".into());
-            }
-        }
-        // A drawbridge behind the doors, on a lever: raised, nothing gets in.
-        // Both halves and the lever, each put back if it's lost.
-        let parts = [(BuildingKind::Bridge, base.offset(2, 0, 0)), (BuildingKind::Bridge, base.offset(2, 1, 0)), (BuildingKind::Lever, base.offset(3, 1, 0))];
-        let missing = parts.iter().filter(|&&(k, p)| self.building_at(p) != Some(k)).count();
-        if o.did("gate") && missing > 0 && self.stock_of(ItemKind::Mechanism) >= missing {
-            let placed = parts.iter().filter(|&&(k, p)| self.building_at(p) == Some(k) || self.place_building(k, p)).count();
-            if placed == parts.len() && !o.did("bridge") {
-                o.done.push("bridge".into());
-                Self::note(o, self.tick, "Began a drawbridge at the gate, worked by a lever inside.".into());
-            }
-        }
-        // The lever works every half of the bridge (again, after a rebuild).
-        if o.did("bridge") {
-            let lever = self.gate_lever(base);
-            let bridges = self.gate_bridges(base);
-            let built = bridges.len() == 2 && bridges.iter().all(|id| self.buildings.get(id).map_or(false, |b| b.built));
-            if let (Some(lever), true) = (lever, built) {
-                let unlinked: Vec<u32> = bridges.iter().copied().filter(|id| !self.buildings[&lever].links.contains(id)).collect();
-                for id in &unlinked {
-                    let _ = self.link_lever(lever, *id);
-                }
-                if !unlinked.is_empty() && !o.did("linked") {
-                    o.done.push("linked".into());
-                    Self::note(o, self.tick, "Linked the lever to the drawbridge. The gate can be shut fast.".into());
-                }
-            }
-        }
-        // Traps once the bridge is begun: it needs the mechanisms more.
-        if o.did("bridge") && !o.did("traps") && self.stock_of(ItemKind::Mechanism) >= 2 && self.stock_of(ItemKind::Cage) >= 2 {
-            let mut n = 0;
-            for dx in 4..8 {
-                for dy in 0..2 {
-                    if self.place_building(BuildingKind::CageTrap, base.offset(dx, dy, 0)) {
-                        n += 1;
-                    }
-                }
-            }
-            if n > 0 {
-                o.done.push("traps".into());
-                Self::note(o, self.tick, format!("Set {} cage traps in the entrance corridor.", n));
-            }
-        }
-    }
-
-    /// Whether the gate still wants mechanisms and stone is short: it holds
-    /// the stone for them.
-    pub(super) fn gate_wants_stone(&self, o: &Overseer) -> bool {
-        if o.style == Style::Reckless || o.base.is_none() {
-            return false;
-        }
-        let want = if o.did("linked") { self.gate_parts_missing(o) } else { 3 };
-        let mechs = self.stock_of(ItemKind::Mechanism);
-        let loose = self.items.values().filter(|it| it.kind == ItemKind::Boulder && it.mat.is_building_stone() && it.free()).count();
-        mechs < want && loose < 12
-    }
-
-    /// Parts of the gate's drawbridge and lever not standing built (a half
-    /// lost to a siege, say), each needing a mechanism to put back.
-    pub(super) fn gate_parts_missing(&self, o: &Overseer) -> usize {
-        let Some(base) = o.base else { return 0 };
-        [(BuildingKind::Bridge, base.offset(2, 0, 0)), (BuildingKind::Bridge, base.offset(2, 1, 0)), (BuildingKind::Lever, base.offset(3, 1, 0))]
-            .iter()
-            .filter(|&&(k, p)| !self.buildings.values().any(|b| b.kind == k && b.pos == p && b.built))
-            .count()
-    }
-
-    /// Whether `p` is in the gatehouse's walls (two deep on each side of the
-    /// corridor, and round the foot of the stair), which nothing may be cut
-    /// from: it would open a way round the doors and the bridge.
-    pub(super) fn gatehouse(base: Pos, p: Pos) -> bool {
-        p.z == base.z && (-2..=16).contains(&(p.x - base.x)) && (-2..=3).contains(&(p.y - base.y))
     }
 
     /// Plain stone for the gate's mechanisms. A fort whose halls are cut in
@@ -1348,7 +1150,7 @@ impl Game {
     /// of it in hand, quarried where it shows beside the halls, else at the
     /// end of a tunnel cut through the soil to the nearest, or else down a
     /// stair at the first layer of stone.
-    fn ov_quarry(&mut self, o: &mut Overseer) {
+    pub(super) fn ov_quarry(&mut self, o: &mut Overseer) {
         if o.did("linked") && self.gate_parts_missing(o) == 0 && !self.traps_wanted(o) {
             return;
         }
@@ -2008,6 +1810,8 @@ pub fn run_trial(seed: u64, style: Style, years: u64, knobs: &Knobs) -> Trial {
     }
     // Close the books on a siege the fort fell to.
     g.annals_tick();
+    // Milestone 2's numbers, into the counters (m2.rs).
+    g.m2_stats();
     // Deaths in the story say what did it.
     for (_, text) in story.iter_mut() {
         if let Some(d) = g.annals.deaths.iter().find(|d| d.killer.is_some() && text.starts_with(&d.name)) {

@@ -46,6 +46,7 @@ impl Game {
         d.deed = Some(deed.to_string());
         let now = d.called();
         self.saga_epithet(d.id, &before, &now, deed, rank);
+        self.record(super::memory::MemoryKind::Epithet, &[d.id], Some(d.pos), format!("{} {} and was known after as {}.", before, deed, now), 6);
         self.year_log.hero = Some(now.clone());
         self.milestone("hero", &format!("The fortress's first hero: {}", now));
         let tick = self.tick;

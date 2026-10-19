@@ -14,6 +14,8 @@ pub struct Spotlight {
     pub color: (u8, u8, u8),
     /// A saga's card (`sagas.rs`), by its id.
     pub saga: Option<u32>,
+    /// Commands the card offers, each on its key (O01, `commands.rs`).
+    pub actions: Vec<super::commands::Command>,
 }
 
 impl Game {
@@ -25,7 +27,7 @@ impl Game {
         if self.spotlights.iter().any(|s| s.title == title) {
             return;
         }
-        self.spotlights.push(Spotlight { title: title.into(), text: text.into(), at, color, saga: None });
+        self.spotlights.push(Spotlight { title: title.into(), text: text.into(), at, color, saga: None, actions: Vec::new() });
         self.pause_request = true;
     }
 
