@@ -72,6 +72,17 @@ overseer's ambitions and brain, festivals, heroes, mysteries, legends and the ch
 Goal: in the 25-fort batch, at least 40% of Steady and Warlord forts and some of every other
 style survive three years, and every style still loses forts in memorable ways.
 
+**Result** (release batch, `--autoplay --runs 50 --years 3 --seed 5000`, `batches/m1-release.json`;
+the 25-fort before/after is `batches/m1-w3-before.json` / `m1-w3-after.json`): standing after
+years 1/2/3 49/39/34 of 50. By style at year 3: Steady 9/10, Warlord 10/10, Builder 9/10, Delver
+6/10, Reckless 0/10 (9 after year 1, 4 after year 2; Reckless-only runs on other seeds keep 2-3
+of 10). Bled to death 7% of 933 deaths (was 59%), wildlife 0.5 deaths a fort (o01-50: 4.8),
+no thirst, expeditions 0.3%, berserk 0.5 a fort; 9 forts fell to sieges, first sieges cost 1.1
+dwarves. **Goal mostly met:** Steady and Warlord far past 40%, bleeding well under a quarter,
+and forts still fall to sieges, cave horrors, titans, dragons and rocs; but no Reckless fort
+lived three years in this batch, Warlord lost none, and no fort built a well (wells and
+cisterns never find a site on the new worlds: the overseer's scan finds no water).
+
 #### S01 Know why forts fall (S)
 - **Why:** balance by evidence, not by guess. The batch report gives one line per fort today.
 - **Steps:** [x] the batch report tallies causes of death, killers, and siege outcomes (how many
@@ -86,12 +97,13 @@ style survive three years, and every style still loses forts in memorable ways.
 - **Note:** bleeding adds a third of an edged blow's damage and slows by one a turn, so the
   blood lost grows with the square of the wounds: three cuts kill a dwarf in about a hundred
   ticks, long before anyone could help. The curve needs reshaping, not just faster doctors.
-- **Steps:** [ ] dwarves who are bleeding stop work and press their wounds (slower bleeding),
-  and friends bandage them with cloth or thread where they lie · [ ] the unconscious and the
+- **Steps:** [x] dwarves who are bleeding stop work and press their wounds (slower bleeding),
+  and friends bandage them with cloth or thread where they lie (3813cbf) · [x] the unconscious and the
   crippled are carried to a hospital bed by a doctor or any hauler, even during an alert, once
-  the threat is gone · [ ] the overseer always has a doctor and a hospital before the first siege
-  · [ ] bleeding is tuned: a cut limb kills in minutes, a gash in hours
-- **From the Bay 12 review:** [ ] Bleeding that leaves time to help ([HLT-03](ideas/body-and-mind.md)) · [ ] Wait for rescue ([HLT-07](ideas/body-and-mind.md)) · [ ] Hospital as a stocked place ([HLT-20](ideas/body-and-mind.md)) · [ ] Booze for the wounded ([HLT-21](ideas/body-and-mind.md)) · [ ] Injury readout and medical history ([HLT-47](ideas/body-and-mind.md))
+  the threat is gone (3813cbf) · [x] the overseer always has a doctor and a hospital before the first siege
+  (c40e5af) · [x] bleeding is tuned: a cut limb kills in minutes, a gash in hours (b122c30; measured in
+  537cc17: 7% of deaths in the release batch, so the default bleed knobs stay)
+- **From the Bay 12 review:** [x] Bleeding that leaves time to help ([HLT-03](ideas/body-and-mind.md)) (b122c30) · [x] Wait for rescue ([HLT-07](ideas/body-and-mind.md)) (3813cbf) · [x] Hospital as a stocked place ([HLT-20](ideas/body-and-mind.md)) (c40e5af) · [x] Booze for the wounded ([HLT-21](ideas/body-and-mind.md)) (c40e5af) · [x] Injury readout and medical history ([HLT-47](ideas/body-and-mind.md)) (c40e5af)
 - **Done when:** a test where three dwarves are gashed sees them carried in and sutured; in the
   batch, bleeding is no longer more than a quarter of deaths.
 
@@ -105,8 +117,9 @@ style survive three years, and every style still loses forts in memorable ways.
   raiding party of two or three, later ones grow with population, wealth and every siege broken
   (this commit) · [x] besiegers shut out make off with valuables lying outside (this commit) ·
   [x] the leader is named in the warning and killing them routs the rest (already so) · [x]
-  they remember: a broken siege brings a bigger one, and they say so (this commit) · [ ]
-  captives
+  they remember: a broken siege brings a bigger one, and they say so (this commit) · [x]
+  captives (1e1315c) · [x] now and then the scouts miss a later army, which is at the edge of
+  the map before anyone knows (`siege.unseen`, 537cc17)
 - **Result** (batches/s03.json against s04d): forts standing after years 1/2/3 went from
   17/7/7 to 22/15/12; the first siege kills 2.2 dwarves on average (was 9.2) and took one
   fort (was 12); later sieges of ~8 still took five. Steady and Warlord: 3 of 5 each standing
@@ -129,8 +142,8 @@ style survive three years, and every style still loses forts in memorable ways.
   sooner: 150 ticks after an army appears, and whoever stands by the lever (the squad's
   station) throws it at once; traps wait for the bridge's mechanisms; the exploring shaft is
   dug inside the gate, not beside the stair (goblins went straight down it) (this commit) ·
-  [x] soldiers hold the gatehouse (stationed by the lever) · [ ] after a siege
-  it learns: more traps where the enemy came in, a second squad, walls · [x] cavern breaches
+  [x] soldiers hold the gatehouse (stationed by the lever) · [x] after a siege
+  it learns: more traps where the enemy came in, a second squad, walls (4be72f5) · [x] cavern breaches
   get a door the moment they're dug into (beasts can't open doors) (this commit)
 - **Latest** (batches/s04d.json): 17/7/7 standing; the bridge is up in 46% of first sieges,
   58–70% of later ones. What's left is the first siege: it comes on day 168, mostly before the
@@ -141,17 +154,17 @@ style survive three years, and every style still loses forts in memorable ways.
   them), but the first siege still kills 9 dwarves on average and takes 13 forts of 25, because
   the bridge is up for only a third of them. Thirst deaths rose (22 → 58) with forts living
   longer: S05.
-- **From the Bay 12 review:** [ ] The overseer learns from a siege ([SIE-01](ideas/war.md))
+- **From the Bay 12 review:** [x] The overseer learns from a siege ([SIE-01](ideas/war.md)) (4be72f5)
 - **Done when:** a scripted siege against a fort with shelter, bridge and squad kills fewer than
   half the goblins' worth of dwarves; the batch meets the milestone goal.
 
 #### S06 Expeditions worth the risk (S)
 - **Why:** 43 of 451 deaths (10%) were dwarves who fell on expeditions, most of them in the
   first year, when a fort can least spare them.
-- **Steps:** [ ] the overseer sends expeditions only with a strong, armed squad and spare
-  dwarves at home · [ ] odds are shown before sending, and a squad that's losing comes home early
-  with its wounded
-- **From the Bay 12 review:** [ ] Companions turn back ([OUT-17](ideas/world-and-overseer.md)) · [ ] Field rations and care packages ([OUT-19](ideas/world-and-overseer.md)) · [ ] The tactician matters ([OUT-20](ideas/world-and-overseer.md))
+- **Steps:** [x] the overseer sends expeditions only with a strong, armed squad and spare
+  dwarves at home (e54ad30) · [x] odds are shown before sending, and a squad that's losing comes home early
+  with its wounded (e54ad30)
+- **From the Bay 12 review:** [x] Companions turn back ([OUT-17](ideas/world-and-overseer.md)) (e54ad30) · [x] Field rations and care packages ([OUT-19](ideas/world-and-overseer.md)) (e54ad30) · [x] The tactician matters ([OUT-20](ideas/world-and-overseer.md)) (e54ad30)
 - **Done when:** expedition deaths fall below 5% of all deaths in the batch.
 
 #### S05 Food and water a fort can rely on (S)
@@ -168,7 +181,8 @@ style survive three years, and every style still loses forts in memorable ways.
   as a trouble, and it sees to it (miners to quarry, woodcutters out, orders raised, hands to
   farming), sooner or later by its style and with a manager's help (this commit) · [x] only a
   delver digs levels down toward the caverns (a spider came up one fort's stair) (this commit)
-  · [ ] wells and cisterns inside the fort
+  · [x] wells and cisterns inside the fort (0b0db40; but no fort found a site for one in the
+  release batch)
 · [x] a dwarf in a fey mood
   gets the workshop and materials they demand: the overseer treats those as troubles of its own,
   and urgent ones (this commit)
@@ -178,23 +192,28 @@ style survive three years, and every style still loses forts in memorable ways.
 
 #### S07 Dwarves who fight back (M)
 - **Why:** Soldiers swing wooden crossbows, leave armour in stock and fired 92 bolts in 31 sieges; the overseer never sends anyone after the wolves that now cause a fifth of deaths.
-- **Steps:** [ ] Metal crossbows and bolts ([MIL-01](ideas/war.md)) · [ ] Kit on before the first siege ([MIL-02](ideas/war.md)) · [ ] Archers who act like archers ([MIL-05](ideas/war.md)) · [ ] The overseer hunts predators ([MIL-03](ideas/war.md)) · [ ] Wounds that leave time to help ([MIL-04](ideas/war.md))
+- **Steps:** [x] Metal crossbows and bolts ([MIL-01](ideas/war.md)) (141b487) · [x] Kit on before the first siege ([MIL-02](ideas/war.md)) (141b487) · [x] Archers who act like archers ([MIL-05](ideas/war.md)) (4fe9d99) · [x] The overseer hunts predators ([MIL-03](ideas/war.md)) (2423aec) · [x] Wounds that leave time to help ([MIL-04](ideas/war.md)) (b122c30, openings 4fe9d99)
 - **Done when:** A scripted siege sees soldiers in metal and armour killing at least one goblin each; in the batch, bleeding is under a quarter of deaths.
 
 #### S08 Wild things with sense (L)
 - **Why:** Wolves and other wildlife charge whole squads like berserkers; real predators pick off stragglers and break off when hurt.
-- **Steps:** [ ] Predator discretion ([CRE-01](ideas/myth-and-depths.md)) · [x] Fire and intimidation ([CRE-02](ideas/myth-and-depths.md)) · [ ] Wary once wounded ([CRE-03](ideas/myth-and-depths.md)) · [ ] Stalking predators ([CRE-15](ideas/myth-and-depths.md)) · [x] Silent woods ([CRE-22](ideas/myth-and-depths.md)) · [x] Wildlife from lairs ([CRE-23](ideas/myth-and-depths.md)) · [x] Living populations ([CRE-29](ideas/myth-and-depths.md))
+- **Steps:** [x] Predator discretion ([CRE-01](ideas/myth-and-depths.md)) (e54f3d8) · [x] Fire and intimidation ([CRE-02](ideas/myth-and-depths.md)) · [x] Wary once wounded ([CRE-03](ideas/myth-and-depths.md)) (e54f3d8) · [x] Stalking predators ([CRE-15](ideas/myth-and-depths.md)) (e54f3d8) · [x] Silent woods ([CRE-22](ideas/myth-and-depths.md)) · [x] Wildlife from lairs ([CRE-23](ideas/myth-and-depths.md)) · [x] Living populations ([CRE-29](ideas/myth-and-depths.md))
 - **Done when:** Deaths to wildlife halve in the batch, and a wolf pack shadows a lone woodcutter rather than a squad.
 
 #### S09 Madness that mends (S)
 - **Why:** Every thirst death in the batches was a mad dwarf; breakdowns should be dramatic, varied and sometimes recoverable rather than a slow walk to death.
-- **Steps:** [ ] Berserk and shifting breakdowns ([MND-06](ideas/body-and-mind.md)) · [ ] Catatonia ([MND-31](ideas/body-and-mind.md))
+- **Steps:** [x] Berserk and shifting breakdowns ([MND-06](ideas/body-and-mind.md)) (116a9ae) · [x] Catatonia ([MND-31](ideas/body-and-mind.md)) (116a9ae)
 - **Done when:** No mad dwarf dies of thirst beside full barrels in the batch; a berserk dwarf is subdued or recovers.
 
 #### S10 Knobs for the batch (S)
 - **Why:** Balance by evidence: the numbers the batches tune should live in one data file, not scattered constants.
-- **Steps:** [ ] Tunable thresholds ([OTH-04](ideas/world-and-overseer.md)) · [ ] Path throttling ([OTH-06](ideas/world-and-overseer.md))
+- **Steps:** [x] Tunable thresholds ([OTH-04](ideas/world-and-overseer.md)) (ceddd9b; siege, megabeast and thief triggers 537cc17) · [x] Path throttling ([OTH-06](ideas/world-and-overseer.md)) (537cc17)
 - **Done when:** A batch can be rerun with a changed threshold from the command line.
+- **Result:** the profile (`TRIAL_PROF=1`, now with time per job finder) showed path searches
+  cheap (~150 nodes a tick) and the dwarves' finders, hauling and farming above all, most of
+  a tick: idle and strolling dwarves asked every finder every 30 ticks, each scanning thousands
+  of items. Resting a finder that found nothing cut the batch from 177 to 117 thread-seconds a
+  fort-year; a besieger shut out for 1000 ticks searches 14 times instead of 67.
 
 #### S11 The shelter holds (M)
 - **Why:** about 30% of the dead died inside the shelter, and long sieges could end in thirst
