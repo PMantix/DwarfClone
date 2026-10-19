@@ -22,6 +22,7 @@ mod life;
 mod moodstrip;
 mod ambient;
 mod ticker;
+mod sound;
 
 const SIDEBAR_W: u16 = 38;
 
@@ -1026,7 +1027,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
     let mut v: Vec<Line> = Vec::new();
     let title;
     match &app.mode {
-        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GrowMap { .. } | Mode::GameOver | Mode::Highlights { .. } | Mode::Life { .. } => {
+        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GrowMap { .. } | Mode::GameOver | Mode::Highlights { .. } | Mode::Life { .. } | Mode::Sound { .. } => {
             title = "Main".to_string();
             v.extend(stocks(g));
             v.push(Line::default());
@@ -1047,7 +1048,8 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(key_line("n", "Nobles, mandates & rooms", false));
             v.push(key_line("c", "Chronicle of the years", false));
             v.push(key_line("r", "Reports: past announcements", false));
-            v.push(key_line("M", "Grow the map", false));
+            v.push(key_line("G", "Grow the map", false));
+            v.push(key_line("O", "Sound (M mutes)", false));
             v.push(key_line("A", "Autoplay: let the overseer play", g.overseer.is_some()));
             if g.overseer.is_some() {
                 v.push(key_line("B", "The overseer's brain", false));
@@ -1942,7 +1944,9 @@ fn help_text() -> Vec<Line<'static>> {
         k("h", "highlights: the fort's big moments, replayed"),
         k("F3", "performance: frames per second, and where the time goes"),
         k("\\", "status, brain, reports, chronicle, legends: side pane or full screen"),
-        k("M", "grow the map north, east, south or west"),
+        k("G", "grow the map north, east, south or west"),
+        k("M", "sound on / off (anywhere)"),
+        k("O", "sound: volumes for music, ambience, effects"),
         k("A", "autoplay: the overseer plays (pick a style)"),
         k("  (hands off)", "20 s untouched while it plays: the camera tours"),
         k("B", "the overseer's brain: senses, ambitions, nudges"),
@@ -2951,6 +2955,14 @@ fn draw_trade(f: &mut Frame, area: Rect, app: &App, side: usize, sel: [usize; 2]
 }
 
 pub fn draw(f: &mut Frame, app: &mut App) {
+    // The sound screen sits over the screen it was opened from.
+    if let Mode::Sound { sel } = app.mode {
+        app.mode = app.sound_from.clone();
+        draw(f, app);
+        app.mode = Mode::Sound { sel };
+        sound::draw(f, app, sel);
+        return;
+    }
     TARGETS.with(|v| v.borrow_mut().clear());
     let area = f.size();
     match app.mode {
@@ -3156,7 +3168,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::Highlights { sel } => highlights::draw(f, area, app, sel),
         Mode::Life { id, scroll } => life::draw(f, area, &app.game, id, scroll),
         Mode::Help => {
-            popup(f, area, 60, 48, " Help ", help_text());
+            popup(f, area, 60, 50, " Help ", help_text());
         }
         Mode::ConfirmQuit => {
             popup(
@@ -3771,7 +3783,7 @@ fn status_lines(g: &Game, tab: usize) -> Vec<Line<'static>> {
             if !feats.is_empty() {
                 v.push(plain(format!("The land: {}", feats.join(", ")), Color::Rgb(170, 220, 170)));
             }
-            v.push(plain(format!("Map {}×{}, {} deep (M to grow it)", g.world.w, g.world.h, g.world.d), MUTED));
+            v.push(plain(format!("Map {}×{}, {} deep (G to grow it)", g.world.w, g.world.h, g.world.d), MUTED));
             if let Some(n) = g.necromancer.as_ref().filter(|n| n.known && n.alive) {
                 v.push(plain(format!("The necromancer {} dwells in {}. Bury your dead.", n.name, n.tower), Color::Rgb(190, 120, 230)));
             }
@@ -4271,7 +4283,8 @@ fn draw_title(f: &mut Frame, app: &App, sel: usize) {
             2 if !saves.is_empty() => Some(format!("{} saved", saves.len())),
             3 => Some("the overseer plays a fortress for you".to_string()),
             4 => Some("set two sides against each other and watch".to_string()),
-            5 => Some("until next time".to_string()),
+            5 => Some(if app.audio.settings.enabled { "music, ambience and effects (M mutes)" } else { "off: M or Enter to turn it on" }.to_string()),
+            6 => Some("until next time".to_string()),
             _ => None,
         };
         // Same width on every line so the centered menu lines up.

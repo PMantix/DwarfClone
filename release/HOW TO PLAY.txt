@@ -30,6 +30,12 @@ FIRST STEPS
   p makes stockpiles, k looks at what's under the cursor, z is the status
   screen, n is nobles and posts, m is the military, c is the chronicle.
 
+SOUND
+-----
+- Music, ambience and effects are made by the game as it plays. M mutes
+  or unmutes at any time; O (or Sound on the title menu) sets the
+  volumes. No speakers? The game simply runs silently.
+
 DON'T WANT TO PLAY? WATCH
 -------------------------
 - "Watch a fort" on the title screen: an AI overseer builds and runs a

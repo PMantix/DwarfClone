@@ -13,10 +13,11 @@ use ratatui::layout::Rect;
 use std::collections::HashSet;
 
 pub mod arena;
+pub mod sound;
 
 pub const SPEEDS: [u32; 6] = [1, 2, 5, 10, 25, 60];
 pub const SAVE_DIR: &str = "saves";
-pub const TITLE_MENU: [&str; 6] = ["New world", "Continue", "Load game", "Watch a fort", "Arena", "Quit"];
+pub const TITLE_MENU: [&str; 7] = ["New world", "Continue", "Load game", "Watch a fort", "Arena", "Sound", "Quit"];
 
 /// Rows of the world settings screen.
 pub const SETUP_ROWS: [&str; 8] = ["Preset", "Seed", "World size", "History", "Civilizations", "Savagery", "Minerals", "Generate world"];
@@ -293,6 +294,9 @@ pub enum Mode {
     Highlights { sel: usize },
     /// A dwarf's life story and portrait (`ui/life.rs`).
     Life { id: u32, scroll: usize },
+    /// Sound on or off and the volumes (`app/sound.rs`), over the screen
+    /// it was opened from.
+    Sound { sel: usize },
 }
 
 /// Timings gathered for the performance overlay, and the last second's summary.
@@ -397,6 +401,13 @@ pub struct App {
     pub frame_dt: f64,
     /// The arena's screens, once opened.
     pub arena: Option<Box<arena::ArenaScreen>>,
+    /// Music, ambience and effects (silent until `main` starts it).
+    pub audio: crate::audio::Audio,
+    /// The screen the sound screen was opened from.
+    pub sound_from: Mode,
+    /// Frames the sound has followed, and the big moment it last played for.
+    pub sound_frames: u64,
+    pub audio_spot: Option<(String, String)>,
 }
 
 impl App {
@@ -461,6 +472,10 @@ impl App {
             director: crate::director::Director::default(),
             frame_dt: 1.0 / 30.0,
             arena: None,
+            audio: crate::audio::Audio::silent(),
+            sound_from: Mode::Title { sel: 0 },
+            sound_frames: 0,
+            audio_spot: None,
         }
     }
 
@@ -555,8 +570,9 @@ impl App {
 
     /// Screens that belong to a running fortress (not menus, the world map or loading).
     pub fn in_fortress(&self) -> bool {
+        let mode = if matches!(self.mode, Mode::Sound { .. }) { &self.sound_from } else { &self.mode };
         !matches!(
-            self.mode,
+            mode,
             Mode::Title { .. }
                 | Mode::LoadMenu { .. }
                 | Mode::Loading
@@ -830,6 +846,7 @@ impl App {
                 }
                 3 => self.start_watch(),
                 4 => self.open_arena(),
+                5 => self.open_sound(),
                 _ => self.quit = true,
             },
             _ => {}
@@ -1117,7 +1134,17 @@ impl App {
     }
 
     pub fn on_key(&mut self, k: KeyEvent) {
+        let before = self.mode.clone();
         self.director.touch();
+        if self.key_sound_global(&k) {
+            self.menu_click(&before);
+            return;
+        }
+        self.on_key_inner(k);
+        self.menu_click(&before);
+    }
+
+    fn on_key_inner(&mut self, k: KeyEvent) {
         self.flash = None;
         if k.code == KeyCode::Char('c') && k.modifiers.contains(KeyModifiers::CONTROL) {
             self.quit = true;
@@ -1210,7 +1237,7 @@ impl App {
         }
         let mode = self.mode.clone();
         match mode {
-            Mode::GameOver | Mode::Arena => {}
+            Mode::GameOver | Mode::Arena | Mode::Sound { .. } => {}
             Mode::Normal => self.key_normal(k),
             Mode::Designate { kind, corner } => match k.code {
                 KeyCode::Enter => self.confirm(),
@@ -1707,7 +1734,7 @@ impl App {
             KeyCode::Char('m') => self.mode = Mode::Military,
             KeyCode::Char('n') => self.mode = Mode::Nobles,
             KeyCode::Char('r') => self.mode = Mode::Reports { filter: 0, scroll: 0 },
-            KeyCode::Char('M') => self.mode = Mode::GrowMap { n: 0, e: 0, s: 0, w: 0 },
+            KeyCode::Char('G') => self.mode = Mode::GrowMap { n: 0, e: 0, s: 0, w: 0 },
             KeyCode::Char('B') => {
                 if self.game.overseer.is_some() {
                     self.mode = Mode::Brain { sel: 0 };

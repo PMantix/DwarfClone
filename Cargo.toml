@@ -10,6 +10,13 @@ crossterm = "0.27"
 ratatui = { version = "0.26", features = ["crossterm"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# Sound output (the synth itself is ours, in src/audio). Pinned: a long-settled release.
+cpal = { version = "=0.15.3", optional = true }
+
+[features]
+# Music, ambience and sound effects. `--no-default-features` builds a silent game.
+default = ["audio"]
+audio = ["dep:cpal"]
 
 [profile.dev]
 opt-level = 1

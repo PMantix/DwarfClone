@@ -314,6 +314,7 @@ impl Game {
         if b.blood > 0 {
             self.spatter(at, from, who, b.blood);
         }
+        self.blow_sound(b.blood > 0 || b.notable, b.msg.is_some(), at);
         if let Some(p) = b.severed {
             self.drop_part(owner, p, 0, at, from);
             self.count("gore.severed", 1);
