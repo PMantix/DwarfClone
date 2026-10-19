@@ -168,10 +168,12 @@ impl Game {
             melancholy: d.insane && d.melancholy,
         });
         self.annals.wounded_by.retain(|w| w.0 != d.id);
+        self.saga_death(d, text.trim_end_matches('.'));
     }
 
     pub(super) fn note_siege(&mut self, foe: &str, size: u32, leader: &str) {
         self.annals.sieges.push(SiegeNote { tick: self.tick, foe: foe.into(), size, leader: leader.into(), ..Default::default() });
+        self.saga_siege_start(self.annals.sieges.len() - 1);
     }
 
     /// A blow in a siege: which kind, and whether it drew blood.
@@ -218,6 +220,7 @@ impl Game {
             }
             .into();
             self.on_siege_end(i);
+            self.saga_siege_end(i);
         }
     }
 }

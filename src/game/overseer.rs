@@ -1781,6 +1781,9 @@ pub struct Trial {
     /// The knobs the batch set (`--knob`); empty for the defaults.
     #[serde(default)]
     pub knobs: BTreeMap<String, f64>,
+    /// The sagas it told, in order (`sagas.rs`; an open one has no closing).
+    #[serde(default)]
+    pub sagas: Vec<super::sagas::WorldSaga>,
 }
 
 /// A fresh fortress played by `style` up to the start of `until_day` (or
@@ -2037,6 +2040,10 @@ pub fn run_trial(seed: u64, style: Style, years: u64, knobs: &Knobs) -> Trial {
     } else {
         "Quiet years".into()
     };
+    if g.alive_count() == 0 {
+        g.sagas_fall();
+    }
+    let sagas = g.told_sagas().into_iter().rev().map(|s| g.world_saga(s, g.sagas.fell_by == Some(s.id))).collect();
     Trial {
         seed,
         style,
@@ -2058,6 +2065,7 @@ pub fn run_trial(seed: u64, style: Style, years: u64, knobs: &Knobs) -> Trial {
         story,
         counters: g.annals.counters.clone(),
         knobs: g.knobs.set.clone(),
+        sagas,
     }
 }
 

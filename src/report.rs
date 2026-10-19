@@ -281,6 +281,7 @@ mod tests {
             story: vec![],
             counters: BTreeMap::new(),
             knobs: BTreeMap::new(),
+            sagas: vec![],
         }
     }
 

@@ -174,6 +174,17 @@ The reel keeps its 24 weightiest clips (and at most 12 stars) and is saved with 
 clip is under 48 KB even in a crowded siege, so a megabyte at the very most and usually far
 less); filming draws no dice, so it never changes what happens (`game/reel.rs`, `ui/highlights.rs`).
 
+**Sagas.** The fort notices its story arcs as they happen and names them: a Warlord's pride
+(sallies won, a host sworn to avenge them, then ruin or a narrow escape), a grudge settled at
+dawn or by death, a hero's rise and fall, an omen come true, a curse, a den hunted out, a great
+siege, the last dwarf standing. Each has chapters quoting the real events with their dates; when
+one turns or ends it is told on an illuminated card (a framed parchment, the title as a banner, a
+block-letter drop cap, crimson for doom and gold for glory), even while the overseer plays. `S`
+lists them, with a glyph per chapter; the game-over page leads with the saga that ended the fort,
+and finished sagas go into the world, where a new fort founded with `n` from the game-over page
+can read them. Titles are hashed from the fort and the moment, so noticing a saga changes nothing
+(`game/sagas.rs`, `ui/saga.rs`; `--autoplay --sagas` prints each fort's).
+
 **A dwarf's life.** On a dwarf's sheet, `l` opens their Life page: a small portrait drawn from
 their looks (beard and hair of their own, greying past 120, a scar across the eye where their head
 was hurt, an empty sleeve or a crutch for a lost limb, the helm, breastplate, shield and weapon they
@@ -996,6 +1007,7 @@ cargo test --release profile_year -- --ignored --nocapture
 | `app/arena.rs`, `ui/arena.rs` | the arena's screens: setup, the bout, summary, report, win rates |
 | `game/moods.rs`, `ui/moodstrip.rs` | the mood strip in the top bar |
 | `game/reel.rs`, `ui/highlights.rs` | the highlight reel: filming big moments, playing them back |
+| `game/sagas.rs`, `ui/saga.rs` | sagas: story arcs linked from events, their illuminated cards and screen |
 | `game/lifestory.rs`, `ui/life.rs` | a dwarf's life story, eulogies, the portrait and Life page |
 | `ui/ambient.rs` | rain, snow, leaves, fireflies and dust over the map |
 | `ui/ticker.rs` | the news ticker along the bottom |

@@ -228,9 +228,12 @@ pub fn play(app: &mut App, args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// `--window --screenshot FILE [--seed N] [--days D] [--size WxH] [--cell PX] [--plan]`:
-/// watch a seeded fort for a few days, draw it the way the window would,
-/// save a PNG and print how long a frame took to draw.
+/// `--window --screenshot FILE [--seed N] [--days D] [--size WxH] [--cell PX]
+/// [--plan] [--saga | --sagas]`: watch a seeded fort for a few days, draw it
+/// the way the window would, save a PNG and print how long a frame took to draw.
+/// `--plan` shows the main level with the plan over it, `--saga` the fort's
+/// latest saga on its card, `--sagas` the Sagas screen (a great siege is told
+/// first if the fort has no saga yet).
 pub fn screenshot(args: &[String]) -> Result<()> {
     let out = opt(args, "--screenshot").ok_or_else(|| anyhow!("--screenshot needs a file name"))?;
     let seed: u64 = opt(args, "--seed").and_then(|s| s.parse().ok()).unwrap_or(7);
@@ -261,6 +264,21 @@ pub fn screenshot(args: &[String]) -> Result<()> {
             if let Some(l) = lp {
                 println!("Main level: {} facing {}, {} levels planned.", l.layout.name(), l.facing.name(), app.game.overseer.as_ref().map_or(0, |o| o.levels.len()));
             }
+        }
+    }
+    let card = args.iter().any(|a| a == "--saga");
+    if card || args.iter().any(|a| a == "--sagas") {
+        if app.game.told_sagas().is_empty() {
+            app.game.saga_demo();
+        }
+        app.game.spotlights.clear();
+        if card {
+            let s = app.game.told_sagas()[0];
+            let color = if s.doom { (220, 50, 60) } else { (240, 190, 70) };
+            let spot = crate::game::spotlight::Spotlight { title: "A saga is told".into(), text: s.title.clone(), at: None, color, saga: Some(s.id) };
+            app.spot = Some((spot, 10_000));
+        } else {
+            app.mode = crate::app::Mode::Sagas { sel: 0, open: false, from_end: false };
         }
     }
     let mut terminal = Terminal::new(TileBackend::new(w, h, cell, Box::new(move |c, s| fonts.raster(c, s))))?;

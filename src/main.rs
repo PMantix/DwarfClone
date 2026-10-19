@@ -117,6 +117,54 @@ fn main() -> Result<()> {
     result
 }
 
+/// A fort's sagas, for `--sagas`.
+fn print_sagas(sagas: &[game::sagas::WorldSaga]) {
+    for s in sagas {
+        let glyphs: String = s.chapters.iter().map(|c| c.1.glyph(s.doom && c.1 == game::sagas::Beat::Ending)).collect();
+        let state = if s.fell {
+            "ended the fort"
+        } else if s.closing.is_empty() {
+            "open"
+        } else if s.doom {
+            "grief"
+        } else {
+            "glory"
+        };
+        println!("           ☼ {} [{}] {} ({})", s.title, s.kind.name(), glyphs, state);
+        for (date, _, text) in &s.chapters {
+            println!("               {}: {}", date, text);
+        }
+        if !s.closing.is_empty() {
+            println!("               ~ {} ~", s.closing);
+        }
+    }
+    println!();
+}
+
+/// How many sagas the batch's forts told, and of which kinds.
+fn sagas_summary(all: &[game::Trial]) {
+    let n: usize = all.iter().map(|t| t.sagas.len()).sum();
+    let mut kinds: std::collections::BTreeMap<String, (usize, usize, usize)> = std::collections::BTreeMap::new();
+    for s in all.iter().flat_map(|t| t.sagas.iter()) {
+        let e = kinds.entry(s.kind.name().to_string()).or_default();
+        e.0 += 1;
+        if s.doom {
+            e.1 += 1;
+        }
+        if s.fell {
+            e.2 += 1;
+        }
+    }
+    let per: Vec<String> = all.iter().map(|t| t.sagas.len().to_string()).collect();
+    println!("\n  Sagas: {} in {} forts ({:.1} a fort; per fort {}).", n, all.len(), n as f64 / all.len().max(1) as f64, per.join(" "));
+    for (k, (c, doom, fell)) in kinds {
+        println!("    {:<16} {:>3}  ({} in grief, {} ended the fort)", k, c, doom, fell);
+    }
+    let fallen = all.iter().filter(|t| t.alive == 0).count();
+    let led = all.iter().filter(|t| t.alive == 0 && t.sagas.iter().any(|s| s.fell)).count();
+    println!("    Fallen forts led by the saga that ended them: {} of {}.", led, fallen);
+}
+
 /// `--autoplay [--runs N] [--years Y] [--style NAME] [--seed S] [--story]
 /// [--out FILE] [--knob name=v]... [--knobs FILE] [--list-knobs]`: play many
 /// fortresses with the overseer, side by side, tell how each ended and why
@@ -196,6 +244,7 @@ fn autoplay_batch(args: &[String]) {
     }
     drop(tx);
     let story = args.iter().any(|a| a == "--story");
+    let sagas = args.iter().any(|a| a == "--sagas");
     let mut all = Vec::new();
     for t in rx {
         println!(
@@ -220,6 +269,9 @@ fn autoplay_batch(args: &[String]) {
         } else if !t.ambitions.is_empty() {
             println!("           {}: {}", t.overseer, t.ambitions.join(" → "));
         }
+        if sagas {
+            print_sagas(&t.sagas);
+        }
         all.push(t);
         // Saved as it goes, so a batch cut short keeps what it has.
         if let Some(path) = opt("--out") {
@@ -236,6 +288,9 @@ fn autoplay_batch(args: &[String]) {
         println!("  Warning: no fort ever read the knob {} (misspelt? see --list-knobs).", k);
     }
     all.sort_by_key(|t| t.seed);
+    if sagas {
+        sagas_summary(&all);
+    }
     print!("{}", report::report(&all, years as usize));
     if let Some(path) = opt("--out") {
         match serde_json::to_string(&all).map_err(anyhow::Error::from).and_then(|s| std::fs::write(&path, s).map_err(anyhow::Error::from)) {

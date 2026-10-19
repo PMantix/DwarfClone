@@ -19,6 +19,7 @@ mod arena;
 mod health;
 mod highlights;
 mod life;
+pub mod saga;
 mod moodstrip;
 mod ambient;
 mod ticker;
@@ -1069,7 +1070,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
     let mut v: Vec<Line> = Vec::new();
     let title;
     match &app.mode {
-        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GrowMap { .. } | Mode::GameOver | Mode::Highlights { .. } | Mode::Life { .. } | Mode::Sound { .. } => {
+        Mode::Normal | Mode::Help | Mode::ConfirmQuit | Mode::Chronicle { .. } | Mode::Autoplay { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GrowMap { .. } | Mode::GameOver | Mode::Highlights { .. } | Mode::Life { .. } | Mode::Sagas { .. } | Mode::Sound { .. } => {
             title = "Main".to_string();
             v.extend(stocks(g));
             v.push(Line::default());
@@ -1985,6 +1986,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("c", "the chronicle: each year told as a story"),
         k("r", "reports: every past announcement, filtered"),
         k("h", "highlights: the fort's big moments, replayed"),
+        k("S", "sagas: the fort's story arcs, and fallen forts' from the legends"),
         k("F3", "performance: frames per second, and where the time goes"),
         k("\\", "status, brain, reports, chronicle, legends: side pane or full screen"),
         k("G", "grow the map north, east, south or west"),
@@ -3254,6 +3256,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::BuildMenu => draw_build_menu(f, area),
         Mode::Highlights { sel } => highlights::draw(f, area, app, sel),
         Mode::Life { id, scroll } => life::draw(f, area, &app.game, id, scroll),
+        Mode::Sagas { sel, open, .. } => saga::draw_screen(f, full, &app.game, sel, open),
         Mode::Help => {
             popup(f, area, 60, 50, " Help ", help_text());
         }
@@ -3292,7 +3295,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     // The news ticker, when the announcements are hidden or full (src/ui/ticker.rs).
     if app.in_fortress() && app.mode != Mode::GameOver {
         let covered = pane.is_some()
-            || matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Highlights { .. } | Mode::Life { .. } | Mode::Help);
+            || matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Highlights { .. } | Mode::Life { .. } | Mode::Sagas { .. } | Mode::Help);
         let reserve = if pane.is_some() { 28 } else if app.dockable() { 14 } else { 0 };
         ticker::draw(f, app, full, if covered { 0 } else { news_rows }, covered && app.game.overseer.is_some(), reserve);
     }
@@ -3301,8 +3304,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.in_fortress() && matches!(app.mode, Mode::Normal) {
         let over = if app.map_rect.width > 0 { app.map_rect } else { area };
         draw_banner(f, over, &app.game);
-        if let Some((s, _)) = &app.spot {
-            draw_spotlight(f, over, s, app.game.overseer.is_some());
+        if let Some((s, frames)) = &app.spot {
+            match s.saga {
+                Some(id) => saga::draw_card(f, over, &app.game, id, *frames, app.game.overseer.is_some()),
+                None => draw_spotlight(f, over, s, app.game.overseer.is_some()),
+            }
         }
         if let Some(line) = app.director.caption_line() {
             let w = (line.width() as u16).min(over.width);
@@ -3354,6 +3360,11 @@ fn draw_perf(f: &mut Frame, area: Rect, p: &crate::app::PerfShown) {
         Paragraph::new(lines).style(Style::default().bg(Color::Rgb(10, 10, 16))).block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(MUTED)).title(Span::styled(" Performance (F3) ", Style::default().fg(KEY)))),
         r,
     );
+}
+
+/// How many sagas the Sagas screen lists.
+pub fn saga_count(g: &Game) -> usize {
+    saga::pages(g).0.len()
 }
 
 /// A big moment, told in a card over the top of the map (the camera is on it).
@@ -3482,9 +3493,25 @@ fn draw_game_over(f: &mut Frame, area: Rect, g: &Game) {
         Line::from(Span::styled(format!("The fortress of {} has fallen.", g.fortress_name), Style::default().fg(red).add_modifier(Modifier::BOLD))).alignment(ratatui::layout::Alignment::Center),
         Line::from(Span::styled(g.date_string(), Style::default().fg(MUTED))).alignment(ratatui::layout::Alignment::Center),
         Line::default(),
+    ];
+    // The saga that ended it leads.
+    if let Some(s) = g.great_saga() {
+        let hue = saga::hue(s.doom);
+        v.push(Line::from(Span::styled(format!("☼ {} ☼", s.title.to_uppercase()), Style::default().fg(hue).add_modifier(Modifier::BOLD))).alignment(ratatui::layout::Alignment::Center));
+        for c in &s.chapters {
+            v.push(Line::from(vec![
+                Span::styled(format!(" {} ", c.beat.glyph(s.doom && c.beat == crate::game::sagas::Beat::Ending)), Style::default().fg(hue)),
+                Span::styled(format!("{}: ", g.short_date(c.tick).trim()), Style::default().fg(MUTED)),
+                Span::styled(c.text.clone(), Style::default().fg(TEXT)),
+            ]));
+        }
+        v.push(Line::from(Span::styled(format!("~ {} ~", s.closing), Style::default().fg(hue).add_modifier(Modifier::ITALIC))).alignment(ratatui::layout::Alignment::Center));
+        v.push(Line::default());
+    }
+    v.extend([
         plain(format!(" It stood {:.1} years, and {} dwarves lived there.", years, g.dwarves.len()), TEXT),
         plain(format!(" When it fell it was worth ☼{}.", g.wealth()), TEXT),
-    ];
+    ]);
     let sieges = g.annals.sieges.len();
     if sieges > 0 {
         let broken = g.annals.sieges.iter().filter(|s| s.outcome == "routed").count();
@@ -3516,9 +3543,14 @@ fn draw_game_over(f: &mut Frame, area: Rect, g: &Game) {
     if !g.reel.clips.is_empty() {
         keys.push(key_line("h", "The highlight reel", false));
     }
+    if !g.told_sagas().is_empty() {
+        keys.push(key_line("s", "The sagas of the fort", false));
+    }
     keys.push(key_line("w", "Look upon the ruins", false));
     keys.push(key_line("t", "Return to the title (the ruin is saved)", false));
+    keys.push(key_line("n", "Found a new fort in this world, which remembers its sagas", false));
     v.extend(keys);
+    let v = wrap_lines(v, 74);
     let h = v.len() as u16 + 2;
     popup(f, area, 78, h, " ☠ Game over ☠ ", v);
 }

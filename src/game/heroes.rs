@@ -45,6 +45,7 @@ impl Game {
         d.epithet_rank = rank;
         d.deed = Some(deed.to_string());
         let now = d.called();
+        self.saga_epithet(d.id, &before, &now, deed, rank);
         self.year_log.hero = Some(now.clone());
         self.milestone("hero", &format!("The fortress's first hero: {}", now));
         let tick = self.tick;

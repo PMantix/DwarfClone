@@ -70,12 +70,16 @@ impl Game {
             self.magic_daily();
             // The thing in the night (haunt.rs).
             self.haunt_daily();
+            // Sagas: arcs that end of themselves, the last dwarf (sagas.rs).
+            self.sagas_daily();
         }
         if tick % SEASON == 0 { self.season_turns(); }
         // Interface flair: the highlight reel films its next frame.
         if tick % reel::FRAME_TICKS == 1 { self.reel_tick(); }
         // A04 (squad life): squads at drill in the barracks.
         if tick % 2 == 1 { self.drills_tick(); }
+        // Sagas: a death may have been the last (sagas.rs).
+        self.sagas_tick();
     }
 
     /// The turn of a season: news, a new year, migrants, and whatever the

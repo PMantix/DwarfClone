@@ -159,6 +159,7 @@ impl Game {
         let text = format!("{} set out for {}, to clear the {} from their den.", squad, name, p);
         self.msg(&text, (240, 200, 120));
         self.spotlight("Into the wild", &text, Some(pos), (240, 200, 120));
+        self.saga_hunt_out(Some(i), 0, &name, &text);
         Self::note_ov(o, self.tick, format!("Sent {} to clear the {} out of {}.", squad, p, name));
     }
 
@@ -349,6 +350,7 @@ impl Game {
         let text = format!("{} march out to slay {}!", squad, title);
         self.msg(&text, (255, 200, 90));
         self.spotlight("The hunt for a legend", &format!("The overseer will not cower from {}. {}", title, text), Some(at), (255, 200, 90));
+        self.saga_hunt_out(None, beast, &title, &text);
         Self::note_ov(o, self.tick, format!("Sent {} to slay {}.", squad, title));
     }
 
@@ -529,6 +531,7 @@ impl Game {
         if h.kills > 0 && h.legend {
             let text = format!("{} slew {} at the gates of {}.", squad, h.name, fort);
             self.msg(&text, (255, 200, 90));
+            self.saga_hunt_home(h.lair, h.pack, true, h.kills, Some(text.clone()));
             self.legend(text);
             Self::note_ov(o, self.tick, format!("{} came home from the hunt: {} is slain.", squad, h.name));
         } else if h.kills > 0 {
@@ -539,12 +542,14 @@ impl Game {
             };
             let text = format!("{} killed {} {}.", squad, what, wher);
             self.msg(&text, (160, 230, 160));
+            self.saga_hunt_home(h.lair, h.pack, h.legend, h.kills, Some(text.clone()));
             self.legend(text);
             Self::note_ov(o, self.tick, format!("{} came home from the hunt: {} slain.", squad, what));
         } else if !why.is_empty() {
             // Not again straight away (knob hunt.rest).
             self.hunts.rest_until = self.tick + self.knob("hunt.rest", 600.0) as u64;
             self.msg(&format!("{} come home from the hunt: {}.", squad, why), (200, 200, 160));
+            self.saga_hunt_home(h.lair, h.pack, h.legend, 0, None);
             Self::note_ov(o, self.tick, format!("Called {} home from the hunt: {}.", squad, why));
         }
     }

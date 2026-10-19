@@ -12,6 +12,8 @@ pub struct Spotlight {
     /// Where to look, if anywhere in particular.
     pub at: Option<Pos>,
     pub color: (u8, u8, u8),
+    /// A saga's card (`sagas.rs`), by its id.
+    pub saga: Option<u32>,
 }
 
 impl Game {
@@ -23,7 +25,7 @@ impl Game {
         if self.spotlights.iter().any(|s| s.title == title) {
             return;
         }
-        self.spotlights.push(Spotlight { title: title.into(), text: text.into(), at, color });
+        self.spotlights.push(Spotlight { title: title.into(), text: text.into(), at, color, saga: None });
         self.pause_request = true;
     }
 

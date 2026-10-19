@@ -156,6 +156,9 @@ pub fn spotlight_cues(title: &str, color: (u8, u8, u8)) -> Vec<SfxKind> {
         "Siege!" | "An army on the march" | "Raiders sighted" | "The dead walk" => vec![SfxKind::Stinger(Tone::War)],
         "The siege is broken" | "Home in triumph" | "Their leader falls" | "The thing in the night is slain" => vec![SfxKind::Cheer, SfxKind::Stinger(Tone::Bright)],
         "A hero falls" | "A ghost" | "Cave-in!" | "An execution" => vec![SfxKind::Stinger(Tone::Grief)],
+        // A saga told: a chime and a fanfare for glory, a dirge for doom.
+        "A saga is told" if color.0 > 200 && color.1 < 140 => vec![SfxKind::Stinger(Tone::Grief)],
+        "A saga is told" => vec![SfxKind::Chime, SfxKind::Stinger(Tone::Bright)],
         _ => {
             let (r, g, _) = color;
             vec![SfxKind::Stinger(if r > 200 && g < 140 { Tone::Dark } else { Tone::Bright })]
