@@ -1424,6 +1424,111 @@ OVR-24 watch and nudge, and the Done-when test.
 
 ---
 
+### Status after wave 0 (2026-10)
+
+The plan above predates a lot of work. Wave 0 (W0-A as part of O02, and W0-B on branch
+`wave/m2-w0`) is done; this section is what a wave-1 agent codes against. **Where it and the
+item sections disagree, this section wins.** Every name below exists on master after wave 0.
+
+**Already done before wave 0, so packages skip these steps**
+
+- O01: name, two traits, temper sense, voiced notes, re-roll (`personality.rs`). Open: pick
+  traits by hand, note tags (`NoteKind`), intent line, commands on cards.
+- O02 (P2): `Facing` (`layout.rs`, with `Facing::at(start, fwd, side)`, not `Overseer::rel`),
+  per-level plans in `Overseer.levels: Vec<blueprint::LevelPlan>` (each with its own
+  `facing`), the `P` ghost overlay. The gatehouse itself still runs east (`base.offset`).
+- O03: smoothing and engraving, interiors, suites, room titles (`architect.rs`:
+  `o.interior.places`, rebuilt daily by `ov_places`; `Game::place_name(p)`), wealth tier is
+  `o.interior.tier` (no `Overseer.tier`). Statues of legends (`depict.rs`).
+- O04: towers, curtain wall, walkway (`towers.rs`, `fortify.rs`).
+- O05: mood strip (`ui/moodstrip.rs`, `Target::Dwarf`), director camera (`src/director.rs`,
+  `App.director`), highlight reel and replay (`reel.rs`, `ui/highlights.rs`, `Mode::Highlights`),
+  ambient particles, the news ticker. **P5 is down to step 3, sound-based reports.**
+- O06: life story and portrait (`lifestory.rs`, `ui/life.rs`, `Mode::Life`), eulogies, death
+  scenes in the chronicle (`Game::death_scenes`).
+- O09: named battles and episodes (`stories.rs`: `Game.stories.episodes`), places named for a
+  deed (WLD-02: `Game.stories.places`), sagas told on cards (`sagas.rs`, `Game.sagas`).
+- Shared machinery from M1: the schedule (`schedule.rs`), finder table (`finders.rs`),
+  overseer hooks (`overseer_hooks.rs`), knobs and counters (`knobs.rs`: `Game::knob`,
+  `Game::count`), the square-tile window (`src/window/`).
+
+**Renamed or replaced from the plan text above**
+
+| Plan says | Use instead | Why |
+|---|---|---|
+| `saga.rs`, `Game.saga`, `SagaKind`, `SagaEvent`, `record`/`saga_of`/`saga_since` | `memory.rs`: `Game.memory: Memories`, `MemoryKind`, `Memory`, `Game::record(kind, who, at, text, weight) -> u32`, `Game::memory_of(id)`, `Game::memory_since(tick)` | `sagas.rs` already has `SagaKind` and `Game.sagas` (story arcs) |
+| `places.rs` with its own `Place` store, `Game.places` | `places.rs`: `PlaceKind`, `Game::place_at(p) -> Option<&stories::Place>`, `Game::name_place(kind, a, b, name, why, weight, by_player) -> usize` over `Game.stories.places` | the WLD-02 places already live there; `stories::Place` gained `kind`, `b` (a box), `weight`, `by_player` |
+| `names.rs` `coin`, `hash` | as planned: `names::coin(seed, NameTheme)`, `names::hash(&[u64])` (on `stories::hash`) | |
+| `m2hooks.rs` `m2_daily`/`m2_tick`, `ov_m2.rs` `ov_m2` | a line in `schedule.rs` (in the group for its cadence) and in `overseer_hooks.rs` (`ov_daily_hooks`, `ov_alert_hooks`, `on_siege_end`) | those registries already exist and serve |
+| `links_<item>` helpers in `ambitions.rs: brain` | a row in `overseer_hooks.rs: extra_senses` (sense, level 0..1, per-ambition weights) | `brain` already reads extra senses; no `brain` edit needed |
+| `Trial.m2: M2Stats`, `m2stats.rs` | `game/m2.rs: Game::m2_stats()` (called once at the end of `run_trial`) writing `m2.*` counters; `report.rs: overseers(trials)` prints them by style | batch numbers go through counters (PLAN.md), and the batch file stays byte-identical while they are empty |
+| `src/glyphs.rs` | `src/ui/looks.rs` (`tile_look`, `foliage`, `water_glyph`, still `ratatui::Color`; `crate::ui::tile_look` still works) | `src/window/glyphs.rs` is the font cache; the reel already uses `ui::tile_look` |
+| `src/app_m2.rs`, `src/ui_overseer.rs`, `ui_units.rs`, `ui_reel.rs` | `src/app/m2.rs`, `src/ui/overseer.rs` (new files in the existing `app/` and `ui/` folders); P7 creates `src/ui/units.rs` | |
+| `Overseer.tier` | `o.interior.tier` | exists |
+| `Mode::Reel { clip, frame }` | `Mode::Highlights { sel }` | exists |
+| `Game.reel`, `Game.episodes` | `Game.reel`, `Game.stories.episodes` | exist |
+
+**Wave 0 added (all saved fields `#[serde(default)]`; the 6-fort batch is byte-identical)**
+
+- Stores: `Game.memory` (with first writers: deaths, births, weddings, epithets, artifacts,
+  madness, appointments, migrants, sieges and their ends, the monument), `Game.veins:
+  veins::Veins { follow, found }` and `veins::VeinFilter`, `Game.ledger: supply::Ledger`,
+  `Game.inspirations: inspire::Inspirations`, `Game.ov_fell: Option<(u32, String)>`,
+  `Game.zone_over` (not saved; rebuild from `zones`).
+- `LogEntry { at: Option<Pos>, kind: LogKind }`; `logkind.rs`: `LogKind` (13 kinds,
+  `ALL`, `name`, `classify(text, color)`), `LogEntry::kind()` (the set kind, else classified),
+  `Game::msg_at(text, color, at, kind)`. `Game::msg` is unchanged.
+- Shared fields: `Dwarf.buried`; `Zone.name`; `Building.{name, master, min_skill,
+  pending_links, timer}`; `Item.{kills, maker, decor}`; `DeathNote.last_words`;
+  `SiegeNote.{trapped, fell, drowned, broke_on, name, broke_at, kill_spots}`;
+  `YearLog.{named, reigns}`; `Spotlight.actions: Vec<Command>`. Fields on anything the batch
+  file holds (`DeathNote`, `SiegeNote`) are `skip_serializing_if` empty: keep it that way.
+- `Overseer.{dwarf, faith (60 by default), faith_log, reigns, journal, gate_stage,
+  orders_seen, seen_deaths, seen_sieges, commands, adopted}`; types in `reign.rs` (`Reign`,
+  `ReignEnd`, `JournalPage`, `sixty()`) and `commands.rs` (`Command { RaiseBridge, Shelter,
+  StandDown, Muster, Recall }` with `key`/`label`/`ALL`; `Game::command_overseer(c)` only
+  records the command so far).
+- `Sense::{Doubt, Ore, Inspired}`, in `Sense::ALL` and the brain, silent until their package
+  gives them a level and links through `extra_senses`.
+- `Mode::{OverseerTraits { sel }, Journal { year }, Family { id, sel }, Announce { sel }}`:
+  "coming soon" placeholders; keys in `app/m2.rs` (`key_overseer_traits`, `key_journal`,
+  `key_family`, `key_announce`), drawing in `ui/overseer.rs` (`draw_overseer_traits`,
+  `draw_journal`, `draw_family`, `draw_announce`). `App.{announce: app::m2::Announce,
+  step_pending}`.
+- Hook points, one line each: `App::key_m2(k) -> bool` (asked first by `key_normal`),
+  `ui/overlays.rs: draw(f, app, over)` (end of `ui::draw` in Normal mode),
+  `chronicle.rs: lines_m2(&log)` (after `lines_basic`, before the dead), `m2.rs:
+  m2_stats()`.
+- File splits (verbatim moves): `gatehouse.rs` (`ov_gate_alert` = the door-barring and
+  bridge half of `ov_alert`, `gate_lever`, `gate_bridges`, `ov_defences`,
+  `gate_wants_stone`, `gate_parts_missing`, `gatehouse`), `fit.rs` (`fit_bedrooms`,
+  `fit_workshops`, `fit_dining`, `fit_dormitory`, `fit_tavern`, `fit_hospital`, `fit_tomb`,
+  `fit_barracks`, `fit_grand`; `ov_fit` keeps the one-line arms), `chronicle.rs:
+  lines_basic`, `ui/looks.rs`.
+- Not added (the one package that needs it adds it): `ItemKind::Trophy`,
+  `BuildingKind::Display`, `Recipe::Encrust` (P4: enums with `ALL` lists the overseer and
+  menus iterate, so their arms come with the feature); `WorkOrder` fields and `Cond` (P9);
+  `Mode::Unit.tab`, `Mode::Units.{cat, sort}` (P7); `NoteKind` and `note_ov`'s kind (P1);
+  `naming.rs: deed_at` (P3); `gatehouse.rs: stations`, `next_part` (P1/P14).
+
+**Wave 1: what each package uses and owns**
+
+| Package | Uses | Owns (new or main files) | Shared lines it adds |
+|---|---|---|---|
+| P1 O01 rest | `Mode::OverseerTraits`, `Command`, `command_overseer`, `Spotlight.actions`, `Overseer.{commands, seen_deaths, seen_sieges}`, `names::hash` | `personality.rs`, `commands.rs`, `app/m2.rs: key_overseer_traits`, `ui/overseer.rs: draw_overseer_traits`, `spotlight.rs` | `note_ov` tags (merge first); a reflect line in `ov_daily_hooks`; Autoplay `t` |
+| P3 O03-b names | `name_place`, `place_at`, `PlaceKind`, `names::coin(_, Hall)`, `record(MemoryKind::Named, ..)`, `YearLog.named` | `naming.rs` (`deed_at`, `DeedKind`) | one `deed_at` line per deed site; `lines_named` in `lines_m2`. The look panel already shows `place_at` (via `story_place_at`). Room titles (`architect.rs: place_name`) don't yet look at `place_at`: if P3 makes them, note `place_name` also feeds battle names in `stories.rs`, so it shifts names, not the rng. |
+| P4 O03-c crafts | `Item.{kills, maker, decor}`, `names::coin(_, Weapon)`, `record` | `crafts.rs`, `items.rs` (adds `Trophy`), `buildings.rs` (adds `Display`, `Encrust`), `heroes.rs`, `detail.rs` | maker set at craft completion in `game.rs` |
+| P5 O05-a | step 3 only: `LogEntry.{at, kind}`, `msg_at`, `place_at`, `ui/overlays.rs` | `game/sounds.rs` exists (blows for the audio): put the reports in a new `sound_reports.rs` | `msg_at` swaps in combat.rs, disasters.rs, fire.rs |
+| P6 O05-b | `DeathNote.last_words`, `Mode::Announce`, `App.{announce, step_pending}`, `AnnounceRule`, `LogKind`, `key_m2` (step keys `s`/`S`/`D` while paused) | `lastwords.rs`, `app/m2.rs: key_announce` + `key_m2` arms, `ui/overseer.rs: draw_announce` | one line in `kill`; app `update` honours the rules |
+| P7 O06-a sheets | `memory_of(id)`, `record` for squad, wounds, recovery, duels, feats | `ui/units.rs` (new), `Mode::Unit`/`Mode::Units` (adds `tab`, `cat`, `sort`) | writer lines in military.rs, drama.rs, festivals.rs, psyche.rs |
+| P8 O07-a reign + faith | `reign.rs` types, `Overseer.{dwarf, faith, faith_log, reigns}`, `Game.ov_fell`, `Sense::Doubt` (`extra_senses` row), `YearLog.reigns`, `MemoryKind::Overseer` | `reign.rs` | `ov_reign` in `ov_daily_hooks`; one line in `kill`; `lines_reigns` in `lines_m2`; `m2.reigns` in `m2_stats` |
+| P9 O08-a | `supply.rs` (add `sources`, `have`, `feed`, `Source`, `MatFilter`, `Want`), `veins::VeinFilter` | `supply.rs`, `orders.rs` (adds `WorkOrder` fields with `serde(default)`, `Cond`) | `find_craft` in game.rs; `ov_orders` |
+| P10 O10-a | `Game.veins`, `VeinFilter`, `Sense::Ore` (`extra_senses` row), `msg_at(.., LogKind::Job)`, `record` | `veins.rs` (`follow_vein`), `material.rs` (`hardness`, `edge`) | `Task::Dig`/`complete_dig` in game.rs; `reveal_around`; `m2.ore_mined` in `m2_stats` |
+| P11 O11-a | `Zone.name`, `Building.name`, `Game.zone_over`, `name_place(.., by_player: true)`, `fit.rs` | `construct.rs`, `rooms.rs`, `fit.rs: fit_dining, fit_bedrooms` | `designate`/`add_zone` in game.rs; rename key in `app/m2.rs` |
+
+Conflict rules from the table below still hold (P1's note tags first; P5 owns the top-row
+split in `ui::draw`, P7 owns `Mode::Unit`; P9 and P10 edit different game.rs functions).
+
 ### Work packages and waves
 
 Sessions are agent sessions; "∥" means can run at the same time.
