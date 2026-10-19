@@ -31,10 +31,11 @@ pub struct WellPlan {
 }
 
 /// A cistern by the water: a chamber cut two levels under the halls beside
-/// water outside (a lake, a river) whose surface is one level under them.
-/// The water comes in through a floodgate at the water's edge and falls down
-/// a drop into the chamber; the well stands over the drop, at the end of a
-/// tunnel from the halls.
+/// water outside (a lake, a river). The water comes in through a floodgate
+/// at the water's edge and falls into the chamber: straight down a drop when
+/// the water lies just under the halls, or down a feed shaft of its own when
+/// it lies level with them or above (a river on the hillside over the fort).
+/// The well stands over the drop, at the end of a tunnel from the halls.
 ///
 /// It sits by the water rather than under a hall because water levels out a
 /// step lower with every tile it spreads: carried far through a tunnel it
@@ -68,6 +69,13 @@ pub struct CisternPlan {
     #[serde(default)]
     pub leak: bool,
     pub since: u64,
+    /// The shaft the water falls down from the gate to the chamber, the
+    /// gate's level first (empty when the gate opens onto the drop).
+    #[serde(default)]
+    pub feed: Vec<Pos>,
+    /// The diggers' stair beside the feed, from the chamber up to the gate.
+    #[serde(default)]
+    pub climb: Vec<Pos>,
 }
 
 impl CisternPlan {
@@ -77,16 +85,19 @@ impl CisternPlan {
 
     /// Where water let in at the gate may go.
     fn wet(&self) -> HashSet<Pos> {
-        self.chamber_tiles().chain([self.gate, self.drop, self.shaft]).collect()
+        self.chamber_tiles().chain([self.gate, self.drop, self.shaft]).chain(self.feed.iter().copied()).chain(self.climb.iter().copied()).collect()
     }
 
-    /// What each planned tile is dug as (the drop and the well are
-    /// channelled later, once the chamber under them is cut).
+    /// What each planned tile is dug as (the drop, the feed and the well
+    /// are channelled later, once there's somewhere to stand beside them).
     fn digs(&self) -> Vec<(Pos, Desig)> {
         let mut v: Vec<(Pos, Desig)> = self.way.iter().map(|&p| (p, Desig::Dig)).collect();
         v.push((self.stair, Desig::StairDown));
         v.push((self.shaft, Desig::StairUD));
-        v.extend(self.chamber_tiles().map(|c| (c, if c == self.shaft.down() { Desig::StairUp } else { Desig::Dig })));
+        let foot = self.climb.first().copied();
+        v.extend(self.chamber_tiles().map(|c| (c, if c == self.shaft.down() || Some(c) == foot { Desig::StairUp } else { Desig::Dig })));
+        let n = self.climb.len();
+        v.extend(self.climb.iter().enumerate().skip(1).map(|(i, &c)| (c, if i + 1 == n { Desig::StairDown } else { Desig::StairUD })));
         v.push((self.gate, Desig::Dig));
         v
     }
@@ -344,17 +355,36 @@ impl Game {
 
     // ------------------------------------------------------------- cistern
 
+    /// Whether `p` is in the rock round the waterworks (within two tiles
+    /// and a level of anything planned for them), which no other digging
+    /// may cut: the quarry, the miners after ore, a new hall.
+    pub(super) fn by_waterworks(&self, p: Pos) -> bool {
+        let near = |a: Pos, b: Pos| {
+            p.x >= a.x.min(b.x) - 2 && p.x <= a.x.max(b.x) + 2 && p.y >= a.y.min(b.y) - 2 && p.y <= a.y.max(b.y) + 2 && p.z >= a.z.min(b.z) - 1 && p.z <= a.z.max(b.z) + 1
+        };
+        if let Some(w) = self.waterworks.well.as_ref() {
+            if near(Pos::new(w.top.x, w.top.y, w.water_z), w.top) || w.stair.map_or(false, |s| near(s, s)) {
+                return true;
+            }
+        }
+        let Some(c) = self.waterworks.cistern.as_ref() else { return false };
+        near(c.chamber.0, c.chamber.1)
+            || [c.well, c.stair, c.shaft, c.drop, c.gate, c.breach].iter().chain(&c.way).chain(&c.feed).chain(&c.climb).any(|&q| near(q, q))
+    }
+
     /// The shelter's tiles' mask, if there is a shelter.
     fn shelter_mask(&self) -> Option<u8> {
         self.burrows.iter().find(|b| Some(b.bit) == self.alert_burrow).map(|b| b.mask())
     }
 
     /// Where a cistern could go when there's no water below but some
-    /// outside, a lake or a river whose surface is one level under the
-    /// halls: the breach a wall beside the water, under ground a dwarf can
-    /// stand on and channel; the gate behind it; the drop behind that, with
-    /// the stair beside it down to the chamber; the well over the drop; and
-    /// a tunnel through sound rock from the halls to the stair.
+    /// outside, a lake or a river whose surface is anywhere from one level
+    /// under the halls to a few above them: the breach a wall beside the
+    /// water, under ground a dwarf can stand on and channel; the gate behind
+    /// it; the feed behind that, falling to the chamber, with the diggers'
+    /// stair beside it; two on, the drop under the well, with the stair
+    /// beside it down to the chamber; and a tunnel through sound rock from
+    /// the halls to that stair.
     pub(super) fn find_cistern_spot(&self, o: &Overseer) -> Option<CisternPlan> {
         let base = o.base?;
         let mask = self.shelter_mask()?;
@@ -435,72 +465,94 @@ impl Game {
             }
             n
         };
+        // The river beds keep running whatever is drawn off them.
+        let beds: HashSet<Pos> = w.river_beds.iter().map(|b| b.0).collect();
+        // Clear of the tunnel by a tile: the shafts that pass the halls'
+        // level must not open onto it.
+        let clear = |way: &[Pos], q: Pos| way.iter().all(|t| (t.x - q.x).abs() > 1 || (t.y - q.y).abs() > 1);
+        let cz = lz - 1;
+        let rise = self.knob("cistern.max_rise", 4.0) as i32;
         let mut best: Option<(i32, CisternPlan)> = None;
-        for y in y0.max(1)..=y1.min(w.h - 2) {
-            for x in x0.max(1)..=x1.min(w.w - 2) {
-                let r = Pos::new(x, y, lz);
-                let Some(t) = w.get(r) else { continue };
-                if t.water < 6 || t.frozen || t.magma > 0 || !w.outside(r) {
-                    continue;
-                }
-                for &(dx, dy) in DIRS4.iter() {
-                    // Away from the water: breach, gate, the drop; the shaft
-                    // beside the drop, to one side or the other.
-                    let br = r.offset(dx, dy, 0);
-                    let gate = br.offset(dx, dy, 0);
-                    let drop = gate.offset(dx, dy, 0);
-                    if !w.in_bounds(drop.offset(2 * dx, 2 * dy, 0)) || !self.shaft_rock(br) || w.surface_z(br.x, br.y) != z0 || !rock(gate) || !rock(drop) {
+        for wl in lz..=z0 + rise {
+            for y in y0.max(1)..=y1.min(w.h - 2) {
+                for x in x0.max(1)..=x1.min(w.w - 2) {
+                    let r = Pos::new(x, y, wl);
+                    let Some(t) = w.get(r) else { continue };
+                    if t.water < 6 || t.frozen || t.magma > 0 || !w.outside(r) {
                         continue;
                     }
-                    // Beside the breach only rock or more of the water.
-                    let side_ok = [(dy, dx), (-dy, -dx)].iter().all(|&(sx, sy)| {
-                        let q = br.offset(sx, sy, 0);
-                        w.solid(q) || w.get(q).map_or(false, |t| t.water > 0 && w.outside(q))
-                    });
-                    // Ground above the breach to channel it from, and somewhere to stand.
-                    let up = br.up();
-                    let up_ok = w.get(up).map_or(false, |t| {
-                        matches!(t.kind, TileKind::Floor | TileKind::Ramp) && t.water == 0 && t.building == 0 && t.desig == Desig::None && t.zone == 0 && t.mat.diggable()
-                    });
-                    let stand = DIRS8.iter().any(|&(sx, sy)| w.walkable(up.offset(sx, sy, 0)));
-                    if !side_ok || !up_ok || !stand {
-                        continue;
-                    }
-                    for (px, py) in [(dy, dx), (-dy, -dx)] {
-                        let shaft = drop.offset(px, py, 0);
-                        let (well, stair) = (drop.up(), shaft.up());
-                        let Some(&(_, cost)) = prev.get(&(stair.x, stair.y)) else { continue };
-                        if best.as_ref().map_or(false, |b| b.0 <= cost) || !rock(shaft) {
+                    for &(dx, dy) in DIRS4.iter() {
+                        // Away from the water: breach, gate, and the feed's
+                        // top; two on from the feed, the drop under the well.
+                        let br = r.offset(dx, dy, 0);
+                        let gate = br.offset(dx, dy, 0);
+                        let top = gate.offset(dx, dy, 0);
+                        if !w.in_bounds(top.offset(3 * dx, 3 * dy, 0)) || !self.shaft_rock(br) || w.surface_z(br.x, br.y) != wl + 1 || !rock(gate) || !rock(top) {
                             continue;
                         }
-                        // The chamber: under the drop and the shaft. Small, so
-                        // what comes in fills it deep: a well only needs water
-                        // there, and water two deep never dries away.
-                        let (c, f) = (drop.down(), shaft.down());
-                        let (a, b) = (Pos::new(c.x.min(f.x), c.y.min(f.y), lz - 1), Pos::new(c.x.max(f.x), c.y.max(f.y), lz - 1));
-                        // The well and the stair in rock under the ground,
-                        // nothing open beside the well but the stair and the halls.
-                        let alcove_ok = [well, stair].iter().all(|&q| self.shaft_rock(q) && !w.outside(q) && !near_inner(q))
-                            && DIRS8.iter().map(|&(sx, sy)| well.offset(sx, sy, 0)).all(|q| q == stair || w.solid(q) || shelter(q));
-                        if !alcove_ok || !box_iter(a, b).all(|q| rock(q)) || body_size(r) < min_water {
+                        // Beside the breach only rock or more of the water.
+                        let side_ok = [(dy, dx), (-dy, -dx)].iter().all(|&(sx, sy)| {
+                            let q = br.offset(sx, sy, 0);
+                            w.solid(q) || w.get(q).map_or(false, |t| t.water > 0 && w.outside(q))
+                        });
+                        // Ground above the breach to channel it from, and somewhere to stand.
+                        let up = br.up();
+                        let up_ok = w.get(up).map_or(false, |t| {
+                            matches!(t.kind, TileKind::Floor | TileKind::Ramp) && t.water == 0 && t.building == 0 && t.desig == Desig::None && t.zone == 0 && t.mat.diggable()
+                        });
+                        let stand = DIRS8.iter().any(|&(sx, sy)| w.walkable(up.offset(sx, sy, 0)));
+                        if !side_ok || !up_ok || !stand {
                             continue;
                         }
-                        let mut way = Vec::new();
-                        let mut at = prev[&(stair.x, stair.y)].0;
-                        while at != (stair.x, stair.y) {
-                            way.push(Pos::new(at.0, at.1, z0));
-                            let next = prev[&at].0;
-                            if next == at {
-                                break;
+                        // The feed, down to the level over the chamber.
+                        let feed: Vec<Pos> = (lz..=wl).rev().map(|z| Pos::new(top.x, top.y, z)).collect();
+                        if !feed.iter().all(|&q| rock(q)) {
+                            continue;
+                        }
+                        for (px, py) in [(dy, dx), (-dy, -dx)] {
+                            let drop = Pos::new(top.x + 2 * dx, top.y + 2 * dy, lz);
+                            let shaft = drop.offset(px, py, 0);
+                            let (well, stair) = (drop.up(), shaft.up());
+                            let Some(&(_, dist)) = prev.get(&(stair.x, stair.y)) else { continue };
+                            // (Every level the water falls is more to dig.)
+                            let cost = dist + 2 * (wl - lz);
+                            if best.as_ref().map_or(false, |b| b.0 <= cost) || !rock(shaft) || !rock(drop) {
+                                continue;
                             }
-                            at = next;
+                            let climb: Vec<Pos> = (cz..=wl).map(|z| Pos::new(top.x + px, top.y + py, z)).collect();
+                            if !climb.iter().skip(1).all(|&q| rock(q)) {
+                                continue;
+                            }
+                            // The chamber: under the feed, the drop and the
+                            // stairs. Small, so what comes in fills it deep: a
+                            // well only needs water there, and water two deep
+                            // never dries away.
+                            let (c, f) = (Pos::new(top.x, top.y, cz), shaft.down());
+                            let (a, b) = (Pos::new(c.x.min(f.x), c.y.min(f.y), cz), Pos::new(c.x.max(f.x), c.y.max(f.y), cz));
+                            // The well and the stair in rock under the ground,
+                            // nothing open beside the well but the stair and the halls.
+                            let alcove_ok = [well, stair].iter().all(|&q| self.shaft_rock(q) && !w.outside(q) && !near_inner(q))
+                                && DIRS8.iter().map(|&(sx, sy)| well.offset(sx, sy, 0)).all(|q| q == stair || w.solid(q) || shelter(q));
+                            if !alcove_ok || !box_iter(a, b).all(|q| rock(q)) || !(beds.contains(&r) || body_size(r) >= min_water) {
+                                continue;
+                            }
+                            let mut way = Vec::new();
+                            let mut at = prev[&(stair.x, stair.y)].0;
+                            while at != (stair.x, stair.y) {
+                                way.push(Pos::new(at.0, at.1, z0));
+                                let next = prev[&at].0;
+                                if next == at {
+                                    break;
+                                }
+                                at = next;
+                            }
+                            way.reverse();
+                            if way.contains(&well) || feed.iter().chain(&climb).any(|&q| q.z == z0 && !clear(&way, q)) {
+                                continue;
+                            }
+                            let plan = CisternPlan { well, stair, shaft, drop, chamber: (a, b), gate, breach: br, way, lever: None, breached: false, leak: false, since: self.tick, feed: feed.clone(), climb };
+                            best = Some((cost, plan));
                         }
-                        way.reverse();
-                        if way.contains(&well) {
-                            continue;
-                        }
-                        let plan = CisternPlan { well, stair, shaft, drop, chamber: (a, b), gate, breach: br, way, lever: None, breached: false, leak: false, since: self.tick };
-                        best = Some((cost, plan));
                     }
                 }
             }
@@ -546,6 +598,13 @@ impl Game {
         if !open(self, plan.drop) && dug(self, plan.drop.down()) && unmarked(self, plan.drop) {
             self.designate(plan.drop, plan.drop, Desig::Channel);
         }
+        // The feed, a level at a time as the stair beside it reaches it.
+        for &f in plan.feed.iter() {
+            let beside = plan.climb.iter().find(|c| c.z == f.z).map_or(false, |&c| dug(self, c));
+            if beside && !open(self, f) && unmarked(self, f) {
+                self.designate(f, f, Desig::Channel);
+            }
+        }
         if self.building_on(plan.well, BuildingKind::Well).is_none() {
             if open(self, plan.well) {
                 self.place_building(BuildingKind::Well, plan.well);
@@ -580,7 +639,10 @@ impl Game {
                 }
                 let linked = self.buildings[&lever].links.contains(&gate);
                 let shut = self.world.t(plan.gate).door == crate::world::FLOODGATE_SHUT;
-                let all_dug = plan.way.iter().chain([plan.stair, plan.shaft].iter()).all(|&p| dug(self, p)) && plan.chamber_tiles().all(|p| dug(self, p)) && open(self, plan.drop);
+                let all_dug = plan.way.iter().chain([plan.stair, plan.shaft].iter()).chain(plan.climb.iter()).all(|&p| dug(self, p))
+                    && plan.chamber_tiles().all(|p| dug(self, p))
+                    && open(self, plan.drop)
+                    && plan.feed.iter().all(|&p| open(self, p));
                 let well = self.building_on(plan.well, BuildingKind::Well).is_some();
                 if linked && shut && all_dug && well {
                     // Last of all, break through to the water, from the ground above.
@@ -592,7 +654,7 @@ impl Game {
             }
             if !plan.breached && tick > plan.since + self.knob("cistern.give_up_days", 120.0) as u64 * DAY {
                 // Never finished: leave it dry.
-                for (p, _) in plan.digs() {
+                for p in plan.digs().into_iter().map(|d| d.0).chain(plan.feed.iter().copied()) {
                     if self.world.t(p).desig != Desig::None {
                         self.designate(p, p, Desig::None);
                     }
@@ -633,6 +695,12 @@ impl Game {
     /// Whether water let in at the gate could only reach the chamber (it
     /// spreads and falls, never rises).
     fn cistern_sealed(&self, plan: &CisternPlan) -> bool {
+        self.cistern_leak(plan).is_none()
+    }
+
+    /// Where water let in at the gate would get out of the cistern, if
+    /// anywhere.
+    fn cistern_leak(&self, plan: &CisternPlan) -> Option<Pos> {
         let allowed = plan.wet();
         let mut seen: HashSet<Pos> = HashSet::new();
         let mut todo = vec![plan.gate];
@@ -641,7 +709,7 @@ impl Game {
                 continue;
             }
             if !allowed.contains(&p) {
-                return false;
+                return Some(p);
             }
             for &(dx, dy) in DIRS4.iter() {
                 let q = p.offset(dx, dy, 0);
@@ -654,7 +722,7 @@ impl Game {
                 todo.push(p.down());
             }
         }
-        true
+        None
     }
 
     /// Every ten ticks (`overseer_hooks.rs`): open the cistern's floodgate
@@ -704,7 +772,12 @@ mod tests {
 
     fn fort_over_water_at(seed: u64) -> Option<(Game, Pos)> {
         let mut g = trial_game(seed, Style::Steady, 40);
-        // (Whatever it began by the water outside is put aside.)
+        // (Whatever it began by the water outside is put aside, its digging too.)
+        if let Some(c) = g.waterworks.cistern.take() {
+            for p in c.digs().into_iter().map(|d| d.0).chain(c.feed.iter().copied()) {
+                g.designate(p, p, Desig::None);
+            }
+        }
         g.waterworks = Waterworks::default();
         let o = g.overseer.clone().unwrap();
         if !o.did("burrow") || o.did("well") || g.find_well_spot(&o).is_some() {
@@ -737,10 +810,10 @@ mod tests {
         g.spawn_item(ItemKind::Bucket, Mat::Wood, e);
         g.spawn_item(ItemKind::Block, Mat::Granite, e);
         let start = g.tick;
-        while g.tick < start + 3 * DAY && g.working_wells().is_empty() {
+        while g.tick < start + 10 * DAY && g.working_wells().is_empty() {
             g.step();
         }
-        assert_eq!(g.working_wells(), vec![top], "no well after {} ticks; plan {:?}", g.tick - start, g.waterworks.well);
+        assert_eq!(g.working_wells(), vec![top], "no well after {} ticks; plan {:?}; well {:?}", g.tick - start, g.waterworks.well, g.building_on(top, BuildingKind::Well).map(|b| b.built));
         // Done, told, and counted.
         for _ in 0..DAY {
             g.step();
@@ -821,6 +894,8 @@ mod tests {
             breached: true,
             leak: false,
             since: g.tick,
+            feed: Vec::new(),
+            climb: Vec::new(),
         }
     }
 
@@ -869,6 +944,47 @@ mod tests {
         g.ov_cistern_gate(&mut o);
         g.overseer = Some(o);
         assert!(g.buildings.values().any(|b| b.kind == BuildingKind::Lever && b.pull), "no pull asked for with enemies about");
+    }
+
+    /// Most forts stand by a river, and since the stair is sited high
+    /// and dry, the river runs a level or more above the halls: the
+    /// cistern's feed falls from a floodgate in the bank to the chamber
+    /// under the halls, its well draws inside the walls, and none of the
+    /// water reaches the halls. The first Steady fort from seed 5000 on
+    /// that plans one with its gate at the halls' level or above.
+    #[test]
+    fn a_river_above_the_halls_fills_a_cistern() {
+        for seed in 5000..5010u64 {
+            let mut g = Game::new(seed);
+            g.set_overseer(Some(Style::Steady));
+            let mut plan: Option<CisternPlan> = None;
+            while g.tick < 120 * DAY && g.alive_count() > 0 {
+                g.step();
+                if plan.is_none() {
+                    plan = g.waterworks.cistern.clone().filter(|c| c.gate.z >= c.well.z);
+                }
+                if plan.is_some() && g.overseer.as_ref().unwrap().did("cistern") {
+                    break;
+                }
+            }
+            let Some(c) = plan else { continue };
+            let o = g.overseer.as_ref().unwrap();
+            assert!(o.did("cistern") && o.did("well"), "seed {}: the cistern by the river never filled: {:?}", seed, g.waterworks.cistern);
+            // The water fell the whole way: the feed runs from the gate's
+            // level down past the halls', beside the diggers' stair.
+            assert_eq!(c.feed.first().map(|f| f.z), Some(c.gate.z));
+            assert_eq!(c.feed.last().map(|f| f.z), Some(c.drop.z));
+            assert_eq!(c.climb.len() as i32, c.gate.z - c.chamber.0.z + 1);
+            assert!(g.working_wells().contains(&c.well), "seed {}: the well is dry", seed);
+            assert_eq!(g.annals.counters.get("cisterns"), Some(&1));
+            // Sealed, and the halls dry: the well, its stair and the tunnel.
+            assert!(g.cistern_sealed(&c), "seed {}: the cistern leaks at {:?}", seed, g.cistern_leak(&c));
+            for p in c.way.iter().chain([c.well, c.stair].iter()) {
+                assert_eq!(g.world.t(*p).water, 0, "seed {}: water at {:?} on the halls' level", seed, p);
+            }
+            return;
+        }
+        panic!("no Steady fort from seed 5000 on filled a cistern from water above its halls");
     }
 
     #[test]
@@ -952,7 +1068,8 @@ mod tests {
                     let gate = g.building_on(c.gate, BuildingKind::Floodgate).map(|b| (b.built, b.locked));
                     let lever = c.lever.and_then(|q| g.building_on(q, BuildingKind::Lever)).map(|b| (b.built, b.links.len(), b.pull));
                     format!(
-                        "way {}/{} chamber dug {} water {:?} gate {:?} lever {:?} well {:?} breached {} breach water {} leak {} mech {}",
+                        "leak {:?} way {}/{} chamber dug {} water {:?} gate {:?} lever {:?} well {:?} breached {} breach water {} leak {} mech {}",
+                        g.cistern_leak(c),
                         dug,
                         c.way.len(),
                         c.chamber_tiles().filter(|p| !g.world.solid(*p)).count(),
@@ -975,13 +1092,13 @@ mod tests {
         if let Some(c) = g.waterworks.cistern.as_ref() {
             let b = c.breach;
             eprintln!("gate {:?} breach {:?} well {:?} way {:?}", c.gate, c.breach, c.well, c.way);
-            for z in [b.z + 1, b.z] {
+            for z in (c.chamber.0.z..=b.z + 1).rev() {
                 for y in b.y - 6..=b.y + 6 {
                     let row: String = (b.x - 12..=b.x + 12)
                         .map(|x| {
                             let q = Pos::new(x, y, z);
                             let t = g.world.t(q);
-                            if q == c.gate { 'G' } else if q == b { 'B' } else if t.water > 0 { char::from_digit(t.water as u32, 10).unwrap() } else if t.kind.solid() { '#' } else if t.kind == TileKind::Open { ' ' } else { '.' }
+                            if q == c.gate { 'G' } else if q == b { 'B' } else if t.kind == TileKind::StairUp { '<' } else if t.kind == TileKind::StairDown { '>' } else if t.kind == TileKind::StairUD { 'X' } else if t.kind == TileKind::Ramp { 'r' } else if t.water > 0 { char::from_digit(t.water as u32, 10).unwrap() } else if t.kind.solid() { '#' } else if t.kind == TileKind::Open { ' ' } else { '.' }
                         })
                         .collect();
                     eprintln!("z{} {}", z, row);

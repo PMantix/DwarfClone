@@ -42,6 +42,8 @@ impl Game {
         // M1 (survival):
         self.ov_berserk(o);
         self.ov_cistern_gate(o);
+        self.ov_levy(o);
+        self.ov_sally(o);
         self.ov_rescue(o);
         self.ov_hunts(o);
         self.ov_towers_alert(o);

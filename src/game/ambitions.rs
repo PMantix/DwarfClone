@@ -658,7 +658,9 @@ impl Game {
                     let Some(t) = self.world.get(p) else { continue };
                     // Only what a miner can stand beside: next to ground we've dug ourselves.
                     let reachable = || DIRS8.iter().any(|&(ex, ey)| self.world.get(p.offset(ex, ey, 0)).map_or(false, |q| q.dug && !q.kind.solid() && q.water <= 3));
-                    if t.revealed && t.kind == TileKind::Wall && t.desig == Desig::None && (t.mat.is_ore() || t.mat.is_gem()) && t.built_from.is_none() && reachable() {
+                    // (Nor the rock round the waterworks: a vein the
+                    // cistern's chamber laid bare would let its water out.)
+                    if t.revealed && t.kind == TileKind::Wall && t.desig == Desig::None && (t.mat.is_ore() || t.mat.is_gem()) && t.built_from.is_none() && reachable() && !self.by_waterworks(p) {
                         self.designate(p, p, Desig::Dig);
                         n += 1;
                         if n >= max {

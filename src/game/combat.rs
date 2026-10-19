@@ -1099,6 +1099,9 @@ impl Game {
         if self.annals.sieges.last().map_or(false, |s| s.outcome == "routed") {
             text.push_str(" They have not forgotten their last defeat, and come in greater numbers.");
         }
+        if self.sally_fame() > 0 {
+            text.push_str(" The tale of the sallies at the gate has spread, and they mean to end them.");
+        }
         text.push_str(&self.captive_words(foe.civ, warned));
         self.msg(&text, (255, 120, 80));
         self.spotlight(if raid { "Raiders sighted" } else { "An army on the march" }, &text, None, (255, 120, 80));
@@ -1119,7 +1122,8 @@ impl Game {
         } else {
             let broken = self.annals.sieges.iter().filter(|s| s.outcome == "routed").count() as u32;
             let per_broken = self.knob("siege.per_broken", 1.0) as u32;
-            3 + self.alive_count() as u32 / 5 + self.wealth() / 25_000 + broken * per_broken + self.rng.range(0, 3) as u32
+            // (And a fort famed for riding out to meet them draws more: sally.rs.)
+            3 + self.alive_count() as u32 / 5 + self.wealth() / 25_000 + broken * per_broken + self.sally_fame() + self.rng.range(0, 3) as u32
         };
         let cap = self.knob("siege.cap", 20.0).max(1.0) as u32;
         let grudge = self.annals.grudges.get(&civ).copied().unwrap_or(0);

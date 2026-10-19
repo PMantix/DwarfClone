@@ -32,6 +32,12 @@ pub struct Shelter {
     /// When the ways in were last looked for during an alert.
     #[serde(skip)]
     pub ways_checked: u64,
+    /// When the alert now on went up.
+    #[serde(default)]
+    pub alert_since: u64,
+    /// The shelter has sung in the alert now on.
+    #[serde(default)]
+    pub sang: bool,
 }
 
 /// What the shelter's larder takes: drink and meals, nothing else.
@@ -74,6 +80,8 @@ impl Game {
         if self.civ_alert != self.shelter.was_alert {
             self.shelter.was_alert = self.civ_alert;
             if self.civ_alert {
+                self.shelter.alert_since = self.tick;
+                self.shelter.sang = false;
                 self.gate_out_of_shelter(base);
                 self.shelter.ways_checked = self.tick;
                 self.wall_up_ways_in(o, base);
@@ -82,6 +90,50 @@ impl Game {
             self.shelter.ways_checked = self.tick;
             self.wall_up_ways_in(o, base);
         }
+        if self.civ_alert && !self.shelter.sang && self.tick >= self.shelter.alert_since + self.knob("shelter.sing_after", 400.0) as u64 {
+            self.shelter_sings();
+        }
+    }
+
+    /// The shelter sings: a while into a siege, those waiting it out in the
+    /// shelter take up a song together, and take heart from it; a lament,
+    /// if the siege has already cost the fort someone.
+    pub(super) fn shelter_sings(&mut self) {
+        let Some(mask) = self.shelter_bits() else { return };
+        let inside: Vec<usize> = (0..self.dwarves.len())
+            .filter(|&i| {
+                let d = &self.dwarves[i];
+                d.alive && !d.soldier && !d.insane && self.world.get(d.pos).map_or(false, |t| t.burrows & mask != 0)
+            })
+            .collect();
+        if inside.len() < 3 {
+            return;
+        }
+        self.shelter.sang = true;
+        let siege = self.annals.sieges.iter().rposition(|s| s.ended.is_none());
+        let fallen = siege.map_or(0, |i| self.annals.deaths.iter().filter(|d| d.siege == Some(i)).count());
+        let leader = inside[self.rng.range(0, inside.len() as i32) as usize];
+        let who = self.dwarves[leader].name.clone();
+        let fort = self.fortress_name.clone();
+        let tick = self.tick;
+        let (text, thought, stress) = if fallen > 0 {
+            (
+                format!("In the shelter of {}, {} begins a lament for the fallen, and one by one the others take it up.", fort, who),
+                "sang a lament for the fallen in the shelter",
+                -4,
+            )
+        } else {
+            (
+                format!("In the shelter of {}, {} starts up an old song, and soon the whole shelter is singing while the enemy waits outside.", fort, who),
+                "sang with the others in the shelter while the enemy waited outside",
+                -8,
+            )
+        };
+        for i in inside.iter().copied() {
+            self.dwarves[i].think(thought, stress, tick);
+        }
+        self.msg(&text, (170, 200, 255));
+        self.count("shelter.songs", 1);
     }
 
     /// The ways into the shelter that don't pass the gate: for each, the
@@ -605,6 +657,39 @@ mod tests {
         g.shelter_after_siege(j);
         assert_eq!(g.annals.counters.get("shelter_held").copied(), Some(1));
         assert_eq!(g.annals.counters.get("shelter_lost").copied(), Some(1));
+    }
+
+    /// The shelter sings: a while into an alert, those in the shelter sing
+    /// together and take heart, once an alert; a lament once someone fell.
+    #[test]
+    fn the_shelter_sings() {
+        let (mut g, mut o) = sheltered_fort();
+        let mask = g.shelter_bits().unwrap();
+        let spot = g.world.tiles.iter().enumerate().find(|(_, t)| t.burrows & mask != 0 && t.kind == TileKind::Floor).map(|(i, _)| g.world.pos_of(i)).unwrap();
+        for d in g.dwarves.iter_mut().filter(|d| d.alive && !d.soldier) {
+            d.pos = spot;
+        }
+        g.civ_alert = true;
+        g.ov_shelter_alert(&mut o);
+        assert_eq!(g.annals.counters.get("shelter.songs"), None, "sang the moment the alert went up");
+        g.tick += 500;
+        g.ov_shelter_alert(&mut o);
+        g.ov_shelter_alert(&mut o);
+        assert_eq!(g.annals.counters.get("shelter.songs"), Some(&1));
+        assert!(g.log.iter().any(|l| l.text.contains("whole shelter is singing")));
+        let sang = g.dwarves.iter().filter(|d| d.thoughts.iter().any(|t| t.text.contains("sang with the others") && t.stress < 0)).count();
+        assert!(sang >= 3, "only {} took heart from the song", sang);
+        // A new alert, a siege that has cost a life: a lament.
+        g.civ_alert = false;
+        g.ov_shelter_alert(&mut o);
+        g.civ_alert = true;
+        g.ov_shelter_alert(&mut o);
+        g.annals.sieges.push(crate::game::annals::SiegeNote { foe: "goblins".into(), ..Default::default() });
+        g.annals.deaths.push(crate::game::annals::DeathNote { siege: Some(g.annals.sieges.len() - 1), ..Default::default() });
+        g.tick += 500;
+        g.ov_shelter_alert(&mut o);
+        assert_eq!(g.annals.counters.get("shelter.songs"), Some(&2));
+        assert!(g.log.iter().any(|l| l.text.contains("lament for the fallen")));
     }
 
     /// Where the drink and food lie in a grown fort: SEED, STYLE, DAYS.

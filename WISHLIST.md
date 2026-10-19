@@ -107,6 +107,15 @@ and forts still fall to sieges, cave horrors, titans, dragons and rocs; but no R
 lived three years in this batch, Warlord lost none, and no fort built a well (wells and
 cisterns never find a site on the new worlds: the overseer's scan finds no water).
 
+**Closing the gaps** (same batch, `batches/m1-close.json`, `--compare batches/m1-release.json
+batches/m1-close.json`): standing after years 1/2/3 50/43/41 of 50. By style at year 3:
+Steady 9/10, Warlord 10/10, Builder 10/10, Delver 7/10, Reckless 5/10 (on seeds 7000-7029,
+Reckless-only, 11 of 30, from 3 of 30). Cisterns filled from a river in 32 of the 40
+non-Reckless forts (none before); thirst 1 death, bled to death 10% of 976 deaths. Reckless
+forts raise a levy against armies and beasts (levy.rs); Warlords sally against armies shut out
+at their bridge (sally.rs, 58 sallies, all won). **Still open:** Warlord still loses no fort:
+its sallies always win, and the fame and hubris they bring haven't yet cost one.
+
 #### S01 Know why forts fall (S)
 - **Why:** balance by evidence, not by guess. The batch report gives one line per fort today.
 - **Steps:** [x] the batch report tallies causes of death, killers, and siege outcomes (how many
@@ -205,8 +214,8 @@ cisterns never find a site on the new worlds: the overseer's scan finds no water
   as a trouble, and it sees to it (miners to quarry, woodcutters out, orders raised, hands to
   farming), sooner or later by its style and with a manager's help (this commit) · [x] only a
   delver digs levels down toward the caverns (a spider came up one fort's stair) (this commit)
-  · [x] wells and cisterns inside the fort (0b0db40; but no fort found a site for one in the
-  release batch)
+  · [x] wells and cisterns inside the fort (0b0db40; on the new worlds, cisterns fed down a
+  shaft from a river above the halls, ec910b9: 32 of 40 non-Reckless forts in m1-close)
 · [x] a dwarf in a fey mood
   gets the workshop and materials they demand: the overseer treats those as troubles of its own,
   and urgent ones (this commit)
@@ -251,7 +260,9 @@ cisterns never find a site on the new worlds: the overseer's scan finds no water
 - **Steps:** [x] the gate (stair foot, doors, bridge) is no part of the shelter, so those
   running in go on past the bridge · [x] a larder inside the shelter, kept in
   drink and meals by the haulers · [x] every other way in (to the sky, or into the stair from
-  the surface) is walled up, daily and the moment the alert goes up · [ ] the shelter sings
+  the surface) is walled up, daily and the moment the alert goes up · [x] the shelter sings
+  (a while into an alert those sheltering sing together and take heart; a lament once the
+  siege has cost a life) (this commit)
   · [x] a siege sheltered through without loss is told
 - **Done when:** a long siege doesn't end in thirst while there's drink; a way in past the gate
   is walled in an alert; deaths inside the shelter fall in the 10-fort batch.
