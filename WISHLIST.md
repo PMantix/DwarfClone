@@ -503,7 +503,7 @@ Goal: sieges are never the same twice. Invaders adapt and the fort adapts back; 
 
 #### A04 Squad life (L)
 - **Why:** A military that runs on a schedule: routines, patrols, ammo pools, drills and discipline.
-- **Steps:** [ ] Squad routines and alerts ([MIL-26](ideas/war.md)) · [ ] Patrol routes ([MIL-27](ideas/war.md)) · [ ] Defend a burrow ([MIL-28](ideas/war.md)) · [ ] Gear off duty ([MIL-29](ideas/war.md)) · [ ] Squad ammo pools ([MIL-30](ideas/war.md)) · [ ] Saved uniforms by kind ([MIL-58](ideas/war.md)) · [ ] Teaching and drills ([MIL-38](ideas/war.md)) · [ ] Sparring accidents ([MIL-39](ideas/war.md)) · [ ] Sergeant's discipline ([MIL-40](ideas/war.md))
+- **Steps:** [ ] Squad routines and alerts ([MIL-26](ideas/war.md)) · [ ] Patrol routes ([MIL-27](ideas/war.md)) · [ ] Defend a burrow ([MIL-28](ideas/war.md)) · [ ] Gear off duty ([MIL-29](ideas/war.md)) · [ ] Squad ammo pools ([MIL-30](ideas/war.md)) · [ ] Saved uniforms by kind ([MIL-58](ideas/war.md)) · [x] Teaching and drills ([MIL-38](ideas/war.md)) (b90bbd1) · [x] Sparring accidents ([MIL-39](ideas/war.md)) (b90bbd1) · [ ] Sergeant's discipline ([MIL-40](ideas/war.md))
 - **Done when:** A squad keeps a monthly routine and draws bolts from its own pool.
 
 #### B06 Siege AI (L)
