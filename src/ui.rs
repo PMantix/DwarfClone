@@ -419,6 +419,19 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
         app.view_y = app.view_y.clamp(0, wh - vh);
     }
 
+    // The overseer's plan, as a ghost (worked out again now and then).
+    if app.ghost {
+        let key = (z, app.game.tick / 50);
+        if app.ghost_cache.as_ref().map_or(true, |c| c.0 != key) {
+            let cells = app.game.plan_ghost(z).into_iter().map(|(p, k)| ((p.x, p.y), k)).collect();
+            app.ghost_cache = Some((key, cells));
+        }
+    }
+    let empty = HashMap::new();
+    let ghost = match (&app.ghost_cache, app.ghost) {
+        (Some(c), true) => &c.1,
+        _ => &empty,
+    };
     let g = &app.game;
     let mut units: HashMap<(i32, i32), Vec<&Dwarf>> = HashMap::new();
     for d in g.dwarves.iter().filter(|d| d.alive && d.pos.z == z) {
@@ -479,6 +492,15 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
             }
             let t = g.world.t(p);
             let (mut ch, mut fg, mut bg) = tile_look(&g.world, p);
+            if let Some(gh) = ghost.get(&(wx, wy)).filter(|_| t.kind.solid()) {
+                use crate::game::Ghost;
+                (ch, fg, bg) = match *gh {
+                    Ghost::Hall => ('░', Color::Rgb(70, 95, 150), Color::Rgb(14, 18, 32)),
+                    Ghost::Door => ('+', Color::Rgb(120, 140, 190), Color::Rgb(14, 18, 32)),
+                    Ghost::Room(c) => (c.unwrap_or('·'), Color::Rgb(110, 130, 185), Color::Rgb(20, 24, 42)),
+                    Ghost::Taken(c) => (c.unwrap_or('·'), Color::Rgb(225, 170, 70), Color::Rgb(42, 30, 12)),
+                };
+            }
             if (t.kind == TileKind::Tree || t.kind == TileKind::Shrub || t.mat == Mat::Grass) && t.water == 0 {
                 if let Some((c, col)) = foliage(&g.world, p, year_frac, cold) {
                     (ch, fg) = (c, col);
@@ -697,6 +719,18 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
     }
     // Rain, snow, leaves, fireflies and dust in the air (src/ui/ambient.rs).
     ambient::draw(f, app, inner);
+    // The plan's legend, along the bottom of the map.
+    if app.ghost {
+        let what = app.game.plan_at(z).map(|l| (l.role, l.layout, l.facing));
+        let text = match what {
+            Some((role, layout, facing)) => format!(" plan: {} as {}, facing {} · ░ halls · c s m L rooms to come · amber: being dug · P hides ", role.name(), layout.name(), facing.name()),
+            None => " plan: none on this level · P hides ".to_string(),
+        };
+        let w = (text.chars().count() as u16).min(area.width.saturating_sub(4));
+        if area.height > 2 {
+            f.render_widget(Paragraph::new(Span::styled(text, Style::default().fg(Color::Rgb(120, 140, 190)))), Rect::new(area.x + 2, area.y + area.height - 1, w, 1));
+        }
+    }
 }
 
 fn key_line<'a>(k: &str, desc: &str, active: bool) -> Line<'a> {
@@ -1937,6 +1971,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("d", "designate: mine, channel, stairs, chop"),
         k("Ctrl+Z", "undo the last designation"),
         k("p", "stockpiles"),
+        k("P", "the overseer's plan: halls and rooms still to come"),
         k("i", "zones: meeting, bedroom, dining, dump..."),
         k("k", "look: inspect anything at the cursor"),
         k("z", "fortress status: population, stocks, health"),
