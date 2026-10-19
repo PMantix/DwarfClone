@@ -43,6 +43,8 @@ pub enum Species {
     PolarBear,
     /// A dead thing that walks where evil lies on the land.
     Husk,
+    /// An animal of the bestiary (`crate::bestiary::BEASTS`), by its index.
+    Beast(u16),
 }
 
 pub struct SpeciesInfo {
@@ -91,12 +93,19 @@ impl Species {
 
     /// Animals that can be kept (people and cave folk can't).
     pub fn tameable(self) -> bool {
+        if let Species::Beast(i) = self {
+            return crate::bestiary::beast(i).has(crate::bestiary::TAMEABLE);
+        }
         !self.person() && !matches!(self, Species::Troglodyte | Species::Megabeast | Species::CaveHorror | Species::Skulker | Species::Undead)
     }
 
     /// Most young in one birth.
     pub fn litter(self) -> i32 {
         match self {
+            Species::Beast(i) => {
+                let b = crate::bestiary::beast(i);
+                if b.size < 0.3 { 4 } else if b.size < 1.0 { 2 } else { 1 }
+            }
             Species::Dog | Species::Cat => 3,
             Species::Goat => 2,
             _ => 1,
@@ -110,12 +119,31 @@ impl Species {
             Species::Goat => "kid",
             Species::Deer => "fawn",
             Species::Bear => "cub",
+            Species::Beast(i) => crate::bestiary::beast(i).young,
             _ => "young",
         }
     }
 
     pub fn info(self) -> SpeciesInfo {
         match self {
+            Species::Beast(i) => {
+                let b = crate::bestiary::beast(i);
+                SpeciesInfo {
+                    name: b.name,
+                    plural: b.plural,
+                    glyph: b.glyph,
+                    color: b.color,
+                    scale: b.size.max(0.05),
+                    damage: b.blow(),
+                    verb: b.strike.verb(),
+                    move_delay: b.speed as u32,
+                    attack_delay: b.attack_delay(),
+                    aggro: b.aggro(),
+                    skill: b.skill(),
+                    mover: Mover::Beast,
+                    edged: b.strike.edged(),
+                }
+            }
             Species::Dog => SpeciesInfo {
                 name: "dog",
                 plural: "dogs",
@@ -555,7 +583,47 @@ impl Species {
     }
 
     pub fn dwells_underground(self) -> bool {
+        if let Species::Beast(i) = self {
+            return crate::bestiary::beast(i).cave_only();
+        }
         matches!(self, Species::GiantSpider | Species::Troglodyte)
+    }
+
+    /// The bestiary's entry for it, if it is one of the table's animals.
+    pub fn beast(self) -> Option<&'static crate::bestiary::Beast> {
+        match self {
+            Species::Beast(i) => Some(crate::bestiary::beast(i)),
+            _ => None,
+        }
+    }
+
+    /// The species called `name` ("wolf", "badger"), named or of the bestiary.
+    pub fn from_name(name: &str) -> Option<Species> {
+        Species::ALL
+            .iter()
+            .chain(Species::WILD.iter())
+            .copied()
+            .find(|s| s.info().name == name)
+            .or_else(|| crate::bestiary::find(name).map(Species::Beast))
+    }
+
+    /// The named wildlife left out of `ALL`.
+    pub const WILD: [Species; 10] = [
+        Species::Camel,
+        Species::Elk,
+        Species::Ibex,
+        Species::Antelope,
+        Species::Scorpion,
+        Species::Viper,
+        Species::Jaguar,
+        Species::Lion,
+        Species::Alligator,
+        Species::PolarBear,
+    ];
+
+    /// Every animal of the bestiary, as species.
+    pub fn bestiary() -> impl Iterator<Item = Species> {
+        (0..crate::bestiary::COUNT as u16).map(Species::Beast)
     }
 }
 

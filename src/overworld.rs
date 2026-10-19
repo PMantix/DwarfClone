@@ -964,7 +964,7 @@ impl WorldGen {
                     biome: self.ow.cells[i].biome,
                 })
                 .collect();
-            let (fauna, plants) = if kind.is_water() { (Vec::new(), Vec::new()) } else { (regions::fauna(&climate, &ranges), regions::plants(&climate)) };
+            let (fauna, plants) = if kind.is_water() { (regions::water_fauna(&climate, kind), Vec::new()) } else { (regions::fauna(&climate, &ranges), regions::plants(&climate)) };
             let mid = cells[cells.len() / 2];
             for &i in &cells {
                 self.ow.cells[i].region = id + 1;

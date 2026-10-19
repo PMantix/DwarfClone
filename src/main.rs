@@ -1,4 +1,5 @@
 mod app;
+mod bestiary;
 mod body;
 mod buildings;
 mod creature;

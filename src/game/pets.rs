@@ -26,6 +26,14 @@ const DOG_ANTICS: [&str; 5] = [
     "chased its own tail until {} laughed",
 ];
 
+/// What any other pet gets up to.
+const BEAST_ANTICS: [&str; 4] = [
+    "followed {} about all day",
+    "would eat only from {}'s hand",
+    "was found asleep in {}'s boots",
+    "hid from everyone but {}",
+];
+
 impl Game {
     pub fn pet_of(&self, dwarf: u32) -> Option<&Creature> {
         self.creatures.values().find(|c| c.alive && c.pet_of == Some(dwarf))
@@ -38,7 +46,8 @@ impl Game {
         let ids: Vec<u32> = self.creatures.keys().copied().collect();
         for id in ids {
             let Some(c) = self.creatures.get(&id) else { continue };
-            if !c.alive || !c.tame || !c.adult || !matches!(c.species, Species::Cat | Species::Dog) {
+            let petlike = matches!(c.species, Species::Cat | Species::Dog) || c.species.beast().map_or(false, |b| b.has(crate::bestiary::PETLIKE));
+            if !c.alive || !c.tame || !c.adult || !petlike {
                 continue;
             }
             match c.pet_of {
@@ -58,7 +67,8 @@ impl Game {
                     }
                     if self.rng.chance(0.2) {
                         let oname = self.dwarves[oi].called();
-                        let antic = if cat { *self.rng.pick(&CAT_ANTICS) } else { *self.rng.pick(&DOG_ANTICS) };
+                        let beast = matches!(self.creatures.get(&id).map(|c| c.species), Some(Species::Beast(_)));
+                        let antic = if beast { *self.rng.pick(&BEAST_ANTICS) } else if cat { *self.rng.pick(&CAT_ANTICS) } else { *self.rng.pick(&DOG_ANTICS) };
                         self.gossip(format!("{} {}.", pname, antic.replace("{}", &oname)));
                     }
                 }

@@ -35,7 +35,7 @@ impl Game {
             return Err("That's not a cage on the ground.".into());
         };
         let Some(label) = it.label.clone() else { return Err("The cage is empty.".into()) };
-        let Some(species) = Species::ALL.iter().copied().find(|s| s.info().name == label) else {
+        let Some(species) = Species::from_name(&label) else {
             return Err(format!("A {} can't be tamed.", label));
         };
         if !species.tameable() {
@@ -68,7 +68,8 @@ impl Game {
     /// Put every tame grazer without a pasture into this one. Returns how many.
     pub fn assign_grazers(&mut self, zid: u32) -> usize {
         let mut n = 0;
-        for c in self.creatures.values_mut().filter(|c| c.tame && c.species == Species::Goat && c.pasture.is_none()) {
+        let grazer = |s: Species| s == Species::Goat || s.beast().map_or(false, |b| b.temper == crate::bestiary::Temper::Grazer);
+        for c in self.creatures.values_mut().filter(|c| c.tame && grazer(c.species) && c.pasture.is_none()) {
             c.pasture = Some(zid);
             n += 1;
         }
@@ -103,6 +104,8 @@ impl Game {
 
     /// A tame animal's turn. Returns false if it's gone.
     pub(super) fn tame_tick(&mut self, c: &mut Creature) -> bool {
+        // Eggs and wool from the bestiary's kept animals (beasts.rs).
+        self.kept_products(c);
         // Growing up and giving birth.
         if !c.adult && self.tick >= c.born + SEASON {
             c.adult = true;

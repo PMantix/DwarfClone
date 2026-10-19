@@ -72,6 +72,7 @@ mod schedule;
 mod finders;
 mod overseer_hooks;
 mod wildlife;
+mod beasts;
 pub mod captives;
 pub mod breakdowns;
 pub mod readiness;
@@ -476,6 +477,18 @@ pub struct Game {
     /// Named battles and places, weddings and feasts (`stories.rs`).
     #[serde(default)]
     pub stories: stories::Stories,
+    /// The bestiary's animals that have been about the fort, by index
+    /// (sorted): the legends' bestiary marks them seen.
+    #[serde(default)]
+    pub beasts_seen: Vec<u16>,
+    /// Cavern layers (bits, the first layer lowest) whose animals have
+    /// woken: they are put there when the miners break in (beasts.rs).
+    #[serde(default)]
+    pub beast_layers: u8,
+    /// The bestiary's animals are numbered apart from everything else
+    /// (from `beasts::BEAST_IDS`), so their comings don't renumber the rest.
+    #[serde(default)]
+    pub beast_ids: u32,
     /// After a fruitless search for hauling work, nobody looks again until this tick.
     #[serde(skip)]
     haul_retry: u64,
@@ -598,6 +611,9 @@ impl Game {
             flames: Vec::new(),
             gore: Default::default(),
             stories: Default::default(),
+            beasts_seen: Vec::new(),
+            beast_layers: 0,
+            beast_ids: 0,
             festival: None,
             year_log: YearLog::default(),
             vault: None,
@@ -2987,6 +3003,8 @@ impl Game {
             );
             self.spotlight("A cavern", "The miners have broken into a vast cavern deep underground. Strange fungus grows there, and strange things live in the dark.", Some(q), (120, 200, 255));
             self.breaches.push(q);
+            // The layer's animals are there in the dark (beasts.rs).
+            self.wake_cavern(q);
         }
     }
 

@@ -164,7 +164,7 @@ fn number(n: usize) -> String {
 }
 
 fn plural_of(kind: &str) -> String {
-    crate::creature::Species::ALL.iter().map(|s| s.info()).find(|i| i.name == kind).map_or(format!("{}s", kind), |i| i.plural.to_string())
+    crate::creature::Species::from_name(kind).map(|s| s.info()).map_or(format!("{}s", kind), |i| i.plural.to_string())
 }
 
 fn list(names: &[String]) -> String {

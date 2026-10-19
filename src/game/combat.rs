@@ -74,6 +74,7 @@ pub(super) fn faction(c: &Creature) -> Faction {
         Species::CaveHorror | Species::Megabeast => Faction::Monster,
         _ if c.figure.is_some() => Faction::Monster,
         Species::Troglodyte | Species::GiantSpider => Faction::Cave,
+        Species::Beast(i) if !c.siege => super::beasts::beast_faction(crate::bestiary::beast(i)),
         s if c.siege || s.person() => Faction::Army(s),
         s if s.info().aggro > 0 => Faction::Predator,
         _ => Faction::Prey,
@@ -1412,6 +1413,10 @@ impl Game {
         if c.tame {
             return self.tame_tick(c);
         }
+        // Fliers of the open sky and fish go their own ways (beasts.rs).
+        if let Some(keep) = self.beast_tick(c) {
+            return keep;
+        }
         // Animals lose their nerve when hurt; goblins only when close to death;
         // megabeasts never.
         let breaking = if c.legendary() {
@@ -1543,7 +1548,7 @@ impl Game {
                 self.creature_step(c, info.move_delay);
             }
         } else {
-            if c.path.is_empty() && !matches!(c.species, Species::Merchant | Species::Visitor) && self.rng.chance(if c.hostile() { 0.05 } else { 0.03 }) {
+            if c.path.is_empty() && !matches!(c.species, Species::Merchant | Species::Visitor) && !super::beasts::own_ways(c) && self.rng.chance(if c.hostile() { 0.05 } else { 0.03 }) {
                 // Prowl about (up and down stairs too), rather than stand where it came in.
                 self.creature_wander(c, if c.hostile() { 12 } else { 7 });
             }
@@ -1553,7 +1558,7 @@ impl Game {
     }
 
     /// Set off for somewhere a few steps away that it can walk to.
-    fn creature_wander(&mut self, c: &mut Creature, r: i32) {
+    pub(super) fn creature_wander(&mut self, c: &mut Creature, r: i32) {
         let start = c.pos;
         let salt = self.rng.range(0, 1 << 20);
         // Cave things keep to the caves (they hunt into the halls, but don't
@@ -1602,6 +1607,10 @@ impl Game {
             if !c.leaving {
                 self.visitor_think(c);
             }
+            return;
+        }
+        // The bestiary's animals, each by its temperament (beasts.rs).
+        if self.beast_think(c) {
             return;
         }
         // Other creatures it would fight (or hunt), close by.
@@ -1695,7 +1704,7 @@ impl Game {
         }
     }
 
-    fn creature_attack(&mut self, c: &Creature, di: usize) {
+    pub(super) fn creature_attack(&mut self, c: &Creature, di: usize) {
         let mut d = std::mem::take(&mut self.dwarves[di]);
         let att = self.creature_fighter(c);
         let def = self.dwarf_fighter(&d);
