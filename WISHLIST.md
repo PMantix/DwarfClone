@@ -113,8 +113,21 @@ Steady 9/10, Warlord 10/10, Builder 10/10, Delver 7/10, Reckless 5/10 (on seeds 
 Reckless-only, 11 of 30, from 3 of 30). Cisterns filled from a river in 32 of the 40
 non-Reckless forts (none before); thirst 1 death, bled to death 10% of 976 deaths. Reckless
 forts raise a levy against armies and beasts (levy.rs); Warlords sally against armies shut out
-at their bridge (sally.rs, 58 sallies, all won). **Still open:** Warlord still loses no fort:
-its sallies always win, and the fame and hubris they bring haven't yet cost one.
+at their bridge (sally.rs, 58 sallies, all won).
+
+**The Warlord's pride** (same batch, `batches/warlord.json`, `--compare batches/m1-close.json
+batches/warlord.json`): a sally that breaks an army makes its people swear vengeance, and their
+next army comes as a host, larger and past the cap, every one in full kit of their best metal,
+fighting on when its general falls; the war-game still sets it against an ordinary army. An
+overseer with two sallies won rides out whatever the arena says and won't call the squads back
+till a fifth are left. Standing after years 1/2/3 50/44/40 of 50; Warlord 9/10, the other
+styles as before. Anvilbeard lost 3 of 5 soldiers breaking a siege in year 3 ("the overseer's
+pride has been dearly bought"), and a sworn host of 21 and then a dragon found it without them.
+Warlord-only on seeds 7000-7029, 24 of 30 stand (28 of 30 at the branch point, the two lost
+there to a cave horror and goblins, never sallying); the new losses follow sallies won dear
+against sworn hosts, then whatever comes next. **Still open:** a sally still rarely breaks
+outright (4 of 138 sent in the 7000-7029 and release batches); the forts fall a season after
+their pride is paid for, not at the gate.
 
 #### S01 Know why forts fall (S)
 - **Why:** balance by evidence, not by guess. The batch report gives one line per fort today.
