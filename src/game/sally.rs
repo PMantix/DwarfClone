@@ -37,6 +37,15 @@ pub struct Sallies {
     /// bigger armies (`siege_strength`).
     #[serde(default)]
     pub won: u32,
+    /// Sallies that broke an army, by the civilization that sent it: each
+    /// is a slaughter before our gate that they have sworn to avenge
+    /// (`sally_vengeance`).
+    #[serde(default)]
+    pub sworn: BTreeMap<u32, u32>,
+    /// The siege under way is such a host (index into `annals.sieges`):
+    /// armed in their best, and its general's fall doesn't break it.
+    #[serde(default)]
+    pub host: Option<usize>,
 }
 
 impl Game {
@@ -45,6 +54,67 @@ impl Game {
     /// for each sally won).
     pub(super) fn sally_fame(&self) -> u32 {
         (self.sallies.won as f64 * self.knob("sally.fame", 1.0)).round() as u32
+    }
+
+    /// What `civ` adds to its next army to avenge its armies broken in the
+    /// open (knob sally.vengeance for each): it comes as a host, past the
+    /// usual cap on an army (`siege_strength`).
+    pub(crate) fn sally_vengeance(&self, civ: u32) -> u32 {
+        let n = self.sallies.sworn.get(&civ).copied().unwrap_or(0);
+        (n as f64 * self.knob("sally.vengeance", 4.0)).round() as u32
+    }
+
+    /// The siege under way is a host sworn to avenge a sally: it fights on
+    /// when its general falls, until two in three of it are down.
+    pub(crate) fn sworn_host(&self) -> bool {
+        self.sallies.host.map_or(false, |i| i + 1 == self.annals.sieges.len() && self.annals.sieges[i].ended.is_none())
+    }
+
+    /// An army of `civ` has just come (`lay_siege_of`): if it is sworn to
+    /// avenge its broken armies, every one of them comes in full kit of
+    /// the best metal its people have.
+    pub(crate) fn arm_sworn_host(&mut self, civ: u32, best: Mat) {
+        if self.sally_vengeance(civ) == 0 {
+            return;
+        }
+        let Some(i) = self.annals.sieges.len().checked_sub(1) else { return };
+        self.sallies.host = Some(i);
+        // (The oath is kept in coming: another sally broken against them
+        // swears another.)
+        self.sallies.sworn.remove(&civ);
+        self.count("sally.hosts", 1);
+        let ids: Vec<u32> = self.creatures.values().filter(|c| c.alive && c.siege && !c.leaving && !c.legendary() && c.hostile()).map(|c| c.id).collect();
+        for id in ids {
+            let (pos, mut gear) = {
+                let c = &self.creatures[&id];
+                (c.pos, c.weapon.into_iter().chain(c.armor.iter().copied()).collect::<Vec<u32>>())
+            };
+            for iid in &gear {
+                if let Some(it) = self.items.get_mut(iid) {
+                    it.mat = best;
+                }
+            }
+            let has: Vec<ItemKind> = gear.iter().filter_map(|iid| self.items.get(iid).map(|it| it.kind)).collect();
+            for k in [ItemKind::Helm, ItemKind::Breastplate, ItemKind::Shield] {
+                if !has.contains(&k) {
+                    let iid = self.spawn_item(k, best, pos);
+                    if let Some(it) = self.items.get_mut(&iid) {
+                        it.carried_by = Some(id);
+                    }
+                    gear.push(iid);
+                    if let Some(c) = self.creatures.get_mut(&id) {
+                        c.armor.push(iid);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Proud: it has broken so many sieges at its gate (knob sally.proud)
+    /// that it no longer heeds the arena, and rides out whatever the
+    /// war-game says. (A cautious overseer never stops heeding it.)
+    fn sally_proud(&self, o: &Overseer) -> bool {
+        !o.has(Trait::Cautious) && self.sallies.won as f64 >= self.knob("sally.proud", 2.0)
     }
 
     /// Squads are out beyond the gate and the bridge stays down for them
@@ -113,7 +183,10 @@ impl Game {
         let siege_at = self.annals.sieges[i].tick;
         let Some(w) = self.wargame.as_ref().filter(|w| w.bouts > 0 && siege_at >= w.due && siege_at <= w.due + DAY) else { return };
         let (wins, bouts) = (w.wins, w.bouts);
-        if (wins as f64) < self.sally_odds(o).max(self.knob("sally.least", 0.1)) * bouts as f64 {
+        // (Proud, it rides out against odds it would have heeded once.)
+        let heeds = (wins as f64) >= self.sally_odds(o).max(self.knob("sally.least", 0.1)) * bouts as f64;
+        let proud = !heeds && self.sally_proud(o);
+        if !heeds && !proud {
             return;
         }
         self.sallies.last = Some(i);
@@ -123,15 +196,30 @@ impl Game {
         }
         let foe = self.annals.sieges[i].foe.clone();
         let fort = self.fortress_name.clone();
-        let text = format!(
-            "The overseer {} will not cower behind the bridge: it is lowered, and {} soldiers ride out of {} to meet the {} in the open! (The war-game gave them {} bouts in {}.)",
-            o.name, soldiers, fort, foe, wins, bouts
-        );
+        let text = if proud {
+            format!(
+                "The war-game gave them only {} bouts in {}, but the overseer {} has broken {} sieges before this gate and will not hear of the arena: the bridge is lowered, and {} soldiers ride out of {} to meet the {}!",
+                wins, bouts, o.name, self.sallies.won, soldiers, fort, foe
+            )
+        } else {
+            format!(
+                "The overseer {} will not cower behind the bridge: it is lowered, and {} soldiers ride out of {} to meet the {} in the open! (The war-game gave them {} bouts in {}.)",
+                o.name, soldiers, fort, foe, wins, bouts
+            )
+        };
         self.msg(&text, (255, 190, 90));
         self.spotlight("A sally!", &text, Some(top), (255, 190, 90));
-        let note = o.voiced(&format!("Lowered the bridge and sent the squads out against the {}: we won {} bouts in {}.", foe, wins, bouts));
+        let note = if proud {
+            format!("The arena says {} bouts in {}. The arena has never stood at our gate. Lower the bridge.", wins, bouts)
+        } else {
+            format!("Lowered the bridge and sent the squads out against the {}: we won {} bouts in {}.", foe, wins, bouts)
+        };
+        let note = o.voiced(&note);
         Self::note_ov(o, self.tick, note);
         self.count("sally.sent", 1);
+        if proud {
+            self.count("sally.proud", 1);
+        }
     }
 
     /// Send squad `s` after the besieger nearest its soldiers (only those
@@ -169,21 +257,33 @@ impl Game {
                 }
             }
             if routed {
-                let text = format!("The sally from {} has broken the siege! {} soldiers rode out; {} did not come back.", fort, sally.soldiers, lost);
+                let mut text = format!("The sally from {} has broken the siege! {} soldiers rode out; {} did not come back.", fort, sally.soldiers, lost);
+                if lost * 2 > sally.soldiers {
+                    text.push_str(" The overseer's pride has been dearly bought.");
+                }
                 self.msg(&text, (255, 210, 120));
                 self.legend(format!("The squads of {} rode out against the besiegers and broke them in the open.", fort));
                 let note = o.voiced("The sally broke them: let the next army know what waits at our gate.");
                 Self::note_ov(o, self.tick, note);
                 self.count("sally.won", 1);
                 self.sallies.won += 1;
+                // Those who sent them swear to avenge it.
+                if let Some(civ) = self.annals.sieges.get(sally.siege).and_then(|s| s.civ) {
+                    *self.sallies.sworn.entry(civ).or_default() += 1;
+                }
             }
             return;
         }
         let up = self.soldiers_up();
-        // A proud overseer leaves them out there longer.
+        // A proud overseer leaves them out there longer; one grown too
+        // proud on its sallies won won't call them back till they're all
+        // but gone, and the bridge stays down behind them.
         let mut hold = self.knob("sally.recall", 0.5);
         if o.has(Trait::Stubborn) || o.has(Trait::Vain) {
             hold *= 0.5;
+        }
+        if self.sally_proud(o) {
+            hold = hold.min(self.knob("sally.proud_recall", 0.2));
         }
         let long = self.tick > sally.since + self.knob("sally.days", 2.0) as u64 * DAY;
         if !sally.recalled && ((up as f64) < hold * sally.soldiers as f64 || long) {
@@ -201,7 +301,11 @@ impl Game {
                 );
                 self.msg(&text, (255, 60, 60));
                 self.spotlight("The sally is broken", &text, o.top, (255, 60, 60));
-                self.legend(format!("A sally from {} was cut down before its own gate.", fort));
+                if self.sallies.won > 0 {
+                    self.legend(format!("{} had broken {} sieges in the open, and rode out once too often: the sally was cut down before its own gate.", fort, self.sallies.won));
+                } else {
+                    self.legend(format!("A sally from {} was cut down before its own gate.", fort));
+                }
                 let note = o.voiced("The war-game lied. Raise the bridge, raise it now!");
                 Self::note_ov(o, self.tick, note);
                 self.count("sally.broken", 1);
@@ -263,5 +367,32 @@ mod tests {
             return;
         }
         panic!("no Warlord fort from seed 7000 on sallied in a year and a half");
+    }
+
+    /// A people whose army a sally broke swears to avenge it: its next
+    /// army is a host, past the usual cap, every one of it in full kit of
+    /// its best metal, and the oath is spent in coming.
+    #[test]
+    fn a_broken_army_comes_back_as_a_sworn_host() {
+        let mut g = Game::new(21);
+        let mut foe = g.neighbors.first().cloned().expect("a neighbour");
+        foe.race = Race::Goblin;
+        for i in 0..12 {
+            g.annals.sieges.push(annals::SiegeNote { tick: i, foe: "goblins".into(), size: 10, outcome: "routed".into(), ended: Some(i), ..Default::default() });
+        }
+        g.knobs.set.insert("siege.cap".into(), 4.0);
+        assert!((0..20).all(|_| g.siege_strength(foe.civ) <= 4));
+        g.sallies.sworn.insert(foe.civ, 1);
+        let most = (0..20).map(|_| g.siege_strength(foe.civ)).max().unwrap();
+        assert!(most > 4 && most <= 8, "a sworn host of {}", most);
+        g.lay_siege_of(&foe, 6, None);
+        assert!(g.sworn_host());
+        assert!(g.sallies.sworn.get(&foe.civ).is_none(), "the oath is spent");
+        let host: Vec<&Creature> = g.creatures.values().filter(|c| c.alive && c.siege).collect();
+        assert_eq!(host.len(), 6);
+        for c in host {
+            assert_eq!(c.armor.len(), 3, "not in full kit");
+            assert!(c.armor.iter().chain(c.weapon.iter()).all(|id| g.items[id].mat == Mat::Iron));
+        }
     }
 }
