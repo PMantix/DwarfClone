@@ -12,11 +12,18 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 # Sound output (the synth itself is ours, in src/audio). Pinned: a long-settled release.
 cpal = { version = "=0.15.3", optional = true }
+# The windowed square-tile mode (`--window`): a plain window with a pixel
+# buffer, and a rasteriser for the system's monospace font. Pinned, long settled.
+winit = { version = "=0.30.5", optional = true }
+softbuffer = { version = "=0.4.6", optional = true }
+fontdue = { version = "=0.9.2", optional = true }
 
 [features]
 # Music, ambience and sound effects. `--no-default-features` builds a silent game.
-default = ["audio"]
+default = ["audio", "window"]
 audio = ["dep:cpal"]
+# `--window`: play in a window of square tiles instead of the terminal.
+window = ["dep:winit", "dep:softbuffer", "dep:fontdue"]
 
 [profile.dev]
 opt-level = 1

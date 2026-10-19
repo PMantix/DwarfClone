@@ -23,6 +23,8 @@ mod terrain;
 mod terrain_gen;
 mod title;
 mod ui;
+#[cfg(feature = "window")]
+mod window;
 mod world;
 mod worldgen;
 
@@ -69,6 +71,16 @@ fn main() -> Result<()> {
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or_else(|| SystemTime::now().duration_since(UNIX_EPOCH).map_or(1, |d| d.as_secs()));
 
+    let windowed = args.iter().any(|a| a == "--window");
+    #[cfg(feature = "window")]
+    if windowed && args.iter().any(|a| a == "--screenshot") {
+        return window::screenshot(&args);
+    }
+    #[cfg(not(feature = "window"))]
+    if windowed {
+        anyhow::bail!("This build has no window mode (it was built without the `window` feature).");
+    }
+
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         restore_terminal();
@@ -78,6 +90,15 @@ fn main() -> Result<()> {
     let mut app = App::new(seed);
     // Sound only for the game itself (never the batch runs above, nor tests).
     app.audio = audio::Audio::start(&app.save_dir);
+
+    #[cfg(feature = "window")]
+    if windowed {
+        let result = window::play(&mut app, &args);
+        if result.is_ok() && !app.game.is_placeholder() {
+            println!("Seed {} — {} dwarves survived to {}.", seed, app.game.alive_count(), app.game.date_string());
+        }
+        return result;
+    }
 
     enable_raw_mode()?;
     execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;

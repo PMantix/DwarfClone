@@ -15,6 +15,10 @@ STARTING THE GAME
 3. Make the window big: at least 130 x 40 characters (maximise it).
 4. Run dwarfclone.exe: drag it into the terminal and press Enter, or cd
    to this folder and type  .\dwarfclone.exe
+5. Or play in a window of square tiles, where walls, water and floors
+   join into a solid map:  .\dwarfclone.exe --window
+   Ctrl and + or - (or Ctrl and the mouse wheel) zoom the tiles. Text
+   uses Cascadia Mono or Consolas; --font PATH picks another .ttf.
 
 FIRST STEPS
 -----------
