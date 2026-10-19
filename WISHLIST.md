@@ -24,6 +24,30 @@ about. Losing is fun, but a fortress has to live long enough to have a story.
 
 ## Where we stand (October 2026)
 
+**19 October 2026.** v0.4.0 is released, and Milestone 1 is all but done: 61 of its 62 steps
+(only "the shelter sings" is open). Three gaps remain from its goal: no Reckless fort lives three
+years, no Warlord fort ever falls, and no fort builds a well or a cistern (the overseer finds no
+site for one). Much was built outside the step lists: gods, relics, omens and the wizard; horrors,
+the thing in the night and peoples made by villains; arts and culture; named battles, weddings,
+lairs and the shelter; the director camera, the mood strip, the highlight reel, life stories and
+the news ticker; towers, curtain walls and maturing interiors; gore and close combat, the
+bestiary, sound and the arena; the world drawn as it's made, and the title scenes. The steps
+these cover are now ticked, and steps they only partly cover say what exists. Steps done:
+
+| Milestone | Done |
+|---|---|
+| 1 Forts that live to tell the tale | 61 of 62 |
+| 2 The overseer as a character | 17 of 86 |
+| 3 The fort as a society | 4 of 97 |
+| 4 The world comes to you | 4 of 115 |
+| 5 War in earnest | 2 of 56 |
+| 6 Deep fortress | 2 of 113 |
+| 7 Dread | 3 of 36 |
+| 8 A world of forts | 0 of 32 |
+| Other ways to play | 2 of 9 (the arena, G01, went to Done) |
+
+The rest of this section is the v0.2.0 picture that set Milestone 1's order.
+
 A batch of 25 overseer-run forts (`--autoplay --runs 25 --years 3 --seed 5000`, v0.2.0) gave
 **no survivors after three years**, and most fell within the first year. The build before
 the planned layouts did the same (0 of the 15 it finished), so this is long-standing, not new.
@@ -249,9 +273,9 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
   how soon it bars the gate and how many it keeps under arms (7579248) · [x] the brain and
   the autoplay screen show who it is (7579248) · [x] `A` then `r` rolls another of the same
   style (7579248) · [x] its notes on what it saw to speak in its voice ("Uneasy, it saw the
-  fortress short of stone…") (7579248) · [ ] pick the traits by hand · [ ] more of its
-  notes in its voice
-- **From the Bay 12 review:** [ ] Watch and nudge ([OVR-24](ideas/world-and-overseer.md))
+  fortress short of stone…") (7579248) · [ ] pick the traits by hand · [x] more of its
+  notes in its voice (e79d14e: six openings a trait; its halls, feasts and eulogies too)
+- **From the Bay 12 review:** [ ] Watch and nudge ([OVR-24](ideas/world-and-overseer.md); partly: the brain's nudges and forcing, no traits by hand)
 - **Done when:** two overseers with the same style but different traits build visibly different
   forts from the same seed.
 
@@ -259,40 +283,45 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 - **Why:** every plan runs east from the gate; on a narrow site most of it is wasted.
 - **Steps:** [ ] a plan can face east, west, north or south, and the overseer picks the side with
   the most solid rock · [ ] a level's plan stretches to the space available, and deeper levels
-  get their own layout (workshops on one, bedrooms on another, like DF forts) · [ ] `p` shows the
+  get their own layout (workshops on one, bedrooms on another, like DF forts) (partly: the plan
+  runs east as far as the map allows, blueprint.rs; every level gets the same layout) · [ ] `p` shows the
   plan as a ghost overlay on the map: halls and rooms still to come
 - **Done when:** on a site with rock only to the west, a planned fort still fills its plan.
 
 #### O03 Halls that look lived in (M)
 - **Why:** finished forts in DF are smoothed, engraved, furnished and named.
-- **Steps:** [ ] the main halls are smoothed, then engraved, as the fort grows rich · [x] bedrooms
+- **Steps:** [x] the main halls are smoothed, then engraved, as the fort grows rich (efa01ab) · [x] bedrooms
   get a cabinet and a chest; nobles get suites with an office and a dining room (feat/interiors:
   architect.rs; also bedrooms of their own, the dormitory retired, gathering halls, the industry
   quarter and rebuilding in maturity.rs) · [ ] the atrium
-  and the hub get statues and the monument · [ ] halls are named after heroes and events
-  ("the Hall of the Unbeaten") and the names show in the look panel and the chronicle
-- **From the Bay 12 review:** [ ] Trophies of war ([CRF-01](ideas/economy.md)) · [ ] Named weapons ([CRF-02](ideas/economy.md)) · [ ] Inscriptions and maker's marks ([CRF-06](ideas/economy.md)) · [ ] Name creator ([CRF-08](ideas/economy.md)) · [ ] Jeweler and decorations ([CRF-13](ideas/economy.md)) · [ ] Gems in engravings, engraved built walls ([CRF-12](ideas/economy.md)) · [ ] Statues and figurines of things ([CRF-21](ideas/economy.md)) · [x] (this commit) Places named for what happened there ([WLD-02](ideas/world-and-overseer.md))
+  and the hub get statues and the monument (partly: a rotunda holds the monument, gathering
+  halls and temples get statues, efa01ab; pillars round the monument, ad88122) · [ ] halls are named after heroes and events
+  ("the Hall of the Unbeaten") and the names show in the look panel and the chronicle (partly: rooms
+  are named in the look panel, a tavern gets a name of its own, efa01ab; a place takes a name
+  from a deed done there, 6567979; no hall is named for a hero)
+- **From the Bay 12 review:** [ ] Trophies of war ([CRF-01](ideas/economy.md)) · [ ] Named weapons ([CRF-02](ideas/economy.md)) · [ ] Inscriptions and maker's marks ([CRF-06](ideas/economy.md)) · [ ] Name creator ([CRF-08](ideas/economy.md); partly: battles, places, taverns and instruments get names) · [ ] Jeweler and decorations ([CRF-13](ideas/economy.md)) · [ ] Gems in engravings, engraved built walls ([CRF-12](ideas/economy.md)) · [ ] Statues and figurines of things ([CRF-21](ideas/economy.md); partly: statues and crafts show the fort's legends and heroes, f6ad60c) · [x] Places named for what happened there ([WLD-02](ideas/world-and-overseer.md), 6567979)
 - **Done when:** a three-year fort has smoothed main halls, furnished bedrooms and named halls.
 
 #### O04 Defences in the plan (M)
 - **Why:** DF forts are famous for moats, trap halls and walled courtyards.
 - **Steps:** [ ] the gatehouse grows with the fort: a trap corridor, then a moat under a
-  drawbridge, then towers with fortifications (towers: this commit, on the surface: a curtain
+  drawbridge, then towers with fortifications (towers: ad88122, on the surface: a curtain
   wall with gate towers, battlements, a walkway, an arch and a drawbridge; watchtowers whose
   watch sees armies sooner; marksdwarves shoot down from the towers) · [x] Warlord and cautious
-  overseers build them sooner (the walls and towers, this commit) · [ ] a siege that breaks on
-  the defences goes into the legends
+  overseers build them sooner (the walls and towers, ad88122) · [ ] a siege that breaks on
+  the defences goes into the legends (partly: a siege with
+  blood spilt is named and goes into the legends, 15be5b2; one that breaks bloodless on the walls doesn't)
 - **From the Bay 12 review:** [ ] Pressure plates ([ENG-06](ideas/economy.md)) · [ ] Upright spikes ([ENG-04](ideas/economy.md)) · [ ] Pits and ponds ([ENG-03](ideas/economy.md)) · [ ] Traps jammed with bodies ([ENG-01](ideas/economy.md)) · [ ] Trapdoors and chutes ([ENG-07](ideas/economy.md)) · [ ] Nets and tripwires ([ENG-08](ideas/economy.md)) · [ ] Better traps ([ENG-19](ideas/economy.md)) · [ ] Moats and wide drawbridges ([ENG-20](ideas/economy.md)) · [ ] Deliberate flooding ([ENG-02](ideas/economy.md))
 - **Done when:** a Warlord fort has a moat and a trap corridor before its third siege.
 
 #### O05 Spectator mode (M)
 - **Why:** An autoplay fort is a show: the player should see moods at a glance, have the camera cut to the drama, and replay the best moments.
-- **Steps:** [x] Mood strip ([UI-01](ideas/world-and-overseer.md), this commit: faces in the top bar, click to go, the overseer reads them) · [ ] Director camera ([UI-03](ideas/world-and-overseer.md)) · [ ] Sound-based reports ([UI-06](ideas/world-and-overseer.md)) · [ ] Last words ([UI-02](ideas/world-and-overseer.md)) · [ ] Announcement control ([UI-07](ideas/world-and-overseer.md)) · [ ] Step size ([UI-32](ideas/world-and-overseer.md)) · [x] Highlight reel and replay ([UI-04](ideas/world-and-overseer.md), this commit: clips of every big moment, death and wedding, named battles, `h` plays them, the overseer's moment of the year) · [ ] Export the fort ([UI-10](ideas/world-and-overseer.md)) · [x] Ambient particles: rain, snow, leaves, fireflies, dust (fa0b163) · [x] A news ticker when the announcements are hidden or full (this commit)
+- **Steps:** [x] Mood strip ([UI-01](ideas/world-and-overseer.md), 4c47723: faces in the top bar, click to go, the overseer reads them) · [x] Director camera ([UI-03](ideas/world-and-overseer.md), 2edf40e: tours the fort when idle, fights first; music and dances ffc0b89) · [ ] Sound-based reports ([UI-06](ideas/world-and-overseer.md)) · [ ] Last words ([UI-02](ideas/world-and-overseer.md)) · [ ] Announcement control ([UI-07](ideas/world-and-overseer.md)) · [ ] Step size ([UI-32](ideas/world-and-overseer.md)) · [x] Highlight reel and replay ([UI-04](ideas/world-and-overseer.md), db1d6b3: clips of every big moment, death and wedding, named battles, `h` plays them, the overseer's moment of the year) · [ ] Export the fort ([UI-10](ideas/world-and-overseer.md)) · [x] Ambient particles: rain, snow, leaves, fireflies, dust (fa0b163) · [x] A news ticker when the announcements are hidden or full (e2e3f3f)
 - **Done when:** A three-year autoplay fort produces a highlight reel that replays its sieges and deaths.
 
 #### O06 Know your dwarves (M)
 - **Why:** Every dwarf should be a story you can read: their life, their family, how they died.
-- **Steps:** [x] A dwarf's life story ([UI-05](ideas/world-and-overseer.md), this commit: the Life page with a portrait, the overseer's eulogies) · [ ] Unit list with stress ([UI-13](ideas/world-and-overseer.md)) · [ ] Live unit sheet ([UI-14](ideas/world-and-overseer.md)) · [ ] Family tree screen ([UI-15](ideas/world-and-overseer.md)) · [x] Death scenes in the chronicle ([UI-08](ideas/world-and-overseer.md), this commit: a line for each notable dwarf lost that year) · [ ] Status readouts ([UI-35](ideas/world-and-overseer.md))
+- **Steps:** [x] A dwarf's life story ([UI-05](ideas/world-and-overseer.md), f031dd9: the Life page with a portrait, the overseer's eulogies) · [ ] Unit list with stress ([UI-13](ideas/world-and-overseer.md)) · [ ] Live unit sheet ([UI-14](ideas/world-and-overseer.md)) · [ ] Family tree screen ([UI-15](ideas/world-and-overseer.md)) · [x] Death scenes in the chronicle ([UI-08](ideas/world-and-overseer.md), f031dd9: a line for each notable dwarf lost that year) · [ ] Status readouts ([UI-35](ideas/world-and-overseer.md))
 - **Done when:** Any dwarf's sheet shows a life story drawn from the chronicle and a family tree.
 
 #### O07 A mortal overseer (M)
@@ -307,17 +336,17 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O09 Legends worth telling (M)
 - **Why:** The fort's history should read like a saga in the overseer's voice: named battles, named places, remembered battlefields.
-- **Steps:** [x] (this commit) Named episodes and battles ([WLD-01](ideas/world-and-overseer.md)) · [ ] Old battlefields remembered ([WLD-12](ideas/world-and-overseer.md)) · [ ] Ages named by the world ([WLD-13](ideas/world-and-overseer.md)) · [ ] Legends that drift ([WLD-09](ideas/world-and-overseer.md)) · [ ] Forgotten lore ([WLD-18](ideas/world-and-overseer.md))
+- **Steps:** [x] Named episodes and battles ([WLD-01](ideas/world-and-overseer.md), 15be5b2) · [ ] Old battlefields remembered ([WLD-12](ideas/world-and-overseer.md); partly: the place is named and later fights there are named after it, 6567979) · [ ] Ages named by the world ([WLD-13](ideas/world-and-overseer.md)) · [ ] Legends that drift ([WLD-09](ideas/world-and-overseer.md)) · [ ] Forgotten lore ([WLD-18](ideas/world-and-overseer.md))
 - **Done when:** A siege goes into the chronicle under a name, and the place it broke is named after it.
 
 #### O10 A miner's craft (M)
 - **Why:** The Delver style needs a craft to be good at: following veins, prospecting, surviving cave-ins.
-- **Steps:** [ ] Dig speed by pick and rock ([DIG-06](ideas/myth-and-depths.md)) · [ ] Follow the vein ([DIG-11](ideas/myth-and-depths.md)) · [ ] Prospecting and finds ([DIG-12](ideas/myth-and-depths.md)) · [ ] Warm and damp stone ([DIG-21](ideas/myth-and-depths.md)) · [ ] Surviving cave-ins ([DIG-07](ideas/myth-and-depths.md)) · [ ] Gems in their host rock ([DIG-33](ideas/myth-and-depths.md)) · [ ] Digging out boulders ([DIG-34](ideas/myth-and-depths.md))
+- **Steps:** [ ] Dig speed by pick and rock ([DIG-06](ideas/myth-and-depths.md); partly: by rock and skill, not by pick) · [ ] Follow the vein ([DIG-11](ideas/myth-and-depths.md)) · [ ] Prospecting and finds ([DIG-12](ideas/myth-and-depths.md)) · [ ] Warm and damp stone ([DIG-21](ideas/myth-and-depths.md)) · [ ] Surviving cave-ins ([DIG-07](ideas/myth-and-depths.md)) · [ ] Gems in their host rock ([DIG-33](ideas/myth-and-depths.md)) · [ ] Digging out boulders ([DIG-34](ideas/myth-and-depths.md))
 - **Done when:** A Delver overseer follows a vein and finds more ore than a Builder from the same seed.
 
 #### O11 A builder's hands (M)
 - **Why:** The rest of DF's construction kit: roads, overlapping zones, levers installed by a mechanic.
-- **Steps:** [ ] One-column stairs ([ENG-09](ideas/economy.md)) · [ ] Builders don't wall themselves in ([ENG-10](ideas/economy.md)) · [ ] Bulk rooms and overlapping zones ([ENG-17](ideas/economy.md)) · [ ] Named halls ([ENG-16](ideas/economy.md)) · [ ] Build over built floors ([ENG-45](ideas/economy.md)) · [ ] Better levers ([ENG-33](ideas/economy.md)) · [ ] Roads and wagon access ([ENG-35](ideas/economy.md))
+- **Steps:** [ ] One-column stairs ([ENG-09](ideas/economy.md)) · [ ] Builders don't wall themselves in ([ENG-10](ideas/economy.md)) · [ ] Bulk rooms and overlapping zones ([ENG-17](ideas/economy.md)) · [ ] Named halls ([ENG-16](ideas/economy.md); partly: the overseer names its rooms, efa01ab; the player can't) · [ ] Build over built floors ([ENG-45](ideas/economy.md)) · [ ] Better levers ([ENG-33](ideas/economy.md)) · [ ] Roads and wagon access ([ENG-35](ideas/economy.md))
 - **Done when:** A dining hall that is also the meeting area works for both, and linking a lever sends a mechanic.
 
 #### O12 Inspired engineers (M)
@@ -331,7 +360,7 @@ Goal: the fort runs on its own politics and feelings. Dwarves remember, grieve, 
 
 #### C01 The inner life (L)
 - **Why:** Dwarves should remember, relive, harden and change, and the fort's mood should be readable at a glance.
-- **Steps:** [ ] Richer thoughts ([MND-23](ideas/body-and-mind.md)) · [ ] Many emotions ([MND-22](ideas/body-and-mind.md)) · [ ] Two-speed feelings ([MND-01](ideas/body-and-mind.md)) · [ ] Fort mood at a glance ([MND-20](ideas/body-and-mind.md)) · [ ] Memories that come back ([MND-02](ideas/body-and-mind.md)) · [ ] Hardened by tragedy ([MND-04](ideas/body-and-mind.md)) · [ ] Stress tuning ([MND-59](ideas/body-and-mind.md)) · [ ] Personality drift ([MND-03](ideas/body-and-mind.md))
+- **Steps:** [ ] Richer thoughts ([MND-23](ideas/body-and-mind.md)) · [ ] Many emotions ([MND-22](ideas/body-and-mind.md)) · [ ] Two-speed feelings ([MND-01](ideas/body-and-mind.md)) · [ ] Fort mood at a glance ([MND-20](ideas/body-and-mind.md); partly: the mood strip, 4c47723; no list by stress) · [ ] Memories that come back ([MND-02](ideas/body-and-mind.md); partly: the Life page tells the strongest memory of each season, f031dd9; none are relived) · [ ] Hardened by tragedy ([MND-04](ideas/body-and-mind.md); partly: each sight of carnage hardens a dwarf a little, d28911c) · [ ] Stress tuning ([MND-59](ideas/body-and-mind.md)) · [ ] Personality drift ([MND-03](ideas/body-and-mind.md))
 - **Done when:** A dwarf who lived through a massacre relives it a season later and comes out changed, and the change shows on their sheet.
 
 #### C02 Grief and vengeance (L)
@@ -346,12 +375,12 @@ Goal: the fort runs on its own politics and feelings. Dwarves remember, grieve, 
 
 #### C04 Fort society in motion (L)
 - **Why:** Dwarves goad, envy, argue and cheer together; small social weather between the big events.
-- **Steps:** [ ] Victory cheer ([MND-09](ideas/body-and-mind.md)) · [ ] Goading and dares ([MND-13](ideas/body-and-mind.md)) · [ ] Envy of rooms, gear and titles ([MND-19](ideas/body-and-mind.md)) · [ ] Impressions and compatibility ([MND-26](ideas/body-and-mind.md)) · [ ] Long-lived ties and social clumping ([MND-27](ideas/body-and-mind.md)) · [ ] Arguments ([MND-28](ideas/body-and-mind.md)) · [ ] Crowd moods ([MND-52](ideas/body-and-mind.md)) · [ ] Rebellious youth ([MND-18](ideas/body-and-mind.md)) · [ ] Altruism ([MND-53](ideas/body-and-mind.md))
+- **Steps:** [x] Victory cheer ([MND-09](ideas/body-and-mind.md), c1a411a) · [ ] Goading and dares ([MND-13](ideas/body-and-mind.md)) · [ ] Envy of rooms, gear and titles ([MND-19](ideas/body-and-mind.md)) · [ ] Impressions and compatibility ([MND-26](ideas/body-and-mind.md)) · [ ] Long-lived ties and social clumping ([MND-27](ideas/body-and-mind.md)) · [ ] Arguments ([MND-28](ideas/body-and-mind.md)) · [ ] Crowd moods ([MND-52](ideas/body-and-mind.md)) · [ ] Rebellious youth ([MND-18](ideas/body-and-mind.md)) · [ ] Altruism ([MND-53](ideas/body-and-mind.md))
 - **Done when:** A fort's gossip shows envy and friendship forming without any death or siege.
 
 #### C05 Family sagas (L)
 - **Why:** Births, weddings and deaths should be stories the chronicle can tell.
-- **Steps:** [x] (this commit) Named after heroes ([SOC-01](ideas/society.md)) · [x] (this commit) Weddings as events ([SOC-02](ideas/society.md)) · [ ] Orphans adopted ([SOC-13](ideas/society.md)) · [ ] Siblings, grandparents, heirs ([SOC-24](ideas/society.md)) · [ ] Mothers and babies ([SOC-25](ideas/society.md)) · [ ] Sibling rivalry and favourites ([SOC-23](ideas/society.md)) · [ ] Inheritance ([SOC-51](ideas/society.md)) · [ ] Heredity ([SOC-52](ideas/society.md)) · [ ] Coming-of-age rite ([SOC-12](ideas/society.md)) · [ ] Rebellious youth ([SOC-22](ideas/society.md))
+- **Steps:** [x] Named after heroes ([SOC-01](ideas/society.md), bda7b14) · [x] Weddings as events ([SOC-02](ideas/society.md), 54a152c) · [ ] Orphans adopted ([SOC-13](ideas/society.md)) · [ ] Siblings, grandparents, heirs ([SOC-24](ideas/society.md)) · [ ] Mothers and babies ([SOC-25](ideas/society.md)) · [ ] Sibling rivalry and favourites ([SOC-23](ideas/society.md)) · [ ] Inheritance ([SOC-51](ideas/society.md)) · [ ] Heredity ([SOC-52](ideas/society.md)) · [ ] Coming-of-age rite ([SOC-12](ideas/society.md)) · [ ] Rebellious youth ([SOC-22](ideas/society.md))
 - **Done when:** A child named after a fallen hero appears in the chronicle with the reason.
 
 #### C06 The council (L)
@@ -371,12 +400,12 @@ Goal: the fort runs on its own politics and feelings. Dwarves remember, grieve, 
 
 #### C09 The tavern night (L)
 - **Why:** The tavern should be the fort's drama engine: performers, gambling, tall tales and guests with old feuds.
-- **Steps:** [ ] Drunks and bar brawls ([SOC-05](ideas/society.md)) · [ ] Gambling and debt ([SOC-06](ideas/society.md)) · [ ] Tavern keepers and performers ([SOC-30](ideas/society.md)) · [ ] Tall tales and liars ([SOC-19](ideas/society.md)) · [ ] Visitors bring old feuds ([SOC-14](ideas/society.md)) · [ ] Taverns with paying guests ([SOC-31](ideas/society.md)) · [ ] Residents and citizens ([SOC-32](ideas/society.md)) · [ ] Arena and fight pit ([SOC-26](ideas/society.md))
+- **Steps:** [ ] Drunks and bar brawls ([SOC-05](ideas/society.md)) · [ ] Gambling and debt ([SOC-06](ideas/society.md)) · [ ] Tavern keepers and performers ([SOC-30](ideas/society.md); partly: bards on the stage, dwarves play instruments, 1ff31da; no keeper) · [ ] Tall tales and liars ([SOC-19](ideas/society.md)) · [ ] Visitors bring old feuds ([SOC-14](ideas/society.md)) · [ ] Taverns with paying guests ([SOC-31](ideas/society.md)) · [ ] Residents and citizens ([SOC-32](ideas/society.md)) · [ ] Arena and fight pit ([SOC-26](ideas/society.md); partly: Arena mode on the title screen, not in the fort)
 - **Done when:** A guest with a feud meets their enemy in the tavern and a fight breaks out.
 
 #### C10 Gods of the mountain (L)
 - **Why:** Religion is a temple zone and a need to pray; dwarves should have gods, priests and petitions, and the Pious trait something to do.
-- **Steps:** [ ] Gods with spheres ([MYT-10](ideas/myth-and-depths.md)) · [ ] Temples, priests and sermons ([MYT-11](ideas/myth-and-depths.md)) · [ ] Temple design from the god ([MYT-28](ideas/myth-and-depths.md)) · [ ] Religious petitions ([MYT-12](ideas/myth-and-depths.md)) · [ ] Faith passed on ([MYT-41](ideas/myth-and-depths.md)) · [ ] Cursing the gods ([MYT-27](ideas/myth-and-depths.md)) · [ ] Divination shrine ([MYT-24](ideas/myth-and-depths.md)) · [ ] Desecration and divine curses ([MYT-13](ideas/myth-and-depths.md)) · [ ] Beast cults ([MYT-14](ideas/myth-and-depths.md)) · [ ] Answered prayers ([MYT-15](ideas/myth-and-depths.md))
+- **Steps:** [x] Gods with spheres ([MYT-10](ideas/myth-and-depths.md), 965eafb) · [ ] Temples, priests and sermons ([MYT-11](ideas/myth-and-depths.md); partly: temples dedicated to a god, 965eafb; no priests) · [ ] Temple design from the god ([MYT-28](ideas/myth-and-depths.md)) · [ ] Religious petitions ([MYT-12](ideas/myth-and-depths.md)) · [ ] Faith passed on ([MYT-41](ideas/myth-and-depths.md)) · [ ] Cursing the gods ([MYT-27](ideas/myth-and-depths.md)) · [ ] Divination shrine ([MYT-24](ideas/myth-and-depths.md)) · [ ] Desecration and divine curses ([MYT-13](ideas/myth-and-depths.md); partly: broken taboos, blood on the temple floor among them, bring a god's curse, 795962e; no vampires or werebeasts) · [ ] Beast cults ([MYT-14](ideas/myth-and-depths.md)) · [ ] Answered prayers ([MYT-15](ideas/myth-and-depths.md))
 - **Done when:** A temple dedicated to one god draws its worshippers, and a pious overseer grants a priest's petition.
 
 #### C11 Table and tankard (M)
@@ -396,7 +425,8 @@ Goal: the world map is alive. What happens out there reaches the fort, and the f
 #### B01 Scouts and armies on the world map (M)
 - **Why:** sieges appear from nowhere. Seeing an army march across the map is a story.
 - **Steps:** [ ] armies and caravans move between sites on the world map, drawn on it · [ ] a
-  scout warns days before a siege, with its size and leader · [ ] roads and tracks between
+  scout warns days before a siege, with its size and leader (partly: a day ahead, S03; half a day
+  more from a watchtower, ad88122; a season ahead if a captive talked) · [ ] roads and tracks between
   sites drawn on the world map
 - **Done when:** a siege is announced days ahead and the army can be seen approaching.
 
@@ -405,13 +435,14 @@ Goal: the world map is alive. What happens out there reaches the fort, and the f
 - **Steps:** [ ] envoys arrive with demands (tribute, an artifact, a prisoner) or offers
   (peace, trade) · [ ] paying or refusing changes the next siege · [ ] the overseer decides by its
   traits
-- **From the Bay 12 review:** [ ] Envoys with demands ([NOB-15](ideas/society.md)) · [ ] Parley at the gate ([NOB-16](ideas/society.md)) · [ ] Elves judge your forestry ([NOB-13](ideas/society.md)) · [ ] Treating envoys badly ([NOB-12](ideas/society.md)) · [ ] Tribute and taxes to the homeland ([NOB-17](ideas/society.md)) · [ ] Liaison negotiations ([NOB-58](ideas/society.md)) · [ ] Trade that dies off ([NOB-54](ideas/society.md)) · [ ] First contact ([NOB-56](ideas/society.md)) · [ ] Messenger missions ([NOB-57](ideas/society.md)) · [ ] Parley at the gate ([OVR-01](ideas/world-and-overseer.md)) · [ ] Prisoners of war ([OVR-12](ideas/world-and-overseer.md)) · [ ] Banish a dwarf ([OVR-08](ideas/world-and-overseer.md)) · [ ] Take or refuse the barony ([OVR-09](ideas/world-and-overseer.md)) · [ ] Petitions ([OVR-11](ideas/world-and-overseer.md)) · [ ] The crown's levy ([OVR-14](ideas/world-and-overseer.md)) · [ ] Pleas for help ([OVR-15](ideas/world-and-overseer.md)) · [ ] Conduct has consequences ([OVR-13](ideas/world-and-overseer.md))
+- **From the Bay 12 review:** [ ] Envoys with demands ([NOB-15](ideas/society.md)) · [ ] Parley at the gate ([NOB-16](ideas/society.md)) · [ ] Elves judge your forestry ([NOB-13](ideas/society.md)) · [ ] Treating envoys badly ([NOB-12](ideas/society.md)) · [ ] Tribute and taxes to the homeland ([NOB-17](ideas/society.md)) · [ ] Liaison negotiations ([NOB-58](ideas/society.md)) · [ ] Trade that dies off ([NOB-54](ideas/society.md)) · [ ] First contact ([NOB-56](ideas/society.md)) · [ ] Messenger missions ([NOB-57](ideas/society.md)) · [ ] Parley at the gate ([OVR-01](ideas/world-and-overseer.md)) · [x] Prisoners of war ([OVR-12](ideas/world-and-overseer.md), 6c8fa4d) · [ ] Banish a dwarf ([OVR-08](ideas/world-and-overseer.md)) · [ ] Take or refuse the barony ([OVR-09](ideas/world-and-overseer.md)) · [ ] Petitions ([OVR-11](ideas/world-and-overseer.md)) · [ ] The crown's levy ([OVR-14](ideas/world-and-overseer.md)) · [ ] Pleas for help ([OVR-15](ideas/world-and-overseer.md)) · [ ] Conduct has consequences ([OVR-13](ideas/world-and-overseer.md))
 - **Done when:** paying tribute delays a siege and refusing brings it sooner.
 
 #### F07 Monster hunters and performers (S)
 - **Why:** finishes the wandering heroes (bards and warriors are done).
 - **Steps:** [ ] monster hunters come for a beast in your caverns and may die trying · [ ]
-  performers dance and tell stories in the tavern, and the stories come from the legends
+  performers dance and tell stories in the tavern, and the stories come from the legends (partly:
+  bards sing the legends and the fort's own works, fce2b3a; no dancers or storytellers)
 - **From the Bay 12 review:** [ ] Fame abroad ([OUT-12](ideas/world-and-overseer.md)) · [ ] Tall tales from returning squads ([OUT-05](ideas/world-and-overseer.md)) · [ ] Monster slayers ([OUT-16](ideas/world-and-overseer.md)) · [ ] Questers come for your artifacts ([OUT-13](ideas/world-and-overseer.md)) · [ ] Recover stolen artifacts ([OUT-06](ideas/world-and-overseer.md)) · [ ] Treasure trails ([OUT-07](ideas/world-and-overseer.md)) · [ ] Talk of the fort's buildings ([OUT-28](ideas/world-and-overseer.md))
 - **Done when:** a hunter arrives when a cave horror lives and goes after it.
 
@@ -429,7 +460,7 @@ Goal: the world map is alive. What happens out there reaches the fort, and the f
 
 #### B16 Enemies with faces (L)
 - **Why:** Armies should want things and remember wrongs: leaders with pets, grudges stated with reasons, armies you can watch march.
-- **Steps:** [ ] Meet the enemy leader ([SIE-06](ideas/war.md)) · [ ] Beasts of war and leaders' pets ([SIE-36](ideas/war.md)) · [ ] Grudges with reasons ([SIE-05](ideas/war.md)) · [ ] Parley at the gate ([SIE-09](ideas/war.md)) · [ ] Carried off alive ([SIE-24](ideas/war.md)) · [ ] Evil armies with character ([SIE-32](ideas/war.md)) · [ ] Armies you can watch coming ([SIE-33](ideas/war.md))
+- **Steps:** [ ] Meet the enemy leader ([SIE-06](ideas/war.md)) · [ ] Beasts of war and leaders' pets ([SIE-36](ideas/war.md)) · [ ] Grudges with reasons ([SIE-05](ideas/war.md)) · [ ] Parley at the gate ([SIE-09](ideas/war.md)) · [ ] Carried off alive ([SIE-24](ideas/war.md)) · [ ] Evil armies with character ([SIE-32](ideas/war.md); partly: peoples made by villains besiege with their maker's gift, 0ccdbeb) · [ ] Armies you can watch coming ([SIE-33](ideas/war.md))
 - **Done when:** A siege leader names the wrong that brought them, and their army is seen marching across the world map.
 
 #### B17 The world turns (L)
@@ -449,22 +480,22 @@ Goal: the world map is alive. What happens out there reaches the fort, and the f
 
 #### B20 Pests and predators (L)
 - **Why:** The farm should be a front line: vermin in the stores, pets that eat pets, fish that run out.
-- **Steps:** [ ] Pets eat pets ([AGR-01](ideas/economy.md)) · [ ] Vermin in stores and fields ([AGR-04](ideas/economy.md)) · [ ] Cats fish ([AGR-14](ideas/economy.md)) · [ ] Fish run out ([AGR-10](ideas/economy.md)) · [ ] Livestock raids ([AGR-02](ideas/economy.md)) · [ ] Wildlife populations ([AGR-18](ideas/economy.md)) · [ ] Logging angers the wild ([AGR-09](ideas/economy.md))
+- **Steps:** [ ] Pets eat pets ([AGR-01](ideas/economy.md)) · [ ] Vermin in stores and fields ([AGR-04](ideas/economy.md); partly: vermin eat loose food and cats catch them, 4c95ef8; food doesn't draw them) · [ ] Cats fish ([AGR-14](ideas/economy.md)) · [ ] Fish run out ([AGR-10](ideas/economy.md)) · [ ] Livestock raids ([AGR-02](ideas/economy.md)) · [x] Wildlife populations ([AGR-18](ideas/economy.md), 41057bf; predators hunt prey 4c95ef8) · [ ] Logging angers the wild ([AGR-09](ideas/economy.md))
 - **Done when:** A hoarded food store draws vermin, and a fort with cats loses less.
 
 #### B21 Snatchers and thieves (M)
 - **Why:** Small, sneaky threats make stories between sieges: child snatchers, kobolds, gremlins, thieving animals.
-- **Steps:** [ ] Baby snatchers ([CRE-04](ideas/myth-and-depths.md)) · [ ] Gremlins ([CRE-11](ideas/myth-and-depths.md)) · [ ] Proper kobolds ([CRE-12](ideas/myth-and-depths.md)) · [ ] Scavengers ([CRE-06](ideas/myth-and-depths.md)) · [ ] Thieving animals ([CRE-26](ideas/myth-and-depths.md)) · [ ] Night trolls ([CRE-14](ideas/myth-and-depths.md))
+- **Steps:** [ ] Baby snatchers ([CRE-04](ideas/myth-and-depths.md)) · [ ] Gremlins ([CRE-11](ideas/myth-and-depths.md)) · [ ] Proper kobolds ([CRE-12](ideas/myth-and-depths.md)) · [ ] Scavengers ([CRE-06](ideas/myth-and-depths.md); partly: carrion animals come to carcasses and battlefields, 4c95ef8) · [ ] Thieving animals ([CRE-26](ideas/myth-and-depths.md)) · [ ] Night trolls ([CRE-14](ideas/myth-and-depths.md))
 - **Done when:** A child is taken at night, and the fort can try to get them back.
 
 #### B22 Beasts of legend (L)
 - **Why:** Monsters should have names, habits and powers that the fort learns about, and hunters who come for them.
-- **Steps:** [x] Forgotten beasts with powers ([CRE-05](ideas/myth-and-depths.md), this commit) · [ ] Man-eaters become legends ([CRE-08](ideas/myth-and-depths.md)) · [ ] Disturbed lairs ([CRE-09](ideas/myth-and-depths.md)) · [ ] Cyclic beasts ([CRE-10](ideas/myth-and-depths.md)) · [ ] Monster hunters ([CRE-07](ideas/myth-and-depths.md)) · [ ] Flying snatchers ([CRE-13](ideas/myth-and-depths.md)) · [ ] Dragon lairs and hoards ([CRE-18](ideas/myth-and-depths.md)) · [ ] Hydras fight on ([CRE-21](ideas/myth-and-depths.md)) · [ ] Megabeasts take fallen forts ([CRE-19](ideas/myth-and-depths.md)) · [ ] Generated megabeasts that breed and bargain ([CRE-25](ideas/myth-and-depths.md))
+- **Steps:** [x] Forgotten beasts with powers ([CRE-05](ideas/myth-and-depths.md), 8dd51f6) · [ ] Man-eaters become legends ([CRE-08](ideas/myth-and-depths.md)) · [ ] Disturbed lairs ([CRE-09](ideas/myth-and-depths.md); partly: dens on the map, and a squad sent to clear one is met by its beasts, c3e0eec) · [ ] Cyclic beasts ([CRE-10](ideas/myth-and-depths.md)) · [ ] Monster hunters ([CRE-07](ideas/myth-and-depths.md)) · [ ] Flying snatchers ([CRE-13](ideas/myth-and-depths.md)) · [ ] Dragon lairs and hoards ([CRE-18](ideas/myth-and-depths.md)) · [ ] Hydras fight on ([CRE-21](ideas/myth-and-depths.md)) · [ ] Megabeasts take fallen forts ([CRE-19](ideas/myth-and-depths.md)) · [ ] Generated megabeasts that breed and bargain ([CRE-25](ideas/myth-and-depths.md))
 - **Done when:** A cave horror's generated power changes how it fights, and the fort learns it after the first clash.
 
 #### B23 The restless dead (L)
 - **Why:** Death in the fort shouldn't be quiet: ghosts with personalities, horror at risen kin, tomb curses.
-- **Steps:** [ ] Richer ghosts ([MYT-01](ideas/myth-and-depths.md)) · [ ] Horror at undead kin ([MYT-02](ideas/myth-and-depths.md)) · [ ] Dormant dead ([MYT-17](ideas/myth-and-depths.md)) · [ ] Mummies and tomb curses ([MYT-08](ideas/myth-and-depths.md)) · [ ] Undead from parts ([MYT-16](ideas/myth-and-depths.md)) · [ ] Evil with a cause, evil purged ([MYT-09](ideas/myth-and-depths.md)) · [ ] Spreading evil land ([MYT-20](ideas/myth-and-depths.md)) · [ ] Secrets of death in the fort ([MYT-19](ideas/myth-and-depths.md)) · [ ] Necromancer escalation ([MYT-18](ideas/myth-and-depths.md))
+- **Steps:** [ ] Richer ghosts ([MYT-01](ideas/myth-and-depths.md)) · [x] Horror at undead kin ([MYT-02](ideas/myth-and-depths.md), d66ee5c) · [ ] Dormant dead ([MYT-17](ideas/myth-and-depths.md)) · [ ] Mummies and tomb curses ([MYT-08](ideas/myth-and-depths.md)) · [ ] Undead from parts ([MYT-16](ideas/myth-and-depths.md)) · [ ] Evil with a cause, evil purged ([MYT-09](ideas/myth-and-depths.md)) · [ ] Spreading evil land ([MYT-20](ideas/myth-and-depths.md)) · [ ] Secrets of death in the fort ([MYT-19](ideas/myth-and-depths.md)) · [ ] Necromancer escalation ([MYT-18](ideas/myth-and-depths.md); partly: necromancers make new peoples in the history, 0ccdbeb)
 - **Done when:** A drowned dwarf's ghost haunts the dwarf who pulled the lever.
 
 #### B10 Why you came (M)
@@ -483,12 +514,12 @@ Goal: sieges are never the same twice. Invaders adapt and the fort adapts back; 
 
 #### A01 Sieges with surprises (M)
 - **Why:** Sieges come on the first day of a season and play out alike; they should vary, and the fort should answer each one.
-- **Steps:** [ ] Unpredictable arrival ([SIE-02](ideas/war.md)) · [ ] Ambush vs open siege ([SIE-42](ideas/war.md)) · [ ] Freeing the caged ([SIE-04](ideas/war.md)) · [x] (this commit) Victory cheer and feast ([SIE-03](ideas/war.md)) · [ ] Traps jammed with bodies ([SIE-19](ideas/war.md)) · [ ] Drowning the invaders ([SIE-20](ideas/war.md))
+- **Steps:** [ ] Unpredictable arrival ([SIE-02](ideas/war.md)) · [ ] Ambush vs open siege ([SIE-42](ideas/war.md); partly: now and then an army comes unseen, 537cc17) · [x] Freeing the caged ([SIE-04](ideas/war.md), 5cd7dd7) · [x] Victory cheer and feast ([SIE-03](ideas/war.md), c1a411a) · [ ] Traps jammed with bodies ([SIE-19](ideas/war.md)) · [ ] Drowning the invaders ([SIE-20](ideas/war.md))
 - **Done when:** Sieges arrive at varied times and from varied edges, and a broken siege lifts the fort's mood.
 
 #### A02 Blood and nerve (L)
 - **Why:** Fights should be decided by courage as well as hit points: routs, rallies, levies and prisoners.
-- **Steps:** [ ] Morale, fear and rout ([MIL-06](ideas/war.md)) · [ ] A leader's fall cuts both ways ([MIL-09](ideas/war.md)) · [ ] Rallying charge ([MIL-10](ideas/war.md)) · [ ] Emergency levy and martial law ([MIL-07](ideas/war.md)) · [ ] Cornered civilians fight back ([MIL-08](ideas/war.md)) · [ ] Bystanders choose sides ([MIL-17](ideas/war.md)) · [ ] Yielding and prisoners of war ([MIL-16](ideas/war.md)) · [ ] Mutiny and desertion ([MIL-15](ideas/war.md))
+- **Steps:** [ ] Morale, fear and rout ([MIL-06](ideas/war.md); partly: armies rout when the leader falls or half are caged; beasts lose nerve, 8cc661b) · [ ] A leader's fall cuts both ways ([MIL-09](ideas/war.md)) · [ ] Rallying charge ([MIL-10](ideas/war.md)) · [ ] Emergency levy and martial law ([MIL-07](ideas/war.md)) · [ ] Cornered civilians fight back ([MIL-08](ideas/war.md)) · [ ] Bystanders choose sides ([MIL-17](ideas/war.md)) · [ ] Yielding and prisoners of war ([MIL-16](ideas/war.md)) · [ ] Mutiny and desertion ([MIL-15](ideas/war.md))
 - **Done when:** A squad routs when its leader falls, and a broken goblin can yield and be taken prisoner.
 
 #### W20 Attributes and skill decay (M)
@@ -498,7 +529,7 @@ Goal: sieges are never the same twice. Invaders adapt and the fort adapts back; 
 
 #### A03 Legends of the blade (M)
 - **Why:** Battles and weapons should be remembered: named weapons, kill tallies, veterans with reputations.
-- **Steps:** [ ] Named battles and a fight log ([MIL-12](ideas/war.md)) · [ ] Weapons that earn names ([MIL-11](ideas/war.md)) · [ ] Per-dwarf kill records ([MIL-67](ideas/war.md)) · [ ] Revenge and nemesis ([MIL-13](ideas/war.md)) · [ ] One appointed champion ([MIL-44](ideas/war.md)) · [ ] Favourite weapons ([MIL-41](ideas/war.md))
+- **Steps:** [ ] Named battles and a fight log ([MIL-12](ideas/war.md); partly: named battles, 15be5b2; a fight log only in the arena) · [ ] Weapons that earn names ([MIL-11](ideas/war.md)) · [ ] Per-dwarf kill records ([MIL-67](ideas/war.md)) · [ ] Revenge and nemesis ([MIL-13](ideas/war.md)) · [ ] One appointed champion ([MIL-44](ideas/war.md)) · [ ] Favourite weapons ([MIL-41](ideas/war.md))
 - **Done when:** A weapon that has killed a named enemy gets a name and a history.
 
 #### A04 Squad life (L)
@@ -547,12 +578,12 @@ Goal: the deep places are dangerous and worth it.
 - **Why:** pumps, water wheels and magma channels are DF's great engineering projects.
 - **Steps:** [ ] screw pumps lift water or magma a level · [ ] aquifer tools: pumping a shaft dry,
   and a warning before embarking on a heavy aquifer · [ ] magma creatures in the sea
-- **From the Bay 12 review:** [ ] Wells and cisterns inside ([ENG-18](ideas/economy.md)) · [ ] Warm and damp warnings, aquifer tools ([ENG-15](ideas/economy.md)) · [ ] Screw pumps ([ENG-21](ideas/economy.md)) · [ ] Magma works ([ENG-27](ideas/economy.md)) · [ ] Fresh, salt and stagnant water ([ENG-37](ideas/economy.md)) · [ ] More water sources ([ENG-38](ideas/economy.md)) · [ ] Power ([ENG-28](ideas/economy.md)) · [ ] Eruptions and surges ([ENG-26](ideas/economy.md)) · [ ] Volcanoes refill ([ENG-40](ideas/economy.md))
+- **From the Bay 12 review:** [ ] Wells and cisterns inside ([ENG-18](ideas/economy.md); partly: cistern.rs, 0b0db40, but no fort finds a site) · [ ] Warm and damp warnings, aquifer tools ([ENG-15](ideas/economy.md)) · [ ] Screw pumps ([ENG-21](ideas/economy.md)) · [ ] Magma works ([ENG-27](ideas/economy.md)) · [ ] Fresh, salt and stagnant water ([ENG-37](ideas/economy.md)) · [ ] More water sources ([ENG-38](ideas/economy.md)) · [ ] Power ([ENG-28](ideas/economy.md)) · [ ] Eruptions and surges ([ENG-26](ideas/economy.md)) · [ ] Volcanoes refill ([ENG-40](ideas/economy.md))
 - **Done when:** a pump stack drains a flooded shaft.
 
 #### D01 The living caverns (M)
 - **Why:** The caverns should react: noise from the fort irritates them, cavern peoples raid from below, things hide in the dark.
-- **Steps:** [ ] Cavern irritation ([DIG-01](ideas/myth-and-depths.md)) · [ ] Sounds from the deep ([DIG-09](ideas/myth-and-depths.md)) · [ ] Endless cavern life ([DIG-13](ideas/myth-and-depths.md)) · [ ] Cavern peoples ([DIG-03](ideas/myth-and-depths.md)) · [ ] Webs ([DIG-14](ideas/myth-and-depths.md)) · [ ] Cave fliers ([DIG-15](ideas/myth-and-depths.md)) · [ ] Gradual reveal and the unknown ([DIG-17](ideas/myth-and-depths.md)) · [ ] Dark caverns ([DIG-08](ideas/myth-and-depths.md))
+- **Steps:** [ ] Cavern irritation ([DIG-01](ideas/myth-and-depths.md)) · [ ] Sounds from the deep ([DIG-09](ideas/myth-and-depths.md)) · [ ] Endless cavern life ([DIG-13](ideas/myth-and-depths.md)) · [ ] Cavern peoples ([DIG-03](ideas/myth-and-depths.md)) · [ ] Webs ([DIG-14](ideas/myth-and-depths.md); partly: cave horrors' webs hold a dwarf fast, 8dd51f6) · [ ] Cave fliers ([DIG-15](ideas/myth-and-depths.md); partly: cave bats and lanternmoths, 4c95ef8; no swarms) · [ ] Gradual reveal and the unknown ([DIG-17](ideas/myth-and-depths.md)) · [ ] Dark caverns ([DIG-08](ideas/myth-and-depths.md))
 - **Done when:** A noisy fort draws raids from the caverns that a quiet one avoids.
 
 #### D02 Digging too deep (L)
@@ -572,7 +603,7 @@ Goal: the deep places are dangerous and worth it.
 
 #### D05 Sickness in the halls (L)
 - **Why:** Plague, vermin and poison as a slow-burning crisis the overseer must quarantine.
-- **Steps:** [ ] Contagious disease ([HLT-06](ideas/body-and-mind.md)) · [ ] Vermin-borne plague ([HLT-25](ideas/body-and-mind.md)) · [ ] Retching at carnage ([HLT-11](ideas/body-and-mind.md)) · [ ] Hygiene and baths ([HLT-30](ideas/body-and-mind.md)) · [ ] Blood and grime ([HLT-31](ideas/body-and-mind.md)) · [ ] Poisons and venom ([HLT-26](ideas/body-and-mind.md)) · [ ] Herbal remedies ([HLT-37](ideas/body-and-mind.md)) · [ ] Strange afflictions ([HLT-35](ideas/body-and-mind.md))
+- **Steps:** [ ] Contagious disease ([HLT-06](ideas/body-and-mind.md)) · [ ] Vermin-borne plague ([HLT-25](ideas/body-and-mind.md)) · [ ] Retching at carnage ([HLT-11](ideas/body-and-mind.md)) · [ ] Hygiene and baths ([HLT-30](ideas/body-and-mind.md)) · [ ] Blood and grime ([HLT-31](ideas/body-and-mind.md); partly: blood pools and trails that rain washes and haulers scrub, d28911c; no mud or vomit) · [ ] Poisons and venom ([HLT-26](ideas/body-and-mind.md); partly: a cave horror's venom worsens the wound, 8dd51f6) · [ ] Herbal remedies ([HLT-37](ideas/body-and-mind.md)) · [ ] Strange afflictions ([HLT-35](ideas/body-and-mind.md))
 - **Done when:** A sickness spreads through the dining hall until the overseer quarantines it.
 
 #### D06 Harsh world (M)
@@ -582,12 +613,12 @@ Goal: the deep places are dangerous and worth it.
 
 #### D07 Marked for life (L)
 - **Why:** Every fight should leave a visible trace that changes the dwarf: scars, lost parts, prosthetics.
-- **Steps:** [ ] Scars, brands and lost teeth ([HLT-08](ideas/body-and-mind.md)) · [ ] Pain ([HLT-18](ideas/body-and-mind.md)) · [ ] Prosthetics ([HLT-16](ideas/body-and-mind.md)) · [ ] Old wounds from history ([HLT-14](ideas/body-and-mind.md)) · [ ] Head injuries change people ([HLT-15](ideas/body-and-mind.md)) · [ ] Old age decline ([HLT-17](ideas/body-and-mind.md)) · [ ] Beards and hair ([HLT-34](ideas/body-and-mind.md))
+- **Steps:** [ ] Scars, brands and lost teeth ([HLT-08](ideas/body-and-mind.md); partly: teeth fly, d28911c; the Life portrait shows a head scar, f031dd9) · [ ] Pain ([HLT-18](ideas/body-and-mind.md)) · [ ] Prosthetics ([HLT-16](ideas/body-and-mind.md)) · [ ] Old wounds from history ([HLT-14](ideas/body-and-mind.md)) · [ ] Head injuries change people ([HLT-15](ideas/body-and-mind.md)) · [ ] Old age decline ([HLT-17](ideas/body-and-mind.md)) · [ ] Beards and hair ([HLT-34](ideas/body-and-mind.md); partly: the portrait's beards grey with age, f031dd9; the wizard turns one blue)
 - **Done when:** A veteran carries scars on their sheet and an iron hand that lets them fight again.
 
 #### D08 The rest of the workshop row (L)
 - **Why:** Glass, kilns, jewellers and melting complete DF's industry.
-- **Steps:** [ ] Melting and recycling ([CRF-10](ideas/economy.md)) · [ ] More metals and gems ([CRF-44](ideas/economy.md)) · [ ] Whole-carcass butchery ([CRF-25](ideas/economy.md)) · [ ] Leather done right ([CRF-31](ideas/economy.md)) · [ ] Kiln, ceramics, lime ([CRF-45](ideas/economy.md)) · [ ] Glass furnace ([CRF-46](ideas/economy.md)) · [ ] Oil, potash, lye ([CRF-32](ideas/economy.md)) · [x] Musical instruments ([CRF-15](ideas/economy.md)) · [ ] Toys and games ([CRF-14](ideas/economy.md))
+- **Steps:** [ ] Melting and recycling ([CRF-10](ideas/economy.md)) · [ ] More metals and gems ([CRF-44](ideas/economy.md)) · [ ] Whole-carcass butchery ([CRF-25](ideas/economy.md); partly: each animal's products, wool, feathers, ivory, venom, 4c95ef8) · [ ] Leather done right ([CRF-31](ideas/economy.md)) · [ ] Kiln, ceramics, lime ([CRF-45](ideas/economy.md)) · [ ] Glass furnace ([CRF-46](ideas/economy.md)) · [ ] Oil, potash, lye ([CRF-32](ideas/economy.md)) · [x] Musical instruments ([CRF-15](ideas/economy.md), 1ff31da) · [ ] Toys and games ([CRF-14](ideas/economy.md))
 - **Done when:** The overseer melts down captured goblin weapons into bars.
 
 #### B11 Logistics (L)
@@ -597,7 +628,7 @@ Goal: the deep places are dangerous and worth it.
 
 #### D09 The barnyard (L)
 - **Why:** Animals that eat and give: grazing, milk, wool, eggs, trainers, bees.
-- **Steps:** [ ] Grazing and hunger ([AGR-11](ideas/economy.md)) · [ ] Eggs, nests and hatchlings ([AGR-12](ideas/economy.md)) · [ ] Wool, milk and cheese ([AGR-16](ideas/economy.md)) · [ ] Beekeeping ([AGR-13](ideas/economy.md)) · [ ] Herd management ([AGR-25](ideas/economy.md)) · [ ] Breeding needs contact ([AGR-26](ideas/economy.md)) · [ ] Training knowledge per species ([AGR-07](ideas/economy.md)) · [ ] Animal trainers and cues ([AGR-30](ideas/economy.md)) · [ ] War beasts ([AGR-17](ideas/economy.md))
+- **Steps:** [ ] Grazing and hunger ([AGR-11](ideas/economy.md)) · [ ] Eggs, nests and hatchlings ([AGR-12](ideas/economy.md); partly: kept hens lay eggs, 4c95ef8) · [ ] Wool, milk and cheese ([AGR-16](ideas/economy.md); partly: sheep shed wool, 4c95ef8) · [ ] Beekeeping ([AGR-13](ideas/economy.md)) · [ ] Herd management ([AGR-25](ideas/economy.md)) · [ ] Breeding needs contact ([AGR-26](ideas/economy.md)) · [ ] Training knowledge per species ([AGR-07](ideas/economy.md)) · [ ] Animal trainers and cues ([AGR-30](ideas/economy.md)) · [ ] War beasts ([AGR-17](ideas/economy.md))
 - **Done when:** A pasture keeps goats fed and milked through the summer.
 
 #### B12 Living farms (L)
@@ -607,12 +638,12 @@ Goal: the deep places are dangerous and worth it.
 
 #### D10 Wants and pastimes (L)
 - **Why:** DF has about thirty needs to our seven: small reasons to be happy or not.
-- **Steps:** [ ] More needs ([MND-24](ideas/body-and-mind.md)) · [ ] Wider likes and dislikes ([MND-42](ideas/body-and-mind.md)) · [ ] Food that matters ([MND-43](ideas/body-and-mind.md)) · [ ] Hobbies ([MND-47](ideas/body-and-mind.md)) · [ ] Hip flasks ([MND-44](ideas/body-and-mind.md)) · [ ] Smoking circles ([MND-45](ideas/body-and-mind.md)) · [ ] Toys and play ([MND-46](ideas/body-and-mind.md)) · [ ] Admiring displays ([MND-36](ideas/body-and-mind.md)) · [ ] Pride in masterworks ([MND-35](ideas/body-and-mind.md)) · [ ] Life dreams ([MND-10](ideas/body-and-mind.md)) · [ ] Values and more facets ([MND-25](ideas/body-and-mind.md))
+- **Steps:** [ ] More needs ([MND-24](ideas/body-and-mind.md)) · [ ] Wider likes and dislikes ([MND-42](ideas/body-and-mind.md)) · [ ] Food that matters ([MND-43](ideas/body-and-mind.md)) · [ ] Hobbies ([MND-47](ideas/body-and-mind.md)) · [ ] Hip flasks ([MND-44](ideas/body-and-mind.md)) · [ ] Smoking circles ([MND-45](ideas/body-and-mind.md)) · [ ] Toys and play ([MND-46](ideas/body-and-mind.md)) · [ ] Admiring displays ([MND-36](ideas/body-and-mind.md); partly: dwarves admire statues and crafts of what they lived through, f6ad60c) · [ ] Pride in masterworks ([MND-35](ideas/body-and-mind.md)) · [ ] Life dreams ([MND-10](ideas/body-and-mind.md)) · [ ] Values and more facets ([MND-25](ideas/body-and-mind.md))
 - **Done when:** A dwarf who admires art and never sees any is unhappier than one who doesn't care.
 
 #### D11 Omens and skies (M)
 - **Why:** The sky as drama: eclipses, prophecies, storms, thin ice.
-- **Steps:** [ ] Sky events ([WLD-03](ideas/world-and-overseer.md)) · [ ] Prophecies ([WLD-08](ideas/world-and-overseer.md)) · [ ] Thin ice that breaks ([WLD-04](ideas/world-and-overseer.md)) · [ ] Wild weather, more of it ([WLD-11](ideas/world-and-overseer.md)) · [ ] Deep snow and rain puddles ([WLD-16](ideas/world-and-overseer.md))
+- **Steps:** [x] Sky events ([WLD-03](ideas/world-and-overseer.md), 795962e: eclipse, blood moon, falling star; the anxious fret, the devout read a sign) · [ ] Prophecies ([WLD-08](ideas/world-and-overseer.md); partly: omens and dreams that come true, 795962e, f293b20) · [ ] Thin ice that breaks ([WLD-04](ideas/world-and-overseer.md)) · [ ] Wild weather, more of it ([WLD-11](ideas/world-and-overseer.md)) · [ ] Deep snow and rain puddles ([WLD-16](ideas/world-and-overseer.md))
 - **Done when:** An eclipse unsettles the fort and the pious read it as an omen.
 
 ### Milestone 7: dread (v0.9)
@@ -621,12 +652,12 @@ Goal: the worst threats come from inside. Night creatures, spies and curses make
 
 #### N01 Things in the night (M)
 - **Why:** Night creatures with known banes: werebeasts under the moon, a vampire hiding among the migrants, omens before them.
-- **Steps:** [ ] Omens ([MYT-05](ideas/myth-and-depths.md)) · [x] Banes and weaknesses ([MYT-06](ideas/myth-and-depths.md), the thing in the night) · [ ] Werebeast raid and moon curse ([MYT-03](ideas/myth-and-depths.md)) · [ ] Secret vampire citizen ([MYT-04](ideas/myth-and-depths.md)) · [ ] Bogeymen ([MYT-07](ideas/myth-and-depths.md)) · [ ] Sensing evil ([MYT-26](ideas/myth-and-depths.md)) · [ ] Charms and wards ([MYT-25](ideas/myth-and-depths.md))
+- **Steps:** [x] Omens ([MYT-05](ideas/myth-and-depths.md), 795962e) · [x] Banes and weaknesses ([MYT-06](ideas/myth-and-depths.md), the thing in the night, e5c7492) · [ ] Werebeast raid and moon curse ([MYT-03](ideas/myth-and-depths.md)) · [ ] Secret vampire citizen ([MYT-04](ideas/myth-and-depths.md)) · [ ] Bogeymen ([MYT-07](ideas/myth-and-depths.md)) · [ ] Sensing evil ([MYT-26](ideas/myth-and-depths.md)) · [ ] Charms and wards ([MYT-25](ideas/myth-and-depths.md); partly: a warding engraving can be the thing in the night's bane, e5c7492)
 - **Done when:** A vampire among the migrants drains sleepers until the fort works out who it is.
 
 #### B04 Enemies within (L)
 - **Why:** Villains, spies and traitors among the citizens, uncovered by interrogation.
-- **Steps:** [ ] Questers in the tavern ([NOB-29](ideas/society.md)) · [ ] Secret vampire citizen ([NOB-24](ideas/society.md)) · [ ] Spies and double agents ([NOB-25](ideas/society.md)) · [ ] Interrogation ([NOB-21](ideas/society.md)) · [ ] Traitorous advisor ([NOB-28](ideas/society.md)) · [ ] Villain networks ([NOB-26](ideas/society.md)) · [ ] Assassination plots ([NOB-27](ideas/society.md)) · [ ] Counterintelligence screen ([NOB-61](ideas/society.md)) · [ ] Exile returns ([NOB-33](ideas/society.md)) · [ ] Traitorous advisors ([OVR-23](ideas/world-and-overseer.md))
+- **Steps:** [ ] Questers in the tavern ([NOB-29](ideas/society.md)) · [ ] Secret vampire citizen ([NOB-24](ideas/society.md)) · [ ] Spies and double agents ([NOB-25](ideas/society.md)) · [ ] Interrogation ([NOB-21](ideas/society.md); partly: a caged besieger is questioned and lets slip the next siege) · [ ] Traitorous advisor ([NOB-28](ideas/society.md)) · [ ] Villain networks ([NOB-26](ideas/society.md)) · [ ] Assassination plots ([NOB-27](ideas/society.md)) · [ ] Counterintelligence screen ([NOB-61](ideas/society.md)) · [ ] Exile returns ([NOB-33](ideas/society.md)) · [ ] Traitorous advisors ([OVR-23](ideas/world-and-overseer.md))
 - **Done when:** A spy is caught and interrogated, and names the plot behind them.
 
 #### N02 Shadows at the door (L)
@@ -636,7 +667,7 @@ Goal: the worst threats come from inside. Night creatures, spies and curses make
 
 #### N03 Curses and relics (L)
 - **Why:** Things that carry a fate: cursed artifacts and sites, powered relics, prophecies, defiled places.
-- **Steps:** [ ] Curse framework ([MYT-37](ideas/myth-and-depths.md)) · [ ] Cursed artifacts ([MYT-21](ideas/myth-and-depths.md)) · [ ] Cursed sites ([MYT-23](ideas/myth-and-depths.md)) · [ ] Artifact powers ([MYT-22](ideas/myth-and-depths.md)) · [ ] Relics and heirlooms ([MYT-36](ideas/myth-and-depths.md)) · [ ] Prophecies ([MYT-32](ideas/myth-and-depths.md)) · [ ] Places of power ([MYT-30](ideas/myth-and-depths.md)) · [ ] Defilement ([MYT-29](ideas/myth-and-depths.md)) · [ ] Demonic pacts ([MYT-33](ideas/myth-and-depths.md))
+- **Steps:** [ ] Curse framework ([MYT-37](ideas/myth-and-depths.md); partly: a god's curse for a broken taboo, lifted by atoning, 795962e) · [ ] Cursed artifacts ([MYT-21](ideas/myth-and-depths.md)) · [ ] Cursed sites ([MYT-23](ideas/myth-and-depths.md)) · [x] Artifact powers ([MYT-22](ideas/myth-and-depths.md), 644ef99) · [ ] Relics and heirlooms ([MYT-36](ideas/myth-and-depths.md); partly: relics from vaults and ruins carry powers and are coveted, 644ef99; no heirlooms) · [ ] Prophecies ([MYT-32](ideas/myth-and-depths.md); partly: omens and dreams that come true, 795962e, f293b20) · [ ] Places of power ([MYT-30](ideas/myth-and-depths.md)) · [ ] Defilement ([MYT-29](ideas/myth-and-depths.md)) · [ ] Demonic pacts ([MYT-33](ideas/myth-and-depths.md))
 - **Done when:** A dwarf who topples a temple's statue in a tantrum is cursed.
 
 ### Milestone 8: a world of forts (v1.0)
@@ -672,24 +703,15 @@ Goal: a fort's fall is the start of the next story. The world remembers ruins, r
 
 Goal: the same world and simulation, seen from other seats.
 
-#### G01 Arena mode (M)
-- **Why:** a battle you set up and watch: two sides, any creatures, any kit. It's fun on its
-  own, and it's the best tool for tuning combat (the arena test already measures fights).
-- **Steps:** [x] an Arena entry on the title screen: pick each side's creatures (any species,
-  dwarves with skills), numbers, weapons, armour and training (dc56c77) · [x] pick a field: open ground,
-  a corridor with a door, a cavern, a bridge over a chasm (8c2c983) · [x] watch it at any speed with the
-  combat log, pause, follow a fighter, and a summary at the end (who won, wounds, kills) (dc56c77) ·
-  [x] save a matchup and rerun it N times for win rates (dc56c77)
-- **Done when:** ten dwarves with spears against six goblins can be set up, watched, and rerun
-  a hundred times for a win rate.
-
 #### G02 A bigger bestiary (L)
 - **Why:** more creatures, each with a way of behaving rather than only new numbers: things
   that make stories.
 - **Steps:** [ ] behaviours as reusable parts: ambusher, pack hunter, burrower, flier,
-  web-spinner, thief, lair guardian, grazer, scavenger, swimmer · [ ] new species by biome
-  and depth built from them (see the CRE ideas in [the catalogue](ideas/myth-and-depths.md)) ·
-  [ ] each new creature appears in the arena first, then in the world
+  web-spinner, thief, lair guardian, grazer, scavenger, swimmer (partly: beasts.rs has all but
+  the web-spinner, thief and lair guardian, 4c95ef8) · [x] new species by biome
+  and depth built from them (see the CRE ideas in [the catalogue](ideas/myth-and-depths.md);
+  4c95ef8: 278 animals by land, water and cavern layer) ·
+  [x] each new creature appears in the arena first, then in the world (4c95ef8)
 - **Done when:** every biome has at least three creatures that behave differently, and each
   can be fought in the arena.
 
