@@ -89,7 +89,7 @@ pub enum Slot {
 }
 
 impl ItemKind {
-    pub const ALL: [ItemKind; 55] = [
+    pub const ALL: [ItemKind; 56] = [
         ItemKind::Boulder,
         ItemKind::Log,
         ItemKind::Block,
