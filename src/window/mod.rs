@@ -228,7 +228,7 @@ pub fn play(app: &mut App, args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// `--window --screenshot FILE [--seed N] [--days D] [--size WxH] [--cell PX]`:
+/// `--window --screenshot FILE [--seed N] [--days D] [--size WxH] [--cell PX] [--plan]`:
 /// watch a seeded fort for a few days, draw it the way the window would,
 /// save a PNG and print how long a frame took to draw.
 pub fn screenshot(args: &[String]) -> Result<()> {
@@ -246,6 +246,22 @@ pub fn screenshot(args: &[String]) -> Result<()> {
     }
     for _ in 0..days * crate::game::DAY {
         app.game.step();
+    }
+    // (`--plan`: down on the main level of halls, the plan shown over it.)
+    if args.iter().any(|a| a == "--plan") {
+        if let Some(b) = app.game.overseer.as_ref().and_then(|o| o.base) {
+            // (Centred on the main level's halls, some way along them.)
+            let lp = app.game.plan_at(b.z).cloned();
+            let mid = lp.as_ref().map_or(b.offset(24, 0, 0), |l| l.facing.at(b.offset(14, 0, 0), 14, 0));
+            app.cursor = mid;
+            app.view_x = mid.x - 48;
+            app.view_y = mid.y - 26;
+            app.free_view = false;
+            app.ghost = true;
+            if let Some(l) = lp {
+                println!("Main level: {} facing {}, {} levels planned.", l.layout.name(), l.facing.name(), app.game.overseer.as_ref().map_or(0, |o| o.levels.len()));
+            }
+        }
     }
     let mut terminal = Terminal::new(TileBackend::new(w, h, cell, Box::new(move |c, s| fonts.raster(c, s))))?;
     terminal.draw(|f| ui::draw(f, &mut app))?;

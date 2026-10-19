@@ -165,9 +165,14 @@ pub struct Overseer {
     /// Slots of the layout's plan already used or found blocked: (level, slot).
     #[serde(default)]
     pub plan_taken: Vec<(i32, u32)>,
-    /// How far east the plan of halls runs (0: not drawn up yet).
+    /// How far east the plan of halls runs (0: not drawn up yet). Kept for
+    /// saves from before levels had plans of their own (`levels`).
     #[serde(default)]
     pub plan_len: i32,
+    /// Each level's plan, drawn up when its first room is taken: its
+    /// layout, which way it faces, how far it runs and what it's for.
+    #[serde(default)]
+    pub levels: Vec<super::blueprint::LevelPlan>,
     /// When the army now on the map first came (0: none).
     #[serde(default)]
     pub army_since: u64,
@@ -246,6 +251,7 @@ impl Overseer {
             anchors: Vec::new(),
             plan_taken: Vec::new(),
             plan_len: 0,
+            levels: Vec::new(),
             army_since: 0,
             fixes: Vec::new(),
             boosts: Vec::new(),
@@ -2640,9 +2646,9 @@ mod tests {
         let g = trial_game(5003, Style::Steady, 262);
         assert_eq!(g.tick, 262 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
-        assert_eq!(deaths, vec![(202543, "Borra Embergrip")]);
+        assert_eq!(deaths, vec![(303722, "Dorna Copperfist"), (303896, "Sorli Hammergrip")]);
         let sieges: Vec<(u64, &str)> = g.annals.sieges.iter().map(|s| (s.tick, s.foe.as_str())).collect();
-        assert_eq!(sieges, vec![(202395, "goblins"), (304045, "goblins")]);
+        assert_eq!(sieges, vec![(303495, "goblins")]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
     }
 

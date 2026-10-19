@@ -69,6 +69,46 @@ impl Layout {
     }
 }
 
+/// Which way a level's halls run from where they start. A plan is drawn
+/// facing east and turned (a rotation, so mirrored wings stay mirrored).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Facing {
+    #[default]
+    East,
+    West,
+    North,
+    South,
+}
+
+impl Facing {
+    pub const ALL: [Facing; 4] = [Facing::East, Facing::West, Facing::North, Facing::South];
+
+    /// (forward, side): where the plan's east and south go on the map.
+    pub fn axes(self) -> ((i32, i32), (i32, i32)) {
+        match self {
+            Facing::East => ((1, 0), (0, 1)),
+            Facing::West => ((-1, 0), (0, -1)),
+            Facing::North => ((0, -1), (1, 0)),
+            Facing::South => ((0, 1), (-1, 0)),
+        }
+    }
+
+    /// `start` moved `fwd` along the halls and `side` across them.
+    pub fn at(self, start: Pos, fwd: i32, side: i32) -> Pos {
+        let ((fx, fy), (sx, sy)) = self.axes();
+        start.offset(fx * fwd + sx * side, fy * fwd + sy * side, 0)
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Facing::East => "east",
+            Facing::West => "west",
+            Facing::North => "north",
+            Facing::South => "south",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Shape {
     Rect { w: i32, h: i32 },
@@ -374,26 +414,23 @@ impl Game {
         let shape = self.pick_shape(o, kind);
         let (w, h) = shape.size();
         let b = o.base.unwrap();
+        // First the levels above whose trade this is (the first level takes
+        // anything), while their plans have room.
+        if o.layout.planned() {
+            let ks: Vec<i32> = o.levels.iter().filter(|l| l.level < o.level && l.role.takes(kind)).map(|l| l.level).collect();
+            for k in ks {
+                if let Some((room, halls)) = self.plan_slot(o, kind, k) {
+                    let door = room.doors.first().copied().unwrap_or(room.a);
+                    self.open_room(o, k, room.a, room.b, &halls, door);
+                    return Some(room);
+                }
+            }
+        }
         let mut level = o.level;
         loop {
             let z = Self::level_z(o, level);
-            if z < 3 {
+            if !self.level_allowed(o, level) {
                 return None;
-            }
-            // Only a delver digs halls down into the caverns' reach: the stair
-            // would open into them, and what lives there would come up it.
-            if level > 0 && (o.style != super::overseer::Style::Delver || !self.delving_deep()) {
-                let roof = self.world.caverns.iter().map(|c| c.1).max().unwrap_or(0);
-                if z <= roof + 2 {
-                    return None;
-                }
-            }
-            // No level below a heavy aquifer: the inner stair would flood.
-            if level > 0 && self.world.aquifer >= 2 {
-                let (sx, sy) = (b.x + 9, b.y + 1);
-                if (z..b.z).any(|zz| (-1..=1).any(|dx| (-1..=1).any(|dy| self.world.get(Pos::new(sx + dx, sy + dy, zz)).map_or(false, |t| t.aquifer)))) {
-                    return None;
-                }
             }
             // The plan's next room, if the layout has a plan and room left in it.
             if o.layout.planned() {
@@ -403,6 +440,13 @@ impl Game {
                     let door = room.doors.first().copied().unwrap_or(room.a);
                     self.open_room(o, level, room.a, room.b, &halls, door);
                     return Some(room);
+                }
+                // A level kept to another trade: the next one down, opened
+                // for this (when it may be).
+                let other = o.levels.iter().any(|l| l.level == level && !l.role.takes(kind));
+                if other && level <= o.level && self.level_allowed(o, level + 1) {
+                    level += 1;
+                    continue;
                 }
                 // Bedrooms only come in the plan's rows (or, past them, one
                 // to a small room off the halls: architect.rs).
@@ -462,6 +506,31 @@ impl Game {
         }
     }
 
+    /// Whether halls may be cut on level `level` at all.
+    pub(super) fn level_allowed(&self, o: &Overseer, level: i32) -> bool {
+        let b = o.base.unwrap();
+        let z = Self::level_z(o, level);
+        if z < 3 {
+            return false;
+        }
+        // Only a delver digs halls down into the caverns' reach: the stair
+        // would open into them, and what lives there would come up it.
+        if level > 0 && (o.style != super::overseer::Style::Delver || !self.delving_deep()) {
+            let roof = self.world.caverns.iter().map(|c| c.1).max().unwrap_or(0);
+            if z <= roof + 2 {
+                return false;
+            }
+        }
+        // No level below a heavy aquifer: the inner stair would flood.
+        if level > 0 && self.world.aquifer >= 2 {
+            let (sx, sy) = (b.x + 9, b.y + 1);
+            if (z..b.z).any(|zz| (-1..=1).any(|dx| (-1..=1).any(|dy| self.world.get(Pos::new(sx + dx, sy + dy, zz)).map_or(false, |t| t.aquifer)))) {
+                return false;
+            }
+        }
+        true
+    }
+
     /// A room is under way on level `level`: open the level if it's new,
     /// take it into the shelter, and remember the way to it.
     fn open_room(&mut self, o: &mut Overseer, level: i32, a: Pos, b: Pos, path: &[Pos], door: Pos) {
@@ -475,7 +544,17 @@ impl Game {
             let top = Pos::new(base.x + 9, base.y + 1, base.z);
             self.designate(top, Pos::new(top.x, top.y, z), Desig::StairUD);
             o.done.push(format!("level{}", level));
-            Self::note_ov(o, self.tick, format!("Opened a new level of halls, at depth {}.", base.z - z));
+            let text = match o.levels.iter().find(|l| l.level == level) {
+                Some(lp) if o.layout.planned() => format!(
+                    "Opened a level for {} at depth {}, laid out as {}, facing {}.",
+                    lp.role.name(),
+                    base.z - z,
+                    lp.layout.name(),
+                    lp.facing.name()
+                ),
+                _ => format!("Opened a new level of halls, at depth {}.", base.z - z),
+            };
+            Self::note_ov(o, self.tick, text);
         }
         // The shelter reaches it, and the way there (down the inner stair too).
         if let Some(i) = self.burrows.iter().position(|bw| Some(bw.bit) == self.alert_burrow) {
@@ -601,7 +680,9 @@ mod tests {
             // (Tiles, not boxes: a room may sit in the empty corner of a round hall's box.)
             let mut taken: std::collections::HashSet<Pos> = std::collections::HashSet::new();
             for r in rooms {
-                assert!(r.a.x >= base.x + 15, "{:?}: room in front of the gate", layout);
+                // (Behind the gate: clear of the gatehouse and its walls, whichever way the halls face.)
+                let tiles: Vec<Pos> = if r.tiles.is_empty() { box_iter(r.a, r.b).collect() } else { r.tiles.clone() };
+                assert!(tiles.iter().all(|p| p.z != base.z || !((-2..=14).contains(&(p.x - base.x)) && (-2..=3).contains(&(p.y - base.y)))), "{:?}: room in the gatehouse", layout);
                 assert!(r.b.x < w && r.b.y < h && r.a.y > 0, "{:?}: off the map", layout);
                 let tiles: Vec<Pos> = if r.tiles.is_empty() { box_iter(r.a, r.b).collect() } else { r.tiles.clone() };
                 for p in &tiles {

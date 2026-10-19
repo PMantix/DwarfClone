@@ -384,6 +384,10 @@ pub struct App {
     pub free_view: bool,
     /// The performance overlay (F3).
     pub perf: Option<Perf>,
+    /// The overseer's plan shown as a ghost on the map (`P`), and the last
+    /// one worked out: (level z, when), the tiles.
+    pub ghost: bool,
+    pub ghost_cache: Option<((i32, u64), std::collections::HashMap<(i32, i32), crate::game::Ghost>)>,
     /// The world map drawn in colour, two cells to a character (`v`).
     pub world_blocks: bool,
     /// Designations as they were before each recent one (Ctrl+Z puts them back).
@@ -463,6 +467,8 @@ impl App {
             hover: None,
             drag: None,
             free_view: false,
+            ghost: false,
+            ghost_cache: None,
             spot: None,
             docked: true,
             perf: None,
@@ -1719,6 +1725,15 @@ impl App {
         match k.code {
             KeyCode::Char('d') => self.mode = Mode::Designate { kind: Desig::Dig, corner: None },
             KeyCode::Char('p') => self.mode = Mode::Stockpile { filter: Some(StockFilter::All), corner: None },
+            KeyCode::Char('P') => {
+                self.ghost = !self.ghost;
+                self.ghost_cache = None;
+                self.flash = Some(match (self.ghost, self.game.overseer.as_ref().map_or(false, |o| !o.levels.is_empty())) {
+                    (false, _) => "The plan is hidden.".into(),
+                    (true, true) => "The overseer's plan: halls and rooms still to dig (change level to see the others).".into(),
+                    (true, false) => "No plan of halls yet: the overseer hasn't drawn one up.".into(),
+                });
+            }
             KeyCode::Char('i') => self.mode = Mode::Zone { tool: ZoneTool::Meeting, corner: None },
             KeyCode::Char('k') => self.mode = Mode::Look { sel: 0 },
             KeyCode::Char('z') => self.mode = Mode::Status { tab: 0, scroll: 0 },

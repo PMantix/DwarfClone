@@ -68,6 +68,10 @@ impl Game {
             if let Some(room) = self.plan_room(o, kind) {
                 let how = if was.planned() { format!("Its plan of {} had no room left", was.name()) } else { "Its halls had no room left to grow east".to_string() };
                 Self::note_ov(o, tick, format!("{}: began digging wherever the rock allows, a {} first.", how, room_name(room.kind)));
+                // (The plan goes on for the rooms it still has: rows of
+                // bedrooms, the levels below. Only what it can't hold goes
+                // wherever the rock allows.)
+                o.layout = was;
                 self.unstuck(o, room);
                 return;
             }
@@ -138,6 +142,7 @@ impl Game {
         o.anchors.clear();
         o.plan_taken.clear();
         o.plan_len = 0;
+        o.levels.clear();
         o.stuck_since = 0;
         o.blocked.clear();
         o.resites += 1;
