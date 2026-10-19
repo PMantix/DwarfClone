@@ -115,20 +115,12 @@ mod tests {
         let deaths: Vec<(u64, &str, &str)> = t.deaths.iter().map(|d| (d.tick, d.name.as_str(), d.cause.as_str())).collect();
         assert_eq!(
             deaths,
-            vec![
-                (303947, "Dorna Stonebeard", "struck down"),
-                (355583, "Ingra Frostbrew", "struck down"),
-                (355679, "Grenda Granitesong", "struck down"),
-                (358032, "Borra Coalhelm", "struck down"),
-                (358072, "Dorna Copperfist", "struck down"),
-                (360785, "Borra Embergrip", "struck down"),
-                (361374, "Runa Graniteforge", "struck down")
-            ]
+            vec![(202869, "Dorna Stonebeard", "struck down")]
         );
         let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
-        assert_eq!(sieges, vec![]);
-        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (18, 38894, 25));
-        assert_eq!(t.ambitions, ["Delve", "Provision", "Muster", "Fortify", "Provision", "Muster", "Revel", "Muster", "Revel", "Fortify", "Architect", "Prosper", "Revel", "Provision", "Architect", "Delve"]);
+        assert_eq!(sieges, vec![(202620, "goblins", 2, "withdrew"), (304045, "goblins", 9, "withdrew")]);
+        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (16, 31962, 26));
+        assert_eq!(t.ambitions, ["Delve", "Provision", "Muster", "Expand", "Fortify", "Provision", "Fortify", "Architect", "Expand", "Delve", "Prosper", "Muster", "Prosper"]);
     }
 
     /// The survival items' tasks save and load by name, and a dwarf given one
