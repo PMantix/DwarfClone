@@ -1,5 +1,6 @@
 mod app;
 mod arts;
+mod audio;
 mod body;
 mod buildings;
 mod creature;
@@ -54,6 +55,10 @@ fn main() -> Result<()> {
         print!("{}", report::compare(&a, &b, years));
         return Ok(());
     }
+    if args.iter().any(|a| a == "--sound-check") {
+        audio::check();
+        return Ok(());
+    }
     if args.iter().any(|a| a == "--autoplay") {
         autoplay_batch(&args);
         return Ok(());
@@ -70,6 +75,8 @@ fn main() -> Result<()> {
     }));
 
     let mut app = App::new(seed);
+    // Sound only for the game itself (never the batch runs above, nor tests).
+    app.audio = audio::Audio::start(&app.save_dir);
 
     enable_raw_mode()?;
     execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
@@ -242,6 +249,7 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::BufWriter<io::Stdout>>>, app
         app.frame_dt = t.duration_since(last).as_secs_f64();
         last = t;
         app.frame();
+        app.sound_frame();
         app.perf_frame(draw, t.elapsed().as_secs_f64() * 1000.0, (app.game.tick - ticks0) as u32);
     }
     Ok(())

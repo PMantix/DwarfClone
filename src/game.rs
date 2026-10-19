@@ -110,6 +110,7 @@ mod dreams;
 pub mod moods;
 pub mod reel;
 pub mod lifestory;
+pub mod sounds;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -127,7 +128,7 @@ pub use expeditions::Expedition;
 pub use expeditions::Goal as expeditions_goal;
 pub use ruins::Vault;
 pub use chronicle::{Chronicle, YearLog};
-pub use festivals::Festival;
+pub use festivals::{Festival, FestivalKind};
 mod fire;
 pub use weather::Weather;
 pub use detail::ENGRAVED;
@@ -516,6 +517,9 @@ pub struct Game {
     /// The fortress's arts, its art that tells, its dreams (`culture.rs`).
     #[serde(default)]
     pub culture: culture::Culture,
+    /// Noises the app may play (`sounds.rs`); never saved, never read here.
+    #[serde(skip)]
+    pub sounds: Vec<(Pos, sounds::Sound)>,
 }
 
 impl Game {
@@ -688,6 +692,7 @@ impl Game {
             care_retry: HashMap::new(),
             slaughtering: HashSet::new(),
             culture: Default::default(),
+            sounds: Vec::new(),
         }
     }
 

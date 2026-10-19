@@ -13,6 +13,7 @@ cargo run --release -- 12345   # the first new world uses this seed
 cargo run --release -- --autoplay --runs 10 --years 5   # let the overseer play 10 forts
 cargo run --release -- --autoplay --runs 25 --years 3 --seed 5000 --story --out after.json
 cargo run --release -- --compare batches/baseline-v0.2.0.json after.json
+cargo run --release -- --sound-check   # play a few seconds of sound and say if the device works
 ```
 
 A batch ends with a report on why forts fall: how many were still standing at the end of each
@@ -376,7 +377,7 @@ embark: a river with fords, a chasm crossed by natural bridges, a volcano with a
 crater, terraced mesas, sharp peaks, an oasis, a glacier, a bog of shallow pools, a coast, tors
 of bare rock, an underground river or a hidden gem grotto. Pick the map size there too: `s`
 for Small, Medium or Large, `[` `]` for width and `{` `}` for height (16 at a time), `d` for
-depth. In the fortress, `M` grows the map north, east, south or west (16 tiles a press): the
+depth. In the fortress, `G` grows the map north, east, south or west (16 tiles a press): the
 new land continues the old, the fortress and everything in it stays where it was, and the
 status screen shows the land's features and size.
 
@@ -859,6 +860,55 @@ game. World generation, embarking, saving and loading show a loading screen with
 Each fortress has its own save in `saves/` (F5 saves, F9 reloads it), plus an autosave
 every season. `Q` offers save and quit, or save and return to the title.
 
+## Sound
+
+Music, ambience and sound effects, all synthesized as the game plays: there are no
+recordings or sample files, and every tune is written on the spot by the game's own small
+composer (`src/audio/`). It is quiet and sparse by design, with silence between pieces.
+
+**Ambience** follows the camera. On the surface: wind (stronger in rain and snow, howling
+in a storm), birds by day from spring to autumn, crickets at summer dusk, rain, and thunder
+in a storm (a close clap when lightning strikes). Below ground the weather fades with
+depth into a low hum; in the caverns, water drips into pools. Near a fire you hear it
+crackle, near the magma sea it rumbles and bubbles, and near rivers, brooks and pools the
+water runs.
+
+**Music** is slow and modal (dorian, aeolian, phrygian) on plucked strings and low horns
+over a drone, in phrases with rests, and comes and goes with a minute or two of silence
+between pieces. It follows the fortress: calm in peace; a jig in 6/8 with hand drums at a
+festival, a wedding, a victory feast or a full tavern; slow war drums and horn calls when
+an army is coming or a siege is on; a lament for a couple of days after a death. The
+seasons colour it (spring walks in D dorian, summer is warmer and quicker, autumn turns
+aeolian and gives the horn more to say, winter is slow, phrygian, with far bells). The
+title screen has its own theme, the making of a world its own drifting music, and the
+arena has battle drums.
+
+**Effects** come from what's on screen, quietly, and are rate-limited so a busy fort
+doesn't clatter: picks on rock where dwarves dig (an axe on wood where they fell trees), a
+hammer on the anvil at forges and a knock at the mason's, carpenter's and craftsdwarf's,
+blades clashing and blows landing in fights, a roar when a beast arrives, the alarm bell
+when the alert is raised, a cheer for a victory feast or a wedding, a soft chord on the
+horns when a big moment's card opens (a war chord for a siege, a dark one for a monster, a
+mournful one for a hero's fall), chimes for an artifact, a clank when a door, bridge or
+floodgate moves, and the softest click in the menus.
+
+**Controls.** `M` mutes and unmutes anywhere (except where M picks something from a list,
+like the millstone in the build menu). `O` in the fortress, in the help or on the title
+screen (or *Sound* on the title menu) opens the sound screen: on/off and the master, music,
+ambience and effects volumes (←→ in steps of 5). The settings are kept in
+`saves/sound.cfg`; if it's missing or unreadable the defaults are used: on, at a modest
+volume, the music quieter than the ambience.
+
+With no sound device, or if it can't be opened, the game runs silently (`--sound-check`
+plays a few seconds and says whether the device works). Building with
+`cargo build --release --no-default-features` leaves the sound out altogether (the `audio`
+feature, on by default, uses [cpal](https://crates.io/crates/cpal) 0.15.3 for the output
+only). Sound runs on its own thread and the game only posts small messages to it, so it
+never holds up a frame; the batch runs (`--autoplay`, `--compare`) and the tests never open
+a device. To hear what the synth makes without the game:
+`cargo test --release render_audio_samples -- --ignored --nocapture` writes WAV files of
+every mood, ambience and effect to `target/audio-samples/`.
+
 ## Releases
 
 Pushing a version tag builds the Windows game on GitHub and publishes it as a release
@@ -909,3 +959,5 @@ cargo test --release profile_year -- --ignored --nocapture
 | `game/lifestory.rs`, `ui/life.rs` | a dwarf's life story, eulogies, the portrait and Life page |
 | `ui/ambient.rs` | rain, snow, leaves, fireflies and dust over the map |
 | `ui/ticker.rs` | the news ticker along the bottom |
+| `audio/` | sound: the synth (`dsp.rs`, `voices.rs`), the composer (`music.rs`), the mixer (`engine.rs`), what the camera hears (`scene.rs`), the device (`output.rs`) |
+| `app/sound.rs`, `ui/sound.rs`, `game/sounds.rs` | sound in the app: the mood and scene each frame, `M` and the sound screen; blows noted for the app |
