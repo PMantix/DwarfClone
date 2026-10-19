@@ -1099,7 +1099,9 @@ impl Game {
         if self.annals.sieges.last().map_or(false, |s| s.outcome == "routed") {
             text.push_str(" They have not forgotten their last defeat, and come in greater numbers.");
         }
-        if self.sally_fame() > 0 {
+        if self.sally_vengeance(foe.civ) > 0 {
+            text.push_str(" They have sworn to avenge their armies cut down before our gate, and come as a host.");
+        } else if self.sally_fame() > 0 {
             text.push_str(" The tale of the sallies at the gate has spread, and they mean to end them.");
         }
         text.push_str(&self.captive_words(foe.civ, warned));
@@ -1125,10 +1127,13 @@ impl Game {
             // (And a fort famed for riding out to meet them draws more: sally.rs.)
             3 + self.alive_count() as u32 / 5 + self.wealth() / 25_000 + broken * per_broken + self.sally_fame() + self.rng.range(0, 3) as u32
         };
-        let cap = self.knob("siege.cap", 20.0).max(1.0) as u32;
+        // (A host sworn to avenge its armies broken in a sally comes past
+        // the cap: sally.rs.)
+        let vengeance = self.sally_vengeance(civ);
+        let cap = self.knob("siege.cap", 20.0).max(1.0) as u32 + vengeance;
         let grudge = self.annals.grudges.get(&civ).copied().unwrap_or(0);
         let mercy = self.annals.mercies.get(&civ).copied().unwrap_or(0);
-        (n + grudge).saturating_sub(mercy).clamp(1, cap)
+        (n + grudge + vengeance).saturating_sub(mercy).clamp(1, cap)
     }
 
     /// The army that was seen coming reaches the edge of the map.
@@ -1247,6 +1252,9 @@ impl Game {
         let plural = self.army_plural(foe.civ, species);
         self.note_siege(&plural, n as u32, &general_name);
         self.annals.sieges.last_mut().unwrap().civ = Some(foe.civ);
+        // (A host sworn to avenge its armies broken in a sally comes in its
+        // best: sally.rs.)
+        self.arm_sworn_host(foe.civ, mats[mats.len() - 1]);
         self.siege_race = Some(foe.race);
         self.year_log.siege = Some(civ_name.clone());
         let text = if foe.race == Race::Goblin {
@@ -1254,6 +1262,10 @@ impl Game {
         } else {
             format!("The {} march to war! {} {}, led by {}, have come to settle an old score.", civ_name, n, plural, general_name)
         };
+        let mut text = text;
+        if self.sworn_host() {
+            text.push_str(" They are sworn to avenge the armies cut down before this gate, and every one of them is armed in their best.");
+        }
         self.msg(&text, (255, 70, 70));
         let name = self.fortress_name.clone();
         self.legend(format!("{} led the {} in a siege of {}.", general_name, civ_name, name));
@@ -1385,7 +1397,7 @@ impl Game {
             for d in self.dwarves.iter_mut().filter(|d| d.alive) {
                 d.think(&format!("cheered the fall of {}", label), -8, tick);
             }
-            if c.siege && !self.siege_routed {
+            if c.siege && !self.siege_routed && !self.sworn_host() {
                 self.rout();
             }
         } else if c.hostile() {
@@ -1406,7 +1418,9 @@ impl Game {
         }
         let left = self.creatures.values().filter(|o| o.siege && !o.legendary() && o.alive).count() as u32;
         let caught = self.annals.sieges.iter().rev().find(|s| s.ended.is_none()).map_or(0, |s| s.foes_caught);
-        if left * 2 < self.siege_size || (caught > 0 && left * 2 <= self.siege_size) {
+        // (A host sworn to avenge a sally fights on until two in three are down.)
+        let part = if self.sworn_host() { 3 } else { 2 };
+        if left * part < self.siege_size || (caught > 0 && left * part <= self.siege_size) {
             self.rout();
         }
     }
