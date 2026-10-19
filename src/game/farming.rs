@@ -116,7 +116,11 @@ impl Game {
                         return;
                     }
                     if self.rng.chance(0.4 + 0.04 * skill as f64) {
-                        let kinds: &[&str] = if self.world.outside(stand) {
+                        // The fish of these waters, out of the bestiary.
+                        let local = self.fish_of_waters(self.world.outside(stand));
+                        let kinds: &[&str] = if !local.is_empty() {
+                            &local
+                        } else if self.world.outside(stand) {
                             &["mudperch", "silverfin", "river pike"]
                         } else {
                             &["blind eel", "glowfin", "cave carp"]
@@ -223,7 +227,9 @@ mod tests {
             }
         }
         let fish = g.items.values().find(|it| it.kind == ItemKind::Fish).expect("no fish caught");
-        assert!(["mudperch", "silverfin", "river pike"].contains(&fish.name().as_str()), "caught a {}", fish.name());
+        // One of the fish of these waters (the bestiary's), or the old standbys.
+        let local = g.fish_of_waters(true);
+        assert!(local.contains(&fish.name().as_str()) || ["mudperch", "silverfin", "river pike"].contains(&fish.name().as_str()), "caught a {}", fish.name());
         assert!(fish.is_food());
     }
 }

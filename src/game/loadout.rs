@@ -50,7 +50,15 @@ pub const SUPPLIES: [Supply; 14] = [
 ];
 
 /// Animals: species, name, standard count, cost each.
-pub const ANIMALS: [(Species, &str, u32, i32); 3] = [(Species::Dog, "dogs", 2, 10), (Species::Goat, "goats", 2, 12), (Species::Cat, "cats", 1, 8)];
+pub const ANIMALS: [(Species, &str, u32, i32); 6] = [
+    (Species::Dog, "dogs", 2, 10),
+    (Species::Goat, "goats", 2, 12),
+    (Species::Cat, "cats", 1, 8),
+    // Livestock out of the bestiary: none in the usual wagon.
+    (Species::Beast(crate::bestiary::SHEEP), "sheep", 0, 12),
+    (Species::Beast(crate::bestiary::CHICKEN), "chickens", 0, 5),
+    (Species::Beast(crate::bestiary::PIG), "pigs", 0, 12),
+];
 
 /// The standard seven: each one's main labor and a second.
 const CREWS: [[Labor; 2]; 7] = [

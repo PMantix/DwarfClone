@@ -2633,8 +2633,9 @@ fn world_info(ow: &Overworld, x: i32, y: i32, flash: &Option<String>) -> Vec<Lin
     if let Some(r) = ow.region_at(x, y) {
         v.push(plain(format!("{}, a {} of {} cells", r.name, r.kind.name(), r.size), Color::Rgb(170, 200, 230)));
         if !r.fauna.is_empty() {
-            let names: Vec<&str> = r.fauna.iter().take(5).map(|s| s.info().plural).collect();
-            v.push(plain(format!("Its wildlife: {}", names.join(", ")), MUTED));
+            let names: Vec<&str> = r.fauna.iter().take(6).map(|s| s.info().plural).collect();
+            let more = if r.fauna.len() > 6 { format!(" and {} more kinds", r.fauna.len() - 6) } else { String::new() };
+            v.push(plain(format!("Its wildlife: {}{}", names.join(", "), more), MUTED));
         }
         if !r.plants.is_empty() {
             v.push(plain(format!("It grows {}", r.plants.join(", ")), MUTED));
@@ -2758,6 +2759,49 @@ fn cap_first(s: &str) -> String {
     c.next().map_or(String::new(), |f| f.to_uppercase().collect::<String>() + c.as_str())
 }
 
+/// The legends' bestiary: every animal living in this world (in its
+/// regions, its seas and lakes, and its caverns), where, what it is and
+/// what it's good for; those that have been about the fort marked seen.
+fn bestiary_lines(ow: &Overworld, seen: &[u16]) -> Vec<Line<'static>> {
+    use crate::bestiary::BEASTS;
+    let mut regions = vec![0u32; BEASTS.len()];
+    for r in &ow.regions {
+        for s in &r.fauna {
+            if let crate::creature::Species::Beast(i) = s {
+                if let Some(n) = regions.get_mut(*i as usize) {
+                    *n += 1;
+                }
+            }
+        }
+    }
+    let here: Vec<usize> = (0..BEASTS.len()).filter(|&i| regions[i] > 0 || BEASTS[i].cave_only() || seen.binary_search(&(i as u16)).is_ok()).collect();
+    let mut v = vec![
+        plain(format!("{} kinds of animal live in this world; {} have been seen about the fort.", here.len(), seen.len()), TEXT),
+        Line::default(),
+    ];
+    for i in here {
+        let b = &BEASTS[i];
+        let saw = seen.binary_search(&(i as u16)).is_ok();
+        let wher = if b.cave_only() {
+            format!("{} (under every land)", b.habitat_words())
+        } else {
+            format!("{}; in {} region{}", b.habitat_words(), regions[i], if regions[i] == 1 { "" } else { "s" })
+        };
+        let mut traits = b.trait_words();
+        traits.retain(|t| *t != "a giant kind");
+        v.push(Line::from(vec![
+            Span::styled(format!("{} ", b.glyph), Style::default().fg(Color::Rgb(b.color.0, b.color.1, b.color.2))),
+            Span::styled(cap_first(b.name), Style::default().fg(TEXT).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("  {} {}, {}", b.rarity_name(), b.temper.name(), b.movement_words()), Style::default().fg(Color::Rgb(170, 200, 230))),
+            Span::styled(if saw { "  · seen at the fort".to_string() } else { String::new() }, Style::default().fg(KEY)),
+        ]));
+        v.push(plain(format!("   {}", b.note), MUTED));
+        let extra = if traits.is_empty() { String::new() } else { format!(" {}.", cap_first(&traits.join(", "))) };
+        v.push(plain(format!("   Lives in {}. Gives {}.{}", wher, b.product_words(), extra), MUTED));
+    }
+    v
+}
+
 fn legends_lines(ow: &Overworld, tab: usize) -> Vec<Line<'static>> {
     if tab == 5 {
         return crate::game::magic::gods_lines(ow);
@@ -2834,17 +2878,17 @@ fn legends_lines(ow: &Overworld, tab: usize) -> Vec<Line<'static>> {
     }
 }
 
-fn draw_legends(f: &mut Frame, area: Rect, ow: &Overworld, tab: usize, scroll: usize) {
+fn draw_legends(f: &mut Frame, area: Rect, ow: &Overworld, tab: usize, scroll: usize, seen: &[u16]) {
     let w = area.width.saturating_sub(6).min(120);
     let h = area.height.saturating_sub(4);
     let r = Rect::new(area.x + (area.width - w) / 2, area.y + 2, w, h);
-    let lines = legends_lines(ow, tab);
+    let lines = if tab == 6 { bestiary_lines(ow, seen) } else { legends_lines(ow, tab) };
     // The gods' myths run long: wrap them to the window.
     let lines = if tab == 5 { wrap_lines(lines, w.saturating_sub(2) as usize) } else { lines };
     let visible = h.saturating_sub(4) as usize;
     let max = lines.len().saturating_sub(visible);
     let scroll = scroll.min(max);
-    let names = ["1 History", "2 Civilizations", "3 Sites", "4 Figures", "5 Regions", "6 Gods"];
+    let names = ["1 History", "2 Civilizations", "3 Sites", "4 Figures", "5 Regions", "6 Gods", "7 Bestiary"];
     let mut tabs: Vec<Span> = Vec::new();
     for (i, n) in names.iter().enumerate() {
         let st = if i == tab { Style::default().fg(BLACK).bg(KEY) } else { Style::default().fg(TEXT) };
@@ -2990,7 +3034,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if let Mode::Legends { tab, scroll, from_world: true } = app.mode {
         let (x, y) = app.game.site;
         draw_world(f, app, x, y);
-        draw_legends(f, area, &app.game.overworld, tab, scroll);
+        draw_legends(f, area, &app.game.overworld, tab, scroll, &app.game.beasts_seen);
         return;
     }
     let rows = Layout::default()
@@ -3152,7 +3196,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     };
     match app.mode {
         Mode::GameOver => draw_game_over(f, full, &app.game),
-        Mode::Legends { tab, scroll, .. } => draw_legends(f, area, &app.game.overworld, tab, scroll),
+        Mode::Legends { tab, scroll, .. } => draw_legends(f, area, &app.game.overworld, tab, scroll, &app.game.beasts_seen),
         Mode::Trade { side, sel } => draw_trade(f, area, app, side, sel),
         Mode::Status { tab, scroll } => draw_status(f, area, &app.game, tab, scroll),
         Mode::Labors { row, col, detail } => draw_labors(f, area, app, row, col, detail),
@@ -3544,6 +3588,15 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
             if let Some(c) = g.creatures.get(&id) {
                 let info = c.species.info();
                 v.push(header(&c.label.clone().unwrap_or_else(|| cap(info.name))));
+                // A bestiary animal: what it is, and what it's good for.
+                if let Some(b) = c.species.beast() {
+                    v.push(plain(b.summary(), detail_col));
+                    let traits = b.trait_words();
+                    if !traits.is_empty() {
+                        v.push(plain(cap(&traits.join(", ")), detail_col));
+                    }
+                    v.push(plain(format!("Gives {}.", b.product_words()), MUTED));
+                }
                 if let Some(f) = c.figure.and_then(|f| g.overworld.figures.get(f as usize)) {
                     v.push(plain(format!("Born in the year {}; {} kills in the legends.", f.born, f.kills), Color::Rgb(255, 200, 120)));
                 }
@@ -5181,7 +5234,7 @@ mod tests {
             app.on_key(key(KeyCode::Down));
         }
         app.on_key(key(KeyCode::Right));
-        assert_eq!(app.loadout.animals, vec![2, 2, 2]);
+        assert_eq!(app.loadout.animals, vec![2, 2, 2, 0, 0, 0]);
         let left = app.loadout.points_left();
         assert!(left >= 0 && left < before, "{} of {}", left, before);
         app.on_key(key(KeyCode::Enter));
@@ -5606,6 +5659,14 @@ mod tests {
         let legends = text(&legends_lines(&ow, 4));
         assert!(ow.regions.iter().all(|r| legends.contains(&r.name)));
         assert!(legends.contains(r.fauna[0].info().plural));
+        // The bestiary page lists the world's animals, cave things too.
+        let best = text(&bestiary_lines(&ow, &[]));
+        assert!(best.contains("kinds of animal live in this world"), "{}", best);
+        let beast = ow.regions.iter().flat_map(|r| r.fauna.iter()).find_map(|s| s.beast()).expect("no bestiary animal in any region");
+        assert!(best.contains(&cap_first(beast.name)) && best.contains(beast.note), "{} missing", beast.name);
+        assert!(best.contains("under every land"));
+        let seen = text(&bestiary_lines(&ow, &[crate::bestiary::find(beast.name).unwrap()]));
+        assert!(seen.contains("seen at the fort"));
     }
 
     #[test]

@@ -56,6 +56,14 @@ pub const KINS: [Kin; 30] = [
     Kin::Beast(Species::Antelope),
 ];
 
+/// Everyone the arena's setup steps through: `KINS`, then the bestiary's
+/// animals, the biggest first.
+pub fn all_kins() -> Vec<Kin> {
+    let mut beasts: Vec<Species> = Species::bestiary().collect();
+    beasts.sort_by(|a, b| b.info().scale.total_cmp(&a.info().scale));
+    KINS.iter().copied().chain(beasts.into_iter().map(Kin::Beast)).collect()
+}
+
 impl Kin {
     pub fn name(self) -> &'static str {
         match self {
@@ -87,7 +95,7 @@ impl Kin {
     }
 
     fn index(self) -> usize {
-        KINS.iter().position(|&k| k == self).unwrap_or(0)
+        all_kins().iter().position(|&k| k == self).unwrap_or(0)
     }
 }
 
@@ -366,7 +374,8 @@ impl Matchup {
         let s = &mut self.sides[side];
         match row {
             ROW_KIN => {
-                s.kin = KINS[cycle(s.kin.index(), KINS.len())];
+                let all = all_kins();
+                s.kin = all[cycle(s.kin.index(), all.len())];
                 s.skill = s.skill.min(s.max_skill());
             }
             ROW_COUNT => {

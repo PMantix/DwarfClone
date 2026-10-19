@@ -769,6 +769,10 @@ impl Recipe {
             }
             Butcher => {
                 let label = inputs.first().and_then(|i| i.label.clone());
+                // An animal of the bestiary gives what the bestiary says.
+                if let Some(i) = label.as_deref().and_then(crate::bestiary::find) {
+                    return crate::bestiary::carcass_yields(i);
+                }
                 let meat = match label.as_deref() {
                     Some("bear") => 7,
                     Some("deer") => 4,

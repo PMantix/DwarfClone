@@ -354,6 +354,34 @@ mountains and badlands; camels, giant scorpions and vipers in the desert; antelo
 on the savanna and shrubland; jaguars and vipers in the jungle; vipers and alligators in the
 swamp and marsh. Where evil lies on the land, walking husks come in their place half the time.
 
+**The bestiary.** Beyond those, some 280 animals live in a table (`bestiary.rs`): each with
+its looks, size, habitats (the land biomes, rivers, lakes, the sea and its coasts, and the
+three cavern layers), the warmth it lives in, its temperament (prey, grazer, predator,
+scavenger, vermin, ambusher, territorial), how it moves (walks, flies, swims, burrows,
+climbs), how many go about together, how it strikes, traits (venomous, nocturnal, fears
+fire, tameable, trainable for war or hunting, could be ridden), what it gives, and how rare
+it is: badgers and wild boar in the woods, reindeer and moose in the taiga, tapirs and
+pythons in the jungle, bison, zebra and elephants on the plains, sidewinders and oryx in the
+desert, snapping turtles and cottonmouths in the swamp, musk oxen and walruses in the cold,
+snow leopards and giant eagles in the mountains, gulls and giant crabs on the coasts, trout,
+pike, ducks and otters in the rivers and lakes, cod, sharks and whales in the sea, flocks of
+starlings and swallows overhead, rats, mice and roaches in the stores, blind fish, cave
+crickets, capgrazers, gloomhounds and pallid stalkers in the caverns, giant kinds of common
+animals, a few strange beasts of the world's own (thornbacks, mirebeasts, frostmanes...), and
+livestock (sheep, chickens, pigs) for the wagon. Each region's populations draw on the table
+by land, warmth and range (seas and lakes have theirs too), and the site's animals come by
+their own ways: grazers keep with their herd and run from hunters; predators hunt prey their
+size, and the big ones size up dwarves; scavengers make for carcasses and battlefields (fliers
+drop to carrion); vermin raid the food and cats catch them; ambushers lie still until
+something comes close; the territorial drive off whoever comes too near; fliers cross the sky
+from edge to edge; fish keep to the water (and die if it drains); burrowers come up in the
+fort's tunnels; cave things are there when the miners break into their cavern. Fishers land the fish of the
+site's waters. Butchered, an animal gives what the table says (meat or fish by its size, fat,
+bones, hide, and goods: wool, feathers, venom, chitin, ivory, horn, shell, silk, pearls); kept
+hens lay eggs and sheep shed wool. The look panel tells what an animal is, the legends'
+Bestiary page (`6`) lists every animal of the world with its notes and marks those seen about
+the fort, and the arena can field any of them.
+
 The wild live somewhere. At embark the land gets a grazing ground, one or two dens of its
 pack hunters and a lair of its rare beast, out towards the map's edge in woods or on high
 ground. Each holds so many beasts; a party comes out of one with some at home, and when it
@@ -937,6 +965,7 @@ cargo test --release profile_year -- --ignored --nocapture
 | `world.rs` | fortress tiles, movement rules, reveal, embark generation |
 | `game.rs` | core simulation: jobs, needs, fluids, farms, hauling, player commands |
 | `game/combat.rs` | creatures, fighting, wildlife, sieges |
+| `bestiary.rs`, `game/beasts.rs` | the bestiary's animals as data; how each comes to the site and acts its part |
 | `game/wildlife.rs`, `game/lairs.rs`, `game/hunts.rs` | predators' sense, fire and standing together; lairs and living populations; the overseer's hunts |
 | `game/melee.rs`, `game/gore.rs` | close quarters, creature feuds; blood, smoke, severed parts |
 | `game/psyche.rs` | relationships, rooms, nobles, mandates, moods, insanity |

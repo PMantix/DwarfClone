@@ -43,6 +43,8 @@ impl Game {
     /// none, from the map's edge). A land hunted out sends nothing.
     pub(super) fn wildlife(&mut self) {
         self.come_upon_lairs();
+        // The bestiary's animals come and go by their own ways (beasts.rs).
+        self.beast_visit();
         if !self.rng.chance(self.knob("wildlife.chance", 0.18)) {
             return;
         }
@@ -416,7 +418,7 @@ impl Game {
         let mut v: Vec<(u32, Pos, u32)> = self
             .creatures
             .values()
-            .filter(|c| c.hostile() && !c.siege && !c.legendary() && !c.leaving && self.creature_active(c))
+            .filter(|c| c.hostile() && !c.siege && !c.legendary() && !c.leaving && self.creature_active(c) && !super::beasts::keeps_to_itself(c))
             .filter(|c| (c.pos.x - near.x).abs() <= r && (c.pos.y - near.y).abs() <= r && (c.pos.z - near.z).abs() <= 6)
             .map(|c| (c.id, c.pos, if c.pack != 0 { c.pack } else { c.id }))
             .collect();

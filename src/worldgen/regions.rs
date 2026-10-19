@@ -5,6 +5,7 @@
 //! geographic range (a few seeded centres with a reach), so the same kind of
 //! land in two corners of the world can hold different animals.
 
+use crate::bestiary;
 use crate::creature::Species;
 use crate::overworld::{Biome, RegionKind};
 use crate::rng::Rng;
@@ -107,16 +108,39 @@ fn wet_ground(b: Biome) -> bool {
     matches!(b, Biome::Swamp | Biome::Marsh | Biome::Jungle)
 }
 
-/// Each species' range centres over the world, fixed by the seed.
+/// Each species' range centres over the world, fixed by the seed: the
+/// named wild species' first (in `WILD` order), then the bestiary's (in
+/// table order, from a generator of their own, so the named ones' ranges
+/// are as they always were).
 pub fn ranges(seed: u64, w: i32, h: i32) -> Vec<Vec<(f32, f32, f32)>> {
     let mut rng = Rng::new(seed ^ 0xFA_0A_0A);
-    WILD.iter()
+    let mut v: Vec<Vec<(f32, f32, f32)>> = WILD
+        .iter()
         .map(|hab| {
             (0..hab.ranges)
                 .map(|_| (rng.range(0, w) as f32, rng.range(0, h) as f32, hab.reach * w as f32 * (0.7 + rng.f64() as f32 * 0.6)))
                 .collect()
         })
-        .collect()
+        .collect();
+    let mut rng = Rng::new(seed ^ 0xBE_57_1A);
+    for b in bestiary::BEASTS.iter() {
+        // The common are widespread, the rare found in a corner or two.
+        let (n, reach) = match b.rarity {
+            1 => (4, 0.4),
+            2 => (3, 0.33),
+            3 => (3, 0.28),
+            4 => (2, 0.25),
+            _ => (1, 0.22),
+        };
+        v.push((0..n).map(|_| (rng.range(0, w) as f32, rng.range(0, h) as f32, reach * w as f32 * (0.7 + rng.f64() as f32 * 0.6))).collect());
+    }
+    v
+}
+
+/// Whether a bestiary animal is counted among a land region's wildlife:
+/// not the cave dwellers, the kept animals or the fish.
+fn regional(b: &bestiary::Beast) -> bool {
+    b.home & bestiary::LAND != 0 && !b.domestic() && !b.water_only()
 }
 
 /// The species living over a region's cells, most widespread first: a
@@ -144,8 +168,50 @@ pub fn fauna(cells: &[CellClimate], ranges: &[Vec<(f32, f32, f32)>]) -> Vec<Spec
             }
         }
     }
+    // The bestiary's animals, by their lands, warmth and ranges.
+    for (k, b) in bestiary::BEASTS.iter().enumerate() {
+        let Some(rs) = ranges.get(WILD.len() + k) else { break };
+        if !regional(b) {
+            continue;
+        }
+        let n = cells
+            .iter()
+            .filter(|c| {
+                let in_range = rs.iter().any(|&(cx, cy, r)| {
+                    let (dx, dy) = (c.x as f32 - cx, (c.y as f32 - cy) * 2.0);
+                    dx * dx + dy * dy <= r * r
+                });
+                in_range && b.home & bestiary::biome_bit(c.biome) != 0 && b.fits_temp(c.temp) && !c.biome.is_water()
+            })
+            .count();
+        if n >= 3 && n * 6 >= cells.len() || n * 3 >= cells.len() && n > 0 {
+            found.push((n, Species::Beast(k as u16)));
+        }
+    }
     found.sort_by(|a, b| b.0.cmp(&a.0));
     found.into_iter().map(|f| f.1).collect()
+}
+
+/// The animals of a sea or a lake: what swims there (and, for the sea,
+/// lives on its shores), in water as warm as most of it, the commonest
+/// first.
+pub fn water_fauna(cells: &[CellClimate], kind: RegionKind) -> Vec<Species> {
+    let bits = match kind {
+        RegionKind::Lake => bestiary::LAKE,
+        _ => bestiary::SEA | bestiary::COAST,
+    };
+    let mut found: Vec<(u8, usize, Species)> = Vec::new();
+    for (k, b) in bestiary::BEASTS.iter().enumerate() {
+        if b.home & bits == 0 || b.domestic() {
+            continue;
+        }
+        let n = cells.iter().filter(|c| b.fits_temp(c.temp)).count();
+        if n > 0 && n * 3 >= cells.len() {
+            found.push((b.rarity, k, Species::Beast(k as u16)));
+        }
+    }
+    found.sort_by_key(|f| (f.0, f.1));
+    found.into_iter().map(|f| f.2).collect()
 }
 
 /// The plants of a region's cells, the commonest first (at most five).
@@ -164,5 +230,26 @@ pub fn plants(cells: &[CellClimate]) -> Vec<String> {
 
 /// The role a species plays, if it's wild.
 pub fn role(s: Species) -> Option<Role> {
+    if let Some(b) = s.beast() {
+        return beast_role(b);
+    }
     WILD.iter().find(|h| h.species == s && h.ranges > 0).map(|h| h.role)
+}
+
+/// The part a bestiary animal plays among the land's usual three: herds
+/// that graze, packs that hunt, and the rare and dangerous. Fliers, fish,
+/// vermin and the like come and go on their own (`game::beasts`).
+fn beast_role(b: &bestiary::Beast) -> Option<Role> {
+    use bestiary::Temper;
+    if b.flier() || b.water_only() || b.domestic() || b.cave_only() {
+        return None;
+    }
+    match b.temper {
+        // The everyday herds and packs are the commoner kinds; the rarest
+        // are the land's rare beasts.
+        Temper::Grazer if b.size >= 0.3 && b.rarity <= 3 => Some(Role::Grazer),
+        Temper::Predator if b.aggro() > 0 && b.group.1 >= 2 && b.rarity <= 3 => Some(Role::Hunter),
+        Temper::Predator | Temper::Territorial | Temper::Ambusher if b.aggro() > 0 && b.rarity >= 3 => Some(Role::Rare),
+        _ => None,
+    }
 }

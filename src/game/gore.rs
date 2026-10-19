@@ -65,6 +65,11 @@ pub fn blood_of(who: Option<Species>) -> Blood {
         Some(Species::Undead | Species::Husk) => Blood::Black,
         Some(Species::GiantSpider | Species::Scorpion) => Blood::Ichor,
         Some(Species::CaveHorror) => Blood::Violet,
+        Some(Species::Beast(i)) => match crate::bestiary::beast(i).class {
+            crate::bestiary::Class::Bug | crate::bestiary::Class::Mollusc | crate::bestiary::Class::Worm => Blood::Ichor,
+            crate::bestiary::Class::Strange if crate::bestiary::beast(i).cave_only() => Blood::Violet,
+            _ => Blood::Red,
+        },
         _ => Blood::Red,
     }
 }
