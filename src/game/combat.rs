@@ -789,7 +789,7 @@ impl Game {
         }
         let (sx, sy) = self.site;
         let Some(&f) = self.overworld.beasts_near(sx, sy, 30).first() else { return };
-        let chance = (0.12 + self.wealth() as f64 / 300_000.0).min(0.5);
+        let chance = (self.knob("beast.base", 0.12) + self.wealth() as f64 / 300_000.0).min(0.5);
         if !self.rng.chance(chance) {
             return;
         }
@@ -902,7 +902,7 @@ impl Game {
 
     /// A thief now and then, once there's something worth stealing.
     pub(super) fn maybe_thief(&mut self) {
-        if self.tick < SEASON || !self.rng.chance(0.25) || !self.items.values().any(|it| it.free() && it.value() >= 20) {
+        if self.tick < SEASON || !self.rng.chance(self.knob("thief.chance", 0.25)) || !self.items.values().any(|it| it.free() && it.value() >= 20) {
             return;
         }
         if let Some(entry) = self.edge_entry() {
@@ -1047,7 +1047,8 @@ impl Game {
         let foes: Vec<Neighbor> = self.neighbors.iter().filter(|n| self.at_war_with(n)).cloned().collect();
         let Some(dist) = foes.iter().map(|n| n.dist).min() else { return };
         let near = (1.0 - dist as f64 / 35.0).max(0.2);
-        if self.tick < SEASON * 2 || !(self.siege_warned || self.rng.chance((0.3 + pop * 0.02) * near + self.wealth() as f64 / 200_000.0)) {
+        let chance = (self.knob("siege.base", 0.3) + pop * self.knob("siege.per_pop", 0.02)) * near + self.wealth() as f64 / self.knob("siege.wealth_div", 200_000.0);
+        if self.tick < SEASON * 2 || !(self.siege_warned || self.rng.chance(chance)) {
             return;
         }
         // A spy's report brings them for certain.
@@ -1077,6 +1078,18 @@ impl Game {
         let plural = self.army_plural(foe.civ, Self::army_species(foe.race));
         let raid = n <= 3;
         let what = if raid { format!("a raiding party of {} {}", n, plural) } else { format!("an army of {} {}", n, plural) };
+        // Now and then the scouts miss one (never the first, nor one a spy
+        // told of, nor one a watchtower's watch could see): it is at the
+        // edge of the map before anyone knows.
+        if watch.is_none() && !warned && !self.annals.sieges.is_empty() && self.rng.chance(self.knob("siege.unseen", 0.2)) {
+            let text = format!("Without warning, {} of the {}, led by {}, burst from cover and fall upon {}! The scouts never saw them.", what, civ, leader, self.fortress_name);
+            self.msg(&text, (255, 90, 70));
+            self.spotlight("Taken unawares", &text, None, (255, 90, 70));
+            self.count("siege.unseen", 1);
+            self.incoming = Some((self.tick, foe, n, leader));
+            self.kit_up();
+            return;
+        }
         let mut text = format!("Scouts report {} of the {}, led by {}, marching on {}. They will be at the gates within a day!", what, civ, leader, self.fortress_name);
         if let Some(tower) = watch {
             self.count("watch.warned", 1);
@@ -1101,15 +1114,17 @@ impl Game {
     pub(crate) fn siege_strength(&mut self, civ: u32) -> u32 {
         let past = self.annals.sieges.len() as u32;
         let n = if past == 0 {
-            self.rng.range(2, 4) as u32
+            let (lo, hi) = (self.knob("siege.first_min", 2.0) as i32, self.knob("siege.first_max", 3.0) as i32);
+            self.rng.range(lo, hi.max(lo) + 1) as u32
         } else {
             let broken = self.annals.sieges.iter().filter(|s| s.outcome == "routed").count() as u32;
-            let n = 3 + self.alive_count() as u32 / 5 + self.wealth() / 25_000 + broken + self.rng.range(0, 3) as u32;
-            n.min(20)
+            let per_broken = self.knob("siege.per_broken", 1.0) as u32;
+            3 + self.alive_count() as u32 / 5 + self.wealth() / 25_000 + broken * per_broken + self.rng.range(0, 3) as u32
         };
+        let cap = self.knob("siege.cap", 20.0).max(1.0) as u32;
         let grudge = self.annals.grudges.get(&civ).copied().unwrap_or(0);
         let mercy = self.annals.mercies.get(&civ).copied().unwrap_or(0);
-        (n + grudge).saturating_sub(mercy).max(1)
+        (n + grudge).saturating_sub(mercy).clamp(1, cap)
     }
 
     /// The army that was seen coming reaches the edge of the map.
@@ -1393,7 +1408,7 @@ impl Game {
     }
 
     /// Returns false when the creature should be removed (died or left the map).
-    fn creature_tick(&mut self, c: &mut Creature) -> bool {
+    pub(super) fn creature_tick(&mut self, c: &mut Creature) -> bool {
         if c.visitor == super::visitors::JOINED {
             return false;
         }
@@ -1482,6 +1497,10 @@ impl Game {
                     (q.x == 0 || q.y == 0 || q.x == w - 1 || q.y == h - 1) && wo.outside(q)
                 }) {
                     c.path = path.into_iter().rev().collect();
+                    c.path_fails = 0;
+                } else {
+                    // Walled in: wait longer each time before looking again.
+                    c.think_cd = self.no_way_wait(c, 50);
                 }
             }
             c.think_cd = c.think_cd.saturating_sub(1);
@@ -1562,7 +1581,10 @@ impl Game {
                 self.creature_step(c, info.move_delay);
             }
         } else {
-            if c.path.is_empty() && !matches!(c.species, Species::Merchant | Species::Visitor) && !super::beasts::own_ways(c) && self.rng.chance(if c.hostile() { 0.05 } else { 0.03 }) {
+            if c.path.is_empty() && !matches!(c.species, Species::Merchant | Species::Visitor) && !super::beasts::own_ways(c) && {
+                let p = self.prowl_chance(c);
+                self.rng.chance(p)
+            } {
                 // Prowl about (up and down stairs too), rather than stand where it came in.
                 self.creature_wander(c, if c.hostile() { 12 } else { 7 });
             }
@@ -1672,11 +1694,16 @@ impl Game {
                 c.think_cd = 200;
                 return;
             }
-            if let Some((id, path)) = self.siege_quarry(c, &dwarves) {
-                c.target = Some(id);
-                c.path = path.into_iter().rev().collect();
-                c.bash = None;
-                return;
+            // Shut out, and nothing has changed since: don't look again yet.
+            let resting = self.still_shut_out(c);
+            if !resting {
+                if let Some((id, path)) = self.siege_quarry(c, &dwarves) {
+                    c.target = Some(id);
+                    c.path = path.into_iter().rev().collect();
+                    c.bash = None;
+                    c.path_fails = 0;
+                    return;
+                }
             }
             // Nobody reachable: go batter down a locked door.
             if c.bash.is_none() {
@@ -1687,13 +1714,15 @@ impl Game {
                         (w.get(d).map_or(false, |t| t.door == DOOR_LOCKED)).then_some(d)
                     })
                 };
-                if let Some((p, path)) = path::search(w, c.pos, SEARCH_LIMIT, info.mover, |q| locked(q).is_some()) {
+                let door = if resting { None } else { path::search(w, c.pos, SEARCH_LIMIT, info.mover, |q| locked(q).is_some()) };
+                if let Some((p, path)) = door {
                     c.bash = locked(p);
                     c.path = path.into_iter().rev().collect();
                 } else {
                     // Shut out: loot what's lying about outside, or prowl
-                    // round the walls until a way in opens.
-                    c.think_cd = 120;
+                    // round the walls until a way in opens. The longer it has
+                    // been shut out, the longer it waits to look again.
+                    c.think_cd = if resting { self.shut_out_wait(c) } else { self.no_way_wait(c, 120) };
                     if c.path.is_empty() && c.loot.is_none() && !c.legendary() {
                         let w = &self.world;
                         let goods: HashMap<Pos, u32> = self
@@ -2058,6 +2087,34 @@ mod tests {
             }
         }
         panic!("no siege came");
+    }
+
+    #[test]
+    fn now_and_then_the_scouts_miss_one() {
+        let mut g = Game::new(21);
+        g.creatures.retain(|_, c| c.tame);
+        g.knobs.set.insert("siege.unseen".into(), 1.0);
+        g.tick = SEASON * 2 + 1;
+        // Never the first: that one is always seen coming.
+        for _ in 0..500 {
+            if g.incoming.is_some() {
+                break;
+            }
+            g.maybe_siege();
+        }
+        assert!(g.incoming.as_ref().expect("an army comes").0 > g.tick, "the first is seen coming");
+        g.annals.sieges.push(annals::SiegeNote { tick: g.tick, foe: "goblins".into(), size: 3, outcome: "routed".into(), ended: Some(g.tick), ..Default::default() });
+        g.incoming = None;
+        for _ in 0..500 {
+            if g.incoming.is_some() {
+                break;
+            }
+            g.maybe_siege();
+        }
+        let (at, ..) = g.incoming.clone().expect("a second army comes");
+        assert_eq!(at, g.tick, "an unseen army is at the edge at once");
+        assert!(g.log.iter().any(|l| l.text.contains("Without warning")));
+        assert_eq!(g.annals.counters.get("siege.unseen"), Some(&1));
     }
 
     #[test]

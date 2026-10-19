@@ -97,6 +97,27 @@ mod tests {
     }
 
     #[test]
+    fn siege_size_cap_is_a_knob() {
+        // A fort that has broken many sieges draws big armies...
+        let mut g = Game::new(21);
+        for i in 0..12 {
+            g.annals.sieges.push(annals::SiegeNote { tick: i, foe: "goblins".into(), size: 10, outcome: "routed".into(), ..Default::default() });
+        }
+        let civ = g.neighbors.first().map_or(0, |n| n.civ);
+        assert!((0..20).map(|_| g.siege_strength(civ)).max().unwrap() > 4, "a dozen broken sieges bring more than four");
+        // ...unless the batch caps them.
+        g.knobs.set.insert("siege.cap".into(), 4.0);
+        for _ in 0..20 {
+            assert!(g.siege_strength(civ) <= 4);
+        }
+        // And the first raid's size is a knob too.
+        let mut g = Game::new(21);
+        g.knobs.set.insert("siege.first_min".into(), 5.0);
+        g.knobs.set.insert("siege.first_max".into(), 5.0);
+        assert_eq!(g.siege_strength(civ), 5);
+    }
+
+    #[test]
     fn knobs_parse() {
         assert_eq!(parse_knob("bleed.gash=6"), Ok(("bleed.gash".into(), 6.0)));
         assert_eq!(parse_knob(" siege.cap = 4.5 "), Ok(("siege.cap".into(), 4.5)));

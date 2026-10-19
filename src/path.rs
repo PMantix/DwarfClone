@@ -68,6 +68,11 @@ thread_local! {
     static SPARE: std::cell::Cell<Option<Came>> = const { std::cell::Cell::new(None) };
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Searches run on this thread (tests count one creature's).
+    pub static CALLS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
 /// Dijkstra flood from `start` to the cheapest position satisfying `goal`.
 /// Returns that position and the path to it (excluding `start`).
 /// Searches run and nodes expanded, for finding what makes the game slow.
@@ -94,6 +99,8 @@ pub fn search<F: FnMut(Pos) -> bool>(
     let mut expanded = 0;
     use std::sync::atomic::Ordering::Relaxed;
     SEARCHES.fetch_add(1, Relaxed);
+    #[cfg(test)]
+    CALLS.with(|n| n.set(n.get() + 1));
     while let Some(Reverse((cost, p))) = heap.pop() {
         if came.get(world, p).map_or(false, |c| c < cost) {
             continue;

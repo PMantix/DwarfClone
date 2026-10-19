@@ -666,6 +666,14 @@ pub struct Creature {
     /// Door being battered down.
     pub bash: Option<Pos>,
     pub bash_work: u32,
+    /// Searches in a row that found no way to anyone (shut out): each one
+    /// doubles the wait before the next (path_throttle.rs).
+    #[serde(default)]
+    pub path_fails: u8,
+    /// The fortress's `dig_version` when the last search failed: when it
+    /// changes (a dig, a bridge lowered) a way in may have opened.
+    #[serde(default)]
+    pub fail_ver: u64,
     /// Kept by the fortress: never hostile, never leaves, uses doors.
     #[serde(default)]
     pub tame: bool,
@@ -765,6 +773,8 @@ impl Creature {
             siege: false,
             bash: None,
             bash_work: 0,
+            path_fails: 0,
+            fail_ver: 0,
             tame: false,
             female: false,
             adult: true,

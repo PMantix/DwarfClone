@@ -210,6 +210,8 @@ impl Game {
                 BuildingKind::Door if b.built => {
                     b.locked = !b.locked;
                     self.world.t_mut(pos).door = if b.locked { DOOR_LOCKED } else { DOOR_OPEN };
+                    // A way in or out changed (path_throttle.rs).
+                    self.dig_version += 1;
                 }
                 BuildingKind::Bridge if b.built => {
                     b.raised = !b.raised;
