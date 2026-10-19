@@ -113,6 +113,7 @@ pub mod moods;
 pub mod reel;
 pub mod lifestory;
 pub mod sounds;
+pub mod drills;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -538,6 +539,9 @@ pub struct Game {
     /// Noises the app may play (`sounds.rs`); never saved, never read here.
     #[serde(skip)]
     pub sounds: Vec<(Pos, sounds::Sound)>,
+    /// Squads at drill in the barracks: who spars with whom, and what to draw (`drills.rs`).
+    #[serde(default)]
+    pub drills: drills::Drills,
 }
 
 impl Game {
@@ -715,6 +719,7 @@ impl Game {
             slaughtering: HashSet::new(),
             culture: Default::default(),
             sounds: Vec::new(),
+            drills: drills::Drills::default(),
         }
     }
 
@@ -2971,6 +2976,8 @@ impl Game {
                 Travel::Arrived => d.task = Task::Idle,
             },
             Task::Train => {
+                // A step toward their place in the squad's drill (drills.rs).
+                self.drill_step(d);
                 if Self::labor(d, 300, 0) {
                     d.satisfy(dwarf::NeedKind::Fight, 300);
                     d.task = Task::Idle;

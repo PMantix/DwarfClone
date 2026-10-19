@@ -451,6 +451,8 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
             items.insert(key, it.glyph());
         }
     }
+    // Swings, parries and bolts in flight at drill (and bolts in battle).
+    let fx: HashMap<(i32, i32), (char, Color)> = g.drill_fx(z).into_iter().map(|(p, c, col)| ((p.x, p.y), (c, rgb(col)))).collect();
     let planned: HashMap<(i32, i32), crate::game::ConstructKind> =
         g.constructions.values().filter(|c| c.pos.z == z).map(|c| ((c.pos.x, c.pos.y), c.kind)).collect();
     let sel = selection_box(app);
@@ -633,6 +635,12 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                     bg = Color::Rgb(70, 0, 0);
                 }
             }
+            if let Some(&(fc, fcol)) = fx.get(&(wx, wy)) {
+                if t.revealed {
+                    ch = fc;
+                    fg = fcol;
+                }
+            }
             match app.mode {
                 Mode::Burrows { sel, .. } => {
                     if let Some(b) = g.burrows.get(sel) {
@@ -791,7 +799,7 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
             }
         }
         Task::Station { .. } => "Going to station".into(),
-        Task::Train => "Combat drill".into(),
+        Task::Train => g.drill_role(d.id).map_or("Combat drill".into(), |r| format!("Combat drill: {}", r.name())),
         Task::Flee => "Fleeing!".into(),
         Task::Mood => {
             let m = d.mood.as_ref();

@@ -74,6 +74,8 @@ impl Game {
         if tick % SEASON == 0 { self.season_turns(); }
         // Interface flair: the highlight reel films its next frame.
         if tick % reel::FRAME_TICKS == 1 { self.reel_tick(); }
+        // A04 (squad life): squads at drill in the barracks.
+        if tick % 2 == 1 { self.drills_tick(); }
     }
 
     /// The turn of a season: news, a new year, migrants, and whatever the
@@ -134,8 +136,8 @@ mod tests {
         assert_eq!(deaths, vec![(202960, "Dorna Copperfist", "struck down"), (240080, "Nothar Silverhold", "bled to death")]);
         let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
         assert_eq!(sieges, vec![(202695, "goblins", 2, "withdrew"), (302420, "goblins", 7, "withdrew")]);
-        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (15, 30810, 24));
-        assert_eq!(t.ambitions, ["Delve", "Prosper", "Revel", "Delve", "Revel", "Architect", "Provision", "Revel", "Architect", "Venture", "Prosper"]);
+        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (15, 30992, 25));
+        assert_eq!(t.ambitions, ["Delve", "Prosper", "Revel", "Delve", "Revel", "Architect", "Provision", "Revel", "Architect", "Venture", "Muster"]);
     }
 
     /// The survival items' tasks save and load by name, and a dwarf given one

@@ -313,6 +313,8 @@ impl Game {
         let mut body = c.body.clone();
         let (hp0, siege): (i32, bool) = (body.hp.iter().sum(), c.siege);
         let (cpos, csp, owner, seen) = (c.pos, c.species, super::gore::owner_of_creature(c), super::melee::a_or_name(c));
+        // The bolt is seen to fly (drills.rs draws it).
+        self.loose_bolt(d.pos, cpos);
         let blow = self.strike(&att, &def, &mut body);
         if let Some(m) = blow.msg.as_ref().filter(|_| blow.notable) {
             self.msg(m, (235, 225, 130));
