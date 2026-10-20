@@ -3,6 +3,10 @@
 //! panel says what a piece shows, and a dwarf who lived through what it
 //! shows stops to admire it.
 //!
+//! Statues and figurines also show things (CRF-21): the creatures the
+//! fortress has met, its animals, its foes at the gate, and the works it
+//! is proud of (the drawbridge, the well, the great monument).
+//!
 //! Every roll is on the culture's own stream (`culture.rs`).
 
 use super::*;
@@ -45,7 +49,11 @@ impl Game {
             .collect();
         let lived = self.lived_through(d.id);
         let ours = self.fort_events();
-        let dep = if !heroes.is_empty() && self.c_roll() < 0.25 {
+        let things = self.things();
+        let dep = if !things.is_empty() && self.c_roll() < self.knob("culture.thing_tells", 0.3) {
+            let what = things[self.c_pick(things.len())].clone();
+            Depiction { event: None, dwarf: None, text: format!("an image of {}", what), maker: d.name.clone() }
+        } else if !heroes.is_empty() && self.c_roll() < 0.25 {
             let (hid, name) = heroes[self.c_pick(heroes.len())].clone();
             let h = self.dwarves.iter().find(|h| h.id == hid).unwrap();
             let what = match (&h.deed, h.alive) {
@@ -72,6 +80,41 @@ impl Game {
             self.msg(&format!("{} has carved a {} showing {}.", d.name, what, dep.text.trim_start_matches("an image of ")), (200, 180, 255));
         }
         self.culture.art.insert(id, dep);
+    }
+
+    /// Things a piece of art may show (CRF-21): the beasts the fortress
+    /// has met, its own animals, its foes, and its works.
+    pub(super) fn things(&self) -> Vec<String> {
+        let mut v: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for c in self.creatures.values() {
+            let name = c.name();
+            let a = if name.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
+            v.insert(if c.tame {
+                format!("{} {}, as the fortress keeps them", a, name)
+            } else if c.siege {
+                format!("{} {} raider", a, name)
+            } else {
+                format!("{} {}", a, name)
+            });
+        }
+        for s in self.annals.sieges.iter().filter(|s| !s.leader.is_empty()) {
+            v.insert(format!("{}, who came against the gate", s.leader));
+        }
+        for b in self.buildings.values().filter(|b| b.built) {
+            let what = match b.kind {
+                BuildingKind::Bridge => "the drawbridge raised against the foe",
+                BuildingKind::Well => "the fortress's well",
+                BuildingKind::Stage => "a bard on the tavern's stage",
+                BuildingKind::Floodgate => "the floodgates",
+                BuildingKind::Forge | BuildingKind::MagmaForge => "a forge at work",
+                _ => continue,
+            };
+            v.insert(what.to_string());
+        }
+        if let Some(m) = &self.monument {
+            v.insert(m.clone());
+        }
+        v.into_iter().collect()
     }
 
     /// A piece of art becomes something else (an item set up as a building,

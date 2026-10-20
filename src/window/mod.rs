@@ -256,8 +256,10 @@ pub fn screenshot(args: &[String]) -> Result<()> {
     for _ in 0..if adventure { 0 } else { days * crate::game::DAY } {
         app.game.step();
     }
-    // (`--plan`: down on the main level of halls, the plan shown over it.)
-    if args.iter().any(|a| a == "--plan") {
+    // (`--plan`: down on the main level of halls, the plan shown over it;
+    // `--halls`: the same view without the plan, to see the halls as built.)
+    let halls = args.iter().any(|a| a == "--halls");
+    if halls || args.iter().any(|a| a == "--plan") {
         if let Some(b) = app.game.overseer.as_ref().and_then(|o| o.base) {
             // (Centred on the main level's halls, some way along them.)
             let lp = app.game.plan_at(b.z).cloned();
@@ -266,7 +268,7 @@ pub fn screenshot(args: &[String]) -> Result<()> {
             app.view_x = mid.x - 48;
             app.view_y = mid.y - 26;
             app.free_view = false;
-            app.ghost = true;
+            app.ghost = !halls;
             if let Some(l) = lp {
                 println!("Main level: {} facing {}, {} levels planned.", l.layout.name(), l.facing.name(), app.game.overseer.as_ref().map_or(0, |o| o.levels.len()));
             }

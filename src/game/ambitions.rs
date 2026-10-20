@@ -516,7 +516,7 @@ impl Game {
             Ambition::Prosper => {
                 self.ov_mine(o, 30, 30);
                 if self.wealth() >= 30_000 && o.style != Style::Reckless && !o.did("monument") {
-                    if let Some(p) = self.ov_spot(BuildingKind::Monument, e.offset(0, 6, 0), 16) {
+                    if let Some(p) = self.monument_spot(o) {
                         self.place_building(BuildingKind::Monument, p);
                         o.done.push("monument".into());
                         Self::note_as(o, tick, NoteKind::Ambition, "Began a great monument.".into());

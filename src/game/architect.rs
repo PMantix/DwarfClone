@@ -279,7 +279,7 @@ impl Game {
     }
 
     /// Items of this kind not already spoken for by furniture waiting to be built.
-    fn spare(&self, kind: BuildingKind) -> usize {
+    pub(super) fn spare(&self, kind: BuildingKind) -> usize {
         let item = match kind {
             BuildingKind::Bed => ItemKind::Bed,
             BuildingKind::Table => ItemKind::Table,
@@ -364,6 +364,7 @@ impl Game {
         self.ov_wishes(o);
         self.ov_dress(o);
         self.ov_finish(o);
+        self.ov_halls(o);
         self.ov_mature(o);
         self.ov_repurpose(o);
         self.ov_places(o);
@@ -986,11 +987,12 @@ impl Game {
     fn ov_finish(&mut self, o: &mut Overseer) {
         let t = taste(o);
         let tier = o.interior.tier;
-        if t.plain || tier < 2 {
+        if t.plain || tier == 0 {
             return;
         }
         let detailing = self.designations.iter().filter(|p| matches!(self.world.t(**p).desig, Desig::Smooth | Desig::Engrave)).count();
-        if detailing < 40 {
+        // (The rooms once established; the halls from settled, `halls.rs`.)
+        if detailing < 40 && tier >= 2 {
             let smooth_kinds = |k: RoomUse| gathering(k) || matches!(k, RoomUse::Suite | RoomUse::Parlour | RoomUse::Grand) || (k == RoomUse::Bedrooms && t.grand >= 2 && tier >= 3);
             let carve = tier >= 3 && t.grand >= 1 || t.grand >= 3;
             let rooms: Vec<Room> = o.rooms.iter().filter(|r| r.stage == 1 && smooth_kinds(r.kind)).cloned().collect();

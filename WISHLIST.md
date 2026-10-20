@@ -319,18 +319,20 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O03 Halls that look lived in (M)
 - **Why:** finished forts in DF are smoothed, engraved, furnished and named.
-- **Steps:** [x] the main halls are smoothed, then engraved, as the fort grows rich (efa01ab) · [x] bedrooms
+- **Steps:** [x] the main halls are smoothed, then engraved, as the fort grows rich (efa01ab; halls.rs, this commit: the plan's own halls, stretch by stretch out from the stair, from the time the fort is settled; smoothed walls drawn as polished double lines, engraved ones gilt) · [x] bedrooms
   get a cabinet and a chest; nobles get suites with an office and a dining room (feat/interiors:
   architect.rs; also bedrooms of their own, the dormitory retired, gathering halls, the industry
-  quarter and rebuilding in maturity.rs) · [ ] the atrium
-  and the hub get statues and the monument (partly: a rotunda holds the monument, gathering
-  halls and temples get statues, efa01ab; pillars round the monument, ad88122) · [x] halls are named after heroes and events
+  quarter and rebuilding in maturity.rs) · [x] the atrium
+  and the hub get statues and the monument (a rotunda holds the monument, gathering
+  halls and temples get statues, efa01ab; pillars round the monument, ad88122; this commit: the
+  plan keeps the atrium's and hub's hearts for the monument with statues round them, and statues
+  down a great hall) · [x] halls are named after heroes and events
   ("the Hall of the Unbeaten") and the names show in the look panel and the chronicle (rooms
   are named in the look panel, a tavern gets a name of its own, efa01ab; a place takes a name
   from a deed done there, 6567979; naming.rs, this commit: a great hall is named for the fort's
   hero or noble, and renamed for a leader or beast slain in it, three dead in a day, a stand or
   a wedding; the gate for its first held siege; announced, noted, in legends and chronicle)
-- **From the Bay 12 review:** [x] Trophies of war ([CRF-01](ideas/economy.md), this commit: the skulls of dragons, named beasts, horrors and siege generals, set up on displays in the great hall and admired; their people come back for them) · [x] Named weapons ([CRF-02](ideas/economy.md), this commit: a weapon is named at its fifth kill, with a legend, and its great kills go into the legends) · [x] Inscriptions and maker's marks ([CRF-06](ideas/economy.md), this commit: superior work bears its maker's mark, exceptional work an inscription) · [ ] Name creator ([CRF-08](ideas/economy.md); partly: battles, places, taverns, instruments and weapons get names) · [x] Jeweler and decorations ([CRF-13](ideas/economy.md), this commit: the craftsdwarf sets cut gems into furniture and figurines; a rich overseer orders it) · [x] Gems in engravings, engraved built walls ([CRF-12](ideas/economy.md), this commit) · [ ] Statues and figurines of things ([CRF-21](ideas/economy.md); partly: statues and crafts show the fort's legends and heroes, f6ad60c) · [x] Places named for what happened there ([WLD-02](ideas/world-and-overseer.md), 6567979)
+- **From the Bay 12 review:** [x] Trophies of war ([CRF-01](ideas/economy.md), this commit: the skulls of dragons, named beasts, horrors and siege generals, set up on displays in the great hall and admired; their people come back for them) · [x] Named weapons ([CRF-02](ideas/economy.md), this commit: a weapon is named at its fifth kill, with a legend, and its great kills go into the legends) · [x] Inscriptions and maker's marks ([CRF-06](ideas/economy.md), this commit: superior work bears its maker's mark, exceptional work an inscription) · [ ] Name creator ([CRF-08](ideas/economy.md); partly: battles, places, taverns, instruments and weapons get names) · [x] Jeweler and decorations ([CRF-13](ideas/economy.md), this commit: the craftsdwarf sets cut gems into furniture and figurines; a rich overseer orders it) · [x] Gems in engravings, engraved built walls ([CRF-12](ideas/economy.md), this commit) · [x] Statues and figurines of things ([CRF-21](ideas/economy.md); statues and crafts show the fort's legends and heroes, f6ad60c; this commit: and the beasts it has met, its animals, the generals at its gate, its drawbridge, well and monument) · [x] Places named for what happened there ([WLD-02](ideas/world-and-overseer.md), 6567979)
 - **Done when:** a three-year fort has smoothed main halls, furnished bedrooms and named halls.
 
 #### O04 Defences in the plan (M)
