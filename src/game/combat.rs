@@ -20,6 +20,10 @@ pub(super) struct Fighter {
     pub size: f32,
     /// Has teeth worth knocking out (people).
     pub teeth: bool,
+    /// What they strike with, as told: "her iron axe" (None: bare hands, claws, a bolt).
+    pub weapon: Option<String>,
+    /// The weapon's item (it takes the blood it draws).
+    pub held: Option<u32>,
 }
 
 /// What one blow did, for the one who struck it to deal with: the log line
@@ -39,6 +43,13 @@ pub(super) struct Blow {
     pub sprawl: bool,
     /// The weapon arm ruined: whatever it held falls.
     pub disarmed: bool,
+    /// What the fight log tells of a blow too slight for the announcements
+    /// (a miss).
+    pub report: Option<String>,
+    /// The extra hurts it did: teeth, an eye, an artery, guts...
+    pub hurts: Vec<crate::body::Hurt>,
+    /// It killed.
+    pub fatal: bool,
 }
 
 /// Who fights whom among the creatures (dwarves are another matter: see
@@ -127,6 +138,8 @@ impl Game {
                     f.dmg = w * it.mat.weapon_mult() * q;
                     f.verb = it.kind.weapon_verb();
                     f.edged = it.kind.edged();
+                    f.weapon = Some(self.weapon_words(it));
+                    f.held = held;
                 }
             }
         }
@@ -153,8 +166,17 @@ impl Game {
             shield: false,
             size: if d.is_child() { 0.6 } else { 1.0 },
             teeth: true,
+            weapon: None,
+            held: None,
         };
         self.apply_gear(&mut f, d.held, &d.armor, d.body.can_hold());
+        let pron = match d.female {
+            Some(true) => "her",
+            Some(false) => "his",
+            None => "their",
+        };
+        f.weapon = f.weapon.map(|w| format!("{} {}", pron, w));
+        super::gore::hurt_fighter(&mut f, &d.body);
         f
     }
 
@@ -171,9 +193,13 @@ impl Game {
             shield: false,
             size: c.body.max_blood as f32 / 100.0,
             teeth: c.species.person() || c.species == Species::Troglodyte,
+            weapon: None,
+            held: None,
         };
         self.apply_gear(&mut f, c.weapon, &c.armor, c.body.can_hold());
+        f.weapon = f.weapon.map(|w| format!("its {}", w));
         self.gifted_fighter(c, &mut f);
+        super::gore::hurt_fighter(&mut f, &c.body);
         f
     }
 
@@ -188,6 +214,7 @@ impl Game {
         let downed = body.unconscious();
         let chance = (0.55 + 0.05 * (att.skill as f64 - def.skill as f64)).clamp(0.15, 0.95);
         if !self.rng.chance(if downed { self.knob("opening.hit", 0.95) } else { chance }) {
+            b.report = Some(self.miss_words(att, def));
             return b;
         }
         if !downed && def.shield && self.rng.chance(0.25) {
@@ -262,44 +289,30 @@ impl Game {
                 }
             }
         };
-        let mut suffix = match w {
-            Wound::Bruise if cleave => ", cutting through the armor",
-            Wound::Bruise => "",
-            Wound::Gash if att.edged => ", tearing the flesh",
-            Wound::Gash => ", bruising the muscle",
-            Wound::Mangle if att.edged => ", mangling it!",
-            Wound::Mangle if part.is_limb() => ", shattering the bone!",
-            Wound::Mangle => ", crushing it!",
-            Wound::Sever if att.edged => ", severing it!",
-            Wound::Sever => ", tearing it clean off!",
-            Wound::Fatal if decap => ", cutting off the head!",
-            Wound::Fatal if part == Part::Head && !att.edged => ", caving in the skull!",
-            Wound::Fatal => " — a fatal blow!",
-        }
-        .to_string();
         if b.teeth > 0 {
-            let t = if b.teeth == 1 { "a tooth".to_string() } else { format!("{} teeth", b.teeth) };
-            let joint = if suffix.is_empty() { "," } else { " and" };
-            suffix = format!("{}{} knocking out {}!", suffix.trim_end_matches('!'), joint, t);
+            body.harm.teeth = body.harm.teeth.saturating_add(b.teeth).min(32);
         }
-        if devastating && w != Wound::Fatal {
-            suffix = format!("{} A devastating blow!", if suffix.ends_with('!') { suffix.clone() } else { format!("{}.", suffix) });
+        // The rest of what it did (an ear, an eye, an artery, the guts...),
+        // chosen by a hash so the telling never shifts the dice.
+        let h = self.gore_roll(dmg as u64 ^ (part.idx() as u64) << 8);
+        if !body.dead {
+            let artery = self.knob("gore.artery", 10.0) as i32;
+            b.hurts = body.harm_from(part, w, dmg, att.edged, h, artery);
         }
-        if b.sprawl {
-            let end = if suffix.ends_with('!') { suffix.clone() } else { format!("{}.", suffix) };
-            suffix = format!("{} {} is sent sprawling!", end, cap(&def.name));
+        if b.teeth > 0 {
+            b.hurts.insert(0, crate::body::Hurt::Teeth(b.teeth));
         }
-        if cleave && w != Wound::Bruise {
-            suffix = match suffix.strip_prefix(", ") {
-                Some(rest) => format!(", cutting through the armor and {}", rest),
-                None => format!(", cutting through the armor{}", suffix),
-            };
+        b.fatal = body.dead;
+        let words = super::gore::blow_words(att, def, part, dmg, max, w, decap, cleave, devastating, b.sprawl, &b.hurts, h);
+        let grim = b.hurts.iter().any(|h| !matches!(h, crate::body::Hurt::Vomit | crate::body::Hurt::Bone | crate::body::Hurt::Ribs));
+        b.notable = cleave || devastating || b.sprawl || b.teeth > 0 || grim || matches!(w, Wound::Mangle | Wound::Sever | Wound::Fatal);
+        if let Some(id) = att.held.filter(|_| b.blood > 0) {
+            self.soak(id, b.blood);
         }
-        b.notable = cleave || devastating || b.sprawl || b.teeth > 0 || matches!(w, Wound::Mangle | Wound::Sever | Wound::Fatal);
         b.msg = Some(if downed {
-            self.finishing_words(att, def, part, body, &suffix)
+            self.finishing_words(att, def, part, body, &words)
         } else {
-            format!("{} {} {} in the {}{}", cap(&att.name), att.verb, def.name, part.name(), suffix)
+            format!("{} {} {} in the {}{}", cap(&att.name), att.verb, def.name, part.name(), words)
         });
         b
     }
@@ -312,10 +325,15 @@ impl Game {
     /// ("Urist", "a goblin").
     #[allow(clippy::too_many_arguments)]
     pub(super) fn aftermath(&mut self, b: &Blow, from: Pos, at: Pos, owner: &str, seen: &str, who: Option<Species>, big: bool) -> Option<Pos> {
+        self.show_blow(from, at, b);
+        self.fight_note(at, b);
         if b.blood > 0 {
             self.spatter(at, from, who, b.blood);
         }
         self.blow_sound(b.blood > 0 || b.notable, b.msg.is_some(), at);
+        if !b.hurts.is_empty() || b.severed.is_some() {
+            self.hurt_mess(b, from, at, owner, seen, who);
+        }
         if let Some(p) = b.severed {
             self.drop_part(owner, p, 0, at, from);
             self.count("gore.severed", 1);
@@ -1440,9 +1458,7 @@ impl Game {
         if self.tick % 10 == 0 {
             c.body.tick_with(&self.bleed_params(), !c.path.is_empty() || c.target.is_some() || c.foe.is_some());
             let rate = c.body.bleed_rate();
-            if rate > 0 {
-                self.blood_trail(c.pos, Some(c.species), rate);
-            }
+            self.walk_gore(c.id, c.pos, Some(c.species), rate);
             if c.body.dead {
                 self.creature_died(c.clone());
                 return false;
@@ -1782,6 +1798,7 @@ impl Game {
         let blow = self.strike(&att, &def, &mut d.body);
         d.attacker = Some((c.id, self.tick));
         self.note_wound(&mut d, c, &before);
+        self.remember_losses(&mut d, &blow, &super::annals::kind_of(c));
         let hurt = d.body.hp.iter().sum::<i32>() < hp0;
         self.gifted_blow(c, &mut d, hurt);
         if c.siege {
@@ -1999,7 +2016,7 @@ mod tests {
         }
 
         fn df_clone(f: &Fighter) -> Fighter {
-            Fighter { name: f.name.clone(), skill: f.skill, dmg: f.dmg, verb: f.verb, edged: f.edged, helm: f.helm, mail: f.mail, shield: f.shield, size: f.size, teeth: f.teeth }
+            Fighter { name: f.name.clone(), skill: f.skill, dmg: f.dmg, verb: f.verb, edged: f.edged, helm: f.helm, mail: f.mail, shield: f.shield, size: f.size, teeth: f.teeth, weapon: f.weapon.clone(), held: None }
         }
     }
 
@@ -2451,8 +2468,8 @@ mod tests {
 
         // The blow itself: a senseless body is hit nearly every time, on the
         // head or chest, and harder than one on its feet.
-        let att = Fighter { name: "a dwarf".into(), skill: 2, dmg: 3.0 * Mat::Copper.weapon_mult(), verb: "hacks", edged: true, helm: 0, mail: 0, shield: false, size: 1.0, teeth: true };
-        let def = Fighter { name: "the goblin".into(), skill: 2, dmg: 3.0, verb: "punches", edged: false, helm: 0, mail: 0, shield: true, size: 0.9, teeth: true };
+        let att = Fighter { name: "a dwarf".into(), skill: 2, dmg: 3.0 * Mat::Copper.weapon_mult(), verb: "hacks", edged: true, helm: 0, mail: 0, shield: false, size: 1.0, teeth: true, weapon: None, held: None };
+        let def = Fighter { name: "the goblin".into(), skill: 2, dmg: 3.0, verb: "punches", edged: false, helm: 0, mail: 0, shield: true, size: 0.9, teeth: true, weapon: None, held: None };
         let fresh = Body::new(Species::Goblin.info().scale);
         let (mut up, mut down, mut hits, mut limbs) = (0, 0, 0, 0);
         for _ in 0..400 {

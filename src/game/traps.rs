@@ -127,6 +127,8 @@ impl Game {
                     shield: false,
                     size: if stone { 2.0 } else { 1.0 },
                     teeth: false,
+                    weapon: None,
+                    held: None,
                 };
                 for _ in 0..hits {
                     let Some(c) = self.creatures.get(&cid) else { break };
@@ -235,6 +237,8 @@ impl Game {
             shield: false,
             size: 1.0,
             teeth: false,
+            weapon: None,
+            held: None,
         };
         let on: Vec<u32> = self.creatures.values().filter(|c| c.alive && c.pos == pos && c.species != Species::Merchant && !c.tame).map(|c| c.id).collect();
         for cid in on {

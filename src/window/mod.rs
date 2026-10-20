@@ -293,6 +293,28 @@ pub fn screenshot(args: &[String]) -> Result<()> {
             app.mode = crate::app::Mode::Sagas { sel: 0, open: false, from_end: false };
         }
     }
+    // (`--arena N`: the Nth preset bout, `--ticks T` into it and on to a
+    // moment when a blow is landing; a large T shows the field after.)
+    if let Some(n) = opt(args, "--arena").and_then(|s| s.parse::<usize>().ok()) {
+        let ticks: u64 = opt(args, "--ticks").and_then(|s| s.parse().ok()).unwrap_or(150);
+        let mut a = crate::app::arena::ArenaScreen::new();
+        a.matchup = crate::game::arena::presets().remove(n.min(9));
+        a.fight();
+        if let Some(b) = a.battle.as_mut() {
+            for _ in 0..ticks {
+                b.step();
+            }
+            let z = b.pos(0).z;
+            for _ in 0..400 {
+                if b.outcome.is_some() || b.g.gore_fx(z).len() >= 3 {
+                    break;
+                }
+                b.step();
+            }
+        }
+        app.arena = Some(Box::new(a));
+        app.mode = crate::app::Mode::Arena;
+    }
     let mut terminal = Terminal::new(TileBackend::new(w, h, cell, Box::new(move |c, s| fonts.raster(c, s))))?;
     terminal.draw(|f| ui::draw(f, &mut app))?;
     // A whole screen drawn from nothing, a few times over, glyphs cached...

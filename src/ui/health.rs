@@ -24,6 +24,19 @@ fn part_color(status: &str) -> Color {
 /// in columns when `wide`, else "left leg: mangled ▲12 bandaged".
 pub(super) fn part_lines(d: &Dwarf, indent: &str, wide: bool) -> Vec<Line<'static>> {
     let b = &d.body;
+    let mut v = wound_lines(d, indent, wide);
+    // Broken bones, an opened artery, and what's gone for good (gore.rs, body.rs).
+    for h in b.hurts() {
+        v.push(Line::from(Span::styled(format!("{}{}", indent, h), Style::default().fg(Color::Rgb(255, 150, 50)))));
+    }
+    for l in b.losses() {
+        v.push(Line::from(Span::styled(format!("{}{}", indent, l), Style::default().fg(Color::Rgb(200, 140, 140)))));
+    }
+    v
+}
+
+fn wound_lines(d: &Dwarf, indent: &str, wide: bool) -> Vec<Line<'static>> {
+    let b = &d.body;
     PARTS
         .iter()
         .filter(|p| b.part_status(**p) != "fine" || b.bleeds[p.idx()] > 0)

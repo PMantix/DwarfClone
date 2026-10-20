@@ -54,14 +54,21 @@ pub fn portrait(g: &Game, d: &Dwarf) -> Vec<Vec<Seg>> {
     } else {
         "o"
     };
-    let mut r = vec![s("  ( ", skin), s(eye, (240, 240, 240))];
+    // An eye lost shows as an empty socket.
+    let socket = (150, 30, 30);
+    let (left, right) = match d.body.harm.eyes {
+        0 => ((eye, (240, 240, 240)), (eye, (240, 240, 240))),
+        1 => ((eye, (240, 240, 240)), ("•", socket)),
+        _ => (("•", socket), ("•", socket)),
+    };
+    let mut r = vec![s("  ( ", skin), s(left.0, left.1)];
     if face_scar(d) {
         r.push(s("/", scar_red));
         r.push(s("  ", skin));
     } else {
         r.push(s("   ", skin));
     }
-    r.push(s(eye, (240, 240, 240)));
+    r.push(s(right.0, right.1));
     r.push(s(" )  ", skin));
     rows.push(r);
     rows.push(vec![s("  (   >   )  ", skin)]);

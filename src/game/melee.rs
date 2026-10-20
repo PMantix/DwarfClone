@@ -422,9 +422,9 @@ mod tests {
         let part = b.severed.unwrap();
         g.aftermath(&b, d.pos, p, "goblin", "a goblin", Some(Species::Goblin), false);
         let name = format!("goblin's {}", part.name());
-        let item = g.items.values().find(|it| it.kind == ItemKind::BodyPart).expect("no part dropped");
-        assert_eq!(item.name(), name);
-        assert!(near(item.pos, p, 1));
+        let item = g.items.values().find(|it| it.kind == ItemKind::BodyPart && it.name() == name).expect("no part dropped");
+        // It flies a tile or three before it lands.
+        assert!(near(item.pos, p, 3));
         assert!(g.stain_at(p).is_some(), "no blood where the blow landed");
         assert!(ItemKind::BodyPart != ItemKind::Corpse && crate::items::StockFilter::Refuse.accepts(ItemKind::BodyPart));
         let _ = Part::Head;

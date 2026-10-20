@@ -162,10 +162,11 @@ fn draw_battle(f: &mut Frame, area: Rect, a: &ArenaScreen, b: &Battle) {
     f.render_widget(Paragraph::new(line).style(Style::default().bg(Color::Rgb(10, 10, 16))), rows[0]);
     draw_field(f, mid[0], a, b);
     f.render_widget(boxed(panel_lines(a, b, panel_w as usize - 2), " The fighters ").wrap(Wrap { trim: false }), mid[1]);
-    // The combat log, newest at the bottom.
+    // The combat log, newest at the bottom: every blow, misses counted.
     let n = rows[2].height.saturating_sub(2) as usize;
-    let skip = b.g.log.len().saturating_sub(n);
-    let lines: Vec<Line> = b.g.log[skip..].iter().map(|l| plain(l.text.clone(), rgb(l.color))).collect();
+    let all = bout_lines(b);
+    let skip = all.len().saturating_sub(n);
+    let lines: Vec<Line> = all[skip..].iter().map(|(_, t, c)| plain(t.clone(), *c)).collect();
     f.render_widget(boxed(lines, " Combat log (v: all of it) "), rows[2]);
 }
 
@@ -199,9 +200,16 @@ fn draw_field(f: &mut Frame, area: Rect, a: &ArenaScreen, b: &Battle) {
         }
     }
     let mut items: std::collections::HashMap<(i32, i32), (char, Color)> = Default::default();
-    for it in b.g.items.values().filter(|it| it.carried_by.is_none() && it.pos.z == z) {
+    let flying = b.g.flying_items();
+    for it in b.g.items.values().filter(|it| it.carried_by.is_none() && it.pos.z == z && !flying.contains(&it.id)) {
         items.entry((it.pos.x, it.pos.y)).or_insert_with(|| it.glyph());
     }
+    // Blows flashing, blood and severed parts flying (gore.rs).
+    let fx: std::collections::HashMap<(i32, i32), (char, (u8, u8, u8), Option<(u8, u8, u8)>)> = b.g.gore_fx(z).into_iter().map(|(p, c, f, bg)| ((p.x, p.y), (c, f, bg))).collect();
+    let tup = |c: Color| match c {
+        Color::Rgb(r, g, b) => (r, g, b),
+        _ => (128, 128, 128),
+    };
     let buf = f.buffer_mut();
     for sy in 0..vh {
         for sx in 0..vw {
@@ -214,12 +222,12 @@ fn draw_field(f: &mut Frame, area: Rect, a: &ArenaScreen, b: &Battle) {
             }
             let (mut ch, mut fg, mut bg) = ground(b, p);
             if let Some(s) = b.g.gore.stains.get(&p) {
-                let (r, g, bb) = s.rgb();
-                bg = Color::Rgb(r, g, bb);
-                if matches!(ch, '.' | ',' | '"' | '=') {
-                    fg = Color::Rgb((r as u16 * 3 / 2 + 40).min(255) as u8, (g as u16 * 3 / 2 + 40).min(255) as u8, (bb as u16 * 3 / 2 + 40).min(255) as u8);
-                    ch = if s.amt >= crate::game::gore::POOL { '≈' } else { '·' };
-                }
+                let (c, f2, b2) = crate::game::gore::floor_look(s, ch, tup(fg), tup(bg));
+                (ch, fg, bg) = (c, rgb(f2), rgb(b2));
+            }
+            if let Some(s) = b.g.wall_stain(p) {
+                let (c, f2, b2) = crate::game::gore::wall_look(s, ch, tup(fg));
+                (ch, fg, bg) = (c, rgb(f2), rgb(b2));
             }
             if let Some(&(ic, icol)) = items.get(&(x, y)) {
                 ch = ic;
@@ -238,6 +246,13 @@ fn draw_field(f: &mut Frame, area: Rect, a: &ArenaScreen, b: &Battle) {
                 if Some(i) == a.follow {
                     fg = BLACK;
                     bg = KEY;
+                }
+            }
+            if let Some(&(gc, gcol, gbg)) = fx.get(&(x, y)) {
+                ch = gc;
+                fg = rgb(gcol);
+                if let Some(c) = gbg {
+                    bg = rgb(c);
                 }
             }
             cell.set_char(ch).set_fg(fg).set_bg(bg);
@@ -412,13 +427,38 @@ fn draw_summary(f: &mut Frame, area: Rect, a: &ArenaScreen, b: &Battle) {
     popup(f, area, w, h, " The bout is over ", lines);
 }
 
+/// The bout as told: every blow from the fight log (misses counted, not
+/// repeated) with the arena's own calls (first blood, the fallen), by tick.
+fn bout_lines(b: &Battle) -> Vec<(u64, String, Color)> {
+    let mut v: Vec<(u64, String, Color)> = Vec::new();
+    let mut told = std::collections::HashSet::new();
+    for f in &b.g.gore.fights {
+        for (l, (text, grade)) in f.lines.iter().zip(crate::game::Game::fight_lines(f)) {
+            told.insert(l.text.clone());
+            let c = match grade {
+                0 => MUTED,
+                1 => Color::Rgb(215, 185, 165),
+                2 => Color::Rgb(255, 150, 110),
+                _ => Color::Rgb(255, 90, 90),
+            };
+            v.push((l.tick, text, c));
+        }
+    }
+    for l in b.g.log.iter().filter(|l| !told.contains(&l.text)) {
+        v.push((l.tick, l.text.clone(), rgb(l.color)));
+    }
+    v.sort_by_key(|e| e.0);
+    v
+}
+
 fn draw_report(f: &mut Frame, area: Rect, b: &Battle, scroll: usize) {
     let w = area.width.saturating_sub(4).min(120);
     let h = area.height.saturating_sub(2);
     let room = h.saturating_sub(3) as usize;
-    let end = b.g.log.len().saturating_sub(scroll.min(b.g.log.len().saturating_sub(room)));
+    let all = bout_lines(b);
+    let end = all.len().saturating_sub(scroll.min(all.len().saturating_sub(room)));
     let start = end.saturating_sub(room);
-    let mut lines: Vec<Line> = b.g.log[start..end].iter().map(|l| plain(cut(&format!("{:>5} {}", l.tick, l.text), w as usize - 2), rgb(l.color))).collect();
+    let mut lines: Vec<Line> = all[start..end].iter().map(|(t, l, c)| plain(cut(&format!("{:>5} {}", t, l), w as usize - 2), *c)).collect();
     lines.push(plain("↑↓ PgUp PgDn scroll · any other key: back".into(), MUTED));
     popup(f, area, w, h, " The bout, blow by blow ", lines);
 }
