@@ -574,6 +574,7 @@ impl App {
             let watching = self.game.overseer.is_some();
             for _ in 0..self.ticks_per_frame() {
                 self.game.step();
+                self.film_drawn();
                 if self.game.pause_request {
                     self.game.pause_request = false;
                     // The overseer doesn't stop for news; you can.
