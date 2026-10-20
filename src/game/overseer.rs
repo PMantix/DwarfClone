@@ -1491,7 +1491,7 @@ impl Game {
         // Builders (and the steady, when rich) raise a monument.
         let rich = self.wealth() >= if o.style == Style::Builder { 15_000 } else { 40_000 };
         if rich && matches!(o.style, Style::Builder | Style::Steady) && !o.did("monument") {
-            if let Some(p) = self.ov_spot(BuildingKind::Monument, e.offset(0, 6, 0), 16) {
+            if let Some(p) = self.monument_spot(o) {
                 self.place_building(BuildingKind::Monument, p);
                 o.done.push("monument".into());
                 Self::note_as(o, tick, NoteKind::Ambition, "Began a great monument.".into());

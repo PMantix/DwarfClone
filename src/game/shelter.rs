@@ -608,6 +608,8 @@ mod tests {
             .expect("a shelter wall with rock behind it");
         for i in 1..=6 {
             let q = s.offset(dir.0 * i, dir.1 * i, 0);
+            // (Dug out of hand: whatever was marked there is done with.)
+            g.designate(q, q, crate::world::Desig::None);
             let t = g.world.t_mut(q);
             t.kind = TileKind::Floor;
             t.dug = true;

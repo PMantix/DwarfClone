@@ -10,6 +10,8 @@ impl Game {
     /// At the end of a trial: the fort's M2 numbers into `m2.*` counters,
     /// one line per package (e.g. `self.count("m2.named_places", n)`).
     pub(super) fn m2_stats(&mut self) {
+        // P13 O03-a: how smooth the main halls are
+        self.hall_stats();
         // P1 O01:
         // P3 O03-b: named places
         // P8 O07-a: reigns, faith at the end

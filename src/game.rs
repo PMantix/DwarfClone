@@ -139,6 +139,7 @@ mod m2;
 pub mod lastwords;
 pub mod sound_reports;
 pub mod crafts;
+mod halls;
 // Adventurer mode (G03): one hero against the world (game/adv/).
 pub mod adv;
 pub mod clock;
@@ -165,7 +166,7 @@ pub use chronicle::{Chronicle, YearLog};
 pub use festivals::{Festival, FestivalKind};
 mod fire;
 pub use weather::Weather;
-pub use detail::ENGRAVED;
+pub use detail::{ENGRAVED, GEM_SET};
 pub use justice::{Crime, CrimeKind};
 pub use positions::{Demand, Fit, Position};
 pub use orders::{all_recipes, Cond, WorkOrder};

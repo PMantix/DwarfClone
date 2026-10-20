@@ -138,10 +138,11 @@ pub(crate) fn tile_look(w: &World, p: Pos) -> (char, Color, Color) {
             (' ', BLACK, BLACK)
         }
         TileKind::Floor if t.built_from.is_some() => ('+', dim(mc, 0.85), BLACK),
-        TileKind::Wall if t.smooth >= crate::game::ENGRAVED => ('▒', mc, Color::Rgb(25, 22, 30)),
-        TileKind::Wall if t.smooth == 1 => ('█', mc, BLACK),
-        TileKind::Floor if t.smooth >= crate::game::ENGRAVED => ('÷', mc, BLACK),
-        TileKind::Floor if t.smooth == 1 => ('·', mc, BLACK),
+        TileKind::Wall if t.smooth >= 1 => smooth_wall(w, p),
+        // Polished floors: a sheen of the stone under the dust; engraved
+        // ones show their carving in a warm light.
+        TileKind::Floor if t.smooth >= crate::game::ENGRAVED => ('÷', mix(mc, GILT, 0.35), dim(mc, 0.22)),
+        TileKind::Floor if t.smooth == 1 => ('·', mc, dim(mc, 0.16)),
         TileKind::Wall if t.built_from.is_some() => {
             if t.built_from == Some(ItemKind::Block) {
                 ('▓', mc, BLACK)
@@ -210,6 +211,52 @@ pub(crate) fn tile_look(w: &World, p: Pos) -> (char, Color, Color) {
         return (g, fg, Color::Rgb(10, 30, 70));
     }
     (g, fg, bg)
+}
+
+/// The warm light engravings catch.
+const GILT: Color = Color::Rgb(255, 222, 150);
+
+/// `a` moved toward `b` by `f` (0..1).
+fn mix(a: Color, b: Color, f: f32) -> Color {
+    match (a, b) {
+        (Color::Rgb(r, g, bl), Color::Rgb(r2, g2, b2)) => {
+            let m = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * f).round().clamp(0.0, 255.0) as u8;
+            Color::Rgb(m(r, r2), m(g, g2), m(bl, b2))
+        }
+        _ => a,
+    }
+}
+
+/// A smoothed wall, as a fine double line along the face of the rock that
+/// joins its smoothed neighbours (so a finished hall is outlined in
+/// polished stone, corners and all); a smoothed pillar standing alone is a
+/// round column. Engraved walls glow warmer, gem-set ones with a glint.
+fn smooth_wall(w: &World, p: Pos) -> (char, Color, Color) {
+    let t = w.t(p);
+    let mc = t.mat.color();
+    let joins = |dx: i32, dy: i32| w.get(p.offset(dx, dy, 0)).map_or(false, |q| q.kind == TileKind::Wall && q.smooth >= 1);
+    let (u, d, l, r) = (joins(0, -1), joins(0, 1), joins(-1, 0), joins(1, 0));
+    let g = match (u, d, l, r) {
+        (false, false, false, false) => 'O',
+        (true, true, true, true) => '╬',
+        (true, true, true, false) => '╣',
+        (true, true, false, true) => '╠',
+        (false, true, true, true) => '╦',
+        (true, false, true, true) => '╩',
+        (false, true, false, true) => '╔',
+        (false, true, true, false) => '╗',
+        (true, false, false, true) => '╚',
+        (true, false, true, false) => '╝',
+        (_, _, false, false) => '║',
+        _ => '═',
+    };
+    if t.smooth >= crate::game::ENGRAVED {
+        let glint = t.engraving & crate::game::GEM_SET != 0;
+        let fg = if glint { mix(mc, Color::Rgb(210, 160, 255), 0.55) } else { mix(mc, GILT, 0.5) };
+        (g, fg, dim(mc, 0.42))
+    } else {
+        (g, mix(mc, Color::Rgb(255, 255, 255), 0.25), dim(mc, 0.34))
+    }
 }
 
 fn water_glyph(level: u8) -> char {

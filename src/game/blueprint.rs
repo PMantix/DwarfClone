@@ -113,10 +113,23 @@ pub(super) struct Slot {
     pub seg: usize,
 }
 
+/// A spot the plan keeps for something fine: a statue, or the monument
+/// at the heart of the level (its top-left corner; it is 3×3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Feature {
+    Statue,
+    /// A statue along a great hall, set up once the fort is established.
+    HallStatue,
+    Monument,
+}
+
 #[derive(Default)]
 pub(super) struct Blueprint {
     pub segs: Vec<Seg>,
     pub slots: Vec<Slot>,
+    /// Statues and the monument: the atrium's and the hub's hearts, statues
+    /// along a great hall.
+    pub features: Vec<(Pos, Feature)>,
     /// Rooms drawn so far, checked against the halls once all are drawn.
     pending: Vec<Slot>,
     /// What the level is for: which rooms its halls are lined with.
@@ -232,6 +245,17 @@ impl Blueprint {
         (run.chunks[0], run)
     }
 
+    /// Statues every six tiles down a great hall, on alternate sides.
+    fn hall_statues(&mut self, run: &Run, from: i32, to: i32) {
+        let mut s = from + 3;
+        let mut q = 0;
+        while s < to {
+            self.features.push((run.at(s, q), Feature::HallStatue));
+            s += 6;
+            q = run.width - 1 - q;
+        }
+    }
+
     /// An open space (an atrium, a hub) as a segment of its own.
     fn space(&mut self, tiles: Vec<Pos>, parent: Option<usize>) -> usize {
         self.segs.push(Seg { tiles, parent });
@@ -321,6 +345,10 @@ impl Blueprint {
             for p in s.tiles.iter_mut() {
                 *p = f(*p);
             }
+        }
+        // (The monument's 3×3 turns about its centre, so its corner moves.)
+        for (p, k) in self.features.iter_mut() {
+            *p = if *k == Feature::Monument { f(p.offset(1, 1, 0)).offset(-1, -1, 0) } else { f(*p) };
         }
         for s in self.pending.iter_mut() {
             for p in s.tiles.iter_mut().chain(s.doors.iter_mut()).chain(s.beds.iter_mut()) {
@@ -457,6 +485,7 @@ pub(super) fn plan(spec: &LevelPlan, start: &Start) -> Blueprint {
         Layout::Orderly => {
             // A great hall, rooms either side, then a cross hall at its end.
             let (_, run) = bp.hall(origin, 'E', len, 2, None);
+            bp.hall_statues(&run, skip, len - 3);
             let north = bp.side(&run, -1, skip, &[Large, Medium, Large, Medium, Small]);
             let south = bp.side(&run, 1, skip, &[Cells(4), Medium, Cells(4), Large, Small]);
             let first = interleave(vec![north, south]);
@@ -475,6 +504,7 @@ pub(super) fn plan(spec: &LevelPlan, start: &Start) -> Blueprint {
         Layout::Symmetric => {
             // A spine with cross halls; every room has its twin across the spine.
             let (_, run) = bp.hall(origin, 'E', len, 2, None);
+            bp.hall_statues(&run, skip, len - 3);
             let first = interleave(vec![bp.side(&run, -1, skip, &[Pillared]), bp.side(&run, 1, skip, &[Pillared])]);
             bp.settle(first);
             let mut k = 0;
@@ -503,7 +533,14 @@ pub(super) fn plan(spec: &LevelPlan, start: &Start) -> Blueprint {
             let ax = x + skip + 1;
             let (aw, ah) = (17, 9);
             let a0 = Pos::new(ax, y - 3, z);
-            let atrium: Vec<Pos> = Shape::Pillared { w: aw, h: ah }.tiles().into_iter().map(|(dx, dy)| a0.offset(dx, dy, 0)).collect();
+            let mut atrium: Vec<Pos> = Shape::Pillared { w: aw, h: ah }.tiles().into_iter().map(|(dx, dy)| a0.offset(dx, dy, 0)).collect();
+            // The heart of the atrium: the pillar there left out for the
+            // monument, statues by the pillars round it.
+            atrium.push(a0.offset(7, 4, 0));
+            bp.features.push((a0.offset(7, 3, 0), Feature::Monument));
+            for (dx, dy) in [(5, 4), (11, 4), (4, 2), (10, 2), (4, 6), (10, 6)] {
+                bp.features.push((a0.offset(dx, dy, 0), Feature::Statue));
+            }
             let court = bp.space(atrium, Some(lead.chunk(skip)));
             let top = Run { from: a0, u: (1, 0), p: (0, 1), len: aw, width: ah, chunks: vec![court] };
             let north = bp.side(&top, -1, 1, &[Medium, Small, Medium]);
@@ -540,6 +577,11 @@ pub(super) fn plan(spec: &LevelPlan, start: &Start) -> Blueprint {
             let c = Pos::new(x + skip + 1 + r, y, z);
             let hub: Vec<Pos> = Shape::Round { r }.tiles().into_iter().map(|(dx, dy)| c.offset(dx - r, dy - r, 0)).collect();
             let hub = bp.space(hub, Some(lead.chunk(skip)));
+            // The monument at the hub's heart, a statue in each quarter round it.
+            bp.features.push((c.offset(-1, -1, 0), Feature::Monument));
+            for (dx, dy) in [(-3, -3), (3, -3), (-3, 3), (3, 3)] {
+                bp.features.push((c.offset(dx, dy, 0), Feature::Statue));
+            }
             let (_, rn) = bp.hall(c.offset(0, -r - 1, 0), 'N', cross(22), 2, Some(hub));
             let (_, rs) = bp.hall(c.offset(0, r + 1, 0), 'S', cross(22), 2, Some(hub));
             let (_, re) = bp.hall(c.offset(r + 1, 0, 0), 'E', (len - skip - 2 * r - 3).max(8), 2, Some(hub));
@@ -602,6 +644,13 @@ impl Game {
     /// Where level `k`'s plan begins, facing its way.
     fn level_start(o: &Overseer, k: i32, facing: Facing) -> Start {
         plan_start(o.base.unwrap(), k, Self::level_z(o, k), facing)
+    }
+
+    /// The blueprint of level `k`, if it has been planned.
+    pub(super) fn plan_of(o: &Overseer, k: i32) -> Option<Blueprint> {
+        o.base?;
+        let lp = o.levels.iter().find(|l| l.level == k)?;
+        Some(plan(lp, &Self::level_start(o, k, lp.facing)))
     }
 
     /// Good rock for halls: solid, diggable, dry, under cover.
@@ -933,6 +982,35 @@ mod tests {
             }
         }
         assert_eq!(reached.len(), halls.len(), "{}: halls cut off from the rest", what);
+    }
+
+    /// The atrium and the hub keep their hearts for the monument (its 3×3
+    /// all hall floor) with statues round it, whichever way the plan faces;
+    /// a great hall has statues down its length.
+    #[test]
+    fn the_atrium_and_hub_have_a_heart() {
+        let b = Pos::new(120, 120, 20);
+        for layout in PLANNED {
+            for facing in Facing::ALL {
+                let bp = plan(&spec(layout, facing, 0), &plan_start(b, 0, b.z, facing));
+                let halls: std::collections::HashSet<Pos> = bp.segs.iter().flat_map(|s| s.tiles.iter().copied()).collect();
+                let what = format!("{:?} facing {:?}", layout, facing);
+                let hearts: Vec<Pos> = bp.features.iter().filter(|f| f.1 == Feature::Monument).map(|f| f.0).collect();
+                let statues = bp.features.iter().filter(|f| f.1 != Feature::Monument).count();
+                match layout {
+                    Layout::Radial | Layout::Spokes => {
+                        assert_eq!(hearts.len(), 1, "{}: no heart", what);
+                        assert!(box_iter(hearts[0], hearts[0].offset(2, 2, 0)).all(|p| halls.contains(&p)), "{}: the monument's place isn't all floor", what);
+                        assert!(statues >= 4, "{}: {} statues", what, statues);
+                    }
+                    Layout::Orderly | Layout::Symmetric => assert!(hearts.is_empty() && statues >= 5, "{}: {} statues down the hall", what, statues),
+                    _ => assert!(bp.features.is_empty(), "{}", what),
+                }
+                for (p, _) in &bp.features {
+                    assert!(halls.contains(p), "{}: a statue off the halls at {:?}", what, p);
+                }
+            }
+        }
     }
 
     #[test]
