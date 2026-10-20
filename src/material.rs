@@ -36,6 +36,13 @@ pub enum Mat {
     Threadreed,
     Sunberry,
     Goldoat,
+    /// Gems, each found only in its own host rock (O10, DIG-33): garnet in
+    /// basalt, onyx in limestone, jasper in sandstone, lapis in marble
+    /// (amethyst keeps to granite).
+    Garnet,
+    Onyx,
+    Jasper,
+    Lapis,
 }
 
 /// A farmed plant: where and when it grows and what it's good for.
@@ -129,6 +136,10 @@ impl Mat {
             Mat::Threadreed => "threadreed",
             Mat::Sunberry => "sunberry",
             Mat::Goldoat => "goldoat",
+            Mat::Garnet => "garnet",
+            Mat::Onyx => "onyx",
+            Mat::Jasper => "jasper",
+            Mat::Lapis => "lapis",
         }
     }
 
@@ -173,6 +184,10 @@ impl Mat {
             Mat::Threadreed => (150, 200, 140),
             Mat::Sunberry => (240, 110, 120),
             Mat::Goldoat => (230, 200, 80),
+            Mat::Garnet => (200, 40, 70),
+            Mat::Onyx => (150, 140, 160),
+            Mat::Jasper => (210, 100, 60),
+            Mat::Lapis => (60, 100, 220),
         };
         Color::Rgb(r, g, b)
     }
@@ -198,7 +213,19 @@ impl Mat {
     }
 
     pub fn is_gem(self) -> bool {
-        self == Mat::Amethyst
+        matches!(self, Mat::Amethyst | Mat::Garnet | Mat::Onyx | Mat::Jasper | Mat::Lapis)
+    }
+
+    /// The gem that grows in this rock, if any (O10, DIG-33).
+    pub fn host_gem(self) -> Option<Mat> {
+        match self {
+            Mat::Granite => Some(Mat::Amethyst),
+            Mat::Basalt => Some(Mat::Garnet),
+            Mat::Limestone => Some(Mat::Onyx),
+            Mat::Sandstone => Some(Mat::Jasper),
+            Mat::Marble => Some(Mat::Lapis),
+            _ => None,
+        }
     }
 
     /// Plain stone usable for masonry (ores and gems are kept for later industries).
@@ -231,7 +258,9 @@ impl Mat {
     pub fn value(self) -> u32 {
         match self {
             Mat::Gold => 12,
-            Mat::Amethyst => 10,
+            Mat::Amethyst | Mat::Lapis => 10,
+            Mat::Garnet => 9,
+            Mat::Jasper | Mat::Onyx => 8,
             Mat::Steel => 6,
             Mat::Iron | Mat::Bronze => 4,
             Mat::Copper => 3,
@@ -281,7 +310,9 @@ impl Mat {
             Mat::Marble | Mat::Malachite => 65,
             Mat::Hematite => 70,
             Mat::Granite => 80,
-            Mat::Basalt | Mat::Amethyst => 85,
+            Mat::Basalt | Mat::Amethyst | Mat::Garnet => 85,
+            Mat::Jasper => 70,
+            Mat::Onyx | Mat::Lapis => 60,
             Mat::Obsidian => 95,
             _ => 57,
         }
