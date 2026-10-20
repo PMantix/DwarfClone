@@ -72,7 +72,7 @@ impl Game {
                 if fibre && b.orders.first().map_or(true, |x| x.recipe != Recipe::SpinThread) {
                     // (Taken from further back in the queue if it's there.)
                     let i = b.orders.iter().position(|x| x.recipe == Recipe::SpinThread);
-                    let order = i.map(|i| b.orders.remove(i)).unwrap_or(crate::buildings::Order { recipe: Recipe::SpinThread, repeat: false });
+                    let order = i.map(|i| b.orders.remove(i)).unwrap_or(crate::buildings::Order { recipe: Recipe::SpinThread, repeat: false, mat: None });
                     b.orders.insert(0, order);
                     self.count("hospital.thread", 1);
                 }

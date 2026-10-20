@@ -855,6 +855,9 @@ impl Recipe {
 pub struct Order {
     pub recipe: Recipe,
     pub repeat: bool,
+    /// Its first input must be of this (a work order's material).
+    #[serde(default)]
+    pub mat: Option<Mat>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

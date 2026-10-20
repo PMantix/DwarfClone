@@ -355,7 +355,7 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O08 Orders that think (L)
 - **Why:** The overseer's industry spams announcements for missing inputs instead of planning the chain that makes them.
-- **Steps:** [ ] Orders queue their own inputs ([ECO-11](ideas/economy.md)) · [ ] Conditional work orders ([ECO-04](ideas/economy.md)) · [ ] Material-specific orders ([ECO-34](ideas/economy.md)) · [ ] Mandates feed orders ([ECO-35](ideas/economy.md)) · [ ] Workshop masters and apprentices ([ECO-13](ideas/economy.md)) · [ ] Job priorities and postings ([ECO-20](ideas/economy.md)) · [ ] Vein mining ([ECO-14](ideas/economy.md)) · [ ] Records of production ([ECO-15](ideas/economy.md)) · [ ] Workshop task tooltips ([ECO-42](ideas/economy.md))
+- **Steps:** [x] Orders queue their own inputs ([ECO-11](ideas/economy.md), this commit) · [x] Conditional work orders ([ECO-04](ideas/economy.md), this commit) · [x] Material-specific orders ([ECO-34](ideas/economy.md), this commit) · [x] Mandates feed orders ([ECO-35](ideas/economy.md); when the overseer runs the fort, this commit) · [ ] Workshop masters and apprentices ([ECO-13](ideas/economy.md)) · [ ] Job priorities and postings ([ECO-20](ideas/economy.md)) · [ ] Vein mining ([ECO-14](ideas/economy.md)) · [ ] Records of production ([ECO-15](ideas/economy.md)) · [ ] Workshop task tooltips ([ECO-42](ideas/economy.md))
 - **Done when:** An order for steel queues the coke, ore and flux it needs, and no announcement repeats a missing input.
 
 #### O09 Legends worth telling (M)

@@ -155,7 +155,7 @@ pub use weather::Weather;
 pub use detail::ENGRAVED;
 pub use justice::{Crime, CrimeKind};
 pub use positions::{Demand, Fit, Position};
-pub use orders::{all_recipes, WorkOrder};
+pub use orders::{all_recipes, Cond, WorkOrder};
 pub use medicine::Treatment;
 pub use military::{Squad, SquadOrder};
 #[cfg(test)]
@@ -1222,7 +1222,7 @@ impl Game {
 
     pub fn add_order(&mut self, bld: u32, recipe: Recipe) {
         if let Some(b) = self.buildings.get_mut(&bld) {
-            b.orders.push(Order { recipe, repeat: false });
+            b.orders.push(Order { recipe, repeat: false, mat: None });
         }
     }
 
@@ -2289,7 +2289,7 @@ impl Game {
             .map(|b| b.id)
             .collect();
         for bid in shops {
-            let recipe = self.buildings[&bid].orders[0].recipe;
+            let (recipe, mat) = (self.buildings[&bid].orders[0].recipe, self.buildings[&bid].orders[0].mat);
             let site = self.buildings[&bid].center();
             let shop = self.buildings[&bid].kind;
             if shop.uses_magma() && !self.magma_below(site) {
@@ -2299,8 +2299,10 @@ impl Game {
             }
             let inputs = recipe.inputs_at(shop);
             let mut chosen: Vec<u32> = Vec::new();
-            for input in inputs.iter() {
-                match self.find_item(site, |it| input.accepts(it) && !chosen.contains(&it.id)) {
+            for (k, input) in inputs.iter().enumerate() {
+                // (A work order's material binds its first input.)
+                let m = if k == 0 { mat } else { None };
+                match self.find_item(site, |it| input.accepts(it) && m.map_or(true, |m| it.mat == m) && !chosen.contains(&it.id)) {
                     Some((id, _)) => chosen.push(id),
                     None => break,
                 }
@@ -2315,12 +2317,17 @@ impl Game {
             }
             let shop_name = self.buildings[&bid].kind.name();
             self.buildings.get_mut(&bid).unwrap().retry_tick = self.tick + 300;
-            if let Some(l) = inputs.get(chosen.len()).and_then(|i| troubles::Lack::from_input(*i)) {
+            let missing = inputs.get(chosen.len()).copied();
+            if let Some(l) = missing.and_then(troubles::Lack::from_input) {
                 self.trouble(l);
             }
-            self.warn(
-                &format!("craft{}", bid),
-                &format!("{}: \"{}\" needs {}.", shop_name, recipe.name(), recipe.input_desc_at(shop)),
+            // Once a season for a workshop kind and what it waits on (the
+            // orders screen says the rest).
+            let of = mat.filter(|_| chosen.is_empty()).map_or(String::new(), |m| format!(" of {}", m.name()));
+            self.warn_once(
+                &format!("needs{:?}{:?}", shop, missing),
+                &format!("{}: \"{}\" needs {}{}.", shop_name, recipe.name(), recipe.input_desc_at(shop), of),
+                SEASON,
                 (230, 200, 90),
             );
         }

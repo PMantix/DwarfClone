@@ -375,7 +375,7 @@ pub(crate) mod tests {
         let mut o = g.overseer.take().unwrap();
         o.interior.tier = 2;
         let old = g.buildings.values().find(|b| b.kind == BuildingKind::Carpenter && g.world.outside(b.pos)).map(|b| b.id).expect("a carpenter's workshop by the wagon");
-        g.buildings.get_mut(&old).unwrap().orders.push(Order { recipe: Recipe::WoodBed, repeat: false });
+        g.buildings.get_mut(&old).unwrap().orders.push(Order { recipe: Recipe::WoodBed, repeat: false, mat: None });
         // A storeroom made into the woodworks.
         let i = empty_room(&mut g, &o, 40);
         o.rooms[i].kind = RoomUse::Industry;

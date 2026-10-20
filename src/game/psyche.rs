@@ -518,6 +518,7 @@ impl Game {
         let title = self.dwarves.iter().find(|d| d.id == noble).and_then(|d| d.noble).map_or("noble", |n| n.title());
         self.msg(&format!("The {} has mandated the production of {}.", title.to_lowercase(), m.describe()), (255, 230, 120));
         self.mandate = Some(m);
+        self.mandate_to_order();
     }
 
     pub(super) fn check_mandate(&mut self) {

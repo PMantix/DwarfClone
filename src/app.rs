@@ -2094,6 +2094,20 @@ impl App {
                     o.keep = o.keep.saturating_sub(step);
                 }
             }
+            KeyCode::Char('c') if sel < n => {
+                self.game.cycle_condition(sel);
+                let o = &self.game.work_orders[sel];
+                self.flash = Some(format!("{}: {}.", o.name(), o.cond.describe(o.keep)));
+            }
+            KeyCode::Char('a') => {
+                self.game.auto_conditions();
+                self.flash = Some("Food and drink by the mouths to feed, furniture by the beds wanted, arms by the squads.".into());
+            }
+            KeyCode::Char('m') if sel < n => {
+                self.game.cycle_order_mat(sel);
+                let o = &self.game.work_orders[sel];
+                self.flash = Some(format!("{}: {}.", o.name(), o.mat.map_or("any material", |m| m.name())));
+            }
             KeyCode::Char('x') | KeyCode::Delete => {
                 if sel < n {
                     self.game.work_orders.remove(sel);

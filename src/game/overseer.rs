@@ -937,11 +937,19 @@ impl Game {
         }
         self.ambition_orders(o, &mut orders);
         self.interior_orders(o, &mut orders);
-        // What it raised to meet a shortage, on top.
-        for &(r, keep, _) in &o.boosts {
+        // Steel for the soldiers once there is iron to make it from.
+        if forge && matches!(o.style, Style::Warlord | Style::Delver) && self.iron_known() {
+            orders.push((Recipe::MakeSteel, 2 + 2 * self.squads.len() as u32));
+        }
+        // What it raised to meet a shortage, on top, for as long as it meant to.
+        let mut lasts: Vec<(Recipe, u64)> = Vec::new();
+        for &(r, keep, end) in &o.boosts {
             match orders.iter_mut().find(|x| x.0 == r) {
                 Some(x) => x.1 = x.1.max(keep),
-                None => orders.push((r, keep)),
+                None => {
+                    orders.push((r, keep));
+                    lasts.push((r, end));
+                }
             }
         }
         // Food short: no edible plant goes to the still while there's drink
@@ -975,6 +983,7 @@ impl Game {
         for (r, keep) in orders {
             if keep > 0 && self.buildings.values().any(|b| b.built && b.kind.recipes().contains(&r)) {
                 self.add_work_order(r, keep);
+                self.ov_order_terms(r, keep, lasts.iter().find(|l| l.0 == r).map_or(0, |l| l.1));
             }
         }
         // Soldiers hunt game for the butcher.
@@ -2452,15 +2461,15 @@ mod tests {
 
     #[test]
     fn a_trial_game_is_the_trials_fort() {
-        // Seed 5003 (Steady) has seen two small sieges and lost two dwarves
+        // Seed 5003 (Steady) has seen two sieges and lost four dwarves
         // by day 262 of its year (schedule::same_story_after_refactor has
         // the whole year).
         let g = trial_game(5003, Style::Steady, 262);
         assert_eq!(g.tick, 262 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
-        assert_eq!(deaths, vec![(303722, "Dorna Copperfist"), (303896, "Sorli Hammergrip")]);
+        assert_eq!(deaths, vec![(203618, "Halvi Ashbeard"), (203704, "Jorvik Goldsong"), (203867, "Dagna Granitebeard"), (304606, "Sorli Hammergrip")]);
         let sieges: Vec<(u64, &str)> = g.annals.sieges.iter().map(|s| (s.tick, s.foe.as_str())).collect();
-        assert_eq!(sieges, vec![(303495, "goblins")]);
+        assert_eq!(sieges, vec![(203395, "goblins"), (304495, "goblins")]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
     }
 
