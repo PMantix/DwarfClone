@@ -129,7 +129,7 @@ mod tests {
         assert!(s.contains("bandaged"));
         assert!(s.contains("gashed in the left leg by a goblin"), "no history on the Health page");
         // And the dwarf's own screen has the history too.
-        app.mode = Mode::Unit { id, sel: 0 };
+        app.mode = Mode::Unit { id, sel: 0, tab: 0 };
         let s = dump(&mut app, 130, 60);
         println!("{}", s);
         assert!(s.contains("Medical history"));

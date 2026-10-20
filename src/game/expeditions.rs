@@ -462,6 +462,9 @@ impl Game {
             return;
         }
         let gone = if lost.is_empty() { String::new() } else { format!(" {} did not come back.", lost.len()) };
+        let ids: Vec<u32> = home.iter().map(|d| d.id).collect();
+        let how = if won { "came home in triumph from" } else if turned_back { "turned back, beaten, from" } else { "came home from" };
+        self.record(super::memory::MemoryKind::Expedition, &ids, None, format!("With {}, {} {}.", squad, how, dest.name), if won { 5 } else { 3 });
         if turned_back {
             // Home beaten, but home: the wounded carried between them.
             let wounded = home.iter().filter(|d| d.body.bleeding > 0 || d.body.needs_rest()).count();

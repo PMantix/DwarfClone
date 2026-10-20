@@ -199,6 +199,7 @@ impl Game {
             d.think(&format!("won an arm-wrestling bout at the {}", kind.name()), -8, tick);
             self.dwarves[j].think(&format!("lost an arm-wrestling bout to {}", d.name), 1, tick);
             self.festival_feat(d, true);
+            self.record(super::memory::MemoryKind::Feat, &[d.id], Some(d.pos), format!("{} won an arm-wrestling bout at the {}.", d.called(), kind.name()), 2);
             (d.name.clone(), other)
         } else {
             let mut o = std::mem::take(&mut self.dwarves[j]);
@@ -206,6 +207,7 @@ impl Game {
             o.think(&format!("won an arm-wrestling bout at the {}", kind.name()), -8, tick);
             d.think(&format!("lost an arm-wrestling bout to {}", other), 1, tick);
             self.festival_feat(&mut o, true);
+            self.record(super::memory::MemoryKind::Feat, &[o.id], Some(o.pos), format!("{} won an arm-wrestling bout at the {}.", o.called(), kind.name()), 2);
             self.dwarves[j] = o;
             (other, d.name.clone())
         };
@@ -239,6 +241,7 @@ impl Game {
                     let who = d.name.clone();
                     self.msg(&format!("{} won the drinking contest, downing {} mugs!", who, n), (230, 200, 120));
                     self.festival_feat(&mut d, false);
+                    self.record(super::memory::MemoryKind::Feat, &[d.id], Some(d.pos), format!("{} won the drinking contest at the {}, downing {} mugs.", d.called(), name, n), 2);
                     self.dwarves[i] = d;
                 }
             }

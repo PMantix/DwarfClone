@@ -247,11 +247,14 @@ pub enum Mode {
     Construct { kind: Option<ConstructKind>, mat: BuildMat, corner: Option<Pos> },
     Place(BuildingKind),
     Query { bld: u32, adding: bool },
-    Units { sel: usize },
+    /// The unit list: `cat` indexes `ui::units::CATS`, `sort` `ui::units::SORTS`.
+    Units { sel: usize, cat: u8, sort: u8 },
     /// Labor grid: rows are dwarves, columns are labors (plus the specialist column).
     /// `detail` is the highlighted work detail.
     Labors { row: usize, col: usize, detail: usize },
-    Unit { id: u32, sel: usize },
+    /// A dwarf's sheet, open at page `tab` (`ui::units::TABS`); `sel` is the
+    /// labor cursor on the first page and the scroll on the others.
+    Unit { id: u32, sel: usize, tab: usize },
     Military,
     Nobles,
     /// Choose who holds a post (`pos` indexes `Position::ALL`); row 0 of
@@ -434,6 +437,8 @@ pub struct App {
     pub announce: m2::Announce,
     /// Ticks still to run of a step taken while paused (O05, UI-32).
     pub step_pending: u32,
+    /// The dwarf whose sheet is open keeps the map on them (`f` on the sheet).
+    pub follow: Option<u32>,
 }
 
 impl App {
@@ -500,6 +505,7 @@ impl App {
             director: crate::director::Director::default(),
             announce: m2::Announce::default(),
             step_pending: 0,
+            follow: None,
             frame_dt: 1.0 / 30.0,
             arena: None,
             audio: crate::audio::Audio::silent(),
@@ -590,6 +596,7 @@ impl App {
         }
         // Nobody at the keys: the camera tours the fort (src/director.rs).
         self.direct();
+        self.follow_unit();
         if self.game.chronicle_ready {
             self.game.chronicle_ready = false;
             if matches!(self.mode, Mode::Normal) {
@@ -985,7 +992,7 @@ impl App {
 
     /// Screens that can sit beside the map as a side pane.
     pub fn dockable(&self) -> bool {
-        matches!(self.mode, Mode::Status { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Chronicle { .. } | Mode::Legends { from_world: false, .. } | Mode::Life { .. })
+        matches!(self.mode, Mode::Status { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Chronicle { .. } | Mode::Legends { from_world: false, .. } | Mode::Life { .. } | Mode::Unit { .. })
     }
 
     pub fn uses_map_cursor(&self) -> bool {
@@ -1411,49 +1418,8 @@ impl App {
                     _ => {}
                 }
             }
-            Mode::Units { sel } => {
-                let n = self.game.dwarves.len();
-                match k.code {
-                    KeyCode::Esc => self.mode = Mode::Normal,
-                    KeyCode::Up => self.mode = Mode::Units { sel: sel.saturating_sub(1) },
-                    KeyCode::Down => self.mode = Mode::Units { sel: (sel + 1).min(n.saturating_sub(1)) },
-                    KeyCode::Enter => {
-                        if let Some(d) = self.game.dwarves.get(sel) {
-                            self.mode = Mode::Unit { id: d.id, sel: 0 };
-                        }
-                    }
-                    KeyCode::Char('c') => {
-                        if let Some(d) = self.game.dwarves.get(sel) {
-                            self.cursor = d.pos;
-                            self.mode = Mode::Normal;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            Mode::Unit { id, sel } => match k.code {
-                KeyCode::Esc => self.mode = Mode::Normal,
-                KeyCode::Char('c') => {
-                    if let Some(d) = self.game.dwarves.iter().find(|d| d.id == id) {
-                        self.cursor = d.pos;
-                    }
-                    self.mode = Mode::Normal;
-                }
-                KeyCode::Up => self.mode = Mode::Unit { id, sel: sel.saturating_sub(1) },
-                KeyCode::Down => self.mode = Mode::Unit { id, sel: (sel + 1).min(LABORS.len() - 1) },
-                KeyCode::Enter => {
-                    if let Some(lost) = self.game.toggle_labor(id, LABORS[sel]) {
-                        self.flash = Some(format!("{} dropped: one tool labor per dwarf.", lost.name()));
-                    }
-                }
-                KeyCode::Char('s') => {
-                    let on = self.game.toggle_specialist(id);
-                    self.flash = Some(if on { "Specialist: won't haul.".into() } else { "Will haul again.".into() });
-                }
-                KeyCode::Char('m') => self.game.toggle_soldier(id),
-                KeyCode::Char('l') => self.mode = Mode::Life { id, scroll: 0 },
-                _ => {}
-            },
+            Mode::Units { sel, cat, sort } => self.key_units(k, sel, cat, sort),
+            Mode::Unit { id, sel, tab } => self.key_unit(k, id, sel, tab),
             Mode::Military => self.key_military(k),
             Mode::Highlights { sel } => self.key_highlights(k, sel),
             Mode::Life { id, scroll } => self.key_life(k, id, scroll),
@@ -1788,7 +1754,7 @@ impl App {
                     self.flash = Some("No building under the cursor.".into());
                 }
             }
-            KeyCode::Char('u') => self.mode = Mode::Units { sel: 0 },
+            KeyCode::Char('u') => self.mode = Mode::Units { sel: 0, cat: 0, sort: 0 },
             KeyCode::Char('y') => self.mode = Mode::Labors { row: 0, col: 0, detail: 0 },
             KeyCode::Char('w') => self.mode = Mode::Burrows { sel: 0, corner: None, erase: false },
             KeyCode::Char('o') => self.mode = Mode::Traffic { level: 2, corner: None },
@@ -1816,7 +1782,7 @@ impl App {
             KeyCode::Char('v') => {
                 let c = self.cursor;
                 if let Some(d) = self.game.dwarves.iter().find(|d| d.alive && d.pos == c) {
-                    self.mode = Mode::Unit { id: d.id, sel: 0 };
+                    self.mode = Mode::Unit { id: d.id, sel: 0, tab: 0 };
                 } else {
                     self.flash = Some("No dwarf under the cursor.".into());
                 }
@@ -2197,7 +2163,7 @@ impl App {
                 self.flash = Some(format!("{} items {}.", k, if on { "forbidden" } else { "allowed again" }));
             }
             KeyCode::Enter => match entries.get(sel.min(n - 1)) {
-                Some(LookEntry::Dwarf(id)) => self.mode = Mode::Unit { id: *id, sel: 0 },
+                Some(LookEntry::Dwarf(id)) => self.mode = Mode::Unit { id: *id, sel: 0, tab: 0 },
                 Some(LookEntry::Building(b)) => self.mode = Mode::Query { bld: *b, adding: false },
                 Some(_) => self.flash = Some("Nothing more to see.".into()),
                 None => {}

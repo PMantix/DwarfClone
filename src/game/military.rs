@@ -126,6 +126,8 @@ impl Game {
         if on {
             if let Some(s) = self.squads.get_mut(idx) {
                 s.members.push(dwarf);
+                let joined = format!("{} joined {}.", self.dwarves.iter().find(|d| d.id == dwarf).map_or(String::new(), |d| d.called()), s.name);
+                self.record(super::memory::MemoryKind::Soldier, &[dwarf], None, joined, 2);
             }
         }
         if on != soldier {

@@ -197,7 +197,7 @@ impl App {
     /// The keys on the Life page.
     pub fn key_life(&mut self, k: KeyEvent, id: u32, scroll: usize) {
         match k.code {
-            KeyCode::Esc | KeyCode::Char('l') => self.mode = Mode::Unit { id, sel: 0 },
+            KeyCode::Esc | KeyCode::Char('l') => self.mode = Mode::Unit { id, sel: 0, tab: 0 },
             KeyCode::Up => self.mode = Mode::Life { id, scroll: scroll.saturating_sub(1) },
             KeyCode::Down => self.mode = Mode::Life { id, scroll: scroll + 1 },
             KeyCode::PageUp => self.mode = Mode::Life { id, scroll: scroll.saturating_sub(10) },
@@ -262,7 +262,7 @@ mod tests {
         let mut app = App::with_game_for_tests(Game::new(5));
         let id = app.game.dwarves[0].id;
         app.game.dwarves[0].think("admired a fine engraving", -10, 100);
-        app.mode = Mode::Unit { id, sel: 0 };
+        app.mode = Mode::Unit { id, sel: 0, tab: 0 };
         app.on_key(KeyEvent::from(KeyCode::Char('l')));
         assert_eq!(app.mode, Mode::Life { id, scroll: 0 });
         let name = app.game.dwarves[0].name.clone();
@@ -274,6 +274,6 @@ mod tests {
             assert!(s.contains("admired a fine engraving"), "the story at {}x{}", w, h);
         }
         app.on_key(KeyEvent::from(KeyCode::Esc));
-        assert_eq!(app.mode, Mode::Unit { id, sel: 0 });
+        assert_eq!(app.mode, Mode::Unit { id, sel: 0, tab: 0 });
     }
 }

@@ -158,6 +158,11 @@ impl Game {
             let a = if kind.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
             let by = if what.starts_with("lost") { "to" } else { "by" };
             super::medicine::chart(d, tick, format!("{} {} {} {}", what, by, a, kind));
+            // Brought below half their strength: a wound they'll remember.
+            let (was, now, max) = (before.hp.iter().sum::<i32>(), d.body.hp.iter().sum::<i32>(), d.body.max.iter().sum::<i32>());
+            if !d.body.dead && was * 2 >= max && now * 2 < max {
+                self.record(super::memory::MemoryKind::Wounded, &[dwarf], Some(d.pos), format!("{} was badly hurt by {} {}: {}.", d.called(), a, kind, what), 3);
+            }
         }
         let w = &mut self.annals.wounded_by;
         w.retain(|(d, _, _)| *d != dwarf);

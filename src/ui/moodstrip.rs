@@ -96,7 +96,7 @@ impl App {
         let Some(d) = self.game.dwarves.iter().find(|d| d.id == id) else { return };
         self.cursor = d.pos;
         self.free_view = false;
-        self.mode = Mode::Unit { id, sel: 0 };
+        self.mode = Mode::Unit { id, sel: 0, tab: 0 };
     }
 }
 
@@ -128,7 +128,7 @@ mod tests {
         assert_eq!(super::super::target_at(x, 0), Some(Target::Dwarf(app.game.dwarves[2].id)));
         let id = app.game.dwarves[2].id;
         app.on_mouse(crossterm::event::MouseEvent { kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left), column: x, row: 0, modifiers: crossterm::event::KeyModifiers::NONE });
-        assert_eq!(app.mode, Mode::Unit { id, sel: 0 });
+        assert_eq!(app.mode, Mode::Unit { id, sel: 0, tab: 0 });
         assert_eq!(app.cursor, app.game.dwarves[2].pos);
     }
 
