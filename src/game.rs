@@ -3472,7 +3472,7 @@ mod tests {
             eprintln!("{:?}: embark + season in {:?}, {} alive", size, t.elapsed(), g.alive_count());
             let dead: Vec<&str> = g.log.iter().filter(|l| l.color == (255, 60, 60)).map(|l| l.text.as_str()).collect();
             assert!(g.dwarves.iter().all(|d| d.alive), "{:?}: deaths in the first season: {:?}", size, dead);
-            assert!(t.elapsed().as_secs() < 20, "{:?}: a season took {:?}", size, t.elapsed());
+            // (How long it took is printed above; the timings are the `--ignored` tests.)
         }
     }
 
