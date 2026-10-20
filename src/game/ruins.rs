@@ -30,6 +30,7 @@ impl Game {
     /// At embark: seal a hall somewhere in the deep rock.
     /// Bring an older save up to date: it gets a vault of its own.
     pub fn after_load(&mut self) {
+        self.rebuild_zone_over();
         // Older maps don't know their columns' biomes: all the site's own.
         if self.world.biomes.is_empty() {
             let code = self.biome.code() | if self.evil { 0x80 } else { 0 };

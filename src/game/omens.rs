@@ -164,7 +164,7 @@ impl Game {
 
     /// Blood on a temple floor (from `bleed_on`): noticed once a half day.
     pub(super) fn blood_on_holy_ground(&mut self, p: Pos) {
-        if self.zone_kind_at(p) != Some(ZoneKind::Temple) || (self.magic.blood_seen > 0 && self.tick < self.magic.blood_seen + DAY / 2) {
+        if !self.has_zone_kind(p, ZoneKind::Temple) || (self.magic.blood_seen > 0 && self.tick < self.magic.blood_seen + DAY / 2) {
             return;
         }
         self.magic.blood_seen = self.tick.max(1);

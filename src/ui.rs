@@ -764,8 +764,11 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
                     let who = z.owner.and_then(|o| g.dwarves.iter().find(|d| d.id == o)).map_or("unassigned".to_string(), |d| d.name.clone());
                     s.push_str(&format!(" ({})", who));
                 }
-                // What the overseer calls it: "the Great Dining Hall", "the mayor's bedchamber".
-                if let Some(n) = g.place_name(p).filter(|n| !k.ownable() || n.contains(" and ") || n.contains("bedchamber")) {
+                // What the player named it, or else what the overseer calls
+                // it: "the Great Dining Hall", "the mayor's bedchamber".
+                if let Some(n) = &z.name {
+                    s = format!("{}: {}", s, n);
+                } else if let Some(n) = g.place_name(p).filter(|n| !k.ownable() || n.contains(" and ") || n.contains("bedchamber")) {
                     s = format!("{}: {}", s, n);
                 }
                 v.push(plain(s, Color::Rgb(110, 200, 170)));
@@ -776,9 +779,14 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
             }
         }
     }
+    // Zones laid over the first (O11): a dining hall that is also the meeting area.
+    for z in g.zones_at(p).skip(1) {
+        let s = named(z.kind.name(), &z.name);
+        v.push(plain(format!("Also {}", s), Color::Rgb(110, 200, 170)));
+    }
     if let Some(b) = g.buildings.get(&t.building) {
         let st = if b.built { "" } else { " (awaiting construction)" };
-        v.push(plain(format!("{}{}", b.name(), st), b.kind.color()));
+        v.push(plain(format!("{}{}", named(b.name(), &b.name), st), b.kind.color()));
     }
     for c in g.creatures.values().filter(|c| c.alive && !c.sneaking && c.pos == p) {
         let info = c.species.info();
@@ -947,6 +955,9 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 if corner.is_some() { "Enter: set second corner".into() } else { "Enter: set first corner".into() },
                 KEY,
             ));
+            if corner.is_some() {
+                v.push(plain("B: each enclosed room its own zone".into(), KEY));
+            }
             v.push(Line::default());
             v.extend(cursor_info(g, app.cursor));
         }
@@ -1000,7 +1011,10 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
         Mode::Query { bld, adding } => {
             title = "Building".to_string();
             if let Some(b) = g.buildings.get(bld) {
-                v.push(plain(b.name(), b.kind.color()));
+                v.push(plain(named(b.name(), &b.name), b.kind.color()));
+                if !*adding {
+                    v.push(key_line("N", "Name it", false));
+                }
                 if !b.built {
                     let total = b.kind.parts();
                     let progress = if total > 1 { format!(", part {} of {}", b.parts + 1, total) } else { String::new() };
@@ -3360,6 +3374,14 @@ fn item_line(it: &Item, extra: &str, selected: bool) -> Line<'static> {
     ])
 }
 
+/// "Dining hall: the Hall of Ale" for something the player named (O11).
+fn named(what: String, name: &Option<String>) -> String {
+    match name {
+        Some(n) => format!("{}: {}", what, n),
+        None => what,
+    }
+}
+
 /// The look panel: terrain, then everything standing or lying on the tile.
 fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
     let mut v = cursor_info_terrain(g, p);
@@ -3369,6 +3391,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
     let entries = look_entries(g, p);
     if g.zone_at(p).map_or(false, |z| z.kind.ownable()) {
         v.push(plain("o: choose who owns it".into(), KEY));
+    }
+    if g.zone_at(p).is_some() || g.world.get(p).map_or(false, |t| t.building != 0) {
+        v.push(plain("N: name it".into(), KEY));
     }
     if entries.is_empty() {
         v.push(Line::default());
@@ -3637,6 +3662,8 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
             // Room zones add a value line under their name.
             keep += 1 + (z.kind.holds_furniture() && z.kind != ZoneKind::Meeting) as usize;
         }
+        // An "Also ..." line for each zone laid over it (O11).
+        keep += g.zones_at(p).count().saturating_sub(1);
         keep += g.buildings.contains_key(&t.building) as usize;
     } else {
         keep += 1 + (t.desig != Desig::None) as usize;
@@ -5268,6 +5295,49 @@ mod tests {
         let s = dump(&mut app, 130, 45);
         println!("{}", s);
         assert!(s.contains("Bedroom (") && !s.contains("unassigned"), "bedroom not assigned");
+    }
+
+    #[test]
+    fn name_a_hall_and_see_it_on_look() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::generated(42);
+        let key = |app: &mut App, c| app.on_key(KeyEvent::new(c, KeyModifiers::NONE));
+        let b = app.game.flat_patch(3, 3, 2);
+        assert!(app.game.add_zone(b, b.offset(2, 2, 0), ZoneKind::Dining) > 0);
+        assert!(app.game.add_zone(b, b.offset(2, 2, 0), ZoneKind::Meeting) > 0);
+        app.cursor = b.offset(1, 1, 0);
+        app.mode = Mode::Look { sel: 0 };
+        let s = dump(&mut app, 130, 45);
+        assert!(s.contains("N: name it") && s.contains("Also Meeting area"), "{}", s);
+        key(&mut app, KeyCode::Char('N'));
+        assert!(app.naming.is_some(), "N didn't open the name field");
+        for c in "Hall of Ale".chars() {
+            key(&mut app, KeyCode::Char(c));
+        }
+        key(&mut app, KeyCode::Enter);
+        assert!(app.naming.is_none());
+        assert_eq!(app.mode, Mode::Look { sel: 0 }, "the keys typed leaked into look mode");
+        let s = dump(&mut app, 130, 45);
+        println!("{}", s);
+        assert!(s.contains("Dining hall: Hall of Ale"), "the name isn't on look");
+        // A named place no deed renames.
+        let pl = app.game.place_at(b).expect("no place registered");
+        assert!(pl.by_player && pl.name == "Hall of Ale");
+        app.game.name_place(crate::game::places::PlaceKind::Hall, b, b.offset(2, 2, 0), "the Weeping Hall".into(), "where many fell".into(), 9, false);
+        assert_eq!(app.game.place_at(b).map(|p| p.name.as_str()), Some("Hall of Ale"));
+
+        // A building too, from its query.
+        assert!(app.game.place_building(BuildingKind::Table, b.offset(1, 1, 0)));
+        let bld = *app.game.buildings.keys().max().unwrap();
+        app.mode = Mode::Query { bld, adding: false };
+        key(&mut app, KeyCode::Char('N'));
+        for c in "Long Board".chars() {
+            key(&mut app, KeyCode::Char(c));
+        }
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(app.game.buildings[&bld].name.as_deref(), Some("Long Board"));
+        let s = dump(&mut app, 130, 45);
+        assert!(s.contains("Long Board"), "{}", s);
     }
 
     #[test]

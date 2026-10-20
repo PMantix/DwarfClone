@@ -30,7 +30,8 @@ impl Game {
         let leisure = !d.asleep
             && matches!(d.task, Task::Idle | Task::Wander { .. } | Task::Eat { .. } | Task::Dine { .. } | Task::DrinkItem { .. });
         if leisure {
-            if let Some(k) = self.zone_kind_at(d.pos).and_then(zone_need) {
+            let need = self.zones_at(d.pos).find_map(|z| zone_need(z.kind));
+            if let Some(k) = need {
                 d.satisfy(k, 120);
                 if k == NeedKind::Pray {
                     self.at_prayer(d);
@@ -91,7 +92,7 @@ impl Game {
             d.break_until = 0;
             return false;
         };
-        let here = self.zone_kind_at(d.pos) == Some(kind);
+        let here = self.has_zone_kind(d.pos, kind);
         if here && !self.rng.chance(0.15) {
             return true;
         }

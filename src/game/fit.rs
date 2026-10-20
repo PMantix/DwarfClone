@@ -12,6 +12,12 @@ impl Game {
         for &p in &r.beds {
             self.place_building(BuildingKind::Bed, p);
         }
+        // A bedroom zone for each cell of the row at once, so each dwarf owns a room (O11).
+        for c in super::architect::cells_of(r) {
+            if self.world.get(c.bed).map_or(false, |t| t.zone == 0) {
+                self.add_zone_tiles(c.tiles, ZoneKind::Bedroom);
+            }
+        }
         None
     }
 
@@ -35,7 +41,12 @@ impl Game {
         for t in tables {
             self.place_building(BuildingKind::Chair, t.offset(1, 0, 0));
         }
-        Some(ZoneKind::Dining)
+        // Until there's a meeting hall, the dining hall is where idle dwarves gather too (O11).
+        self.add_zone(r.a, r.b, ZoneKind::Dining);
+        if !self.zones.values().any(|z| z.kind == ZoneKind::Meeting) {
+            self.add_zone(r.a, r.b, ZoneKind::Meeting);
+        }
+        None
     }
 
     pub(super) fn fit_dormitory(&mut self, _o: &mut Overseer, r: &Room) -> Option<ZoneKind> {

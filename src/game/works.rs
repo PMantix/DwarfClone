@@ -238,7 +238,7 @@ impl Game {
         let tick = self.tick;
         for i in 0..self.dwarves.len() {
             let d = &self.dwarves[i];
-            if !d.alive || d.asleep || self.zone_kind_at(d.pos) != Some(ZoneKind::Tavern) {
+            if !d.alive || d.asleep || !self.has_zone_kind(d.pos, ZoneKind::Tavern) {
                 continue;
             }
             let d = &mut self.dwarves[i];

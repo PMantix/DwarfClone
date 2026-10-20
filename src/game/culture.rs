@@ -194,7 +194,7 @@ impl Game {
         let here: Vec<usize> = (0..self.dwarves.len())
             .filter(|&i| {
                 let d = &self.dwarves[i];
-                d.alive && !d.asleep && !d.ghost && !d.insane && d.tantrum == 0 && !d.is_child() && self.zone_kind_at(d.pos) == Some(ZoneKind::Tavern)
+                d.alive && !d.asleep && !d.ghost && !d.insane && d.tantrum == 0 && !d.is_child() && self.has_zone_kind(d.pos, ZoneKind::Tavern)
             })
             .collect();
         if here.is_empty() || self.c_roll() >= self.knob("culture.tune", 0.35) {
