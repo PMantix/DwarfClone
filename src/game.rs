@@ -122,6 +122,7 @@ pub mod sagas;
 pub mod memory;
 pub mod names;
 pub mod places;
+pub mod naming;
 pub mod logkind;
 pub mod commands;
 pub mod reign;
@@ -1781,6 +1782,7 @@ impl Game {
         let name = d.name.clone();
         self.msg(&format!("{} {}.", name, cause), (255, 60, 60));
         self.note_death(d, cause);
+        self.deed_at(pos, naming::DeedKind::Death, &[d.id]);
         self.hero_fell(d, cause);
         self.year_log.deaths.push(d.called());
         let tick = self.tick;

@@ -21,6 +21,7 @@ impl Game {
         self.ov_shelter(o);
         // The inside of the fort grows up (architect.rs, maturity.rs).
         self.ov_interior(o);
+        self.ov_name_halls(o);
         // The outside and the grand works:
         self.ov_fortify(o);
         // Myth and magic: temples dedicated, a temple for a devout fort.
@@ -82,6 +83,8 @@ impl Game {
         self.shelter_after_siege(i);
         // Stories: the fight gets a name.
         self.name_siege(i);
+        // ...and the hall or the gate where it broke a name (naming.rs).
+        self.name_for_siege(i);
         // ...and a broken one a victory feast.
         self.victory_feast(i);
         self.judge_wargame(i);

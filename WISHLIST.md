@@ -319,10 +319,12 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
   architect.rs; also bedrooms of their own, the dormitory retired, gathering halls, the industry
   quarter and rebuilding in maturity.rs) · [ ] the atrium
   and the hub get statues and the monument (partly: a rotunda holds the monument, gathering
-  halls and temples get statues, efa01ab; pillars round the monument, ad88122) · [ ] halls are named after heroes and events
-  ("the Hall of the Unbeaten") and the names show in the look panel and the chronicle (partly: rooms
+  halls and temples get statues, efa01ab; pillars round the monument, ad88122) · [x] halls are named after heroes and events
+  ("the Hall of the Unbeaten") and the names show in the look panel and the chronicle (rooms
   are named in the look panel, a tavern gets a name of its own, efa01ab; a place takes a name
-  from a deed done there, 6567979; no hall is named for a hero)
+  from a deed done there, 6567979; naming.rs, this commit: a great hall is named for the fort's
+  hero or noble, and renamed for a leader or beast slain in it, three dead in a day, a stand or
+  a wedding; the gate for its first held siege; announced, noted, in legends and chronicle)
 - **From the Bay 12 review:** [ ] Trophies of war ([CRF-01](ideas/economy.md)) · [ ] Named weapons ([CRF-02](ideas/economy.md)) · [ ] Inscriptions and maker's marks ([CRF-06](ideas/economy.md)) · [ ] Name creator ([CRF-08](ideas/economy.md); partly: battles, places, taverns and instruments get names) · [ ] Jeweler and decorations ([CRF-13](ideas/economy.md)) · [ ] Gems in engravings, engraved built walls ([CRF-12](ideas/economy.md)) · [ ] Statues and figurines of things ([CRF-21](ideas/economy.md); partly: statues and crafts show the fort's legends and heroes, f6ad60c) · [x] Places named for what happened there ([WLD-02](ideas/world-and-overseer.md), 6567979)
 - **Done when:** a three-year fort has smoothed main halls, furnished bedrooms and named halls.
 

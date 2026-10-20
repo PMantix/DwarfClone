@@ -198,8 +198,8 @@ impl Game {
     /// Milestone 2's lines for the year: each item adds a `lines_<item>`
     /// function (in its own file) and one line here.
     fn lines_m2(&mut self, log: &YearLog) -> Vec<String> {
-        let lines = Vec::new();
-        let _ = log;
+        let mut lines = Vec::new();
+        lines.extend(self.lines_named(log));
         lines
     }
 }
