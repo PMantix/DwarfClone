@@ -245,7 +245,7 @@ impl Game {
         }
         let shop = self.buildings.values().filter(|b| b.kind == BuildingKind::Craftsdwarf && b.built && b.orders.len() < 3).map(|b| b.id).min();
         if let Some(b) = shop.and_then(|id| self.buildings.get_mut(&id)) {
-            b.orders.push(Order { recipe: Recipe::Encrust, repeat: false });
+            b.orders.push(Order { recipe: Recipe::Encrust, repeat: false, mat: None });
         }
     }
 }
