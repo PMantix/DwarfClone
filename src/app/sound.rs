@@ -100,6 +100,10 @@ impl App {
     /// In this screen `M` already means something (a letter in a list).
     fn m_is_taken(&self) -> bool {
         let m = 'M';
+        // (A name being typed takes every letter: a hall's, or a hero's.)
+        if self.naming.is_some() || self.adv.as_ref().and_then(|a| a.maker.as_ref()).map_or(false, |m| m.naming) {
+            return true;
+        }
         match &self.mode {
             Mode::BuildMenu => BuildingKind::ALL.iter().any(|b| b.key() == m),
             Mode::Query { bld, adding: true } => self.game.buildings.get(bld).map_or(false, |b| b.kind.recipes().iter().any(|r| r.key() == m)),
