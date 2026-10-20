@@ -151,7 +151,9 @@ impl Game {
     /// Whether `kind` may be planned at `p`.
     pub fn can_construct(&self, p: Pos, kind: ConstructKind) -> bool {
         let Some(t) = self.world.get(p) else { return false };
-        if !t.revealed || t.desig != crate::world::Desig::None || t.building != 0 || t.water > 0 {
+        // (Smoothing or engraving waiting there gives way to building.)
+        let detail = matches!(t.desig, crate::world::Desig::Smooth | crate::world::Desig::Engrave);
+        if !t.revealed || t.desig != crate::world::Desig::None && !detail || t.building != 0 || t.water > 0 {
             return false;
         }
         if self.construction_at(p).is_some() {
@@ -190,6 +192,9 @@ impl Game {
         let mut n = 0;
         for p in box_iter(a, b) {
             if self.can_construct(p, kind) {
+                if self.world.t(p).desig != crate::world::Desig::None && !self.claimed.contains(&p) {
+                    self.designate(p, p, crate::world::Desig::None);
+                }
                 let id = self.new_id();
                 self.constructions.insert(id, Construction { id, pos: p, kind, mat, worker: None, retry_tick: 0 });
                 n += 1;
