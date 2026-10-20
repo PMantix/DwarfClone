@@ -257,11 +257,8 @@ impl Game {
         let top = plan.top;
         if let Some(s) = plan.stair {
             let foot = Pos::new(s.x, s.y, plan.water_z + 1);
-            self.designate(s, s, Desig::StairDown);
-            if foot.z < s.z - 1 {
-                self.designate(s.down(), Pos::new(s.x, s.y, foot.z + 1), Desig::StairUD);
-            }
-            self.designate(foot, foot, Desig::StairUp);
+            // One column: down at the head, up at the foot (O11).
+            self.designate(s, foot, Desig::StairUD);
         }
         for p in plan.shaft().collect::<Vec<_>>() {
             self.designate(p, p, Desig::Channel);

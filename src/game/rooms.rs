@@ -52,9 +52,29 @@ impl ZoneKind {
         )
     }
 
+    /// Zones that may share their tiles with another of these (O11): a
+    /// dining hall that is also the meeting area, a tavern with a shrine.
+    pub fn overlaps(self) -> bool {
+        matches!(self, ZoneKind::Dining | ZoneKind::Meeting | ZoneKind::Tavern | ZoneKind::Temple)
+    }
+
     /// Zones that belong to one dwarf.
     pub fn ownable(self) -> bool {
         matches!(self, ZoneKind::Bedroom | ZoneKind::Office)
+    }
+}
+
+/// The low (or high) corner of the box around some tiles.
+fn bounds(tiles: &[Pos], low: bool) -> Option<Pos> {
+    let pick = |f: fn(i32, i32) -> i32| {
+        let mut it = tiles.iter();
+        let first = *it.next()?;
+        Some(it.fold(first, |m, p| Pos::new(f(m.x, p.x), f(m.y, p.y), f(m.z, p.z))))
+    };
+    if low {
+        pick(i32::min)
+    } else {
+        pick(i32::max)
     }
 }
 
@@ -71,8 +91,153 @@ impl Game {
         self.world.get(p).and_then(|t| self.zones.get(&t.zone))
     }
 
+    /// The kind of the zone at `p` (the first laid, if several share it).
     pub fn zone_kind_at(&self, p: Pos) -> Option<ZoneKind> {
         self.zone_at(p).map(|z| z.kind)
+    }
+
+    /// Every zone at `p`: the first laid, then those laid over it (O11).
+    pub fn zones_at(&self, p: Pos) -> impl Iterator<Item = &super::Zone> {
+        let over = self.zone_over.get(&p).into_iter().flatten().filter_map(move |id| self.zones.get(id));
+        self.zone_at(p).into_iter().chain(over)
+    }
+
+    /// Whether any zone at `p` is a `kind`. The overlay map is only asked
+    /// when the tile's own zone doesn't answer.
+    pub fn has_zone_kind(&self, p: Pos, kind: ZoneKind) -> bool {
+        self.zone_kind_at(p) == Some(kind)
+            || (!self.zone_over.is_empty()
+                && self.zone_over.get(&p).map_or(false, |v| v.iter().any(|id| self.zones.get(id).map_or(false, |z| z.kind == kind))))
+    }
+
+    /// Whether a `kind` zone may be laid over the zone already at `p`:
+    /// both share halls, and no zone of that kind is there yet.
+    pub(super) fn can_overlay(&self, p: Pos, kind: ZoneKind) -> bool {
+        kind.overlaps() && self.zone_at(p).map_or(false, |z| z.kind.overlaps()) && !self.zones_at(p).any(|z| z.kind == kind)
+    }
+
+    /// Rebuild `zone_over` from the zones (after loading): a zone's tiles
+    /// that hold another zone are laid over it.
+    pub fn rebuild_zone_over(&mut self) {
+        self.zone_over.clear();
+        let mut ids: Vec<u32> = self.zones.keys().copied().collect();
+        ids.sort();
+        for id in ids {
+            for &p in &self.zones[&id].tiles {
+                if self.world.get(p).map_or(false, |t| t.zone != id) {
+                    self.zone_over.entry(p).or_default().push(id);
+                }
+            }
+        }
+    }
+
+    /// Take overlay zones passing `which` off the tiles in the box. Returns how many tiles.
+    pub(super) fn remove_overlays_where(&mut self, a: Pos, b: Pos, which: &dyn Fn(ZoneKind) -> bool) -> usize {
+        let mut n = 0;
+        for p in crate::geom::box_iter(a, b) {
+            let Some(ids) = self.zone_over.get(&p).cloned() else { continue };
+            let gone: Vec<u32> = ids.iter().copied().filter(|id| self.zones.get(id).map_or(true, |z| which(z.kind))).collect();
+            for id in &gone {
+                if let Some(z) = self.zones.get_mut(id) {
+                    z.tiles.retain(|&q| q != p);
+                    if z.tiles.is_empty() {
+                        self.zones.remove(id);
+                    }
+                }
+                n += 1;
+            }
+            let left: Vec<u32> = ids.into_iter().filter(|id| !gone.contains(id)).collect();
+            if left.is_empty() {
+                self.zone_over.remove(&p);
+            } else {
+                self.zone_over.insert(p, left);
+            }
+        }
+        n
+    }
+
+    /// Bulk zoning (O11): each enclosed room in the box becomes a zone of
+    /// its own (a row of bedrooms, one for each dwarf); floor in no room
+    /// makes one more. Returns (zones made, tiles zoned).
+    pub fn add_zone_rooms(&mut self, a: Pos, b: Pos, kind: ZoneKind) -> (usize, usize) {
+        let lo = Pos::new(a.x.min(b.x), a.y.min(b.y), a.z.min(b.z));
+        let hi = Pos::new(a.x.max(b.x), a.y.max(b.y), a.z.max(b.z));
+        let inside = |p: &Pos| p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y && p.z >= lo.z && p.z <= hi.z;
+        let mut done: HashSet<Pos> = HashSet::new();
+        let mut rest = Vec::new();
+        let (mut zones, mut tiles) = (0, 0);
+        for p in crate::geom::box_iter(lo, hi) {
+            if done.contains(&p) || !self.world.in_bounds(p) {
+                continue;
+            }
+            let room = if self.world.walkable(p) { self.room_at(p) } else { None };
+            match room {
+                Some((room, _)) => {
+                    let part: Vec<Pos> = room.into_iter().filter(inside).collect();
+                    done.extend(part.iter().copied());
+                    done.insert(p);
+                    let n = self.add_zone_tiles(part, kind);
+                    zones += (n > 0) as usize;
+                    tiles += n;
+                }
+                None => {
+                    done.insert(p);
+                    rest.push(p);
+                }
+            }
+        }
+        let n = self.add_zone_tiles(rest, kind);
+        zones += (n > 0) as usize;
+        tiles += n;
+        (zones, tiles)
+    }
+
+    /// The player names a zone, "the Hall of Ale" (O11): it becomes a named
+    /// place no deed renames. An empty name takes the name away.
+    pub fn name_zone(&mut self, zone: u32, name: &str) -> bool {
+        let Some(z) = self.zones.get(&zone) else { return false };
+        let (Some(a), Some(b)) = (bounds(&z.tiles, true), bounds(&z.tiles, false)) else { return false };
+        let what = z.kind.name().to_lowercase();
+        let name = name.trim();
+        self.zones.get_mut(&zone).unwrap().name = (!name.is_empty()).then(|| name.to_string());
+        self.name_by_player(super::places::PlaceKind::Hall, a, b, name, what);
+        true
+    }
+
+    /// The player names a building, "Old Grumbler" for the still (O11).
+    pub fn name_building(&mut self, bld: u32, name: &str) -> bool {
+        let Some(b) = self.buildings.get(&bld) else { return false };
+        let s = b.kind.size() - 1;
+        let (a, c) = (b.pos, b.pos.offset(s, s, 0));
+        let what = b.kind.name().to_lowercase();
+        let name = name.trim();
+        self.buildings.get_mut(&bld).unwrap().name = (!name.is_empty()).then(|| name.to_string());
+        self.name_by_player(super::places::PlaceKind::Work, a, c, name, what);
+        true
+    }
+
+    /// Register (or, with an empty name, forget) the player's name for the box `a`..`b`.
+    fn name_by_player(&mut self, kind: super::places::PlaceKind, a: Pos, b: Pos, name: &str, what: String) {
+        if name.is_empty() {
+            self.stories.places.retain(|pl| !(pl.by_player && pl.at == a && pl.b == Some(b)));
+            return;
+        }
+        let why = format!("the {} so named by order of the fort", what);
+        self.name_place(kind, a, b, name.to_string(), why, 0, true);
+    }
+
+    /// The tile's own zone is gone: the first zone laid over it takes its place.
+    pub(super) fn promote_overlay(&mut self, p: Pos) {
+        let Some(mut v) = self.zone_over.remove(&p) else { return };
+        // (Skipping any zone since taken away whole.)
+        v.retain(|id| self.zones.contains_key(id));
+        if v.is_empty() {
+            return;
+        }
+        self.world.t_mut(p).zone = v.remove(0);
+        if !v.is_empty() {
+            self.zone_over.insert(p, v);
+        }
     }
 
     /// Value of an area: floor space, furniture standing in it and the stone
@@ -248,7 +413,7 @@ impl Game {
     }
 
     pub fn in_dining_hall(&self, p: Pos) -> bool {
-        self.zone_kind_at(p) == Some(ZoneKind::Dining)
+        self.has_zone_kind(p, ZoneKind::Dining)
     }
 
     /// Mark one item, or every loose item on a tile, for the garbage dump.
@@ -506,6 +671,85 @@ mod tests {
             "went for {:?}",
             g.dwarves[0].task
         );
+    }
+
+    #[test]
+    fn a_dining_hall_that_is_also_the_meeting_area_works_for_both() {
+        let mut g = Game::new(23);
+        let place = |g: &mut Game, kind: BuildingKind, p: Pos| {
+            assert!(g.place_building(kind, p));
+            let id = *g.buildings.keys().max().unwrap();
+            g.buildings.get_mut(&id).unwrap().built = true;
+            id
+        };
+        // A table and chair near the food, and the hall further off.
+        let near = open_patch(&g, 2, 1, &HashSet::new());
+        place(&mut g, BuildingKind::Table, near);
+        place(&mut g, BuildingKind::Chair, near.offset(1, 0, 0));
+        let skip: HashSet<Pos> = box_iter(near.offset(-6, -6, 0), near.offset(7, 6, 0)).collect();
+        let hall = open_patch(&g, 3, 3, &skip);
+        place(&mut g, BuildingKind::Table, hall.offset(1, 1, 0));
+        let hall_chair = place(&mut g, BuildingKind::Chair, hall.offset(2, 1, 0));
+        let far = hall.offset(2, 2, 0);
+        // The meeting area first, then the dining hall laid over the same tiles.
+        assert_eq!(g.add_zone(hall, far, ZoneKind::Meeting), 9);
+        assert_eq!(g.add_zone(hall, far, ZoneKind::Dining), 9, "the dining hall wasn't laid over the meeting area");
+        assert_eq!(g.add_zone(hall, far, ZoneKind::Dining), 0, "two dining halls on one tile");
+        assert_eq!(g.add_zone(hall, far, ZoneKind::Stockpile(crate::items::StockFilter::All)), 0, "a stockpile shares a hall");
+        for p in box_iter(hall, far) {
+            assert!(g.in_dining_hall(p) && g.in_meeting_area(p), "at {:?}", p);
+            assert_eq!(g.zones_at(p).count(), 2);
+        }
+        // It survives a save: the overlay is rebuilt from the zones.
+        let mut back: Game = serde_json::from_str(&serde_json::to_string(&g).unwrap()).unwrap();
+        back.after_load();
+        assert!(back.in_dining_hall(hall) && back.in_meeting_area(hall), "lost on loading");
+
+        // A hungry dwarf eats at its table.
+        g.dwarves[0].hunger = crate::game::HUNGRY + 10;
+        g.dwarves[0].idle_cd = 0;
+        for _ in 0..50 {
+            g.step();
+            if matches!(g.dwarves[0].task, Task::Dine { .. } | Task::Eat { .. }) {
+                break;
+            }
+        }
+        assert!(matches!(g.dwarves[0].task, Task::Dine { seat, .. } if seat == hall_chair), "went for {:?}", g.dwarves[0].task);
+        // Idle dwarves gather there.
+        assert!(box_iter(hall, far).all(|p| g.meeting_tiles().contains(&p)));
+        let mut met = false;
+        for _ in 0..DAY {
+            g.step();
+            met |= g.dwarves.iter().skip(1).any(|d| d.alive && g.in_dining_hall(d.pos) && g.in_meeting_area(d.pos) && !matches!(d.task, Task::Dine { .. } | Task::Eat { .. }));
+            if met {
+                break;
+            }
+        }
+        assert!(met, "nobody gathered in the hall");
+
+        // Taking the meeting area away leaves the dining hall whole.
+        assert_eq!(g.remove_zones_where(hall, far, |k| k == ZoneKind::Meeting), 9);
+        assert!(box_iter(hall, far).all(|p| g.in_dining_hall(p) && !g.in_meeting_area(p)));
+        assert!(g.zone_over.is_empty());
+    }
+
+    #[test]
+    fn bulk_zoning_gives_each_room_its_own_zone() {
+        let mut g = Game::new(21);
+        // Three 2x2 cells side by side, walled apart and roofed over.
+        let a = open_patch(&g, 10, 4, &HashSet::new());
+        for p in box_iter(a, a.offset(9, 3, 0)) {
+            let inner = (p.y == a.y + 1 || p.y == a.y + 2) && (p.x - a.x) % 3 != 0;
+            if !inner {
+                g.world.t_mut(p).kind = TileKind::Wall;
+            }
+            g.world.t_mut(p.up()).kind = TileKind::Floor;
+            g.world.t_mut(p.up()).built_from = Some(ItemKind::Block);
+        }
+        let (zones, tiles) = g.add_zone_rooms(a, a.offset(9, 3, 0), ZoneKind::Bedroom);
+        assert_eq!((zones, tiles), (3, 12), "each cell its own bedroom");
+        let ids: HashSet<u32> = [1, 4, 7].iter().map(|&dx| g.world.t(a.offset(dx, 1, 0)).zone).collect();
+        assert_eq!(ids.len(), 3);
     }
 
     /// A dwarf faint with hunger (or mad, and starving) who sits down to a

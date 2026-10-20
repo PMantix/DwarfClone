@@ -558,7 +558,6 @@ pub struct Game {
     pub ov_fell: Option<(u32, String)>,
     /// Zones laid over another zone's tiles (O11), rebuilt from `zones`.
     #[serde(skip)]
-    #[allow(dead_code)]
     pub zone_over: HashMap<Pos, Vec<u32>>,
     /// The bestiary's animals that have been about the fort, by index
     /// (sorted): the legends' bestiary marks them seen.
@@ -983,6 +982,14 @@ impl Game {
                 }
                 continue;
             }
+            // A stair column: up at the foot, down at the head (O11); where there's
+            // nothing to dig (open air, a floor to stand an up stair on) it is built.
+            let column = d == Desig::StairUD && lo.z < hi.z;
+            let d = if column { self.column_stair(p, lo.z, hi.z) } else { d };
+            if column && t.revealed && !self.desig_valid(p, d) && self.plan_air_stair(p, d, lo.z) {
+                n += 1;
+                continue;
+            }
             // Hidden tiles can be designated blind, like the real thing.
             let hidden_ok = !t.revealed && !matches!(d, Desig::Chop | Desig::Smooth | Desig::Engrave);
             if hidden_ok || self.desig_valid(p, d) {
@@ -1055,14 +1062,24 @@ impl Game {
         self.add_zone_tiles(box_iter(a, b).collect(), kind)
     }
 
-    /// A zone of just these tiles (those that can take it).
+    /// A zone of just these tiles (those that can take it). Over a zone
+    /// it can share a hall with (a dining hall that is also the meeting
+    /// area), it is laid over that one (`zone_over`, O11).
     pub fn add_zone_tiles(&mut self, all: Vec<Pos>, kind: ZoneKind) -> usize {
         let mut tiles = Vec::new();
+        let mut over = Vec::new();
         for p in all {
             let Some(t) = self.world.get(p) else { continue };
             // A meeting hall can take in the tables and chairs already standing in it.
             let bld_ok = t.building == 0 || kind.holds_furniture();
-            if !t.revealed || t.zone != 0 || !bld_ok || !matches!(t.kind, TileKind::Floor | TileKind::Shrub) {
+            if !t.revealed || !bld_ok || !matches!(t.kind, TileKind::Floor | TileKind::Shrub) {
+                continue;
+            }
+            if t.zone != 0 {
+                if self.can_overlay(p, kind) {
+                    over.push(p);
+                    tiles.push(p);
+                }
                 continue;
             }
             if kind == ZoneKind::Farm && !t.mat.is_soil() {
@@ -1074,7 +1091,10 @@ impl Game {
             return 0;
         }
         let id = self.new_id();
-        for &p in &tiles {
+        for &p in &over {
+            self.zone_over.entry(p).or_default().push(id);
+        }
+        for &p in tiles.iter().filter(|p| !over.contains(p)) {
             let t = self.world.t_mut(p);
             t.zone = id;
             t.farm = 0;
@@ -1093,7 +1113,7 @@ impl Game {
 
     /// Clear zone tiles in the box whose zone kind passes `which`.
     pub fn remove_zones_where<F: Fn(ZoneKind) -> bool>(&mut self, a: Pos, b: Pos, which: F) -> usize {
-        let mut n = 0;
+        let mut n = if self.zone_over.is_empty() { 0 } else { self.remove_overlays_where(a, b, &which) };
         for p in box_iter(a, b) {
             let Some(t) = self.world.get(p) else { continue };
             let zid = t.zone;
@@ -1103,6 +1123,8 @@ impl Game {
             let t = self.world.t_mut(p);
             t.zone = 0;
             t.farm = 0;
+            // A zone laid over this one takes the tile.
+            self.promote_overlay(p);
             if let Some(z) = self.zones.get_mut(&zid) {
                 z.tiles.retain(|&q| q != p);
                 if z.tiles.is_empty() {
@@ -1720,6 +1742,8 @@ impl Game {
 
     pub fn in_meeting_area(&self, p: Pos) -> bool {
         self.zones.get(&self.world.t(p).zone).map_or(false, |z| matches!(z.kind, ZoneKind::Meeting | ZoneKind::Tavern))
+            || self.has_zone_kind(p, ZoneKind::Meeting)
+            || self.has_zone_kind(p, ZoneKind::Tavern)
     }
 
     /// Nothing to do: head for the meeting area, or at least out of the way.
@@ -2937,7 +2961,7 @@ impl Game {
                         d.task = Task::Idle;
                         d.think("enjoyed a drink of stoutcap ale", -15, self.tick);
                         d.satisfy(dwarf::NeedKind::Drink, 500);
-                        if self.zone_kind_at(d.pos) == Some(ZoneKind::Tavern) {
+                        if self.has_zone_kind(d.pos, ZoneKind::Tavern) {
                             d.satisfy(dwarf::NeedKind::Party, 150);
                             d.think("drank in the tavern", -6, self.tick);
                         }
@@ -3272,7 +3296,8 @@ mod tests {
         run(&mut g, 6 * DAY);
         let logs = count(&g, ItemKind::Log);
         assert!(trees == 0 || logs > 6, "no trees chopped ({} designated, {} logs)", trees, logs);
-        assert!(g.world.t(bottom).kind == TileKind::StairUD, "stairs not dug: {:?}", g.world.t(bottom).kind);
+        // (An up stair at the foot of the column, O11.)
+        assert!(g.world.t(bottom).kind == TileKind::StairUp, "stairs not dug: {:?}", g.world.t(bottom).kind);
         let room_dug = box_iter(bottom.offset(1, -2, 0), bottom.offset(5, 2, 0))
             .filter(|&p| g.world.t(p).kind == TileKind::Floor)
             .count();

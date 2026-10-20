@@ -437,6 +437,8 @@ pub struct App {
     /// Ticks still to run of a step taken while paused (O05, UI-32).
     #[allow(dead_code)] // wave 0: P6 reads it
     pub step_pending: u32,
+    /// A hall or building being named (O11).
+    pub naming: Option<m2::Naming>,
 }
 
 impl App {
@@ -502,6 +504,7 @@ impl App {
             pan_from: (0, 0),
             director: crate::director::Director::default(),
             announce: m2::Announce::default(),
+            naming: None,
             step_pending: 0,
             frame_dt: 1.0 / 30.0,
             arena: None,
@@ -1188,6 +1191,9 @@ impl App {
 
     fn on_key_inner(&mut self, k: KeyEvent) {
         self.flash = None;
+        if self.naming.is_some() {
+            return self.key_naming(k);
+        }
         if k.code == KeyCode::Char('c') && k.modifiers.contains(KeyModifiers::CONTROL) {
             self.quit = true;
             return;
@@ -1313,6 +1319,7 @@ impl App {
                 KeyCode::Esc => {
                     self.mode = if corner.is_some() { Mode::Zone { tool, corner: None } } else { Mode::Normal }
                 }
+                KeyCode::Char('B') => self.zone_bulk(tool, corner),
                 KeyCode::Char(c) => {
                     if let Some(&t) = ZoneTool::ALL.iter().find(|t| t.key() == c) {
                         self.mode = Mode::Zone { tool: t, corner };
@@ -2190,6 +2197,10 @@ impl App {
                     });
                 }
             }
+            KeyCode::Char('N') => self.start_naming(match entries.get(sel.min(n - 1)) {
+                Some(LookEntry::Building(b)) => Some(*b),
+                _ => None,
+            }),
             KeyCode::Char('F') => {
                 let (k, on) = self.game.forbid_tile(self.cursor);
                 self.flash = Some(format!("{} items {}.", k, if on { "forbidden" } else { "allowed again" }));
@@ -2224,6 +2235,7 @@ impl App {
                 self.mode = Mode::Query { bld, adding: true };
             }
             KeyCode::Char('l') => self.game.toggle_lock(bld),
+            KeyCode::Char('N') if !adding => self.start_naming(Some(bld)),
             KeyCode::Char('k') if kind == BuildingKind::Lever => {
                 self.cursor = self.game.buildings[&bld].pos;
                 self.mode = Mode::LinkLever { lever: bld };
