@@ -49,3 +49,36 @@ impl Adventure {
     /// The hero settles down in a friendly town (A10).
     pub fn retire(&mut self) {}
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_fallen_fort_leaves_its_mark() {
+        let mut g = Game::new(5);
+        for _ in 0..DAY {
+            g.step();
+        }
+        assert!(g.overworld.forts.is_empty());
+        for i in 0..g.dwarves.len() {
+            let mut d = std::mem::take(&mut g.dwarves[i]);
+            if d.alive {
+                g.kill_for_test(&mut d, "was struck down");
+            }
+            g.dwarves[i] = d;
+        }
+        for _ in 0..10 {
+            g.step();
+        }
+        let ow = &g.overworld;
+        assert_eq!(ow.forts.len(), 1, "one mark");
+        let m = &ow.forts[0];
+        assert_eq!((m.name.as_str(), m.site, m.founded), (g.fortress_name.as_str(), g.site, g.start_year));
+        assert_eq!(m.fell, Some(g.start_year));
+        assert_eq!(m.save_file, crate::saves::fort_file(&g.fortress_name));
+        assert_eq!(m.peak_pop, g.dwarves.len());
+        assert_eq!(ow.fort_at(g.site.0, g.site.1), Some(0));
+        assert_eq!(ow.map_look(g.site.0, g.site.1).0, '×');
+    }
+}
