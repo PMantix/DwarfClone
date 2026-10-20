@@ -350,7 +350,7 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O07 A mortal overseer (M)
 - **Why:** The overseer should be a dwarf of the fort: it can be doubted, deposed, killed and succeeded, and its traits drift with what it lives through.
-- **Steps:** [ ] A mortal overseer and succession ([OVR-02](ideas/world-and-overseer.md)) · [ ] Faith in the overseer ([OVR-18](ideas/world-and-overseer.md)) · [ ] Traits that drift ([OVR-10](ideas/world-and-overseer.md)) · [ ] Spin ([OVR-05](ideas/world-and-overseer.md)) · [ ] The overseer's journal ([OVR-06](ideas/world-and-overseer.md))
+- **Steps:** [x] A mortal overseer and succession ([OVR-02](ideas/world-and-overseer.md), this commit: the overseer is a dwarf of the fort; killed, mad, jailed, deposed or out-voted, it is succeeded with a card, a legend and a chronicle line) · [x] Faith in the overseer ([OVR-18](ideas/world-and-overseer.md), this commit: faith moves with deaths, hunger, routs and feasts; low faith brings grumbling, defiance, food riots, the Doubt sense, a reign saga and deposition) · [ ] Traits that drift ([OVR-10](ideas/world-and-overseer.md)) · [ ] Spin ([OVR-05](ideas/world-and-overseer.md)) · [ ] The overseer's journal ([OVR-06](ideas/world-and-overseer.md))
 - **Done when:** An overseer killed in a siege is succeeded by another with different traits, and the chronicle marks the change of reign.
 
 #### O08 Orders that think (L)

@@ -450,6 +450,8 @@ impl Game {
                 .filter(|d| d.alive && !d.insane && !d.is_child() && d.noble.map_or(true, |n| n == Noble::Leader))
                 .max_by_key(|d| d.personality.sociability + d.relations.iter().map(|r| r.1).sum::<i32>() / 10)
                 .map(|d| d.id);
+            // A trusted overseer is elected; else the winner succeeds it (O07).
+            let pick = self.reign_election(pick);
             if let Some(id) = pick {
                 for d in self.dwarves.iter_mut() {
                     if d.noble == Some(Noble::Leader) {

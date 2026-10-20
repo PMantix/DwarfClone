@@ -33,6 +33,8 @@ impl Game {
         self.ov_mood_strip(o);
         self.ov_reel(o);
         self.ov_eulogies(o);
+        // O07: the overseer as a dwarf of the fort, its faith and its fall.
+        self.ov_reign(o);
         let _ = o;
     }
 
@@ -54,6 +56,8 @@ impl Game {
         self.ov_relics(o);
         // The thing in the night: hunt it or hide (haunt.rs).
         self.ov_haunt(o);
+        // O07: the overseer has just been killed: its heir takes over.
+        self.ov_fallen(o);
         let _ = o;
     }
 
@@ -69,6 +73,8 @@ impl Game {
         senses.extend(self.unarmed_sense(o));
         senses.extend(self.lesson_sense(o));
         // Myth and magic: an ill omen readies the fort.
+        // O07: a doubted overseer tries to win the fort back.
+        senses.push(self.doubt_sense(o));
         senses.push((Sense::Omens, self.omen_sense(), vec![(Ambition::Fortify, 0.8), (Ambition::Muster, 0.8), (Ambition::Venture, -1.0)]));
         let _ = o;
         senses

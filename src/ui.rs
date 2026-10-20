@@ -4555,6 +4555,10 @@ fn draw_autoplay(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
     if let Some(o) = &g.overseer {
         v.push(Line::default());
         v.push(plain(format!(" The overseer: {}  (r: another)", o.title()), Color::Rgb(150, 210, 255)));
+        // Which overseer of the fort it is, and the fort's faith in it (O07).
+        for (i, l) in g.reign_lines().into_iter().enumerate() {
+            v.push(plain(format!(" {}", l), if i == 0 { Color::Rgb(230, 200, 120) } else { MUTED }));
+        }
         for t in &o.traits {
             v.push(plain(format!("   {}: {}", t.name(), t.blurb()), MUTED));
         }
