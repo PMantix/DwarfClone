@@ -320,9 +320,9 @@ pub enum Mode {
     /// Pick the overseer's traits by hand (O01).
     #[cfg_attr(not(test), allow(dead_code))] // wave 0: opened by its package
     OverseerTraits { sel: usize },
-    /// The overseer's journal, a year at a time (O07).
-    #[cfg_attr(not(test), allow(dead_code))] // wave 0: opened by its package
-    Journal { year: usize },
+    /// The overseer's journal (O07): a page for each year of each reign
+    /// (`year` is the page), read down from row `scroll`.
+    Journal { year: usize, scroll: usize },
     /// A dwarf's family tree (O06).
     #[cfg_attr(not(test), allow(dead_code))] // wave 0: opened by its package
     Family { id: u32, sel: usize },
@@ -1677,6 +1677,8 @@ impl App {
                     KeyCode::Char('b') if self.game.overseer.is_some() => self.mode = Mode::Brain { sel: 0 },
                     // O01: choose its traits by hand.
                     KeyCode::Char('t') if self.game.overseer.is_some() => self.mode = Mode::OverseerTraits { sel: 0 },
+                    // O07: its journal.
+                    KeyCode::Char('j') => self.open_journal(),
                     // Another overseer of the same style: a new name and traits.
                     KeyCode::Char('r') if self.game.overseer.is_some() => {
                         let mut o = self.game.overseer.take().unwrap();

@@ -126,6 +126,7 @@ pub mod naming;
 pub mod logkind;
 pub mod commands;
 pub mod reign;
+pub mod journal;
 pub mod veins;
 mod picks;
 mod boulders;

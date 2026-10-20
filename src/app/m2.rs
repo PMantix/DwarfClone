@@ -176,6 +176,11 @@ impl App {
             KeyCode::Char('s') => self.key_step(STEP_TICK),
             KeyCode::Char('T') => self.key_step(STEP_HOUR),
             KeyCode::Char('D') => self.key_step(STEP_DAY),
+            // O07: the overseer's journal.
+            KeyCode::Char('J') => {
+                self.open_journal();
+                true
+            }
             KeyCode::Enter => self.go_to_sound(),
             _ => false,
         }
@@ -280,7 +285,7 @@ impl App {
     pub(super) fn key_m2_screen(&mut self, k: KeyEvent) {
         match self.mode {
             Mode::OverseerTraits { sel } => self.key_overseer_traits(k, sel),
-            Mode::Journal { year } => self.key_journal(k, year),
+            Mode::Journal { year, scroll } => self.key_journal(k, year, scroll),
             Mode::Family { id, sel } => self.key_family(k, id, sel),
             Mode::Announce { sel } => self.key_announce(k, sel),
             _ => {}
@@ -319,11 +324,40 @@ impl App {
         }
     }
 
-    /// The overseer's journal (O07).
-    fn key_journal(&mut self, k: KeyEvent, _year: usize) {
-        if k.code == KeyCode::Esc {
-            self.mode = Mode::Normal;
+    /// `J` (or `j` on the Autoplay screen): the overseer's journal, open at
+    /// the page being written, at its latest entries.
+    pub(super) fn open_journal(&mut self) {
+        let n = self.game.overseer.as_ref().map_or(0, |o| o.journal.len());
+        if n == 0 {
+            self.flash = Some(match self.game.overseer {
+                None => "No overseer keeps a journal: hand the fortress over (A) first.".into(),
+                Some(_) => "The overseer has not written in its journal yet.".into(),
+            });
+            return;
         }
+        let rows = crate::ui::overseer::journal_rows(self, n - 1);
+        self.mode = Mode::Journal { year: n - 1, scroll: rows.saturating_sub(20) };
+    }
+
+    /// The overseer's journal (O07): Left and Right turn the pages, Up,
+    /// Down, PgUp, PgDn, Home and End read down a page; Esc closes it.
+    fn key_journal(&mut self, k: KeyEvent, page: usize, scroll: usize) {
+        let n = self.game.overseer.as_ref().map_or(0, |o| o.journal.len()).max(1);
+        let page = page.min(n - 1);
+        let max = crate::ui::overseer::journal_rows(self, page).saturating_sub(10);
+        let scroll = scroll.min(max);
+        self.mode = match k.code {
+            KeyCode::Left => Mode::Journal { year: page.saturating_sub(1), scroll: 0 },
+            KeyCode::Right => Mode::Journal { year: (page + 1).min(n - 1), scroll: 0 },
+            KeyCode::Up => Mode::Journal { year: page, scroll: scroll.saturating_sub(1) },
+            KeyCode::Down => Mode::Journal { year: page, scroll: (scroll + 1).min(max) },
+            KeyCode::PageUp => Mode::Journal { year: page, scroll: scroll.saturating_sub(15) },
+            KeyCode::PageDown => Mode::Journal { year: page, scroll: (scroll + 15).min(max) },
+            KeyCode::Home => Mode::Journal { year: page, scroll: 0 },
+            KeyCode::End => Mode::Journal { year: page, scroll: max },
+            KeyCode::Esc | KeyCode::Char('J') | KeyCode::Char('q') => Mode::Normal,
+            _ => Mode::Journal { year: page, scroll },
+        };
     }
 
     /// A dwarf's family tree (O06).
@@ -366,7 +400,7 @@ mod tests {
     #[test]
     fn the_m2_screens_open_and_close() {
         let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
-        for m in [Mode::Journal { year: 0 }, Mode::Family { id: 1, sel: 0 }] {
+        for m in [Mode::Family { id: 1, sel: 0 }] {
             let mut app = App::with_game_for_tests(crate::game::Game::new(5));
             app.mode = m.clone();
             let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 40)).unwrap();
@@ -522,5 +556,47 @@ mod tests {
         app.on_key(key(KeyCode::Esc));
         assert_eq!(app.game.overseer.as_ref().unwrap().traits, vec![Trait::Cautious, Trait::Vain]);
         assert!(matches!(app.mode, Mode::Autoplay { .. }));
+    }
+
+    /// O07: `J` opens the overseer's journal at the page being written,
+    /// with its header and its dated entries; Left and Right turn the
+    /// pages, Esc closes it; `j` opens it from the Autoplay screen too.
+    #[test]
+    fn the_journal_opens_beside_the_chronicle() {
+        let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
+        let mut app = fort("journal");
+        app.on_key(key(KeyCode::Char('J')));
+        assert_eq!(app.mode, Mode::Normal, "no overseer, no journal");
+        app.game.set_overseer(Some(crate::game::Style::Steady));
+        for _ in 0..crate::game::DAY * 3 {
+            app.game.step();
+        }
+        app.mode = Mode::Normal;
+        app.on_key(key(KeyCode::Char('J')));
+        assert!(matches!(app.mode, Mode::Journal { year: 0, .. }), "{:?} {:?}", app.mode, app.flash);
+        let shown = screen(&mut app);
+        let name = app.game.overseer.as_ref().unwrap().name.clone();
+        assert!(shown.contains(&format!("The Journal of {}", name)), "{}", shown);
+        assert!(shown.contains("first overseer of"), "{}", shown);
+        assert!(shown.contains("Earlybloom"), "dated entries: {}", shown);
+        // A second page (a new year) to turn to and back.
+        let tick = app.game.tick;
+        {
+            let o = app.game.overseer.as_mut().unwrap();
+            crate::game::Game::journal_for_test(o, tick + crate::game::YEAR, "A page for the new year.");
+        }
+        app.on_key(key(KeyCode::Char('J')));
+        app.on_key(key(KeyCode::Char('J')));
+        assert!(matches!(app.mode, Mode::Journal { year: 1, .. }), "{:?}", app.mode);
+        assert!(screen(&mut app).contains("A page for the new year."));
+        app.on_key(key(KeyCode::Left));
+        assert!(matches!(app.mode, Mode::Journal { year: 0, scroll: 0 }));
+        app.on_key(key(KeyCode::Down));
+        app.on_key(key(KeyCode::Esc));
+        assert_eq!(app.mode, Mode::Normal);
+        app.mode = Mode::Autoplay { sel: 1 };
+        assert!(screen(&mut app).contains("j its journal"));
+        app.on_key(key(KeyCode::Char('j')));
+        assert!(matches!(app.mode, Mode::Journal { .. }));
     }
 }
