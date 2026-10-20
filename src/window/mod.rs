@@ -229,7 +229,7 @@ pub fn play(app: &mut App, args: &[String]) -> Result<()> {
 }
 
 /// `--window --screenshot FILE [--seed N] [--days D] [--size WxH] [--cell PX]
-/// [--plan] [--saga | --sagas] [--adventure [--fight]]`: watch a seeded fort for a few days, draw it
+/// [--plan] [--saga | --sagas] [--adventure [--fight | --travel]]`: watch a seeded fort for a few days, draw it
 /// the way the window would, save a PNG and print how long a frame took to draw.
 /// `--plan` shows the main level with the plan over it, `--saga` the fort's
 /// latest saga on its card, `--sagas` the Sagas screen (a great siege is told
@@ -256,6 +256,10 @@ pub fn screenshot(args: &[String]) -> Result<()> {
     // (`--fight`: a goblin raider comes at the hero, for the combat log.)
     if adventure && args.iter().any(|a| a == "--fight") {
         app.adventure_skirmish();
+    }
+    // (`--travel`: out on the road for a few days, wounded, for the travel view.)
+    if adventure && args.iter().any(|a| a == "--travel") {
+        app.adventure_journey();
     }
     for _ in 0..if adventure { 0 } else { days * crate::game::DAY } {
         app.game.step();

@@ -30,6 +30,7 @@ mod overlays;
 mod looks;
 mod adventure;
 mod adv_create;
+mod adv_travel;
 pub(crate) use looks::tile_look;
 use looks::foliage;
 
