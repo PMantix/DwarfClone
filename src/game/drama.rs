@@ -182,6 +182,8 @@ impl Game {
         }
         self.msg(&text, (255, 170, 90));
         self.saga_duel(wid, lid, &text, peace);
+        let how = if peace { ", and they made peace" } else { "" };
+        self.record(super::memory::MemoryKind::Feat, &[wid, lid], Some(self.dwarves[w].pos), format!("{} beat {} in a duel at dawn{}.", wn, ln, how), 3);
         self.gossip(text);
         let mut d = std::mem::take(&mut self.dwarves[w]);
         self.duels_won(&mut d);

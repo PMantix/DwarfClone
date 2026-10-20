@@ -19,6 +19,7 @@ mod arena;
 mod health;
 mod highlights;
 mod life;
+mod units;
 pub mod saga;
 mod moodstrip;
 mod ambient;
@@ -1212,7 +1213,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.push(plain("Esc: back".into(), MUTED));
             }
         }
-        Mode::Units { sel } => {
+        Mode::Units { sel, .. } => {
             title = "Units".to_string();
             for (i, d) in g.dwarves.iter().enumerate() {
                 let (mood, mc) = d.mood();
@@ -1233,10 +1234,10 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.push(Line::default());
             v.push(plain("Up/Down select · Enter view · c center".into(), MUTED));
         }
-        Mode::Unit { id, sel } => {
+        Mode::Unit { id, sel, tab } => {
             title = "Dwarf".to_string();
             if let Some(d) = g.dwarves.iter().find(|d| d.id == *id) {
-                v.extend(unit_view(g, d, *sel));
+                v.extend(units::sheet_lines(g, d, *sel, *tab, SIDEBAR_W as usize - 4));
             }
         }
         Mode::KillTarget { squad } => {
@@ -5179,7 +5180,7 @@ mod tests {
         let id = app.game.dwarves[0].id;
         app.game.toggle_soldier(id);
         app.game.dwarves[0].body.wound(crate::body::Part::LeftArm, 15, true);
-        app.mode = Mode::Unit { id, sel: 2 };
+        app.mode = Mode::Unit { id, sel: 2, tab: 0 };
         let card = dump(&mut app, 130, 50);
         println!("{}", card);
         assert!(card.contains("Bleeding from the left arm"), "the card should say where the dwarf bleeds");
