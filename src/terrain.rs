@@ -1399,6 +1399,8 @@ pub(crate) mod tests {
     }
 
     #[test]
+    #[ignore]
+    // Timed by the wall clock: run on its own with `--ignored`.
     fn land_is_made_quickly() {
 
         let ow = crate::overworld::Overworld::generate(42);

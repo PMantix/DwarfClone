@@ -1633,6 +1633,7 @@ pub fn fort_where(style: Style, first: u64, n: u64, day: u64, want: impl Fn(&Gam
 
 /// Play one fortress with `style` for up to `years`, from a fresh world,
 /// with `knobs` changed from their defaults.
+#[cfg(test)]
 pub fn run_trial(seed: u64, style: Style, years: u64, knobs: &Knobs) -> Trial {
     run_trial_with(seed, style, years, knobs, None)
 }
