@@ -25,7 +25,7 @@ mod moodstrip;
 mod ambient;
 mod ticker;
 mod sound;
-mod overseer;
+pub(crate) mod overseer;
 mod overlays;
 mod looks;
 mod adventure;
@@ -1812,6 +1812,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("A", "autoplay: the overseer plays (pick a style)"),
         k("  (hands off)", "20 s untouched while it plays: the camera tours"),
         k("B", "the overseer's brain: senses, ambitions, nudges"),
+        k("J", "the overseer's journal: each year in its own hand"),
         k("L", "legends: history, civs, sites, figures, regions, gods"),
         k("Tab", "jump to next dwarf"),
         k("H", "jump back to the wagon"),
@@ -4620,7 +4621,7 @@ fn draw_autoplay(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
         }
     }
     v.push(Line::default());
-    v.push(plain(" ↑↓ choose · Enter · b its brain · Esc back".into(), MUTED));
+    v.push(plain(" ↑↓ choose · Enter · b its brain · j its journal · Esc back".into(), MUTED));
     let h = v.len() as u16 + 2;
     let r = popup(f, area, 72, h, " Autoplay ", v);
     for i in 0..=Pace::ALL.len() {
