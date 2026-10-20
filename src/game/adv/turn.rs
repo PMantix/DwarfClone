@@ -341,6 +341,51 @@ impl Game {
         v.into_iter().map(|(_, id)| id).collect()
     }
 
+    /// The tiles the hero sees on their level: within the sight radius,
+    /// with a clear line to them (a wall at the line's end is seen).
+    pub(crate) fn seen_tiles(&self, hero: usize) -> Sight {
+        let p = self.dwarves[hero].pos;
+        let r = self.sight_radius(hero);
+        let n = (2 * r + 1) as usize;
+        let mut cells = vec![false; n * n];
+        for dy in -r..=r {
+            for dx in -r..=r {
+                let q = p.offset(dx, dy, 0);
+                if dx * dx + dy * dy <= r * r && self.world.in_bounds(q) && self.clear_shot(p, q) {
+                    cells[(dy + r) as usize * n + (dx + r) as usize] = true;
+                }
+            }
+        }
+        Sight { at: p, r, cells }
+    }
+
+    /// What the hero sees is known from now on (`Tile.revealed`), so the
+    /// map remembers it dimly once they look away.
+    pub(crate) fn reveal_seen(&mut self, hero: usize) {
+        let s = self.seen_tiles(hero);
+        for dy in -s.r..=s.r {
+            for dx in -s.r..=s.r {
+                let q = s.at.offset(dx, dy, 0);
+                if s.sees(q) && !self.world.t(q).revealed {
+                    self.world.t_mut(q).revealed = true;
+                }
+            }
+        }
+    }
+
+    /// A goblin raider come for the hero, a few steps off (for the window's
+    /// `--adventure --fight` picture and the view's tests). Its id.
+    pub(crate) fn raider_for(&mut self, hero: usize) -> u32 {
+        let p = self.dwarves[hero].pos;
+        let at = self.spot_near(p.offset(3, 0, 0), 2);
+        let id = self.spawn_creature(crate::creature::Species::Goblin, at, DAY * 10);
+        if let Some(c) = self.creatures.get_mut(&id) {
+            c.siege = true;
+            c.target = Some(self.dwarves[hero].id);
+        }
+        id
+    }
+
     /// A living foe standing on `p`.
     fn foe_at(&self, p: Pos) -> Option<u32> {
         self.creatures.values().find(|c| c.alive && c.pos == p && !c.tame && c.pet_of.is_none()).map(|c| c.id)
@@ -348,6 +393,25 @@ impl Game {
 
     /// Companions follow and fight (A9 fills it).
     pub(crate) fn company_tick(&mut self) {}
+}
+
+/// What the hero sees: a square of tiles round them on their level.
+pub struct Sight {
+    pub at: Pos,
+    pub r: i32,
+    cells: Vec<bool>,
+}
+
+impl Sight {
+    /// Whether the hero sees `q`.
+    pub fn sees(&self, q: Pos) -> bool {
+        let (dx, dy) = (q.x - self.at.x, q.y - self.at.y);
+        if q.z != self.at.z || dx.abs() > self.r || dy.abs() > self.r {
+            return false;
+        }
+        let n = (2 * self.r + 1) as usize;
+        self.cells[(dy + self.r) as usize * n + (dx + self.r) as usize]
+    }
 }
 
 fn a_or_an(name: &str) -> String {
@@ -411,6 +475,25 @@ mod tests {
         if g.dwarves[h].alive {
             assert!(matches!(g.act(h, Action::Wait(500)), Outcome::Interrupted { .. } | Outcome::Died));
         }
+    }
+
+    #[test]
+    fn a_wall_hides_what_is_behind_it_until_seen() {
+        let mut a = field(12);
+        let v = a.visit.as_mut().unwrap();
+        let (g, h) = (&mut v.g, v.hero);
+        let p = g.dwarves[h].pos;
+        let (wall, behind, open) = (p.offset(2, 0, 0), p.offset(4, 0, 0), p.offset(0, 4, 0));
+        g.world.t_mut(wall).kind = crate::world::TileKind::Wall;
+        for q in [behind, open] {
+            g.world.t_mut(q).revealed = false;
+        }
+        let s = g.seen_tiles(h);
+        assert!(s.sees(p) && s.sees(wall) && s.sees(open), "the wall itself, and open ground");
+        assert!(!s.sees(behind), "not through the wall");
+        assert!(!s.sees(p.offset(0, 0, 1)), "only the hero's level");
+        g.reveal_seen(h);
+        assert!(g.world.t(open).revealed && !g.world.t(behind).revealed, "what was seen is remembered");
     }
 
     /// One bout: the hero with an iron axe (and the skill of a soldier)

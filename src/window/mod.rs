@@ -229,7 +229,7 @@ pub fn play(app: &mut App, args: &[String]) -> Result<()> {
 }
 
 /// `--window --screenshot FILE [--seed N] [--days D] [--size WxH] [--cell PX]
-/// [--plan] [--saga | --sagas]`: watch a seeded fort for a few days, draw it
+/// [--plan] [--saga | --sagas] [--adventure [--fight]]`: watch a seeded fort for a few days, draw it
 /// the way the window would, save a PNG and print how long a frame took to draw.
 /// `--plan` shows the main level with the plan over it, `--saga` the fort's
 /// latest saga on its card, `--sagas` the Sagas screen (a great siege is told
@@ -252,6 +252,10 @@ pub fn screenshot(args: &[String]) -> Result<()> {
     while app.mode == crate::app::Mode::Loading {
         app.frame();
         std::thread::sleep(Duration::from_millis(20));
+    }
+    // (`--fight`: a goblin raider comes at the hero, for the combat log.)
+    if adventure && args.iter().any(|a| a == "--fight") {
+        app.adventure_skirmish();
     }
     for _ in 0..if adventure { 0 } else { days * crate::game::DAY } {
         app.game.step();
@@ -316,4 +320,34 @@ pub fn screenshot(args: &[String]) -> Result<()> {
         out, b.width, b.height, grid.width, grid.height, cell, full, frame
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adventure_screenshot_draws() {
+        let ow = crate::overworld::Overworld::generate(5);
+        let mut app = App::new(5);
+        app.adventure_ready(Box::new(crate::game::adv::quick_start(ow, 5)));
+        // A stand-in font: every glyph a block in the middle of its cell.
+        let font = Box::new(|_: char, s: usize| {
+            let mut m = vec![0; s * s];
+            for y in s / 4..s * 3 / 4 {
+                for x in s / 4..s * 3 / 4 {
+                    m[y * s + x] = 255;
+                }
+            }
+            m
+        });
+        let mut term = Terminal::new(TileBackend::new(130 * 16, 40 * 16, 16, font)).unwrap();
+        term.draw(|f| ui::draw(f, &mut app)).unwrap();
+        let b = term.backend();
+        assert!(b.pixels.iter().any(|&p| p != 0), "a frame was drawn");
+        let race = app.adv.as_ref().unwrap().adv.hero.race.color();
+        let ratatui::style::Color::Rgb(r, g, bl) = race else { panic!("an RGB colour") };
+        let lit = (r as u32) << 16 | (g as u32) << 8 | bl as u32;
+        assert!(b.pixels.iter().any(|&p| p == lit), "the hero's cell is lit in their people's colour");
+    }
 }
