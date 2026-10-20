@@ -370,7 +370,7 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O11 A builder's hands (M)
 - **Why:** The rest of DF's construction kit: roads, overlapping zones, levers installed by a mechanic.
-- **Steps:** [x] One-column stairs ([ENG-09](ideas/economy.md), this commit) · [x] Builders don't wall themselves in ([ENG-10](ideas/economy.md), this commit) · [x] Bulk rooms and overlapping zones ([ENG-17](ideas/economy.md), this commit) · [x] Named halls ([ENG-16](ideas/economy.md); the overseer names its rooms, efa01ab; the player with `N` in look or query, this commit; not yet on map labels) · [x] Build over built floors ([ENG-45](ideas/economy.md), this commit) · [ ] Better levers ([ENG-33](ideas/economy.md)) · [ ] Roads and wagon access ([ENG-35](ideas/economy.md))
+- **Steps:** [x] One-column stairs ([ENG-09](ideas/economy.md), 9948eda) · [x] Builders don't wall themselves in ([ENG-10](ideas/economy.md), 9948eda) · [x] Bulk rooms and overlapping zones ([ENG-17](ideas/economy.md), 9948eda) · [x] Named halls ([ENG-16](ideas/economy.md); the overseer names its rooms, efa01ab; the player with `N` in look or query, 9948eda; not yet on map labels) · [x] Build over built floors ([ENG-45](ideas/economy.md), 9948eda) · [ ] Better levers ([ENG-33](ideas/economy.md)) · [ ] Roads and wagon access ([ENG-35](ideas/economy.md))
 - **Done when:** A dining hall that is also the meeting area works for both, and linking a lever sends a mechanic.
 
 #### O12 Inspired engineers (M)
