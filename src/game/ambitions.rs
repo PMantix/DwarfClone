@@ -138,10 +138,18 @@ pub enum Sense {
     Wounded,
     /// An ill omen hangs over the fort (`omens.rs`).
     Omens,
+    // Milestone 2 (wave 0): silent until their packages give them a level
+    // and links through `overseer_hooks.rs: extra_senses`.
+    /// The fort has lost faith in its overseer (O07, `reign.rs`).
+    Doubt,
+    /// Rich ore found and not yet mined (O10, `veins.rs`).
+    Ore,
+    /// A dwarf has an inspiration worth building (O12, `inspire.rs`).
+    Inspired,
 }
 
 impl Sense {
-    pub const ALL: [Sense; 18] = [
+    pub const ALL: [Sense; 21] = [
         Sense::Temper,
         Sense::Leaning,
         Sense::Hunger,
@@ -160,6 +168,9 @@ impl Sense {
         Sense::Unarmed,
         Sense::Wounded,
         Sense::Omens,
+        Sense::Doubt,
+        Sense::Ore,
+        Sense::Inspired,
     ];
 
     pub fn name(self) -> &'static str {
@@ -182,6 +193,9 @@ impl Sense {
             Sense::Unarmed => "Unarmed",
             Sense::Wounded => "Wounded",
             Sense::Omens => "An omen",
+            Sense::Doubt => "Doubt",
+            Sense::Ore => "Ore",
+            Sense::Inspired => "Inspired",
         }
     }
 }
@@ -261,6 +275,9 @@ impl Game {
             (Sense::Unarmed, 0.0),
             (Sense::Wounded, 0.0),
             (Sense::Omens, 0.0),
+            (Sense::Doubt, 0.0),
+            (Sense::Ore, 0.0),
+            (Sense::Inspired, 0.0),
         ];
         for &(s, level, _) in &extra {
             if let Some(x) = senses.iter_mut().find(|x| x.0 == s) {

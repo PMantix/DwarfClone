@@ -117,6 +117,20 @@ pub mod lifestory;
 pub mod sounds;
 pub mod drills;
 pub mod sagas;
+// Milestone 2 (the overseer as a character), wave 0: stores the wave-1
+// packages fill in.
+pub mod memory;
+pub mod names;
+pub mod places;
+pub mod logkind;
+pub mod commands;
+pub mod reign;
+pub mod veins;
+pub mod supply;
+pub mod inspire;
+mod gatehouse;
+mod fit;
+mod m2;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -180,6 +194,12 @@ pub struct LogEntry {
     pub text: String,
     pub color: (u8, u8, u8),
     pub tick: u64,
+    /// Where it happened, if `msg_at` said (M2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<Pos>,
+    /// What it is about, if `msg_at` said; else see `LogEntry::kind()`.
+    #[serde(default, skip_serializing_if = "logkind::is_other")]
+    pub kind: logkind::LogKind,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -235,6 +255,9 @@ pub struct Zone {
     /// Materials a stockpile refuses (containers are let in regardless).
     #[serde(default)]
     pub deny_mats: Vec<Mat>,
+    /// A name the player gave it (O11).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 impl Zone {
@@ -518,6 +541,25 @@ pub struct Game {
     /// The highlight reel: the big moments, filmed (`reel.rs`).
     #[serde(default)]
     pub reel: reel::Reel,
+    /// What happened to whom (`memory.rs`, M2).
+    #[serde(default)]
+    pub memory: memory::Memories,
+    /// Veins being followed and what digging found (`veins.rs`, O10).
+    #[serde(default)]
+    pub veins: veins::Veins,
+    /// Records of production (`supply.rs`, O08).
+    #[serde(default)]
+    pub ledger: supply::Ledger,
+    /// Dwarves' ideas for great works (`inspire.rs`, O12).
+    #[serde(default)]
+    pub inspirations: inspire::Inspirations,
+    /// The overseer's dwarf has just died: (id, cause), for `reign.rs` (O07).
+    #[serde(default)]
+    pub ov_fell: Option<(u32, String)>,
+    /// Zones laid over another zone's tiles (O11), rebuilt from `zones`.
+    #[serde(skip)]
+    #[allow(dead_code)]
+    pub zone_over: HashMap<Pos, Vec<u32>>,
     /// The bestiary's animals that have been about the fort, by index
     /// (sorted): the legends' bestiary marks them seen.
     #[serde(default)]
@@ -665,6 +707,12 @@ impl Game {
             sagas: Default::default(),
             magic: Default::default(),
             reel: Default::default(),
+            memory: Default::default(),
+            veins: Default::default(),
+            ledger: Default::default(),
+            inspirations: Default::default(),
+            ov_fell: None,
+            zone_over: HashMap::new(),
             beasts_seen: Vec::new(),
             beast_layers: 0,
             beast_ids: 0,
@@ -791,7 +839,7 @@ impl Game {
     }
 
     pub fn msg(&mut self, text: &str, color: (u8, u8, u8)) {
-        self.log.push(LogEntry { text: text.to_string(), color, tick: self.tick });
+        self.log.push(LogEntry { text: text.to_string(), color, tick: self.tick, at: None, kind: logkind::LogKind::Other });
         // Keep the last few thousand for the reports screen.
         if self.log.len() > 3500 {
             self.log.drain(..500);
@@ -848,6 +896,9 @@ impl Game {
                 dump: false,
                 wear: 0,
                 forbidden: false,
+                kills: 0,
+                maker: None,
+                decor: None,
             },
         );
         id
@@ -1032,7 +1083,7 @@ impl Game {
             }
         }
         let n = tiles.len();
-        self.zones.insert(id, Zone { id, kind, tiles, owner: None, crop: None, deny: Vec::new(), deny_mats: Vec::new() });
+        self.zones.insert(id, Zone { id, kind, tiles, owner: None, crop: None, deny: Vec::new(), deny_mats: Vec::new(), name: None });
         n
     }
 
@@ -1109,6 +1160,11 @@ impl Game {
             pull: false,
             raised: false,
             workers: Vec::new(),
+            name: None,
+            master: None,
+            min_skill: 0,
+            pending_links: Vec::new(),
+            timer: 0,
         };
         for p in b.tiles() {
             let t = self.world.t_mut(p);
@@ -1461,6 +1517,9 @@ impl Game {
         let kept = stay.iter().filter(|s| **s).count();
         let mut came: Vec<Dwarf> = came.into_iter().zip(stay).filter(|(_, s)| !*s).map(|(d, _)| d).collect();
         let n = came.len();
+        for d in &came {
+            self.record(memory::MemoryKind::Arrived, &[d.id], Some(d.pos), format!("{} came to the fort.", d.called()), 2);
+        }
         self.dwarves.append(&mut came);
         let because = why.iter().map(|w| w.name()).collect::<Vec<_>>().join(" or ");
         if n == 0 {

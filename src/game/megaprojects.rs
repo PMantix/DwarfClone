@@ -24,6 +24,8 @@ impl Game {
         self.year_log.monument = Some(name.clone());
         self.msg(&format!("{} stands complete, carved in {}! It will be remembered.", cap_first(&name), mat.name()), (255, 215, 60));
         self.legend(format!("The dwarves of {} raised {}, of {}.", fort, name, mat.name()));
+        let at = self.buildings.get(&bld).map(|b| b.pos);
+        self.record(super::memory::MemoryKind::Monument, &[builder.id], at, format!("{} was raised, of {}.", name, mat.name()), 8);
         self.milestone("monument", &format!("Raised {}", name));
         let tick = self.tick;
         for d in self.dwarves.iter_mut().filter(|d| d.alive) {

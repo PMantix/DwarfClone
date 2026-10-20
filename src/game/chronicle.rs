@@ -40,6 +40,12 @@ pub struct YearLog {
     /// The overseer's war-game of the year's siege (`wargame.rs`).
     #[serde(default)]
     pub wargame: Option<String>,
+    /// Places named this year (O03, `places.rs`).
+    #[serde(default)]
+    pub named: Vec<String>,
+    /// Changes of overseer this year (O07, `reign.rs`).
+    #[serde(default)]
+    pub reigns: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -128,6 +134,27 @@ impl Game {
         let log = std::mem::take(&mut self.year_log);
         let year = self.start_year + (self.tick / YEAR) as i32 - 1;
         let fort = self.fortress_name.clone();
+        let mut lines = self.lines_basic(&log, year, &fort);
+        // Milestone 2's lines, in this order, one call each (O03 named
+        // halls, O07 reigns, O08 the ledger, O09 episodes...):
+        lines.extend(self.lines_m2(&log));
+        if log.deaths.is_empty() {
+            lines.push("No dwarf of the fortress died. May the next year be as kind.".into());
+            self.milestone("nodeath", "A whole year without a death");
+        } else {
+            lines.push(format!("We mourn {}.", list(&log.deaths)));
+            // The notable dead, a line each (lifestory.rs).
+            lines.extend(self.death_scenes(self.tick.saturating_sub(YEAR)));
+        }
+        let title = log.title();
+        self.msg(&format!("A new year dawns. The chronicler has written of {} (c).", title.to_lowercase().replacen("the ", "", 1)), (230, 210, 150));
+        self.chronicles.push(Chronicle { year, title, lines });
+        self.chronicle_ready = true;
+    }
+
+    /// The year's own lines: the count, arrivals and births, feasts, war,
+    /// fire, crimes, what the legends tell and the omens.
+    fn lines_basic(&mut self, log: &YearLog, year: i32, fort: &str) -> Vec<String> {
         let mut lines = vec![format!("In the year {}, {} numbered {} souls and was worth ☼{}.", year, fort, self.alive_count(), self.wealth())];
         if log.arrivals > 0 {
             lines.push(format!("{} migrants came seeking a home in the mountain.", log.arrivals));
@@ -160,23 +187,20 @@ impl Game {
             lines.push(format!("{} crime{} went on the record.", log.crimes, if log.crimes == 1 { "" } else { "s" }));
         }
         // The great deeds and events, as the legends tell them.
-        let told: Vec<String> = self.overworld.events.iter().filter(|e| e.year == year && e.text.contains(&fort) && !log.stories.contains(&e.text)).map(|e| e.text.clone()).collect();
+        let told: Vec<String> = self.overworld.events.iter().filter(|e| e.year == year && e.text.contains(fort) && !log.stories.contains(&e.text)).map(|e| e.text.clone()).collect();
         let skip = told.len().saturating_sub(10);
         lines.extend(told.into_iter().skip(skip));
         // Omens, curses and wonders (magic.rs).
         lines.extend(self.magic_chronicle());
-        if log.deaths.is_empty() {
-            lines.push("No dwarf of the fortress died. May the next year be as kind.".into());
-            self.milestone("nodeath", "A whole year without a death");
-        } else {
-            lines.push(format!("We mourn {}.", list(&log.deaths)));
-            // The notable dead, a line each (lifestory.rs).
-            lines.extend(self.death_scenes(self.tick.saturating_sub(YEAR)));
-        }
-        let title = log.title();
-        self.msg(&format!("A new year dawns. The chronicler has written of {} (c).", title.to_lowercase().replacen("the ", "", 1)), (230, 210, 150));
-        self.chronicles.push(Chronicle { year, title, lines });
-        self.chronicle_ready = true;
+        lines
+    }
+
+    /// Milestone 2's lines for the year: each item adds a `lines_<item>`
+    /// function (in its own file) and one line here.
+    fn lines_m2(&mut self, log: &YearLog) -> Vec<String> {
+        let lines = Vec::new();
+        let _ = log;
+        lines
     }
 }
 

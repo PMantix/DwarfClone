@@ -170,6 +170,9 @@ pub fn report(trials: &[Trial], years: usize) -> String {
         }
     }
 
+    // Milestone 2: the overseers (the `m2.*` counters, by style).
+    s.push_str(&overseers(trials));
+
     let _ = writeln!(s, "\n  {:<9} {:>5} {:>6} {:>6} {:>8} {:>8} {:>10}", "style", "runs", "glory", "ruin", "standing", "avg yrs", "avg ☼peak");
     for st in Style::ALL {
         let mine: Vec<&Trial> = trials.iter().filter(|t| t.style == st).collect();
@@ -188,6 +191,34 @@ pub fn report(trials: &[Trial], years: usize) -> String {
             mine.iter().map(|t| t.years).sum::<f64>() / k,
             mine.iter().map(|t| t.peak_wealth as f64).sum::<f64>() / k
         );
+    }
+    s
+}
+
+/// The "Overseers" section (Milestone 2): each `m2.*` counter (filled by
+/// `Game::m2_stats` at the end of a fort) averaged per fort of each style.
+/// Empty until an M2 package records one; `--compare` already shows them
+/// among the counters.
+pub fn overseers(trials: &[Trial]) -> String {
+    let mut s = String::new();
+    let keys: Vec<String> = counter_totals(trials).into_keys().filter(|k| k.starts_with("m2.")).collect();
+    if keys.is_empty() {
+        return s;
+    }
+    let styles: Vec<Style> = Style::ALL.iter().copied().filter(|st| trials.iter().any(|t| t.style == *st)).collect();
+    let _ = write!(s, "\n  Overseers (per fort):\n    {:<22}", "");
+    for st in &styles {
+        let _ = write!(s, " {:>9}", st.name());
+    }
+    s.push('\n');
+    for k in &keys {
+        let _ = write!(s, "    {:<22}", &k[3..]);
+        for st in &styles {
+            let mine: Vec<&Trial> = trials.iter().filter(|t| t.style == *st).collect();
+            let sum: u64 = mine.iter().map(|t| t.counters.get(k).copied().unwrap_or(0) as u64).sum();
+            let _ = write!(s, " {:>9.1}", sum as f64 / mine.len().max(1) as f64);
+        }
+        s.push('\n');
     }
     s
 }
@@ -302,6 +333,16 @@ mod tests {
         let c = compare(&a, &b, 2);
         assert!(c.contains("1/2") && c.contains("2/2"), "{}", c);
         assert!(c.contains("seed 1 Steady: Ruin"), "{}", c);
+    }
+
+    #[test]
+    fn the_overseers_section_shows_m2_counters_by_style() {
+        let mut a = vec![trial(1, vec![7], vec![], vec![])];
+        assert_eq!(overseers(&a), "", "nothing until a package records something");
+        a[0].counters.insert("m2.named_places".into(), 3);
+        a[0].counters.insert("rescues".into(), 1);
+        let s = overseers(&a);
+        assert!(s.contains("Overseers") && s.contains("named_places") && s.contains("3.0") && !s.contains("rescues"), "{}", s);
     }
 
     #[test]

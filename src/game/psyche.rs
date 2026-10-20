@@ -32,6 +32,9 @@ impl Mandate {
             dump: false,
             wear: 0,
             forbidden: false,
+            kills: 0,
+            maker: None,
+            decor: None,
         }
         .name();
         let what = if self.mat.is_none() {
@@ -411,6 +414,7 @@ impl Game {
         self.release_task(d);
         d.insane = true;
         d.melancholy = how.contains("melancholy");
+        self.record(super::memory::MemoryKind::Madness, &[d.id], Some(d.pos), format!("{} {}.", d.called(), how.trim_end_matches('.')), 5);
         d.mad_since = self.tick;
         d.soldier = false;
         d.noble = None;
@@ -775,6 +779,7 @@ impl Game {
         self.spotlight("An artifact", &format!("{} has created {}!", who, desc), Some(site), (255, 215, 60));
         self.empower_artifact(id, Some((d.id, who.clone())));
         self.year_log.artifact = self.items[&id].label.clone();
+        self.record(super::memory::MemoryKind::Artifact, &[d.id], Some(site), format!("{} created {}.", who, desc), 7);
         self.milestone("artifact", &format!("The first artifact: {}", desc));
         self.earn_epithet(d, "Inspired", super::heroes::RANK_FEAT, &format!("made {}", desc));
         let fort = self.fortress_name.clone();

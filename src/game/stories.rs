@@ -87,6 +87,18 @@ pub struct Place {
     /// "where Kolvar the Grim slew three goblins in the Battle of Copper Gate".
     pub deed: String,
     pub year: i32,
+    /// What sort of place (M2: halls, gates, roads and works are named too).
+    #[serde(default)]
+    pub kind: super::places::PlaceKind,
+    /// A box from `at` to `b` instead of the ground within `r` of `at`.
+    #[serde(default)]
+    pub b: Option<Pos>,
+    /// How great the deed it is named for: a heavier one renames it.
+    #[serde(default)]
+    pub weight: u8,
+    /// The player named it, and nothing renames it.
+    #[serde(default)]
+    pub by_player: bool,
 }
 
 /// The fort's named stories (`Game.stories`).
@@ -302,7 +314,7 @@ impl Game {
 
     /// Tell a named event: announcement, card, chronicle and legend.
     fn tell_episode(&mut self, e: Episode, summary: String, color: (u8, u8, u8)) {
-        self.name_place(&e);
+        self.name_battle_place(&e);
         let title = cap(&e.name);
         let at = e.at;
         self.msg(&format!("It will be remembered as {}.", e.name), color);
@@ -322,18 +334,18 @@ impl Game {
 
     /// The named place at `p`, if any.
     pub fn story_place(&self, p: Pos) -> Option<&Place> {
-        self.stories.places.iter().find(|pl| near(pl.at, p, pl.r))
+        self.stories.places.iter().find(|pl| pl.b.is_none() && near(pl.at, p, pl.r))
     }
 
     /// What the look panel says of a named place: "Kolvar's Stand: where…".
     pub fn story_place_at(&self, p: Pos) -> Option<String> {
-        self.story_place(p).map(|pl| format!("{}: {} ({})", cap(&pl.name), pl.deed, pl.year))
+        self.place_at(p).map(|pl| format!("{}: {} ({})", cap(&pl.name), pl.deed, pl.year))
     }
 
     /// The place where `e` broke takes a name from the deed done there:
     /// a dwarf's stand, a hero's fall, a massacre's weeping, or else the
     /// name the battle gave it. A place already named keeps its name.
-    fn name_place(&mut self, e: &Episode) {
+    fn name_battle_place(&mut self, e: &Episode) {
         if self.story_place(e.at).is_some() {
             return;
         }
@@ -379,7 +391,7 @@ impl Game {
         }
         self.msg(&format!("The {} is called {} now, {}.", noun.to_lowercase(), name, deed), (230, 200, 150));
         self.count("stories.places", 1);
-        self.stories.places.push(Place { name, at, r: 4, deed, year });
+        self.stories.places.push(Place { name, at, r: 4, deed, year, kind: super::places::PlaceKind::Battlefield, b: None, weight: 5, by_player: false });
     }
 
     /// A newborn (`families_daily`): the parents may name it for one of the
@@ -438,6 +450,7 @@ impl Game {
         let tick = self.tick;
         let (a, b) = (self.dwarves[i].id, self.dwarves[j].id);
         let (an, bn) = (self.dwarves[i].called(), self.dwarves[j].called());
+        self.record(super::memory::MemoryKind::Married, &[a, b], Some(self.dwarves[i].pos), format!("{} and {} were wed.", an, bn), 4);
         let h = hash(&format!("{}&{}", an, bn), tick);
         let zone = |k: ZoneKind| self.zones.values().any(|z| z.kind == k);
         let venue = if zone(ZoneKind::Temple) {
