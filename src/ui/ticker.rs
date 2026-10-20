@@ -278,6 +278,8 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
+    // Timed by the wall clock: run on its own with `--ignored`.
     fn the_ticker_stays_cheap_on_a_busy_log() {
         let mut g = Game::new(5);
         g.tick = 5000;

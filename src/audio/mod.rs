@@ -465,6 +465,9 @@ mod tests {
     /// The mixer must run far faster than real time, so the audio thread
     /// never starves (and leaves the game's cores alone).
     #[test]
+    #[ignore]
+    // Timed by the wall clock, so it runs on its own (`--ignored`), like the
+    // year timings: on a busy machine it fails for want of a core.
     fn the_mixer_is_cheap() {
         let sr = 48000.0;
         let mut e = Engine::new(sr, 1);
