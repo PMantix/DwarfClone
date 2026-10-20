@@ -1126,7 +1126,7 @@ impl Game {
                 let levied = o.style == Style::Reckless && matches!(self.squads[s].order, super::SquadOrder::Kill(_));
                 if danger && !charge && !holding && self.sallies.on.is_none() && !levied {
                     // Marksdwarves hold back from the gate with a clear shot at it (archery.rs).
-                    let st = self.archer_station(s, base).unwrap_or(base.offset(4 + s as i32, 0, 0));
+                    let st = self.archer_station(s, base).unwrap_or_else(|| self.hold_station(o, s, base));
                     self.order_station(s, st);
                 } else if !danger && holding {
                     self.order_train(s);
@@ -2484,9 +2484,9 @@ mod tests {
         let g = trial_game(5003, Style::Steady, 262);
         assert_eq!(g.tick, 262 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
-        assert_eq!(deaths, vec![(202953, "Sorli Hammergrip"), (303125, "Grenda Anvilbrew"), (303325, "Dorna Hammerhearth")]);
+        assert_eq!(deaths, vec![(203566, "Sorli Hammerforge"), (251101, "Ingra Flintshaper"), (303804, "Grenda Anvilbrew")]);
         let sieges: Vec<(u64, &str)> = g.annals.sieges.iter().map(|s| (s.tick, s.foe.as_str())).collect();
-        assert_eq!(sieges, vec![(202820, "goblins"), (303020, "goblins")]);
+        assert_eq!(sieges, vec![(203345, "goblins"), (303720, "goblins")]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
     }
 

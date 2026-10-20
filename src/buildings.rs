@@ -51,13 +51,22 @@ pub enum BuildingKind {
     Stage,
     /// A pedestal showing a trophy of war (`crafts.rs`).
     Display,
+    /// Upright spikes (ENG-04): lie flat until a linked plate or lever
+    /// fires them, then run through whatever stands on them.
+    Spikes,
+    /// A pressure plate (ENG-06): a foe stepping on it fires what it is
+    /// linked to.
+    PressurePlate,
+    /// A tripwire (ENG-08): a thread across the way; whatever trips on it
+    /// sprawls on the floor a while, under the traps behind.
+    Tripwire,
 }
 
 /// Stone blocks a monument takes.
 pub const MONUMENT_BLOCKS: u8 = 30;
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 39] = [
+    pub const ALL: [BuildingKind; 42] = [
         BuildingKind::Carpenter,
         BuildingKind::Mason,
         BuildingKind::Still,
@@ -97,6 +106,9 @@ impl BuildingKind {
         BuildingKind::Statue,
         BuildingKind::Stage,
         BuildingKind::Display,
+        BuildingKind::Spikes,
+        BuildingKind::PressurePlate,
+        BuildingKind::Tripwire,
     ];
 
     pub fn name(self) -> &'static str {
@@ -140,6 +152,9 @@ impl BuildingKind {
             BuildingKind::Statue => "Statue",
             BuildingKind::Stage => "Stage",
             BuildingKind::Display => "Trophy display",
+            BuildingKind::Spikes => "Upright spikes",
+            BuildingKind::PressurePlate => "Pressure plate",
+            BuildingKind::Tripwire => "Tripwire",
         }
     }
 
@@ -184,6 +199,9 @@ impl BuildingKind {
             BuildingKind::Statue => 'S',
             BuildingKind::Stage => 'A',
             BuildingKind::Display => 'D',
+            BuildingKind::Spikes => 'I',
+            BuildingKind::PressurePlate => 'R',
+            BuildingKind::Tripwire => 'Y',
         }
     }
 
@@ -215,17 +233,25 @@ impl BuildingKind {
                 | BuildingKind::Statue
                 | BuildingKind::Stage
                 | BuildingKind::Display
+                | BuildingKind::Spikes
+                | BuildingKind::PressurePlate
+                | BuildingKind::Tripwire
         )
     }
 
+    /// Traps, plates and tripwires: set off by whatever steps on them
+    /// (spikes too, though they wait for their plate or lever).
     pub fn is_trap(self) -> bool {
-        matches!(self, BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap)
+        matches!(
+            self,
+            BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap | BuildingKind::Spikes | BuildingKind::PressurePlate | BuildingKind::Tripwire
+        )
     }
 
     /// How many items go into building it, delivered one at a time.
     pub fn parts(self) -> u8 {
         match self {
-            BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap | BuildingKind::Bridge | BuildingKind::Well | BuildingKind::Floodgate => 2,
+            BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap | BuildingKind::Bridge | BuildingKind::Well | BuildingKind::Floodgate | BuildingKind::Spikes => 2,
             BuildingKind::Monument => MONUMENT_BLOCKS,
             _ => 1,
         }
@@ -236,7 +262,10 @@ impl BuildingKind {
         use BuildingKind::*;
         let mechanism = item.kind == ItemKind::Mechanism;
         match (self, part) {
-            (Lever, _) | (CageTrap, 0) | (WeaponTrap, 0) | (StoneTrap, 0) | (Bridge, 1) | (Floodgate, 1) => mechanism,
+            (Lever, _) | (CageTrap, 0) | (WeaponTrap, 0) | (StoneTrap, 0) | (Bridge, 1) | (Floodgate, 1) | (Spikes, 0) | (PressurePlate, _) => mechanism,
+            // Spikes from a spear or a sword, or a bundle of bolts.
+            (Spikes, _) => matches!(item.kind, ItemKind::Spear | ItemKind::Sword | ItemKind::Bolt),
+            (Tripwire, _) => item.kind == ItemKind::Thread,
             (CageTrap, _) => item.kind == ItemKind::Cage && item.label.is_none(),
             (WeaponTrap, _) => matches!(item.kind, ItemKind::Sword | ItemKind::Spear | ItemKind::Axe | ItemKind::Hammer),
             (StoneTrap, _) => item.kind == ItemKind::Boulder && item.mat.is_building_stone(),
@@ -252,7 +281,9 @@ impl BuildingKind {
     pub fn part_desc(self, part: u8) -> &'static str {
         use BuildingKind::*;
         match (self, part) {
-            (Lever, _) | (CageTrap, 0) | (WeaponTrap, 0) | (StoneTrap, 0) | (Bridge, 1) | (Floodgate, 1) => "a mechanism",
+            (Lever, _) | (CageTrap, 0) | (WeaponTrap, 0) | (StoneTrap, 0) | (Bridge, 1) | (Floodgate, 1) | (Spikes, 0) | (PressurePlate, _) => "a mechanism",
+            (Spikes, _) => "a spear, a sword or bolts",
+            (Tripwire, _) => "thread",
             (CageTrap, _) => "an empty cage",
             (WeaponTrap, _) => "a weapon",
             (StoneTrap, _) => "a stone boulder",
@@ -310,6 +341,9 @@ impl BuildingKind {
             BuildingKind::CageTrap => "a mechanism + an empty cage",
             BuildingKind::WeaponTrap => "a mechanism + a weapon",
             BuildingKind::StoneTrap => "a mechanism + a boulder",
+            BuildingKind::Spikes => "a mechanism + a spear, a sword or bolts",
+            BuildingKind::PressurePlate => "a mechanism",
+            BuildingKind::Tripwire => "thread",
             BuildingKind::Bridge => "a log or blocks + a mechanism",
             BuildingKind::Well => "blocks or a boulder + a bucket",
             BuildingKind::Floodgate => "blocks or a boulder + a mechanism",
@@ -366,7 +400,8 @@ impl BuildingKind {
             BuildingKind::Depot => Color::Rgb(240, 240, 160),
             BuildingKind::Mechanic => Color::Rgb(170, 190, 210),
             BuildingKind::Lever => Color::Rgb(220, 200, 120),
-            BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap => Color::Rgb(230, 120, 120),
+            BuildingKind::CageTrap | BuildingKind::WeaponTrap | BuildingKind::StoneTrap | BuildingKind::Spikes | BuildingKind::PressurePlate => Color::Rgb(230, 120, 120),
+            BuildingKind::Tripwire => Color::Rgb(200, 190, 170),
             BuildingKind::Well => Color::Rgb(110, 170, 255),
             BuildingKind::Floodgate => Color::Rgb(150, 190, 230),
             BuildingKind::MagmaSmelter => Color::Rgb(255, 120, 30),
@@ -425,6 +460,9 @@ impl BuildingKind {
             BuildingKind::Statue => '♀',
             BuildingKind::Stage => '▒',
             BuildingKind::Display => 'Ψ',
+            BuildingKind::Spikes => '↑',
+            BuildingKind::PressurePlate => '^',
+            BuildingKind::Tripwire => '-',
         }
     }
 }

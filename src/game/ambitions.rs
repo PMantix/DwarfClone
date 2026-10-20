@@ -550,7 +550,8 @@ impl Game {
         let gate_first = o.style != Style::Reckless && !o.did("linked");
         if !o.did("stonetraps") && !gate_first && self.stock_of(ItemKind::Mechanism) >= 2 && self.stock_of(ItemKind::Boulder) >= 2 {
             let mut n = 0;
-            for dx in 10..14 {
+            // (Past the trap hall's plates and weapon traps: gatehouse.rs.)
+            for dx in 12..15 {
                 for dy in 0..2 {
                     if self.place_building(BuildingKind::StoneTrap, base.offset(dx, dy, 0)) {
                         n += 1;
