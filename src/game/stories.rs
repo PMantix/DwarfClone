@@ -119,6 +119,9 @@ pub struct Stories {
     pub pending: Vec<String>,
     #[serde(default)]
     pub occasion: Option<Occasion>,
+    /// Old battlefields (`battlefields.rs`).
+    #[serde(default)]
+    pub fields: Vec<super::battlefields::Field>,
 }
 
 /// How long a mark is kept.
@@ -315,6 +318,8 @@ impl Game {
     /// Tell a named event: announcement, card, chronicle and legend.
     fn tell_episode(&mut self, e: Episode, summary: String, color: (u8, u8, u8)) {
         self.name_battle_place(&e);
+        // O09: where many died, the ground remembers (battlefields.rs).
+        self.remember_field(&e);
         let title = cap(&e.name);
         let at = e.at;
         self.msg(&format!("It will be remembered as {}.", e.name), color);
@@ -753,7 +758,7 @@ impl Game {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::creature::Species;
 
