@@ -1781,6 +1781,7 @@ impl Game {
         let name = d.name.clone();
         self.msg(&format!("{} {}.", name, cause), (255, 60, 60));
         self.note_death(d, cause);
+        self.reign_kill(d, cause);
         self.hero_fell(d, cause);
         self.year_log.deaths.push(d.called());
         let tick = self.tick;

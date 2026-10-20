@@ -13,6 +13,7 @@ impl Game {
         // P1 O01:
         // P3 O03-b: named places
         // P8 O07-a: reigns, faith at the end
+        self.reign_stats();
         // P9 O08-a: chained orders
         // P10 O10-a: ore mined
     }

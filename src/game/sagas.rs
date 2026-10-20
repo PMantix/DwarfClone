@@ -33,6 +33,8 @@ pub enum SagaKind {
     Siege,
     /// The last dwarf standing.
     LastStand,
+    /// An overseer the fort lost faith in: won back, or put aside (O07).
+    Reign,
 }
 
 impl SagaKind {
@@ -46,6 +48,7 @@ impl SagaKind {
             SagaKind::Hunt => "a hunt",
             SagaKind::Siege => "a siege",
             SagaKind::LastStand => "the last dwarf",
+            SagaKind::Reign => "a reign",
         }
     }
 }
@@ -132,6 +135,7 @@ impl Saga {
             SagaKind::Hunt => n >= 2 && self.weight >= 3,
             SagaKind::Siege => n >= 3 && self.weight >= 4,
             SagaKind::LastStand => n >= 2,
+            SagaKind::Reign => n >= 2,
         }
     }
 
@@ -181,6 +185,7 @@ pub struct Sagas {
 // Keys for what a saga follows.
 const KEY_PRIDE: u64 = 1 << 60;
 const KEY_LAST: u64 = 2 << 60;
+const KEY_REIGN: u64 = 3 << 60;
 fn pair(a: u32, b: u32) -> u64 {
     ((a.min(b) as u64) << 32) | a.max(b) as u64
 }
@@ -212,6 +217,7 @@ pub fn title_for(kind: SagaKind, fort: &str, tick: u64, who: &str) -> String {
         SagaKind::Hunt => &["The Hunt for {W}", "The Clearing of {W}", "The {C} Hunt"],
         SagaKind::Siege => &["The Siege of {F}", "The Walls of {F}", "The {C} Siege", "The Long Watch at {F}"],
         SagaKind::LastStand => &["The Last of {F}", "{W} Alone", "The Last Lamp of {F}"],
+        SagaKind::Reign => &["The Reign of {W}", "The Ledger of {W}", "The Doubting of {W}", "The {C} Reign"],
     };
     pick(h, 3, pool).replace("{F}", fort).replace("{W}", who).replace("{C}", col).replace("{B}", ban)
 }
@@ -583,6 +589,31 @@ impl Game {
         self.saga_end(i, false, Some(text), "The woods fell silent, and the hunters came home.".into());
     }
 
+    /// An overseer's reign (`reign.rs`): the fort losing faith (a cause), a
+    /// riot (an escalation), and its end (`end`: doom and the closing line).
+    pub(super) fn saga_reign(&mut self, dwarf: u32, who: &str, beat: Beat, text: String, end: Option<(bool, String)>) {
+        let key = KEY_REIGN | dwarf as u64;
+        let i = match self.saga_find(SagaKind::Reign, key) {
+            Some(i) => {
+                if end.is_none() {
+                    self.saga_add(i, beat, text);
+                    return;
+                }
+                i
+            }
+            None if beat == Beat::Cause => {
+                self.saga_open(SagaKind::Reign, key, who, beat, text);
+                return;
+            }
+            // Nothing doubted it before: no arc to end or grow.
+            None => return,
+        };
+        if let Some((doom, closing)) = end {
+            self.sagas.list[i].weight += 1;
+            self.saga_end(i, doom, Some(text), closing);
+        }
+    }
+
     /// A dwarf has died (`note_death`).
     pub(super) fn saga_death(&mut self, d: &Dwarf, cause: &str) {
         self.sagas.check_fall = true;
@@ -714,7 +745,7 @@ impl Game {
         let killer = last.as_ref().and_then(|d| d.killer.clone());
         let mut great: Option<u32> = None;
         // Arcs in the order they'd be blamed: pride, a siege, the last dwarf.
-        for kind in [SagaKind::Pride, SagaKind::Siege, SagaKind::LastStand, SagaKind::Omen, SagaKind::Hunt, SagaKind::Grudge, SagaKind::Curse, SagaKind::Hero] {
+        for kind in [SagaKind::Pride, SagaKind::Siege, SagaKind::LastStand, SagaKind::Omen, SagaKind::Hunt, SagaKind::Grudge, SagaKind::Curse, SagaKind::Hero, SagaKind::Reign] {
             while let Some(i) = self.sagas.list.iter().position(|s| s.kind == kind && s.open()) {
                 let s = &self.sagas.list[i];
                 let since = s.chapters.last().map_or(0, |c| tick.saturating_sub(c.tick) / DAY);
@@ -919,7 +950,7 @@ mod tests {
         let all: std::collections::BTreeSet<String> = (0..40).map(|t| title_for(SagaKind::Pride, "Anvilbeard", t * 977, "Anvilbeard")).collect();
         assert!(all.len() >= 3, "{:?}", all);
         assert!(all.iter().all(|t| !t.contains('{')), "{:?}", all);
-        for k in [SagaKind::Grudge, SagaKind::Hero, SagaKind::Omen, SagaKind::Curse, SagaKind::Hunt, SagaKind::Siege, SagaKind::LastStand] {
+        for k in [SagaKind::Grudge, SagaKind::Hero, SagaKind::Omen, SagaKind::Curse, SagaKind::Hunt, SagaKind::Siege, SagaKind::LastStand, SagaKind::Reign] {
             for t in 0..20 {
                 let s = title_for(k, "Emberforge", t * 131, "Kolvar");
                 assert!(!s.contains('{') && s.starts_with(|c: char| c.is_uppercase()), "{}", s);

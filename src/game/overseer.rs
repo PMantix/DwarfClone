@@ -437,6 +437,10 @@ impl Game {
                 if o.name.is_empty() {
                     self.roll_personality(&mut o);
                 }
+                // It is a dwarf of the fort (O07, reign.rs).
+                if o.dwarf.is_none() {
+                    self.embody(&mut o);
+                }
                 let who = o.title();
                 self.overseer = Some(o);
                 self.msg(&format!("The overseer {} takes charge ({}: {}).", who, s.name(), s.blurb()), (150, 220, 255));
