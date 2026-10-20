@@ -72,6 +72,8 @@ impl Game {
             self.haunt_daily();
             // Sagas: arcs that end of themselves, the last dwarf (sagas.rs).
             self.sagas_daily();
+            // O10: the prospector's report, on the first morning (veins.rs).
+            self.prospect_daily();
         }
         if tick % SEASON == 0 { self.season_turns(); }
         // Interface flair: the highlight reel films its next frame.

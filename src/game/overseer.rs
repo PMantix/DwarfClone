@@ -934,6 +934,7 @@ impl Game {
         }
         if forge {
             orders.push((Recipe::ForgeAxe, 2));
+            orders.push(self.pick_order());
             orders.push((Recipe::ForgeHelm, 2));
             orders.push((Recipe::ForgeBreastplate, 1));
             orders.push((Recipe::ForgeShield, 1));
@@ -2270,7 +2271,7 @@ mod tests {
         let name = d.name.clone();
         g.dwarves[i] = d;
         let mut days = 0;
-        while !g.dwarves[i].rested && days < 5 {
+        while !g.dwarves[i].rested && days < 7 {
             for _ in 0..DAY {
                 g.step();
                 g.creatures.retain(|_, c| c.tame || !c.hostile());

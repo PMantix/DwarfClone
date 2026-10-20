@@ -660,36 +660,6 @@ impl Game {
         }
     }
 
-    /// Mine ore and gems that have come to light near the halls: up to
-    /// `max` tiles, looking `reach` tiles out.
-    pub(super) fn ov_mine(&mut self, o: &Overseer, max: usize, reach: i32) {
-        let base = o.base.unwrap();
-        let mut n = 0;
-        for dz in -8..=0 {
-            for dy in -reach..=reach {
-                for dx in -reach..=(reach + 8 * o.slots) {
-                    let p = base.offset(dx, dy, dz);
-                    // Never the gatehouse's walls, ore or not.
-                    if Self::gatehouse(base, p) {
-                        continue;
-                    }
-                    let Some(t) = self.world.get(p) else { continue };
-                    // Only what a miner can stand beside: next to ground we've dug ourselves.
-                    let reachable = || DIRS8.iter().any(|&(ex, ey)| self.world.get(p.offset(ex, ey, 0)).map_or(false, |q| q.dug && !q.kind.solid() && q.water <= 3));
-                    // (Nor the rock round the waterworks: a vein the
-                    // cistern's chamber laid bare would let its water out.)
-                    if t.revealed && t.kind == TileKind::Wall && t.desig == Desig::None && (t.mat.is_ore() || t.mat.is_gem()) && t.built_from.is_none() && reachable() && !self.by_waterworks(p) {
-                        self.designate(p, p, Desig::Dig);
-                        n += 1;
-                        if n >= max {
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     /// Whether a delver may dig into the caverns' reach yet (after its
     /// first four months).
     pub(super) fn delving_deep(&self) -> bool {

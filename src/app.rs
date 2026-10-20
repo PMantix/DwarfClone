@@ -1333,6 +1333,13 @@ impl App {
                 KeyCode::Esc => {
                     self.mode = if corner.is_some() { Mode::Designate { kind, corner: None } } else { Mode::Normal }
                 }
+                // Follow the vein of ore (v) or gems (V) under the cursor, or in the box.
+                KeyCode::Char(c @ ('v' | 'V')) => {
+                    let f = if c == 'v' { crate::game::veins::VeinFilter::Ore(None) } else { crate::game::veins::VeinFilter::Gem };
+                    let n = self.game.follow_veins_in(corner.unwrap_or(self.cursor), self.cursor, f);
+                    self.flash = Some(if n > 0 { format!("Following {} vein{}", if c == 'v' { "the ore" } else { "the gem" }, if n == 1 { "" } else { "s" }) } else { "No seen vein there to follow".into() });
+                    self.mode = Mode::Designate { kind, corner: None };
+                }
                 KeyCode::Char(c) => {
                     if let Some(&(_, d)) = DESIG_KEYS.iter().find(|(kc, _)| *kc == c) {
                         self.mode = Mode::Designate { kind: d, corner };

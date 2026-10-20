@@ -614,6 +614,11 @@ impl Game {
         let pop = self.alive_count() as u32;
         match lack {
             Lack::Stone => {
+                // The boulders bedded by the wagon first: stone for the asking.
+                if self.quarry_boulders(6) > 0 {
+                    self.hands_for(Labor::Mining, 2);
+                    return Some("set miners to break out the boulders by the wagon.".into());
+                }
                 // Quarry out a storeroom: stone now, room for it after.
                 let miners = self.hands_for(Labor::Mining, 2);
                 if !o.wants.contains(&RoomUse::Stockpile) {

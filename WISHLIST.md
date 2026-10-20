@@ -372,7 +372,7 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O10 A miner's craft (M)
 - **Why:** The Delver style needs a craft to be good at: following veins, prospecting, surviving cave-ins.
-- **Steps:** [ ] Dig speed by pick and rock ([DIG-06](ideas/myth-and-depths.md); partly: by rock and skill, not by pick) · [ ] Follow the vein ([DIG-11](ideas/myth-and-depths.md)) · [ ] Prospecting and finds ([DIG-12](ideas/myth-and-depths.md)) · [ ] Warm and damp stone ([DIG-21](ideas/myth-and-depths.md)) · [ ] Surviving cave-ins ([DIG-07](ideas/myth-and-depths.md)) · [ ] Gems in their host rock ([DIG-33](ideas/myth-and-depths.md)) · [ ] Digging out boulders ([DIG-34](ideas/myth-and-depths.md))
+- **Steps:** [x] Dig speed by pick and rock ([DIG-06](ideas/myth-and-depths.md); fc6dabe) · [x] Follow the vein ([DIG-11](ideas/myth-and-depths.md); fc6dabe) · [x] Prospecting and finds ([DIG-12](ideas/myth-and-depths.md); fc6dabe) · [ ] Warm and damp stone ([DIG-21](ideas/myth-and-depths.md)) · [ ] Surviving cave-ins ([DIG-07](ideas/myth-and-depths.md)) · [ ] Gems in their host rock ([DIG-33](ideas/myth-and-depths.md)) · [x] Digging out boulders ([DIG-34](ideas/myth-and-depths.md); fc6dabe)
 - **Done when:** A Delver overseer follows a vein and finds more ore than a Builder from the same seed.
 
 #### O11 A builder's hands (M)

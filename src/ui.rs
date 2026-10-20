@@ -915,6 +915,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             for (k, d) in DESIG_KEYS.iter() {
                 v.push(key_line(&k.to_string(), d.name(), d == kind));
             }
+            v.push(key_line("v/V", "follow a vein of ore/gems", false));
             v.push(Line::default());
             v.push(plain(
                 if corner.is_some() { "Enter: set second corner".into() } else { "Enter: set first corner".into() },

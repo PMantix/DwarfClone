@@ -81,6 +81,8 @@ impl Game {
         // O07: a doubted overseer tries to win the fort back.
         senses.push(self.doubt_sense(o));
         senses.push((Sense::Omens, self.omen_sense(), vec![(Ambition::Fortify, 0.8), (Ambition::Muster, 0.8), (Ambition::Venture, -1.0)]));
+        // O10: how rich the ground looks pulls toward Delve and Prosper.
+        senses.push(self.ore_sense());
         let _ = o;
         senses
     }
