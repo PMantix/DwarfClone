@@ -2,10 +2,45 @@
 //! the M1 follow-ups edit this file): the gate at the foot of the stair,
 //! its drawbridge on a lever, the cage traps behind it, and barring the
 //! gate and raising the bridge when an army comes.
+//!
+//! The gatehouse grows with the fort (O04, `Overseer.gate_stage`): stage 0
+//! is the gate itself; stage 1 the trap hall, the corridor behind the cage
+//! traps filled with tripwires, upright spikes on pressure plates and
+//! weapon traps, named like a beast's mouth ("the Hall of Teeth"). A bold
+//! or warlike overseer with a hall lets the enemy into it before it raises
+//! the bridge behind them, and the toll it takes is told when the siege ends.
 
-use super::personality::NoteKind;
+use super::personality::{NoteKind, Trait};
 use super::overseer::{Overseer, Style};
 use super::*;
+
+/// The trap hall's pieces, by local column (x from the foot of the stair)
+/// on both rows of the corridor: a foe running in from the gate trips at
+/// x+8, and lies on the floor while those behind it come on over the spikes
+/// at x+9, which fire when one of them treads on the plates at x+10; then
+/// the weapon traps at x+11. (Cage traps stand at x+4..7, stone-fall traps
+/// from Fortify at x+12..14.)
+const HALL: [(i32, BuildingKind); 4] = [(8, BuildingKind::Tripwire), (9, BuildingKind::Spikes), (10, BuildingKind::PressurePlate), (11, BuildingKind::WeaponTrap)];
+
+/// Names for the hall, as for a beast's mouth.
+const HALL_NAMES: [&str; 10] = [
+    "the Hall of Teeth",
+    "the Gullet",
+    "the Long Bite",
+    "the Hall of Knives",
+    "the Red Throat",
+    "the Grinding Way",
+    "the Hall of Thorns",
+    "the Iron Mouth",
+    "the Maw",
+    "the Narrow Death",
+];
+
+/// A count in words, for the toll ("Seven goblins fell").
+fn count_words(n: u32) -> String {
+    const W: [&str; 13] = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"];
+    W.get(n as usize).map_or(n.to_string(), |w| w.to_string())
+}
 
 impl Game {
     /// Bar the gate when enemies are close, and raise the drawbridge
@@ -13,13 +48,21 @@ impl Game {
     pub(super) fn ov_gate_alert(&mut self, o: &mut Overseer, top: Pos, base: Pos, coming: bool) {
         // Bar the gate when they're close (not before, so those outside can
         // still get in).
-        let close = self.creatures.values().any(|c| {
-            c.alive && c.hostile() && !c.sneaking && (c.siege || c.legendary()) && {
+        let near = |c: &crate::creature::Creature| {
+            c.alive && c.hostile() && !c.sneaking && {
                 let p = c.pos;
                 let by = |q: Pos, r: i32| (p.x - q.x).abs() <= r && (p.y - q.y).abs() <= r && (p.z - q.z).abs() <= 1;
                 by(top, 10) || by(base, 12)
             }
-        });
+        };
+        let close = self.creatures.values().any(|c| (c.siege || c.legendary()) && near(c));
+        // (A beast of legend is never let in.)
+        let beast = self.creatures.values().any(|c| c.legendary() && near(c));
+        // An overseer that lets them into the trap hall leaves the doors
+        // open to them until the bridge goes up behind them.
+        let let_in = self.lets_them_in(o);
+        let up = self.gate_bridges(base).iter().any(|id| self.buildings.get(id).map_or(false, |b| b.raised));
+        let close = close && (beast || !(let_in && !up));
         let gate: Vec<u32> = self
             .buildings
             .values()
@@ -51,11 +94,26 @@ impl Game {
             } else if !any {
                 o.army_since = 0;
             }
-            let waited = any && self.tick > o.army_since + self.bar_patience(o);
+            // (Letting them into the trap hall, it waits for half the army to
+            // be in it, and then shuts them in with its traps and the
+            // squads; or, if they won't come, until it has waited long.)
+            let hold = if let_in { self.knob("gate.let_in_wait", 900.0) as u64 } else { 0 };
+            let waited = any && self.tick > o.army_since + self.bar_patience(o) + hold;
+            let shut_in = let_in && {
+                let hall = |p: Pos| p.z == base.z && (4..=14).contains(&(p.x - base.x)) && (0..=1).contains(&(p.y - base.y));
+                let (mut n, mut all) = (0, 0);
+                for c in self.creatures.values().filter(|c| c.alive && c.siege && !c.legendary() && c.hostile()) {
+                    all += 1;
+                    if hall(c.pos) {
+                        n += 1;
+                    }
+                }
+                n > 0 && n * 2 >= all
+            };
             let long = self.tick > o.raised_at + DAY * 4;
             // (Not while the squads are out on a sally: sally.rs. Called
             // back, they're left to hunt down any who got inside.)
-            let want = any && (at_gate || inside || waited) && !(long && !at_gate && o.raised_at > 0) && !self.sallying();
+            let want = any && (((at_gate || inside) && !let_in) || waited || shut_in) && !(long && !at_gate && o.raised_at > 0) && !self.sallying();
             // Or because you said so, from a card (commands.rs).
             let want = want || (o.ordered(super::commands::Command::RaiseBridge, self.tick) && !self.sallying());
             let bridges = self.gate_bridges(base);
@@ -163,6 +221,184 @@ impl Game {
                 Self::note_as(o, self.tick, NoteKind::Gate, format!("Set {} cage traps in the entrance corridor.", n));
             }
         }
+        // The gatehouse grows: the trap hall behind the cages.
+        self.ov_trap_hall(o);
+    }
+
+    /// Whether the trap hall is due (O04 step 2): a warlike or cautious
+    /// overseer builds it as soon as the gate is linked; the rest once a
+    /// siege has come, or half a year in. Never a reckless one.
+    pub(super) fn trap_hall_due(&self, o: &Overseer) -> bool {
+        if o.style == Style::Reckless || !o.did("linked") {
+            return false;
+        }
+        let eager = o.style == Style::Warlord || o.has(Trait::Cautious);
+        eager || !self.annals.sieges.is_empty() || self.tick >= self.knob("gate.hall_day", (YEAR / 2) as f64) as u64
+    }
+
+    /// Stage 1 of the gatehouse, the trap hall (ENG-04, -06, -08): laid out
+    /// once it is due and the mechanisms are in hand, then kept: lost parts
+    /// put back, the plates linked to the spikes as they're finished, and
+    /// once a siege is over the bodies jamming its traps carried off (ENG-01).
+    pub(super) fn ov_trap_hall(&mut self, o: &mut Overseer) {
+        let Some(base) = o.base else { return };
+        if o.gate_stage == 0 {
+            if !self.trap_hall_due(o) {
+                return;
+            }
+            // Mechanisms for the spikes, plates and weapon traps: ask for
+            // them, and begin once they're made.
+            let need = self.knob("gate.hall_mechs", 6.0) as usize;
+            if self.stock_of(ItemKind::Mechanism) < need {
+                let until = self.tick + SEASON;
+                o.boosts.retain(|b| b.0 != crate::buildings::Recipe::Mechanism);
+                o.boosts.push((crate::buildings::Recipe::Mechanism, need as u32 + 2, until));
+                return;
+            }
+            let n = self.lay_trap_hall(base);
+            if n == 0 {
+                return;
+            }
+            o.gate_stage = 1;
+            o.done.push("traphall".into());
+            let name = HALL_NAMES[(super::names::hash(&[super::stories::hash(&self.fortress_name, 0), base.x as u64, base.y as u64, base.z as u64]) % HALL_NAMES.len() as u64) as usize];
+            self.name_place(super::places::PlaceKind::Gate, base.offset(8, 0, 0), base.offset(11, 1, 0), name.to_string(), "where the gate's traps wait".into(), 1, false);
+            Self::note_as(
+                o,
+                self.tick,
+                NoteKind::Gate,
+                format!("Began a trap hall behind the cages: tripwires, upright spikes on pressure plates, weapon traps. They will call it {}.", name),
+            );
+            return;
+        }
+        if self.tick / DAY % 3 == 0 && self.stock_of(ItemKind::Mechanism) >= 1 {
+            self.lay_trap_hall(base);
+        }
+        // The plates fire every spike in the hall.
+        let plates: Vec<u32> = self.hall_parts(base, BuildingKind::PressurePlate);
+        let spikes: Vec<u32> = self.hall_parts(base, BuildingKind::Spikes);
+        for &p in &plates {
+            for &sp in &spikes {
+                if !self.buildings[&p].links.contains(&sp) {
+                    let _ = self.link_lever(p, sp);
+                }
+            }
+        }
+        // The siege is over: carry the dead off the traps.
+        if !self.alert && !self.creatures.values().any(|c| c.alive && c.siege) {
+            let hall = |p: Pos| p.z == base.z && (4..=14).contains(&(p.x - base.x)) && (0..=1).contains(&(p.y - base.y));
+            let bodies: Vec<u32> = self
+                .items
+                .values()
+                .filter(|it| matches!(it.kind, ItemKind::Corpse | ItemKind::Carcass) && !it.dump && it.carried_by.is_none() && hall(it.pos) && !self.burial_corpse(it))
+                .map(|it| it.id)
+                .collect();
+            if bodies.len() >= 2 {
+                for &id in &bodies {
+                    let _ = self.toggle_dump(id);
+                }
+                let name = self.trap_hall_name().unwrap_or_else(|| "the trap hall".into());
+                Self::note_as(o, self.tick, NoteKind::Gate, format!("Had {} bodies dragged out of {}, so its traps can bite again.", bodies.len(), name));
+            }
+        }
+    }
+
+    /// Place whatever of the trap hall isn't standing (a tile already
+    /// holding some other trap keeps it); how many were placed.
+    fn lay_trap_hall(&mut self, base: Pos) -> usize {
+        let mut n = 0;
+        for (dx, kind) in HALL {
+            for dy in 0..2 {
+                let p = base.offset(dx, dy, 0);
+                if self.building_at(p).is_none() && self.place_building(kind, p) {
+                    n += 1;
+                }
+            }
+        }
+        n
+    }
+
+    /// The built pieces of one kind in the trap hall.
+    fn hall_parts(&self, base: Pos, kind: BuildingKind) -> Vec<u32> {
+        let mut v: Vec<u32> = HALL
+            .iter()
+            .filter(|h| h.1 == kind)
+            .flat_map(|&(dx, _)| (0..2).map(move |dy| base.offset(dx, dy, 0)))
+            .filter_map(|p| match self.world.get(p).map_or(0, |t| t.building) {
+                0 => None,
+                id => self.buildings.get(&id).filter(|b| b.kind == kind && b.built).map(|b| b.id),
+            })
+            .collect();
+        v.sort_unstable();
+        v
+    }
+
+    /// The trap hall's name, if the fort has one: the place over its
+    /// spikes and plates (renamed, it may be, for a deed done there).
+    pub(super) fn trap_hall_name(&self) -> Option<String> {
+        let mut plates: Vec<Pos> = self.buildings.values().filter(|b| b.kind == BuildingKind::PressurePlate).map(|b| b.pos).collect();
+        plates.sort_unstable_by_key(|p| (p.z, p.y, p.x));
+        plates.into_iter().find_map(|p| self.place_at(p).filter(|pl| pl.kind == super::places::PlaceKind::Gate).map(|pl| pl.name.clone()))
+    }
+
+    /// Whether the overseer lets an army into the trap hall before raising
+    /// the bridge behind it (O04 step 2): a bold or warlike one, not a
+    /// cautious one, once the hall's spikes stand on a linked plate.
+    pub(super) fn lets_them_in(&self, o: &Overseer) -> bool {
+        if o.gate_stage == 0 || o.has(Trait::Cautious) || !(o.has(Trait::Bold) || o.style == Style::Warlord) || self.knob("gate.let_in", 1.0) <= 0.0 {
+            return false;
+        }
+        let Some(base) = o.base else { return false };
+        self.hall_parts(base, BuildingKind::PressurePlate).iter().any(|p| !self.buildings[p].links.is_empty())
+    }
+
+    /// Where squad `s` holds during a siege: behind the trap hall when the
+    /// overseer means to let them into it, else just inside the gate.
+    pub(super) fn hold_station(&self, o: &Overseer, s: usize, base: Pos) -> Pos {
+        if self.lets_them_in(o) {
+            base.offset(14, s as i32 % 2, 0)
+        } else {
+            base.offset(4 + s as i32, 0, 0)
+        }
+    }
+
+    /// A siege is over (`on_siege_end`): the trap hall's toll, told. "Seven
+    /// goblins fell in the Hall of Teeth." If its traps took half the army
+    /// or more, the siege broke on it.
+    pub(super) fn trap_hall_toll(&mut self, i: usize) {
+        let Some(s) = self.annals.sieges.get(i) else { return };
+        let (n, caught, size, foe) = (s.trapped, s.foes_caught, s.size, s.foe.clone());
+        if n == 0 {
+            return;
+        }
+        let hall = self.trap_hall_name();
+        let place = hall.clone().unwrap_or_else(|| "the traps at the gate".into());
+        let who = if n == 1 { foe.trim_end_matches('s').to_string() } else { foe.clone() };
+        let text = format!("{} {} fell in {}.", count_words(n), who, place);
+        let broke = (n + caught) * 2 >= size.max(1);
+        let at = self.overseer.as_ref().and_then(|o| o.base).map(|b| b.offset(10, 0, 0));
+        if broke {
+            let s = &mut self.annals.sieges[i];
+            s.broke_on = Some(place.clone());
+            if s.broke_at.is_none() {
+                s.broke_at = at;
+            }
+        }
+        self.count("m2.hall_tolls", 1);
+        self.msg_at(&text, (240, 170, 110), at, super::logkind::LogKind::Siege);
+        self.record(super::memory::MemoryKind::SiegeEnd, &[], at, text.clone(), if broke { 6 } else { 4 });
+        if n >= 3 || broke {
+            let title = hall.map_or("The traps held".to_string(), |h| {
+                let mut c = h.chars();
+                c.next().map_or(h.clone(), |f| f.to_uppercase().collect::<String>() + c.as_str())
+            });
+            let more = if broke { format!(" The {} broke upon it.", foe) } else { String::new() };
+            self.spotlight(&title, &format!("{}{}", text, more), at, (240, 170, 110));
+        }
+        if let Some(mut o) = self.overseer.take() {
+            Self::note_as(&mut o, self.tick, NoteKind::Gate, text);
+            self.overseer = Some(o);
+        }
     }
 
     /// Whether the gate still wants mechanisms and stone is short: it holds
@@ -231,4 +467,140 @@ mod tests {
             assert!(g.overseer.as_ref().unwrap().notes.iter().any(|n| n.1 == said), "{}", said);
         }
     }
+
+    /// A Warlord fort whose gate is linked, with the parts for the trap hall
+    /// put in its hands and the hall laid out (not yet built).
+    fn hall_fort() -> (u64, Game) {
+        let (found, passed) = super::super::overseer::fort_where(Style::Warlord, 5000, 12, 20, |g| g.overseer.as_ref().map_or(false, |o| o.did("linked")));
+        let Some((seed, mut g)) = found else { panic!("no Warlord fort from 5000 on had its gate linked by day 20 (passed over {:?})", passed) };
+        let e = g.embark;
+        for _ in 0..10 {
+            g.spawn_item(ItemKind::Mechanism, Mat::Granite, e);
+        }
+        for _ in 0..2 {
+            g.spawn_item(ItemKind::Spear, Mat::Iron, e);
+            g.spawn_item(ItemKind::Thread, Mat::Flesh, e);
+        }
+        for _ in 0..3 * DAY {
+            if g.overseer.as_ref().unwrap().gate_stage >= 1 {
+                break;
+            }
+            g.step();
+        }
+        (seed, g)
+    }
+
+    /// Finish the hall's pieces at once, as if the mechanics had, and let
+    /// the overseer link its plates.
+    fn finish_hall(g: &mut Game) {
+        let base = g.overseer.as_ref().unwrap().base.unwrap();
+        for (dx, kind) in HALL {
+            for dy in 0..2 {
+                let p = base.offset(dx, dy, 0);
+                let id = g.world.t(p).building;
+                if let Some(b) = g.buildings.get_mut(&id).filter(|b| b.kind == kind) {
+                    b.built = true;
+                    b.parts = kind.parts();
+                    b.load = Some(if kind == BuildingKind::Spikes || kind == BuildingKind::WeaponTrap { (ItemKind::Spear, Mat::Iron, 0) } else { (ItemKind::Mechanism, Mat::Granite, 0) });
+                }
+            }
+        }
+        let mut o = g.overseer.take().unwrap();
+        g.ov_trap_hall(&mut o);
+        g.overseer = Some(o);
+    }
+
+    /// O04 step 1a: once the gate's lever is linked, a Warlord lays out the
+    /// trap hall behind the cages (tripwires, spikes, plates, weapon traps),
+    /// names it, and links the plates to the spikes; a plain overseer waits
+    /// for a siege or half a year.
+    #[test]
+    fn the_trap_hall_is_built_after_the_gate() {
+        let (seed, mut g) = hall_fort();
+        let o = g.overseer.as_ref().unwrap();
+        let base = o.base.unwrap();
+        assert_eq!(o.gate_stage, 1, "seed {}: no trap hall three days after the parts came", seed);
+        assert!(o.did("traphall") && o.notes.iter().any(|n| n.1.contains("trap hall")), "seed {}: the overseer never said so", seed);
+        for (dx, kind) in HALL {
+            assert!((0..2).any(|dy| g.building_at(base.offset(dx, dy, 0)) == Some(kind)), "seed {}: no {:?} at x+{}", seed, kind, dx);
+        }
+        let name = g.trap_hall_name().expect("the hall has no name");
+        assert!(HALL_NAMES.contains(&name.as_str()), "{}", name);
+        // Built (here, at once), its plates fire every spike.
+        finish_hall(&mut g);
+        let plates = g.hall_parts(base, BuildingKind::PressurePlate);
+        let spikes = g.hall_parts(base, BuildingKind::Spikes);
+        assert!(!plates.is_empty() && !spikes.is_empty());
+        assert!(plates.iter().all(|p| spikes.iter().all(|s| g.buildings[p].links.contains(s))), "the plates aren't linked to the spikes");
+        // A plain overseer with no siege yet isn't in a hurry; a cautious one is.
+        g.set_traits(vec![Trait::Cheerful]).unwrap();
+        let mut o = g.overseer.take().unwrap();
+        o.style = Style::Steady;
+        g.annals.sieges.clear();
+        assert!(!g.trap_hall_due(&o));
+        o.style = Style::Reckless;
+        assert!(!g.trap_hall_due(&o));
+        o.style = Style::Steady;
+        g.overseer = Some(o);
+        g.set_traits(vec![Trait::Cautious]).unwrap();
+        assert!(g.trap_hall_due(g.overseer.as_ref().unwrap()));
+    }
+
+    /// O04 step 2: a bold overseer with a trap hall leaves the bridge down
+    /// for the army to come into it, where a cautious one raises it at
+    /// once; and its squads hold behind the hall.
+    #[test]
+    fn a_bold_overseer_lets_them_into_the_killing_hall() {
+        let (seed, mut g) = hall_fort();
+        finish_hall(&mut g);
+        let (top, base) = { let o = g.overseer.as_ref().unwrap(); (o.top.unwrap(), o.base.unwrap()) };
+        let lever = g.gate_lever(base).expect("no gate lever");
+        // When was the bridge called for, after an army was first seen?
+        let called_at = |g: &mut Game, traits: Vec<Trait>| -> u64 {
+            g.set_traits(traits).unwrap();
+            let mut o = g.overseer.take().unwrap();
+            o.army_since = 0;
+            o.raised_at = 0;
+            g.buildings.get_mut(&lever).unwrap().pull = false;
+            let start = g.tick;
+            let mut t = start;
+            while t < start + 1000 {
+                g.tick = t;
+                g.ov_gate_alert(&mut o, top, base, true);
+                let b = &g.buildings[&lever];
+                if b.pull || b.raised {
+                    break;
+                }
+                t += 10;
+            }
+            g.overseer = Some(o);
+            if g.buildings[&lever].raised {
+                g.pull_lever(lever);
+            }
+            g.buildings.get_mut(&lever).unwrap().pull = false;
+            t - start
+        };
+        assert!(g.lets_them_in(g.overseer.as_ref().unwrap()), "seed {}: a Warlord with a hall should let them in", seed);
+        assert_eq!(g.hold_station(g.overseer.as_ref().unwrap(), 0, base), base.offset(14, 0, 0));
+        let bold = called_at(&mut g, vec![Trait::Bold]);
+        let cautious = called_at(&mut g, vec![Trait::Cautious]);
+        assert!(!g.lets_them_in(g.overseer.as_ref().unwrap()));
+        assert!(bold >= cautious + 200, "seed {}: the bold overseer called the bridge up after {} ticks, the cautious one after {}", seed, bold, cautious);
+    }
+
+    /// When the siege ends, the hall's toll is told, and a hall that took
+    /// half the army is where the siege broke.
+    #[test]
+    fn the_trap_halls_toll_is_told() {
+        let (_, mut g) = hall_fort();
+        let name = g.trap_hall_name().unwrap();
+        g.annals.sieges.push(super::super::annals::SiegeNote { foe: "goblins".into(), size: 10, trapped: 7, ended: Some(g.tick), outcome: "routed".into(), ..Default::default() });
+        let i = g.annals.sieges.len() - 1;
+        g.trap_hall_toll(i);
+        let said = format!("Seven goblins fell in {}.", name);
+        assert!(g.log.iter().any(|l| l.text == said), "nobody said: {}", said);
+        assert_eq!(g.annals.sieges[i].broke_on.as_deref(), Some(name.as_str()));
+        assert!(g.overseer.as_ref().unwrap().notes.iter().any(|n| n.1 == said));
+    }
+
 }

@@ -93,6 +93,8 @@ impl Game {
         self.captives_after_siege(i);
         self.learn_from_siege(i);
         self.shelter_after_siege(i);
+        // M2 O04: the trap hall's toll (before the naming: it may be where it broke).
+        self.trap_hall_toll(i);
         // Stories: the fight gets a name.
         self.name_siege(i);
         // ...and the hall or the gate where it broke a name (naming.rs).

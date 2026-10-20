@@ -338,11 +338,13 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 - **Steps:** [ ] the gatehouse grows with the fort: a trap corridor, then a moat under a
   drawbridge, then towers with fortifications (towers: ad88122, on the surface: a curtain
   wall with gate towers, battlements, a walkway, an arch and a drawbridge; watchtowers whose
-  watch sees armies sooner; marksdwarves shoot down from the towers) · [x] Warlord and cautious
-  overseers build them sooner (the walls and towers, ad88122) · [ ] a siege that breaks on
+  watch sees armies sooner; marksdwarves shoot down from the towers; the trap hall behind the
+  gate's cages, named like a mouth, "the Hall of Teeth", this commit) · [x] Warlord and cautious
+  overseers build them sooner (the walls and towers, ad88122; the trap hall at once, and a bold
+  or warlike overseer lets the army into it before raising the bridge, this commit) · [ ] a siege that breaks on
   the defences goes into the legends (partly: a siege with
   blood spilt is named and goes into the legends, 15be5b2; one that breaks bloodless on the walls doesn't)
-- **From the Bay 12 review:** [ ] Pressure plates ([ENG-06](ideas/economy.md)) · [ ] Upright spikes ([ENG-04](ideas/economy.md)) · [ ] Pits and ponds ([ENG-03](ideas/economy.md)) · [ ] Traps jammed with bodies ([ENG-01](ideas/economy.md)) · [ ] Trapdoors and chutes ([ENG-07](ideas/economy.md)) · [ ] Nets and tripwires ([ENG-08](ideas/economy.md)) · [ ] Better traps ([ENG-19](ideas/economy.md)) · [ ] Moats and wide drawbridges ([ENG-20](ideas/economy.md)) · [ ] Deliberate flooding ([ENG-02](ideas/economy.md))
+- **From the Bay 12 review:** [x] Pressure plates ([ENG-06](ideas/economy.md), this commit: a foe's weight fires the spikes they're linked to) · [x] Upright spikes ([ENG-04](ideas/economy.md), this commit: fired by a plate or a lever) · [ ] Pits and ponds ([ENG-03](ideas/economy.md)) · [x] Traps jammed with bodies ([ENG-01](ideas/economy.md), this commit: two bodies or cages on a trap jam it; the overseer has them dragged out after a siege) · [ ] Trapdoors and chutes ([ENG-07](ideas/economy.md)) · [ ] Nets and tripwires ([ENG-08](ideas/economy.md); partly: tripwires of thread throw a foe down under the traps behind, this commit; no nets) · [x] Better traps ([ENG-19](ideas/economy.md), this commit: stone-fall traps drop their stone three times; weapon traps already strike three) · [ ] Moats and wide drawbridges ([ENG-20](ideas/economy.md)) · [ ] Deliberate flooding ([ENG-02](ideas/economy.md))
 - **Done when:** a Warlord fort has a moat and a trap corridor before its third siege.
 
 #### O05 Spectator mode (M)

@@ -1125,7 +1125,7 @@ impl Game {
                 let levied = o.style == Style::Reckless && matches!(self.squads[s].order, super::SquadOrder::Kill(_));
                 if danger && !charge && !holding && self.sallies.on.is_none() && !levied {
                     // Marksdwarves hold back from the gate with a clear shot at it (archery.rs).
-                    let st = self.archer_station(s, base).unwrap_or(base.offset(4 + s as i32, 0, 0));
+                    let st = self.archer_station(s, base).unwrap_or_else(|| self.hold_station(o, s, base));
                     self.order_station(s, st);
                 } else if !danger && holding {
                     self.order_train(s);

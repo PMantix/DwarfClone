@@ -2258,7 +2258,7 @@ impl App {
             }
             KeyCode::Char('l') => self.game.toggle_lock(bld),
             KeyCode::Char('N') if !adding => self.start_naming(Some(bld)),
-            KeyCode::Char('k') if kind == BuildingKind::Lever => {
+            KeyCode::Char('k') if matches!(kind, BuildingKind::Lever | BuildingKind::PressurePlate) => {
                 self.cursor = self.game.buildings[&bld].pos;
                 self.mode = Mode::LinkLever { lever: bld };
             }

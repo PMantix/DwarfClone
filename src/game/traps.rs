@@ -1,4 +1,9 @@
 //! Traps that fire on creatures, and levers that work doors, drawbridges and floodgates.
+//!
+//! The trap hall (O04) adds upright spikes fired by a pressure plate or a
+//! lever, tripwires that throw a foe down under the traps behind, stone-fall
+//! traps that drop their stone three times, and traps jammed by the bodies
+//! and cages piled on them until someone clears them away.
 
 use super::{Game, Travel, SEARCH_LIMIT};
 use crate::buildings::BuildingKind;
@@ -10,26 +15,74 @@ use crate::material::Mat;
 use crate::path;
 use crate::world::{Mover, BRIDGE_RAISED, DOOR_LOCKED, DOOR_NONE, DOOR_OPEN, FLOODGATE_SHUT};
 
+/// `Building.timer` on a trap jammed with bodies.
+const JAMMED: u64 = 1;
+/// Drops a stone-fall trap's stone makes before it is spent.
+const STONE_DROPS: u64 = 3;
+/// Ticks a tripped creature lies on the floor.
+const TRIPPED: u32 = 30;
+
 impl Game {
     /// Every tick: armed traps go off on whatever creature stands on them.
     /// Dwarves know where their traps are and never set them off.
     pub(super) fn traps_tick(&mut self) {
-        let traps: Vec<(u32, Pos)> = self
+        // (Spikes wait for their plate or lever.)
+        let traps: Vec<(u32, Pos, BuildingKind)> = self
             .buildings
             .values()
-            .filter(|b| b.kind.is_trap() && b.built && b.trap_cd <= self.tick)
-            .map(|b| (b.id, b.pos))
+            .filter(|b| b.kind.is_trap() && b.kind != BuildingKind::Spikes && b.built && b.trap_cd <= self.tick)
+            .map(|b| (b.id, b.pos, b.kind))
             .collect();
-        for (tid, pos) in traps {
+        for (tid, pos, kind) in traps {
+            // A pressure plate is set to feel a foe's weight, not a cat's;
+            // a tripwire is strung at a goblin's shin, not a rat's.
+            let plate = matches!(kind, BuildingKind::PressurePlate | BuildingKind::Tripwire);
             let victim = self
                 .creatures
                 .values()
-                .find(|c| c.alive && c.pos == pos && c.species != Species::Merchant && !c.tame)
+                .find(|c| c.alive && c.pos == pos && c.species != Species::Merchant && !c.tame && (!plate || c.hostile()))
                 .map(|c| c.id);
             if let Some(cid) = victim {
+                if self.jammed(tid) {
+                    continue;
+                }
                 self.spring_trap(tid, cid);
             }
         }
+    }
+
+    /// Whether two or more bodies or cages lie on a trap's tile (ENG-01):
+    /// it can't fire until they're cleared away. Said once, when it jams.
+    pub(super) fn jammed(&mut self, tid: u32) -> bool {
+        let Some(b) = self.buildings.get(&tid) else { return false };
+        if matches!(b.kind, BuildingKind::PressurePlate | BuildingKind::Tripwire) {
+            return false;
+        }
+        let pos = b.pos;
+        let heaped = self
+            .items
+            .values()
+            .filter(|it| it.pos == pos && it.carried_by.is_none() && matches!(it.kind, ItemKind::Corpse | ItemKind::Carcass | ItemKind::Cage))
+            .count();
+        let jammed = heaped >= 2;
+        let (was, name) = (b.timer == JAMMED, b.kind.name().to_lowercase());
+        let tick = self.tick;
+        let b = self.buildings.get_mut(&tid).unwrap();
+        if jammed {
+            // Look again in a little while, not every tick.
+            b.trap_cd = tick + 20;
+        }
+        // (A stone-fall trap counts its drops in `timer`, and spikes their
+        // time up: neither is marked.)
+        if !matches!(b.kind, BuildingKind::StoneTrap | BuildingKind::Spikes) {
+            if jammed && !was {
+                b.timer = JAMMED;
+                self.msg_at(&format!("A {} is jammed with bodies!", name), (230, 170, 120), Some(pos), super::logkind::LogKind::Siege);
+            } else if !jammed && was {
+                b.timer = 0;
+            }
+        }
+        jammed
     }
 
     pub(super) fn spring_trap(&mut self, tid: u32, cid: u32) {
@@ -94,20 +147,135 @@ impl Game {
                     }
                     if dead {
                         if let Some(c) = self.creatures.remove(&cid) {
+                            self.trap_kill(&c);
                             self.creature_died(c);
                         }
                         break;
                     }
                 }
                 if stone {
-                    // The stone lands on the tile; the trap needs another.
-                    self.spawn_item(ItemKind::Boulder, load.1, pos);
-                    self.rearm(tid);
+                    // Winched back up and dropped again (ENG-19), three
+                    // times; then the stone is spent, left on the tile, and
+                    // the trap needs another.
+                    let drops = self.buildings.get(&tid).map_or(STONE_DROPS, |b| b.timer + 1);
+                    if drops >= STONE_DROPS {
+                        self.spawn_item(ItemKind::Boulder, load.1, pos);
+                        if let Some(b) = self.buildings.get_mut(&tid) {
+                            b.timer = 0;
+                        }
+                        self.rearm(tid);
+                    } else if let Some(b) = self.buildings.get_mut(&tid) {
+                        b.timer = drops;
+                        b.trap_cd = self.tick + 30;
+                    }
                 } else if let Some(b) = self.buildings.get_mut(&tid) {
                     b.trap_cd = self.tick + 25;
                 }
             }
+            BuildingKind::PressurePlate => {
+                // Click: everything it's linked to fires.
+                if let Some(b) = self.buildings.get_mut(&tid) {
+                    b.trap_cd = self.tick + 15;
+                }
+                let links = self.buildings.get(&tid).map_or(Vec::new(), |b| b.links.clone());
+                let fired: Vec<u32> = links.into_iter().filter(|&s| self.fire_spikes(s)).collect();
+                if !fired.is_empty() && self.creatures.get(&cid).map_or(false, |c| c.siege) {
+                    let hall = self.trap_hall_name().map_or(String::new(), |h| format!(" in {}", h));
+                    self.msg_at(&format!("A {} treads on a pressure plate: spikes spring up{}!", name, hall), (240, 150, 110), Some(pos), super::logkind::LogKind::Siege);
+                }
+            }
+            BuildingKind::Tripwire => {
+                // Down it goes, and lies there a while under the traps behind.
+                if let Some(c) = self.creatures.get_mut(&cid) {
+                    c.move_cd = c.move_cd.max(TRIPPED);
+                    c.attack_cd = c.attack_cd.max(TRIPPED);
+                }
+                // (Reset once it's up and has had time to stagger on.)
+                if let Some(b) = self.buildings.get_mut(&tid) {
+                    b.trap_cd = self.tick + TRIPPED as u64 + 30;
+                }
+                self.count("m2.tripped", 1);
+                if self.creatures.get(&cid).map_or(false, |c| c.siege) {
+                    self.msg_at(&format!("A {} trips on a wire and sprawls on the floor.", name), (220, 200, 160), Some(pos), super::logkind::LogKind::Siege);
+                }
+            }
             _ => {}
+        }
+    }
+
+    /// Upright spikes thrust up through whatever stands on them (ENG-04):
+    /// three thrusts at each creature there, then they sink back. Whether
+    /// they fired (not if unbuilt, still up, or jammed).
+    pub fn fire_spikes(&mut self, sid: u32) -> bool {
+        let Some(b) = self.buildings.get(&sid) else { return false };
+        if b.kind != BuildingKind::Spikes || !b.built || b.trap_cd > self.tick {
+            return false;
+        }
+        if self.jammed(sid) {
+            return false;
+        }
+        let Some(b) = self.buildings.get(&sid) else { return false };
+        let (pos, quality) = (b.pos, b.quality);
+        let load = b.load.unwrap_or((ItemKind::Spear, Mat::Iron, 0));
+        let tick = self.tick;
+        if let Some(b) = self.buildings.get_mut(&sid) {
+            b.trap_cd = tick + 30;
+            b.timer = tick + 30;
+        }
+        // Bolts make thinner spikes than a spear's head.
+        let base = if load.0 == ItemKind::Bolt { 7.0 } else { 9.0 };
+        let att = super::combat::Fighter {
+            name: "the spikes".into(),
+            skill: 8 + quality as u32,
+            dmg: base * load.1.weapon_mult() * (1.0 + 0.1 * load.2 as f32),
+            verb: "impales",
+            edged: true,
+            helm: 0,
+            mail: 0,
+            shield: false,
+            size: 1.0,
+            teeth: false,
+        };
+        let on: Vec<u32> = self.creatures.values().filter(|c| c.alive && c.pos == pos && c.species != Species::Merchant && !c.tame).map(|c| c.id).collect();
+        for cid in on {
+            for _ in 0..3 {
+                let Some(c) = self.creatures.get(&cid) else { break };
+                if !c.alive {
+                    break;
+                }
+                let def = self.creature_fighter(c);
+                let mut body = c.body.clone();
+                let (cpos, csp, owner, seen) = (c.pos, c.species, super::gore::owner_of_creature(c), super::melee::a_or_name(c));
+                let blow = self.strike(&att, &def, &mut body);
+                if let Some(m) = blow.msg.as_ref().filter(|_| blow.notable) {
+                    self.msg(m, (235, 200, 130));
+                }
+                self.aftermath(&blow, cpos, cpos, &owner, &seen, Some(csp), false);
+                let dead = body.dead;
+                if let Some(c) = self.creatures.get_mut(&cid) {
+                    c.body = body;
+                }
+                if dead {
+                    if let Some(c) = self.creatures.remove(&cid) {
+                        self.trap_kill(&c);
+                        self.creature_died(c);
+                    }
+                    break;
+                }
+            }
+        }
+        true
+    }
+
+    /// A trap has killed `c`: a besieger counts toward the siege's toll in
+    /// the trap hall (`SiegeNote.trapped`).
+    fn trap_kill(&mut self, c: &crate::creature::Creature) {
+        if !c.siege || c.legendary() {
+            return;
+        }
+        self.count("m2.trap_kills", 1);
+        if let Some(s) = self.annals.sieges.iter_mut().rev().find(|s| s.ended.is_none()) {
+            s.trapped += 1;
         }
     }
 
@@ -126,15 +294,24 @@ impl Game {
     /// Link a lever to a door or drawbridge. Uses up a mechanism from stock.
     pub fn link_lever(&mut self, lever: u32, target: u32) -> Result<String, String> {
         let Some(t) = self.buildings.get(&target) else { return Err("Nothing to link there.".into()) };
-        if !matches!(t.kind, BuildingKind::Door | BuildingKind::Bridge | BuildingKind::Floodgate) {
-            return Err("Levers work doors, drawbridges and floodgates.".into());
+        let plate = self.buildings.get(&lever).map_or(false, |l| l.kind == BuildingKind::PressurePlate);
+        if plate && t.kind != BuildingKind::Spikes {
+            return Err("Pressure plates work upright spikes.".into());
+        }
+        if !matches!(t.kind, BuildingKind::Door | BuildingKind::Bridge | BuildingKind::Floodgate | BuildingKind::Spikes) {
+            return Err("Levers work doors, drawbridges, floodgates and spikes.".into());
         }
         let tname = t.name();
-        if self.buildings.get(&lever).map_or(true, |l| l.kind != BuildingKind::Lever || !l.built) {
+        if self.buildings.get(&lever).map_or(true, |l| !matches!(l.kind, BuildingKind::Lever | BuildingKind::PressurePlate) || !l.built) {
             return Err("The lever isn't built yet.".into());
         }
         if self.buildings[&lever].links.contains(&target) {
             return Err(format!("Already linked to the {}.", tname.to_lowercase()));
+        }
+        // A plate's own mechanism does the work: linking it takes none.
+        if plate {
+            self.buildings.get_mut(&lever).unwrap().links.push(target);
+            return Ok(format!("Plate linked to the {}.", tname.to_lowercase()));
         }
         let Some(mech) = self
             .items
@@ -230,6 +407,9 @@ impl Game {
                         self.clear_tile(pos);
                     }
                     self.dig_version += 1;
+                }
+                BuildingKind::Spikes => {
+                    self.fire_spikes(t);
                 }
                 _ => {}
             }
@@ -393,6 +573,123 @@ mod tests {
             }
         }
         assert!(hurt, "the goblin got past the weapon trap unharmed");
+    }
+
+    /// Stand a trap on `at` already built and loaded, as if a mechanic had.
+    fn built(g: &mut Game, kind: BuildingKind, at: Pos, load: Option<(ItemKind, Mat, u8)>) -> u32 {
+        assert!(g.place_building(kind, at), "can't place a {:?}", kind);
+        let id = *g.buildings.keys().max().unwrap();
+        let b = g.buildings.get_mut(&id).unwrap();
+        b.built = true;
+        b.parts = kind.parts();
+        b.mat = Mat::Iron;
+        b.load = load;
+        id
+    }
+
+    fn hurt(g: &Game, cid: u32, blood: i32) -> bool {
+        g.creatures.get(&cid).map_or(true, |c| !c.alive || c.body.blood < blood || c.body.bleeding > 0 || c.body.badly_hurt())
+    }
+
+    /// O04 (ENG-04, ENG-06): a goblin treading on the pressure plate fires
+    /// the spikes it's linked to, running through the goblin behind it; a
+    /// tame dog on the plate doesn't, and a lever fires them too.
+    #[test]
+    fn a_pressure_plate_fires_the_spikes() {
+        let mut g = Game::new(55);
+        g.creatures.retain(|_, c| c.tame);
+        let a = spot(&g, &[]);
+        let spikes = built(&mut g, BuildingKind::Spikes, a, Some((ItemKind::Spear, Mat::Iron, 0)));
+        let b = spot(&g, &[a]);
+        let plate = built(&mut g, BuildingKind::PressurePlate, b, Some((ItemKind::Mechanism, Mat::Granite, 0)));
+        let mechs = g.items.values().filter(|it| it.kind == ItemKind::Mechanism).count();
+        assert!(g.link_lever(plate, spikes).is_ok());
+        assert_eq!(g.items.values().filter(|it| it.kind == ItemKind::Mechanism).count(), mechs, "a plate's link takes no mechanism");
+        assert!(g.link_lever(plate, plate).is_err(), "plates only work spikes");
+        // A goblin waits on the spikes: nothing happens while nobody treads the plate.
+        let gob = g.spawn_creature(Species::Goblin, a, u64::MAX);
+        let blood = g.creatures[&gob].body.blood;
+        for _ in 0..5 {
+            g.traps_tick();
+            g.tick += 1;
+        }
+        assert!(!hurt(&g, gob, blood), "the spikes fired with nobody on the plate");
+        // A tame dog on the plate is too light (or too friendly).
+        let dog = g.spawn_creature(Species::Dog, b, u64::MAX);
+        g.creatures.get_mut(&dog).unwrap().tame = true;
+        g.traps_tick();
+        assert!(!hurt(&g, gob, blood), "a tame dog set off the plate");
+        g.creatures.remove(&dog);
+        // A second goblin treads on it.
+        let other = g.spawn_creature(Species::Goblin, b, u64::MAX);
+        g.traps_tick();
+        assert!(hurt(&g, gob, blood), "the plate never fired the spikes");
+        assert!(g.creatures.contains_key(&other), "the goblin on the plate was taken");
+        // A lever works them as well, once they've sunk back.
+        g.creatures.remove(&other);
+        let gob2 = g.spawn_creature(Species::Goblin, a, u64::MAX);
+        let blood2 = g.creatures[&gob2].body.blood;
+        g.creatures.retain(|&id, c| c.tame || id == gob2);
+        let l = spot(&g, &[a, b]);
+        let lever = built(&mut g, BuildingKind::Lever, l, None);
+        g.spawn_item(ItemKind::Mechanism, Mat::Granite, g.embark);
+        assert!(g.link_lever(lever, spikes).is_ok());
+        g.tick += 100;
+        g.pull_lever(lever);
+        assert!(hurt(&g, gob2, blood2), "the lever never fired the spikes");
+    }
+
+    /// ENG-01: a weapon trap with two bodies heaped on it won't fire until
+    /// they are carried off; a tripwire throws a goblin down (ENG-08).
+    #[test]
+    fn a_jammed_trap_does_not_fire_until_cleared() {
+        let mut g = Game::new(56);
+        g.creatures.retain(|_, c| c.tame);
+        let a = spot(&g, &[]);
+        let wt = built(&mut g, BuildingKind::WeaponTrap, a, Some((ItemKind::Sword, Mat::Steel, 3)));
+        let bodies: Vec<u32> = (0..2).map(|_| g.spawn_item(ItemKind::Corpse, Mat::Flesh, a)).collect();
+        let gob = g.spawn_creature(Species::Goblin, a, u64::MAX);
+        let blood = g.creatures[&gob].body.blood;
+        for _ in 0..40 {
+            g.traps_tick();
+            g.tick += 1;
+        }
+        assert!(!hurt(&g, gob, blood), "a jammed trap fired");
+        assert!(g.log.iter().any(|l| l.text.contains("jammed with bodies")), "nobody said it was jammed");
+        for id in bodies {
+            g.items.remove(&id);
+        }
+        g.tick += 40;
+        g.traps_tick();
+        assert!(hurt(&g, gob, blood), "the cleared trap didn't fire");
+        assert_eq!(g.buildings[&wt].timer, 0, "still marked jammed");
+        // A tripwire lays a goblin on the floor a while.
+        let b = spot(&g, &[a]);
+        built(&mut g, BuildingKind::Tripwire, b, Some((ItemKind::Thread, Mat::Flesh, 0)));
+        let gob2 = g.spawn_creature(Species::Goblin, b, u64::MAX);
+        g.traps_tick();
+        assert!(g.creatures[&gob2].move_cd >= TRIPPED, "the goblin didn't trip");
+    }
+
+    /// ENG-19: a stone-fall trap drops its stone three times before it is
+    /// spent and needs another.
+    #[test]
+    fn a_stone_fall_trap_drops_three_times() {
+        let mut g = Game::new(57);
+        g.creatures.retain(|_, c| c.tame);
+        let a = spot(&g, &[]);
+        let st = built(&mut g, BuildingKind::StoneTrap, a, Some((ItemKind::Boulder, Mat::Granite, 0)));
+        for drop in 1..=3 {
+            assert!(g.buildings[&st].built, "spent after {} drops", drop - 1);
+            // A fresh goblin on it each time (and the last one's body cleared,
+            // or the trap jams).
+            g.creatures.retain(|_, c| c.tame);
+            g.items.retain(|_, it| it.pos != a);
+            g.spawn_creature(Species::Goblin, a, u64::MAX);
+            g.tick += 100;
+            g.traps_tick();
+        }
+        assert!(!g.buildings[&st].built, "the stone should be spent after three drops");
     }
 
     #[test]
