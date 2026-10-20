@@ -115,6 +115,7 @@ mod dreams;
 pub mod moods;
 pub mod reel;
 pub mod lifestory;
+pub mod familytree;
 pub mod sounds;
 pub mod drills;
 pub mod sagas;
@@ -171,6 +172,8 @@ pub use justice::{Crime, CrimeKind};
 pub use positions::{Demand, Fit, Position};
 pub use orders::{all_recipes, Cond, WorkOrder};
 pub use medicine::Treatment;
+/// What a patient still needs, most urgent first (the sheet's Status tab).
+pub use medicine::needed as medicine_needed;
 pub use military::{Squad, SquadOrder};
 #[cfg(test)]
 pub fn military_weapon_for_tests() -> military::UniformWeapon {

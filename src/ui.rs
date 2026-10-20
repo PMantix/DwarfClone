@@ -19,6 +19,7 @@ mod arena;
 mod health;
 mod highlights;
 mod life;
+mod family;
 mod units;
 pub mod saga;
 mod moodstrip;
