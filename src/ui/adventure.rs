@@ -28,6 +28,9 @@ pub(super) fn draw(f: &mut Frame, app: &App) {
         backdrop(f, area);
         return;
     };
+    if s.view == View::Create {
+        return super::adv_create::draw(f, area, s);
+    }
     if s.adv.visit.is_none() {
         backdrop(f, area);
         let p = Paragraph::new(vec![Line::default(), plain("The adventure begins…".into(), KEY)]).alignment(ratatui::layout::Alignment::Center);
