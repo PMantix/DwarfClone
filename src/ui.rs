@@ -1213,26 +1213,9 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.push(plain("Esc: back".into(), MUTED));
             }
         }
-        Mode::Units { sel, .. } => {
+        Mode::Units { sel, cat, sort } => {
             title = "Units".to_string();
-            for (i, d) in g.dwarves.iter().enumerate() {
-                let (mood, mc) = d.mood();
-                let style = if i == *sel { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
-                let status = if d.alive { task_desc(g, d) } else { "Dead".into() };
-                v.push(Line::from(vec![
-                    Span::styled("☺ ", style.fg(if d.alive { rgb(d.color) } else { MUTED })),
-                    Span::styled(format!("{:<20}", d.name), style.fg(TEXT)),
-                    Span::styled(format!("{:.12}", d.profession()), style.fg(MUTED)),
-                ]));
-                if i == *sel {
-                    v.push(Line::from(vec![
-                        Span::styled(format!("   {} · ", status), Style::default().fg(TEXT)),
-                        Span::styled(mood, Style::default().fg(rgb(mc))),
-                    ]));
-                }
-            }
-            v.push(Line::default());
-            v.push(plain("Up/Down select · Enter view · c center".into(), MUTED));
+            v.extend(units::list_lines(g, *sel, *cat, *sort));
         }
         Mode::Unit { id, sel, tab } => {
             title = "Dwarf".to_string();
@@ -1775,7 +1758,8 @@ fn help_text() -> Vec<Line<'static>> {
         k("z", "fortress status: population, stocks, health"),
         k("b", "build workshops, furniture; C constructions"),
         k("q", "query building: queue work orders"),
-        k("u / v", "unit list / view dwarf (m drafts, l life story)"),
+        k("u / v", "unit list (Tab pages, s sorts) / a dwarf's sheet"),
+        k("", "  sheet: Tab pages, f follows, m drafts, l life story"),
         k("y", "labors: who does what, work details"),
         k("w / o", "burrows / traffic designations"),
         k("m", "military: squads, orders, uniforms, alerts"),
@@ -3053,6 +3037,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::BuildMenu => draw_build_menu(f, area),
         Mode::Highlights { sel } => highlights::draw(f, area, app, sel),
         Mode::Life { id, scroll } => life::draw(f, area, &app.game, id, scroll),
+        Mode::Unit { id, sel, tab } if pane.is_some() || !app.docked => units::draw(f, area, app, id, sel, tab),
         Mode::Sagas { sel, open, .. } => saga::draw_screen(f, full, &app.game, sel, open),
         Mode::OverseerTraits { .. } | Mode::Journal { .. } | Mode::Family { .. } | Mode::Announce { .. } => overseer::draw(f, area, app),
         Mode::Help => {

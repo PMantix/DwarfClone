@@ -345,7 +345,7 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O06 Know your dwarves (M)
 - **Why:** Every dwarf should be a story you can read: their life, their family, how they died.
-- **Steps:** [x] A dwarf's life story ([UI-05](ideas/world-and-overseer.md), f031dd9: the Life page with a portrait, the overseer's eulogies) · [ ] Unit list with stress ([UI-13](ideas/world-and-overseer.md)) · [ ] Live unit sheet ([UI-14](ideas/world-and-overseer.md)) · [ ] Family tree screen ([UI-15](ideas/world-and-overseer.md)) · [x] Death scenes in the chronicle ([UI-08](ideas/world-and-overseer.md), f031dd9: a line for each notable dwarf lost that year) · [ ] Status readouts ([UI-35](ideas/world-and-overseer.md))
+- **Steps:** [x] A dwarf's life story ([UI-05](ideas/world-and-overseer.md), f031dd9: the Life page with a portrait, the overseer's eulogies) · [x] Unit list with stress ([UI-13](ideas/world-and-overseer.md), this commit: citizens, pets and livestock, visitors, the dead and missing; sorted by stress, happiness, job or name) · [x] Live unit sheet ([UI-14](ideas/world-and-overseer.md), ef60d70 and this commit: tabs for now, thoughts, life and health, a side pane beside the live map, `f` follows) · [ ] Family tree screen ([UI-15](ideas/world-and-overseer.md)) · [x] Death scenes in the chronicle ([UI-08](ideas/world-and-overseer.md), f031dd9: a line for each notable dwarf lost that year) · [ ] Status readouts ([UI-35](ideas/world-and-overseer.md))
 - **Done when:** Any dwarf's sheet shows a life story drawn from the chronicle and a family tree.
 
 #### O07 A mortal overseer (M)

@@ -440,6 +440,8 @@ pub struct App {
     /// Ticks still to run of a step taken while paused (O05, UI-32).
     #[allow(dead_code)] // wave 0: P6 reads it
     pub step_pending: u32,
+    /// The dwarf whose sheet is open keeps the map on them (`f` on the sheet).
+    pub follow: Option<u32>,
 }
 
 impl App {
@@ -506,6 +508,7 @@ impl App {
             director: crate::director::Director::default(),
             announce: m2::Announce::default(),
             step_pending: 0,
+            follow: None,
             frame_dt: 1.0 / 30.0,
             arena: None,
             audio: crate::audio::Audio::silent(),
@@ -592,6 +595,7 @@ impl App {
         }
         // Nobody at the keys: the camera tours the fort (src/director.rs).
         self.direct();
+        self.follow_unit();
         if self.game.chronicle_ready {
             self.game.chronicle_ready = false;
             if matches!(self.mode, Mode::Normal) {
@@ -987,7 +991,7 @@ impl App {
 
     /// Screens that can sit beside the map as a side pane.
     pub fn dockable(&self) -> bool {
-        matches!(self.mode, Mode::Status { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Chronicle { .. } | Mode::Legends { from_world: false, .. } | Mode::Life { .. })
+        matches!(self.mode, Mode::Status { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Chronicle { .. } | Mode::Legends { from_world: false, .. } | Mode::Life { .. } | Mode::Unit { .. })
     }
 
     pub fn uses_map_cursor(&self) -> bool {
@@ -1413,26 +1417,7 @@ impl App {
                     _ => {}
                 }
             }
-            Mode::Units { sel, cat, sort } => {
-                let n = self.game.dwarves.len();
-                match k.code {
-                    KeyCode::Esc => self.mode = Mode::Normal,
-                    KeyCode::Up => self.mode = Mode::Units { sel: sel.saturating_sub(1), cat, sort },
-                    KeyCode::Down => self.mode = Mode::Units { sel: (sel + 1).min(n.saturating_sub(1)), cat, sort },
-                    KeyCode::Enter => {
-                        if let Some(d) = self.game.dwarves.get(sel) {
-                            self.mode = Mode::Unit { id: d.id, sel: 0, tab: 0 };
-                        }
-                    }
-                    KeyCode::Char('c') => {
-                        if let Some(d) = self.game.dwarves.get(sel) {
-                            self.cursor = d.pos;
-                            self.mode = Mode::Normal;
-                        }
-                    }
-                    _ => {}
-                }
-            }
+            Mode::Units { sel, cat, sort } => self.key_units(k, sel, cat, sort),
             Mode::Unit { id, sel, tab } => self.key_unit(k, id, sel, tab),
             Mode::Military => self.key_military(k),
             Mode::Highlights { sel } => self.key_highlights(k, sel),
