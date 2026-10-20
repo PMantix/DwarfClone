@@ -751,7 +751,7 @@ Goal: the same world and simulation, seen from other seats.
 - **Needs:** Milestone 4's living world (the world tick, sites as places, news) and Milestone
   8's fallen forts (ruins to explore).
 - **Steps:** [x] make a character (race, skills, gear) and start at a site (A1, this commit) · [ ] travel the
-  world map; enter sites as local maps (towns, ruins, lairs, caves) · [ ] talk: hear news and
+  world map; enter sites as local maps (towns, ruins, lairs, caves) (sites built on entry from the legends, with site memory: A4 3769753) · [ ] talk: hear news and
   rumours, take jobs, hire companions · [ ] fight with the same body and wounds as fortress
   mode; loot; rest and heal · [ ] fame and infamy in the legends; visit or reclaim your old
   forts · [ ] death ends it, and the world remembers
