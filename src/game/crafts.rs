@@ -323,6 +323,36 @@ mod tests {
         assert!(g.dwarves[1].thoughts.iter().any(|t| t.text.starts_with("admired the skull of Snodub")));
     }
 
+    /// What the crafts come to in autoplay forts: `cargo test --release
+    /// crafts_in_autoplay -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn crafts_in_autoplay() {
+        let styles = [Style::Steady, Style::Builder, Style::Delver, Style::Warlord, Style::Reckless];
+        let runs: Vec<(u64, Style)> = (0..5u64).map(|i| (5000 + i, styles[i as usize])).collect();
+        let out: Vec<String> = std::thread::scope(|s| {
+            let hs: Vec<_> = runs
+                .iter()
+                .map(|&(seed, style)| {
+                    s.spawn(move || {
+                        let g = crate::game::trial_game(seed, style, 2 * YEAR / DAY);
+                        let named: Vec<String> = g.items.values().filter(|it| it.kills >= NAMED_AT && it.label.is_some()).map(|it| format!("{} [{}]", it.name(), it.kills)).collect();
+                        let trophies = g.items.values().filter(|it| it.kind == ItemKind::Trophy).count();
+                        let shown: Vec<String> = g.buildings.values().filter(|b| b.kind == BuildingKind::Display).map(|b| format!("{}{}", b.name.clone().unwrap_or_default(), if b.built { "" } else { " (waiting)" })).collect();
+                        let set = g.items.values().filter(|it| it.decor.is_some()).count();
+                        let marked = g.items.values().filter(|it| it.maker.is_some() && it.quality >= 3).count();
+                        let gems = (0..g.world.d).flat_map(|z| (0..g.world.h).flat_map(move |y| (0..g.world.w).map(move |x| Pos::new(x, y, z)))).filter(|&p| g.world.t(p).engraving & super::super::detail::GEM_SET != 0).count();
+                        format!("{} {:?}: named {:?}; trophies loose {}; displays {:?}; encrusted {}; marked {}; gem engravings {}", seed, style, named, trophies, shown, set, marked, gems)
+                    })
+                })
+                .collect();
+            hs.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        for l in out {
+            println!("{}", l);
+        }
+    }
+
     #[test]
     fn the_jeweler_sets_a_gem() {
         let mut g = Game::new(77);
