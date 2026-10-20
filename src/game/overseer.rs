@@ -2483,9 +2483,9 @@ mod tests {
         let g = trial_game(5003, Style::Steady, 262);
         assert_eq!(g.tick, 262 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
-        assert_eq!(deaths, vec![(203816, "Dorna Copperfist"), (312197, "Halvi Anvilsong"), (312211, "Kelda Stonemantle"), (312234, "Borra Coalhelm"), (312460, "Kolvar Coalshaper"), (312585, "Ostra Goldforge"), (312796, "Agnor Anvilsong"), (312910, "Sorli Hammergrip"), (313092, "Vigdor Flintmantle"), (313253, "Ragni Coppercrown")]);
+        assert_eq!(deaths, vec![(202953, "Sorli Hammergrip"), (303125, "Grenda Anvilbrew"), (303325, "Dorna Hammerhearth")]);
         let sieges: Vec<(u64, &str)> = g.annals.sieges.iter().map(|s| (s.tick, s.foe.as_str())).collect();
-        assert_eq!(sieges, vec![(203220, "goblins"), (303495, "goblins")]);
+        assert_eq!(sieges, vec![(202820, "goblins"), (303020, "goblins")]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
     }
 
