@@ -297,12 +297,12 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
   how soon it bars the gate and how many it keeps under arms (7579248) · [x] the brain and
   the autoplay screen show who it is (7579248) · [x] `A` then `r` rolls another of the same
   style (7579248) · [x] its notes on what it saw to speak in its voice ("Uneasy, it saw the
-  fortress short of stone…") (7579248) · [x] pick the traits by hand (this commit: `t` on the
+  fortress short of stone…") (7579248) · [x] pick the traits by hand (6892e14: `t` on the
   Autoplay screen, `--traits a,b` for batches) · [x] more of its
-  notes in its voice (e79d14e: six openings a trait; its halls, feasts and eulogies too; this commit:
+  notes in its voice (e79d14e: six openings a trait; its halls, feasts and eulogies too; 6892e14:
   notes tagged by kind with openings per trait and kind, and it mourns, sneers or frets over deaths
   and sieges by its traits)
-- **From the Bay 12 review:** [x] Watch and nudge ([OVR-24](ideas/world-and-overseer.md); this commit: its
+- **From the Bay 12 review:** [x] Watch and nudge ([OVR-24](ideas/world-and-overseer.md); 6892e14: its
   next step in the top bar and brain, and danger cards offer b raise the bridge · s shelter · m muster
   · d stand down, which it obeys for half a day; a stubborn one sometimes won't be told)
 - **Done when:** two overseers with the same style but different traits build visibly different
