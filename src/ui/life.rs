@@ -189,7 +189,7 @@ pub(super) fn draw(f: &mut Frame, area: Rect, g: &Game, id: u32, scroll: usize) 
     let scroll = scroll.min(v.len().saturating_sub(h));
     let shown: Vec<Line> = v.into_iter().skip(scroll).take(h).collect();
     f.render_widget(Paragraph::new(shown), Rect::new(inner.x, inner.y, inner.width, inner.height.saturating_sub(1)));
-    let hint = " ↑↓ read on · l/Esc the sheet · c go to them";
+    let hint = " ↑↓ read on · l/Esc the sheet · F family · c go to them";
     f.render_widget(Paragraph::new(Span::styled(hint, Style::default().fg(MUTED))), Rect::new(inner.x, inner.y + inner.height.saturating_sub(1), inner.width, 1));
 }
 
@@ -209,6 +209,7 @@ impl App {
                 }
                 self.mode = Mode::Normal;
             }
+            KeyCode::Char('F') => self.open_family(id),
             _ => {}
         }
     }

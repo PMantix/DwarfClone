@@ -23,11 +23,13 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
 
 /// The sheet's tabs.
-pub const TABS: [&str; 4] = ["Now", "Thoughts", "Life", "Health"];
+pub const TABS: [&str; 5] = ["Now", "Thoughts", "Life", "Health", "Status"];
 pub const TAB_NOW: usize = 0;
 pub const TAB_THOUGHTS: usize = 1;
 pub const TAB_LIFE: usize = 2;
 pub const TAB_HEALTH: usize = 3;
+/// Status readouts (O06, UI-35): needs, care, their animals.
+pub const TAB_STATUS: usize = 4;
 
 /// "Spring 203": the season and year of a tick.
 pub fn season_of(g: &Game, tick: u64) -> String {
@@ -114,6 +116,7 @@ pub fn life_lines(g: &Game, d: &Dwarf, w: usize) -> Vec<Line<'static>> {
     }
     v.push(Line::default());
     v.push(plain("l: their whole story, with a portrait".into(), KEY));
+    v.push(plain("F: their family tree".into(), KEY));
     v
 }
 
@@ -142,17 +145,134 @@ fn health_lines(d: &Dwarf) -> Vec<Line<'static>> {
     v
 }
 
+/// A gauge of `n` cells for `v` out of `max`, in `c`.
+fn gauge(v: u32, max: u32, n: usize, c: Color) -> Span<'static> {
+    let fill = ((v.min(max) as usize * n + max as usize / 2) / max.max(1) as usize).min(n);
+    Span::styled(format!("{}{}", "█".repeat(fill), "░".repeat(n - fill)), Style::default().fg(c))
+}
+
+/// The Status tab (UI-35): how they are at a glance (hunger, thirst,
+/// rest), what care they need and the next treatment, the hurt parts
+/// coloured by how bad they are, and the animals they keep.
+pub fn status_lines(g: &Game, d: &Dwarf, w: usize) -> Vec<Line<'static>> {
+    use crate::game::{HUNGRY, THIRSTY, TIRED};
+    let mut v = vec![header("Condition")];
+    let ok = Color::Rgb(120, 220, 120);
+    let warn = Color::Rgb(235, 215, 70);
+    let bad = Color::Rgb(255, 90, 60);
+    let need = |name: &str, x: u32, at: u32, words: [&str; 3]| {
+        let (wd, c) = if x < at {
+            (words[0], ok)
+        } else if x < at * 2 {
+            (words[1], warn)
+        } else {
+            (words[2], bad)
+        };
+        Line::from(vec![Span::styled(format!("{:<8}", name), Style::default().fg(TEXT)), gauge(x, at * 2, 12, c), Span::styled(format!(" {}", wd), Style::default().fg(c))])
+    };
+    if d.alive {
+        v.push(need("Hunger", d.hunger, HUNGRY, ["fed", "hungry", "starving"]));
+        v.push(need("Thirst", d.thirst, THIRSTY, ["slaked", "thirsty", "parched"]));
+        v.push(need("Fatigue", d.fatigue, TIRED, ["rested", "tired", "exhausted"]));
+        let (mood, mc) = d.mood();
+        v.push(Line::from(vec![Span::styled("Stress  ", Style::default().fg(TEXT)), stress_bar(d, 12), Span::styled(format!(" {}", mood), Style::default().fg(rgb(mc)))]));
+        let mut state = Vec::new();
+        if d.body.unconscious() {
+            state.push("unconscious");
+        } else if d.asleep {
+            state.push("asleep");
+        }
+        if d.tantrum > 0 {
+            state.push("in a tantrum");
+        }
+        if d.insane {
+            state.push(if d.melancholy { "lost to melancholy" } else { "mad" });
+        }
+        if !state.is_empty() {
+            v.push(plain(format!("Now {}", state.join(", ")), warn));
+        }
+    } else {
+        v.push(plain("Dead.".into(), MUTED));
+        if let Some(r) = g.resting_place(d) {
+            v.push(plain(format!("Their body {}.", r.trim_start_matches("is ")), MUTED));
+        }
+    }
+    // Care: bleeding, bed, the next treatment and who is giving it.
+    v.push(Line::default());
+    v.push(header("Care"));
+    let b = &d.body;
+    let n0 = v.len();
+    if d.alive && b.bleed_rate() > 0 {
+        let from = b.worst_bleed().map_or(String::new(), |p| format!(" from the {}", p.name()));
+        let left = b.ticks_to_death().map_or("it will clot".to_string(), |t| format!("dead in {} hours untreated", (t * 24 / crate::game::DAY).max(1)));
+        v.push(plain(format!("Bleeding ▲{}{}: {}", b.bleed_rate(), from, left), bad));
+    }
+    if d.alive {
+        let bed = match &d.task {
+            crate::dwarf::Task::Rest { bed: Some(bid), .. } => g.buildings.get(bid).map(|bd| bd.pos),
+            _ => None,
+        };
+        match bed {
+            Some(p) if g.zone_kind_at(p) == Some(crate::game::ZoneKind::Hospital) => v.push(plain("In a hospital bed".into(), Color::Rgb(150, 200, 255))),
+            Some(_) => v.push(plain("Abed".into(), Color::Rgb(150, 200, 255))),
+            None if b.needs_rest() => v.push(plain("Should be abed".into(), warn)),
+            None => {}
+        }
+        let todo = crate::game::medicine_needed(d);
+        if let Some(t) = todo.first() {
+            let with = t.supply().map_or(String::new(), |k| format!(" (needs {})", k.plural()));
+            v.push(plain(format!("Next treatment: {}{}", t.name(), with), warn));
+        }
+        let doc = g.dwarves.iter().find(|o| o.alive && matches!(o.task, crate::dwarf::Task::Treat { patient, .. } if patient == d.id));
+        if let Some(o) = doc {
+            v.push(plain(format!("{} is seeing to them", o.name), ok));
+        }
+        if b.infected() {
+            v.push(plain("An infected wound".into(), bad));
+        } else if b.dirty {
+            v.push(plain("A dirty wound".into(), warn));
+        }
+    }
+    v.extend(health::part_lines(d, "", true));
+    if v.len() == n0 {
+        v.push(plain(if d.alive { "Needs no care.".into() } else { "Beyond care.".into() }, MUTED));
+    }
+    // Their animals.
+    let mut beasts: Vec<&crate::creature::Creature> = g.creatures.values().filter(|c| c.alive && c.tame && (c.pet_of == Some(d.id) || c.owner == Some(d.id))).collect();
+    beasts.sort_by_key(|c| c.id);
+    if !beasts.is_empty() {
+        v.push(Line::default());
+        v.push(header("Their animals"));
+        for c in beasts {
+            let mut bits = vec![if c.owner == Some(d.id) { "war animal" } else { "pet" }.to_string()];
+            if !c.adult {
+                bits.push("young".into());
+            }
+            if c.pregnant > 0 {
+                bits.push("with young".into());
+            }
+            let hurt = crate::body::PARTS.iter().map(|&p| c.body.part_status(p)).find(|s| *s != "fine");
+            bits.push(hurt.map_or("hale".to_string(), |s| s.to_string()));
+            for (i, l) in wrap_words(&format!("{}: {}", c.title(), bits.join(", ")), w.max(10)).into_iter().enumerate() {
+                v.push(plain(if i == 0 { l } else { format!("  {}", l) }, if hurt.is_some() { warn } else { TEXT }));
+            }
+        }
+    }
+    v
+}
+
 /// A dwarf's sheet, open at `tab`, `w` columns wide: the tab bar, then the
 /// tab.
 pub fn sheet_lines(g: &Game, d: &Dwarf, sel: usize, tab: usize, w: usize) -> Vec<Line<'static>> {
     let mut v = vec![tab_bar(tab), Line::default()];
     match tab {
-        TAB_THOUGHTS | TAB_LIFE | TAB_HEALTH => {
+        TAB_THOUGHTS | TAB_LIFE | TAB_HEALTH | TAB_STATUS => {
             v.push(Line::from(Span::styled(d.called(), Style::default().fg(rgb(d.color)).add_modifier(Modifier::BOLD))));
             v.push(Line::default());
             v.extend(match tab {
                 TAB_THOUGHTS => thought_lines(g, d, w),
                 TAB_LIFE => life_lines(g, d, w),
+                TAB_STATUS => status_lines(g, d, w),
                 _ => health_lines(d),
             });
         }
@@ -371,6 +491,7 @@ impl App {
             }
             KeyCode::Char('m') => self.game.toggle_soldier(id),
             KeyCode::Char('l') => self.mode = Mode::Life { id, scroll: 0 },
+            KeyCode::Char('F') if tab == TAB_LIFE => self.open_family(id),
             KeyCode::Char('f') => {
                 self.follow = if self.follow == Some(id) { None } else { Some(id) };
                 self.follow_unit();
@@ -433,7 +554,7 @@ mod tests {
         app.key_unit(KeyEvent::from(KeyCode::Tab), a, 3, TAB_NOW);
         assert_eq!(app.mode, Mode::Unit { id: a, sel: 0, tab: TAB_THOUGHTS });
         app.key_unit(KeyEvent::from(KeyCode::BackTab), a, 0, TAB_NOW);
-        assert_eq!(app.mode, Mode::Unit { id: a, sel: 0, tab: TAB_HEALTH });
+        assert_eq!(app.mode, Mode::Unit { id: a, sel: 0, tab: TAB_STATUS });
         let tick = app.game.tick;
         app.game.dwarves[0].think("saw a friend die", 60, tick);
         let d = app.game.dwarves[0].clone();
@@ -546,5 +667,44 @@ mod tests {
         assert!(g.memory_of(id).any(|m| m.kind == MemoryKind::Soldier && m.text.contains(&name)));
         let d = g.dwarves.iter().find(|d| d.id == id).unwrap().clone();
         assert!(text(&life_lines(&g, &d, 60)).iter().any(|l| l.contains("joined")));
+    }
+
+    #[test]
+    fn injuries_are_coloured_by_how_bad_they_are() {
+        use crate::body::Part;
+        let mut g = Game::new(5);
+        let id = g.dwarves[0].id;
+        {
+            let b = &mut g.dwarves[0].body;
+            b.lost[Part::LeftArm.idx()] = true;
+            let i = Part::RightLeg.idx();
+            b.hp[i] = 0;
+            let h = Part::Head.idx();
+            b.hp[h] = b.max[h] - 1;
+            b.bleeds[i] = 6;
+            b.bleeding = 1;
+        }
+        let p = g.dwarves[0].pos;
+        let mut cat = crate::creature::Creature::new(9001, crate::creature::Species::Cat, p, 0);
+        cat.tame = true;
+        cat.pet_of = Some(id);
+        cat.pregnant = 500;
+        g.creatures.insert(9001, cat);
+        let d = g.dwarves[0].clone();
+        let lines = sheet_lines(&g, &d, 0, TAB_STATUS, 70);
+        let all = text(&lines);
+        println!("{:#?}", all);
+        assert!(all[0].contains("Status"));
+        let colour = |word: &str| {
+            lines.iter().find(|l| l.spans.iter().any(|s| s.content.contains(word))).and_then(|l| l.spans.iter().find(|s| s.content.contains(word))).and_then(|s| s.style.fg).unwrap_or_else(|| panic!("no {} in {:#?}", word, all))
+        };
+        let (missing, mangled, bruised) = (colour("missing"), colour("mangled"), colour("bruised"));
+        assert!(missing != mangled && mangled != bruised && missing != bruised, "each state its own colour");
+        for t in ["Hunger", "Thirst", "Fatigue", "Bleeding", "Next treatment: suturing (needs ", "Their animals", "pet, with young"] {
+            assert!(all.iter().any(|l| l.contains(t)), "no {:?} in {:#?}", t, all);
+        }
+        // A hale dwarf needs nothing.
+        let hale = g.dwarves[1].clone();
+        assert!(text(&sheet_lines(&g, &hale, 0, TAB_STATUS, 70)).iter().any(|l| l.contains("Needs no care")));
     }
 }
