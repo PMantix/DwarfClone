@@ -858,9 +858,13 @@ impl App {
         s.adv.knobs.set.insert("travel.encounters".into(), 0.0);
         s.adv.take_road();
         s.view = View::Travel;
-        s.adv.hero.dwarf.body.wound(Part::LeftArm, 9, true);
         let mut dir = (1, 0);
         for i in 0..9 {
+            // (Hurt on the way: a mangled arm, still bleeding at the end.)
+            if i == 7 {
+                s.adv.hero.dwarf.body.wound(Part::LeftArm, 20, true);
+                s.adv.say("A loose stone turns under you; you fall hard on the rocks and your arm is torn open.", (235, 90, 80));
+            }
             let out = s.adv.travel_with(dir.0, dir.1, false);
             if let adv::travel::TravelOutcome::Blocked(_) = out {
                 dir = adv::travel::DIRS[(i * 3 + 1) % 8];

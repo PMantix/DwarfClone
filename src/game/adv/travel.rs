@@ -618,6 +618,10 @@ impl Adventure {
             (main, extra)
         };
         self.say_at(&main, (220, 210, 190), Some(to));
+        // (Dated when the step began, as it says.)
+        if let Some(e) = self.log.last_mut().filter(|e| e.at.is_some()) {
+            e.tick = t0;
+        }
         for (t, col) in extra {
             self.say(&t, col);
         }

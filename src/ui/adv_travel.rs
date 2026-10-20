@@ -6,7 +6,7 @@
 //! travel log, the journey told as it went.
 
 use super::adventure::{body_block, draw_menu};
-use super::{backdrop, header, key_line, plain, popup, rgb, wrap_words, BLACK, KEY, MUTED, TEXT};
+use super::{header, key_line, plain, popup, rgb, wrap_words, BLACK, KEY, MUTED, TEXT};
 use crate::app::adventure::AdvScreen;
 use crate::game::adv::travel::{cheb, land_name};
 use crate::game::adv::{AdvEnd, Adventure, View};
@@ -15,7 +15,7 @@ use crate::overworld::{Overworld, SiteKind};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
 use std::collections::HashSet;
 
@@ -31,7 +31,7 @@ const GOLD: Color = Color::Rgb(235, 190, 80);
 const RED: Color = Color::Rgb(235, 70, 60);
 
 pub(super) fn draw(f: &mut Frame, area: Rect, s: &AdvScreen) {
-    backdrop(f, area);
+    f.render_widget(Clear, area);
     let a = &s.adv;
     if a.ow().w <= 1 {
         return;
@@ -103,7 +103,7 @@ fn draw_map(f: &mut Frame, area: Rect, a: &Adventure) {
             let mut fg = shade(fg, light);
             let mut bg = shade(bg, light);
             if road.contains(&(x, y)) {
-                bg = Color::Rgb(70, 52, 12);
+                bg = Color::Rgb(115, 82, 18);
                 if ow.cell(x, y).site == 0 && ow.fort_at(x, y).is_none() {
                     ch = '·';
                     fg = GOLD;
@@ -354,7 +354,7 @@ fn draw_log(f: &mut Frame, r: Rect, s: &AdvScreen) {
     let text_w = (inner.width as usize).saturating_sub(stamp_w + 1).max(10);
     let mut lines: Vec<Line<'static>> = Vec::new();
     for e in s.adv.log.iter().rev() {
-        let stamp = if e.at.is_some() || lines.is_empty() { format!("Day {}, {}", e.tick.saturating_sub(clock::DAWN_TICK) / DAY + 1, short_time(e.tick)) } else { String::new() };
+        let stamp = if e.at.is_some() { format!("Day {}, {}", e.tick.saturating_sub(clock::DAWN_TICK) / DAY + 1, short_time(e.tick)) } else { String::new() };
         let wrapped = wrap_words(&e.text, text_w);
         let mut block: Vec<Line<'static>> = Vec::new();
         for (i, l) in wrapped.into_iter().enumerate() {
