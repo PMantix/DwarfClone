@@ -21,7 +21,8 @@ four waves** and is where to start.
 
 **Other ways to play** (WISHLIST G01–G03): the arena mode is next after Milestone 1's wave 3,
 since it is contained and doubles as the combat-tuning tool; the bigger bestiary grows
-alongside it; adventurer mode follows Milestones 4 and 8, whose living world and fallen forts it needs.
+alongside it; adventurer mode ([plan/adventure.md](plan/adventure.md)) is built alongside Milestone 2 (decided
+October 2026), in its own files, with several playable races and a shared world file.
 
 ## How a wave runs
 
