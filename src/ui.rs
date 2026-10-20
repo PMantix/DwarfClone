@@ -28,6 +28,7 @@ mod sound;
 mod overseer;
 mod overlays;
 mod looks;
+mod adventure;
 pub(crate) use looks::tile_look;
 use looks::foliage;
 
@@ -1342,7 +1343,8 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
         | Mode::WorldGen
         | Mode::Embark { .. }
         | Mode::Prepare { .. }
-        | Mode::Arena => {
+        | Mode::Arena
+        | Mode::Adventure => {
             title = String::new();
         }
         Mode::Nobles | Mode::Appoint { .. } => {
@@ -2844,6 +2846,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::WorldSetup { sel } => return draw_world_setup(f, app, sel),
         Mode::WorldGen => return draw_worldgen(f, app),
         Mode::Arena => return arena::draw(f, app),
+        Mode::Adventure => return adventure::draw(f, app),
         _ => {}
     }
     if let Mode::WorldMap { x, y } = app.mode {
@@ -4203,9 +4206,10 @@ fn draw_title(f: &mut Frame, app: &App, sel: usize) {
             1 => saves.first().map(|m| format!("{} ({})", m.fortress, m.date)),
             2 if !saves.is_empty() => Some(format!("{} saved", saves.len())),
             3 => Some("the overseer plays a fortress for you".to_string()),
-            4 => Some("set two sides against each other and watch".to_string()),
-            5 => Some(if app.audio.settings.enabled { "music, ambience and effects (M mutes)" } else { "off: M or Enter to turn it on" }.to_string()),
-            6 => Some("until next time".to_string()),
+            crate::app::TITLE_ADVENTURE => Some("one hero against the world".to_string()),
+            crate::app::TITLE_ARENA => Some("set two sides against each other and watch".to_string()),
+            crate::app::TITLE_SOUND => Some(if app.audio.settings.enabled { "music, ambience and effects (M mutes)" } else { "off: M or Enter to turn it on" }.to_string()),
+            7 => Some("until next time".to_string()),
             _ => None,
         };
         // Same width on every line so the centered menu lines up.

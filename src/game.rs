@@ -134,6 +134,9 @@ mod m2;
 pub mod lastwords;
 pub mod sound_reports;
 pub mod crafts;
+// Adventurer mode (G03): one hero against the world (game/adv/).
+pub mod adv;
+pub mod clock;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -647,6 +650,7 @@ impl Game {
         g.place_vault();
         g.place_necromancer();
         g.make_lairs(seed);
+        g.place_remains();
         report("Strike the earth!", 1.0);
         g
     }

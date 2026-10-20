@@ -15,10 +15,19 @@ use std::collections::HashSet;
 pub mod arena;
 pub mod sound;
 pub mod m2;
+pub mod adventure;
 
 pub const SPEEDS: [u32; 6] = [1, 2, 5, 10, 25, 60];
 pub const SAVE_DIR: &str = "saves";
-pub const TITLE_MENU: [&str; 7] = ["New world", "Continue", "Load game", "Watch a fort", "Arena", "Sound", "Quit"];
+pub const TITLE_MENU: [&str; 8] = ["New world", "Continue", "Load game", "Watch a fort", "Adventure", "Arena", "Sound", "Quit"];
+/// The title menu's rows, by name.
+pub const TITLE_NEW: usize = 0;
+pub const TITLE_CONTINUE: usize = 1;
+pub const TITLE_LOAD: usize = 2;
+pub const TITLE_WATCH: usize = 3;
+pub const TITLE_ADVENTURE: usize = 4;
+pub const TITLE_ARENA: usize = 5;
+pub const TITLE_SOUND: usize = 6;
 
 /// Rows of the world settings screen.
 pub const SETUP_ROWS: [&str; 8] = ["Preset", "Seed", "World size", "History", "Civilizations", "Savagery", "Minerals", "Generate world"];
@@ -294,6 +303,8 @@ pub enum Mode {
     GameOver,
     /// The arena: set up a battle and watch it (`app::arena`).
     Arena,
+    /// Adventurer mode: one hero against the world (`app::adventure`).
+    Adventure,
     /// The highlight reel, playing clip `sel` (`ui/highlights.rs`).
     Highlights { sel: usize },
     /// A dwarf's life story and portrait (`ui/life.rs`).
@@ -425,6 +436,8 @@ pub struct App {
     pub frame_dt: f64,
     /// The arena's screens, once opened.
     pub arena: Option<Box<arena::ArenaScreen>>,
+    /// The adventure under way, if any (`app::adventure`).
+    pub adv: Option<Box<adventure::AdvScreen>>,
     /// Music, ambience and effects (silent until `main` starts it).
     pub audio: crate::audio::Audio,
     /// The screen the sound screen was opened from.
@@ -508,6 +521,7 @@ impl App {
             follow: None,
             frame_dt: 1.0 / 30.0,
             arena: None,
+            adv: None,
             audio: crate::audio::Audio::silent(),
             sound_from: Mode::Title { sel: 0 },
             sound_frames: 0,
@@ -522,6 +536,9 @@ impl App {
         self.poll_job();
         if self.mode == Mode::Arena {
             return self.arena_frame();
+        }
+        if self.mode == Mode::Adventure {
+            return self.adv_frame();
         }
         if self.mode == Mode::WorldGen {
             if let Some(g) = self.worldgen.as_mut() {
@@ -625,6 +642,7 @@ impl App {
                 | Mode::Prepare { .. }
                 | Mode::Legends { from_world: true, .. }
                 | Mode::Arena
+                | Mode::Adventure
         )
     }
 
@@ -797,6 +815,7 @@ impl App {
                         saved_unix: 0,
                         autosave,
                         file: String::new(),
+                        kind: saves::SaveKind::Fort,
                     };
                     Ok(JobDone::Saved(game, meta, AfterSave::Resume))
                 }
@@ -806,6 +825,9 @@ impl App {
 
     pub fn start_load(&mut self, file: String) {
         let dir = self.save_dir.clone();
+        if file.ends_with(".adv.json") {
+            return self.run_job("Loading", move |report| saves::read_adventure(&dir, &file, report).map(|a| JobDone::AdvLoaded(Box::new(a))));
+        }
         self.run_job("Loading", move |report| saves::read(&dir, &file, report).map(JobDone::Loaded));
     }
 
@@ -840,12 +862,13 @@ impl App {
                     AfterSave::Quit => self.quit = true,
                     AfterSave::Title => {
                         self.game = Game::placeholder(Overworld::empty());
-                        self.mode = Mode::Title { sel: 1 };
+                        self.mode = Mode::Title { sel: TITLE_CONTINUE };
                     }
                     AfterSave::World => {
                         let (x, y) = self.game.site;
                         self.mode = Mode::WorldMap { x, y };
                     }
+                    AfterSave::Adventure => self.adventure_in_this_world(),
                 }
             }
             Ok(JobDone::Grown(g, (dx, dy))) => {
@@ -857,6 +880,7 @@ impl App {
                 self.mode = Mode::Normal;
                 self.flash = Some(format!("The map is now {}×{}.", self.game.world.w, self.game.world.h));
             }
+            Ok(JobDone::Visited(a)) | Ok(JobDone::AdvLoaded(a)) => self.adventure_ready(a),
             Ok(JobDone::Loaded(g)) => {
                 self.game = g;
                 self.cursor = self.game.embark;
@@ -882,21 +906,22 @@ impl App {
             KeyCode::Down => self.mode = Mode::Title { sel: (sel + 1) % n },
             KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => self.quit = true,
             KeyCode::Enter => match sel {
-                0 => self.open_world_setup(),
-                1 => match self.saves().into_iter().next() {
+                TITLE_NEW => self.open_world_setup(),
+                TITLE_CONTINUE => match self.saves().into_iter().next() {
                     Some(m) => self.start_load(m.file),
                     None => self.flash = Some("No saved games yet.".into()),
                 },
-                2 => {
+                TITLE_LOAD => {
                     if self.saves().is_empty() {
                         self.flash = Some("No saved games yet.".into());
                     } else {
                         self.mode = Mode::LoadMenu { sel: 0, confirm: false };
                     }
                 }
-                3 => self.start_watch(),
-                4 => self.open_arena(),
-                5 => self.open_sound(),
+                TITLE_WATCH => self.start_watch(),
+                TITLE_ADVENTURE => self.open_adventure(),
+                TITLE_ARENA => self.open_arena(),
+                TITLE_SOUND => self.open_sound(),
                 _ => self.quit = true,
             },
             _ => {}
@@ -924,7 +949,7 @@ impl App {
             return;
         }
         match k.code {
-            KeyCode::Esc => self.mode = Mode::Title { sel: 2 },
+            KeyCode::Esc => self.mode = Mode::Title { sel: TITLE_LOAD },
             KeyCode::Up => self.mode = Mode::LoadMenu { sel: sel.saturating_sub(1), confirm: false },
             KeyCode::Down => self.mode = Mode::LoadMenu { sel: (sel + 1).min(n - 1), confirm: false },
             KeyCode::Enter => {
@@ -1251,6 +1276,7 @@ impl App {
                     KeyCode::Char('s') | KeyCode::Char('S') => self.mode = Mode::Sagas { sel: 0, open: self.game.great_saga().is_some(), from_end: true },
                     KeyCode::Char('t') => self.start_save(false, AfterSave::Title),
                     KeyCode::Char('n') => self.start_save(false, AfterSave::World),
+                    KeyCode::Char('a') => self.start_save(false, AfterSave::Adventure),
                     KeyCode::Char('w') | KeyCode::Esc => self.mode = Mode::Normal,
                     _ => {}
                 }
@@ -1264,6 +1290,7 @@ impl App {
             Mode::Title { sel } => return self.key_title(k, sel),
             Mode::LoadMenu { sel, confirm } => return self.key_load_menu(k, sel, confirm),
             Mode::Arena => return self.key_arena(k),
+            Mode::Adventure => return self.key_adventure(k),
             _ => {}
         }
         if self.uses_map_cursor() && self.move_cursor(&k) {
@@ -1293,7 +1320,7 @@ impl App {
         }
         let mode = self.mode.clone();
         match mode {
-            Mode::GameOver | Mode::Arena | Mode::Sound { .. } => {}
+            Mode::GameOver | Mode::Arena | Mode::Adventure | Mode::Sound { .. } => {}
             Mode::Normal => self.key_normal(k),
             Mode::Designate { kind, corner } => match k.code {
                 KeyCode::Enter => self.confirm(),

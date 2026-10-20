@@ -66,6 +66,10 @@ fn main() -> Result<()> {
         autoplay_batch(&args);
         return Ok(());
     }
+    if args.iter().any(|a| a == "--adventure-trial") {
+        game::adv::bot::trial_batch(&args);
+        return Ok(());
+    }
     let seed = std::env::args()
         .nth(1)
         .and_then(|s| s.parse::<u64>().ok())

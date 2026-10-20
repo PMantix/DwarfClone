@@ -242,12 +242,18 @@ pub fn screenshot(args: &[String]) -> Result<()> {
     let (w, h) = opt(args, "--size").and_then(|s| s.split_once('x')).and_then(|(a, b)| Some((a.parse().ok()?, b.parse().ok()?))).unwrap_or((1920usize, 1080usize));
     let fonts = load_fonts(args)?;
     let mut app = App::new(seed);
-    app.start_watch_seeded(seed);
+    // `--adventure`: a seeded adventure, the hero set out from home.
+    let adventure = args.iter().any(|a| a == "--adventure");
+    if adventure {
+        app.start_adventure_seeded(seed);
+    } else {
+        app.start_watch_seeded(seed);
+    }
     while app.mode == crate::app::Mode::Loading {
         app.frame();
         std::thread::sleep(Duration::from_millis(20));
     }
-    for _ in 0..days * crate::game::DAY {
+    for _ in 0..if adventure { 0 } else { days * crate::game::DAY } {
         app.game.step();
     }
     // (`--plan`: down on the main level of halls, the plan shown over it.)
@@ -294,7 +300,11 @@ pub fn screenshot(args: &[String]) -> Result<()> {
     // ...and frames as play goes on, where only what changed is painted.
     let t = Instant::now();
     for _ in 0..n {
-        app.game.step();
+        if adventure {
+            app.frame();
+        } else {
+            app.game.step();
+        }
         terminal.draw(|f| ui::draw(f, &mut app))?;
     }
     let frame = t.elapsed().as_secs_f64() * 1000.0 / n as f64;

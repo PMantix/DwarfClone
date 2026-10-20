@@ -3,7 +3,7 @@
 //! matchups worth keeping in `saves/`. The fighting itself is
 //! `game::arena`; the drawing is `ui::arena`.
 
-use super::{App, Mode, SPEEDS};
+use super::{App, Mode, SPEEDS, TITLE_ARENA};
 use crate::game::arena::{self, Battle, Matchup, Tally, SETUP_ROWS};
 use crossterm::event::{KeyCode, KeyEvent};
 
@@ -199,13 +199,13 @@ impl App {
     pub fn key_arena(&mut self, k: KeyEvent) {
         let dir = self.save_dir.clone();
         let Some(a) = self.arena.as_mut() else {
-            self.mode = Mode::Title { sel: 4 };
+            self.mode = Mode::Title { sel: TITLE_ARENA };
             return;
         };
         a.flash = None;
         match a.view.clone() {
             View::Setup => match k.code {
-                KeyCode::Esc => self.mode = Mode::Title { sel: 4 },
+                KeyCode::Esc => self.mode = Mode::Title { sel: TITLE_ARENA },
                 KeyCode::Up => a.row = (a.row + SETUP_ROWS - 1) % SETUP_ROWS,
                 KeyCode::Down => a.row = (a.row + 1) % SETUP_ROWS,
                 KeyCode::Tab => a.side = 1 - a.side.min(1),
@@ -329,7 +329,7 @@ mod tests {
     fn the_title_screen_opens_the_arena_and_a_matchup_is_set_up_and_fought() {
         let mut app = App::new(1);
         app.save_dir = std::env::temp_dir().join(format!("dwarfclone-arena-app-{}", std::process::id()));
-        app.mode = Mode::Title { sel: 4 };
+        app.mode = Mode::Title { sel: TITLE_ARENA };
         key(&mut app, KeyCode::Enter);
         assert_eq!(app.mode, Mode::Arena);
         // Fewer goblins, a bridge to fight on.

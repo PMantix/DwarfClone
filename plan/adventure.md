@@ -4,7 +4,24 @@ Grounded in the code as of v0.6.0 (`23f4963`, October 2026). File:function citat
 tree. Nothing here edits the repo; every step is one commit with its test, and WISHLIST ticks go in
 the same commit (CLAUDE.md).
 
-## G03 Adventurer mode: one dwarf against the world
+## G03 Adventurer mode: one hero against the world
+
+**Decisions (October 2026).** The user answered the four open questions:
+
+1. **Who can you play: several races from the start.** The character maker offers the world's
+   playable peoples, taken from its living civilizations: dwarves, humans, elves and (where a
+   goblin civ has a dark fortress) goblins. Each race has its own kit, skills and starting site,
+   and the world treats each differently: which sites are hostile, prices, rumours. See
+   "Peoples" below; the hero stays a `Dwarf`-struct person with a `Hero.race`.
+2. **Shared world memory: a shared world file.** G03 builds M8's FC6 world file
+   (`saves/<World>.world.json`) in package A19, so every later fort or adventure in that world
+   hears of the hero, not only those started from the death page. `FortMark` is shaped to be
+   M8's `FortRecord` (same field names; M8 adds its fields to it).
+3. **Looting a fallen fort changes the world.** When an adventurer takes from a fallen fort, the
+   fort's own save is written back: the artifact is gone for the next visitor, and the ruin
+   remembers who robbed it. A5 writes safely, keeping a backup of the save before the first write.
+4. **Timing: alongside M2.** Wave 0 is being built now, after M2's wave 0 merged, while M2's
+   wave 1 runs in parallel on its own files.
 
 Goal (WISHLIST): *take one character into the world for fame, fortune or utter ruin.* Done when a
 character can leave a town, find a ruin from a fallen fort, fight what lives there, and come back
@@ -113,7 +130,7 @@ App ── Mode::Adventure ──► AdvScreen ─┬─ Adventure (saved as <He
                                       └─ view: Travel | Local | Talk{..} | Inventory | Status | Dead
 ```
 
-- **The hero is a `Dwarf`.** `Hero` wraps a `dwarf::Dwarf` with skills, `fight_xp`, body, held weapon, armour, epithet, kills, personality and relations. Inside a site the dwarf is `visit.g.dwarves[0]`, so creatures target it through the existing code. `credit_kill`, `earn_epithet`, `kill`, `note_death`, `hero_fell`, `saga_death`, `life_story` and `eulogy` all work on it unchanged. Between sites it lives in `Adventure.hero`, the way `Expedition.members` holds dwarves off the map (expeditions.rs:36).
+- **The hero is a `Dwarf` struct, of any race.** `Hero` wraps a `dwarf::Dwarf` with skills, `fight_xp`, body, held weapon, armour, epithet, kills, personality and relations. Inside a site the dwarf is `visit.g.dwarves[0]`, so creatures target it through the existing code. `credit_kill`, `earn_epithet`, `kill`, `note_death`, `hero_fell`, `saga_death`, `life_story` and `eulogy` all work on it unchanged. Between sites it lives in `Adventure.hero`, the way `Expedition.members` holds dwarves off the map (expeditions.rs:36).
 - **The overworld is moved, not cloned.**
   - On entering a site, `visit.g.overworld = mem::take(&mut adv.ow)`, and leaving moves it back.
   - An `Overworld` with its fields can be megabytes, so it is never copied per visit.
@@ -123,6 +140,56 @@ App ── Mode::Adventure ──► AdvScreen ─┬─ Adventure (saved as <He
   - They take the hero's `pack: Vec<Item>` and the held and worn items, and give them fresh ids in the visit's `items` with `carried_by` set.
   - On the way out they strip the ids. Item ids are per-`Game` (`next_id`), so they are never kept across visits.
   - The same pair moves companions.
+
+#### Peoples: who the hero is, and how the world sees them
+
+*Decision 1.* How the code models persons today:
+
+- `Dwarf` (dwarf.rs) is the only **full person**: skills, `fight_xp`, a `Body`, held and worn
+  items, personality, relations, epithet and kills, age and sex, a medical history. Life stories,
+  eulogies, epithets, sagas and `Game::kill` all take a `Dwarf`. It has **no race field**; the
+  fort's dwarves are dwarves by assumption.
+- Every other person is a `Creature` (creature.rs) of `Species::Human`, `Elf`, `Goblin`,
+  `Raider`, `Visitor` or `Merchant`: a body, a faction and gear, but no skills, personality,
+  relations or epithet. That is too thin for a hero, and `credit_kill`/`earn_epithet` don't
+  take one.
+- `overworld::Race { Dwarf, Human, Elf, Goblin }` is the world's peoples; each `Civ` has one,
+  with `enemies`, `plural()`, `color()` and `person_name(rng, race)`.
+
+**So: the hero of any race is a `Dwarf` struct, and `Hero.race: Race` says what they are.** No
+field is added to `Dwarf`, so fort code is untouched. Creature AI picks targets by faction, not
+race, so a human in `g.dwarves` is hunted and struck exactly as a dwarf is. What reads the race:
+
+- the hero's glyph colour (`Race::color`) and name (`person_name(rng, race)`);
+- the words the adventure writes (figure kind "human adventurer", legend lines, the saga title);
+  fort texts that say "dwarf" (`hero_fell`, a few `credit_kill` lines) are left as they are in the
+  slice, and A10 words the hero's own legend and figure from the race;
+- `adv/peoples.rs` (W0, filled further by A1 and A4): `Stance { Home, Friendly, Wary, Hostile }`
+  and `stance(ow, hero_race, hero_civ, site) -> Stance`, from the site's civ, `Civ.enemies` and a
+  small race table (goblins are hostile to every other people and they to goblins; elves are wary
+  of dwarves and humans; everyone else is friendly unless at war).
+
+| Race | Starts at | Kit leans to | Skills lean to | The world |
+|---|---|---|---|---|
+| Dwarf | a Fortress or Hamlet of their civ | axe, pick, mail | fighting, mining, smithing | hostile: goblins, the dwarves' enemies |
+| Human | a Town or Hamlet | spear or sword, leather, shield | fighting, hunting, trade | hostile: goblins, enemies at war |
+| Elf | a Retreat | wooden spear, crossbow (the slice's only bow), no metal | hunting, herbalism | wary of dwarves and humans; hostile: goblins |
+| Goblin | a DarkFortress (only if the world has a living goblin civ) | iron spear, leather | fighting, no labours | hostile almost everywhere: every non-goblin site sends its guards, prices are double where trade is allowed at all, rumours are what outlaws hear |
+
+How the stance is used (each by the package that owns the system):
+
+- **Sites (A4)**: the stance decides the occupants' faction on entry. A `Hostile` town's guards are
+  spawned hostile; a goblin hero's own dark fortress spawns its goblins as peaceful folk rather
+  than the `Army` faction. No combat.rs change: it is which faction sitegen gives them.
+- **Encounters (A3)**: patrols come from civs whose stance to the hero is `Hostile`; a goblin hero
+  meets dwarf and human patrols instead of goblin ones.
+- **Prices (A15)**: a multiplier per stance (`trade.home 0.9`, `friendly 1.0`, `wary 1.3`,
+  `hostile` no trade), knobs.
+- **Rumours (A7)**: phrase tables per speaker race, and what a people talks about (elves of
+  forests and beasts, dwarves of forts and ore, goblins of raids and whom to rob). Speakers who
+  are `Wary` tell less (top 2 rumours instead of 5).
+- **Fame (A10)**: renown and infamy by civ already exist; a hero's own civ starts at a small
+  renown, enemies of it at a small infamy.
 
 #### Time: turns made of ticks
 
@@ -228,7 +295,14 @@ DF's adventure mode is turn-based. We are turn-based at the player's end, with t
     - An occupant moves in by the killer: a siege's goblins camp in the great hall; a megabeast takes the fort as its lair (its figure gets `lair` pointed at the fort, so the legends agree); unburied dead rise under a necromancer's curse; on evil land the ghosts walk (`ghosts_tick` already does ghosts); otherwise cave things climb up from the broken caverns.
     - The fort's books are left where they lay, readable with `r` while standing on one: the chronicle (`chronicles`), the overseer's notes, and the last saga.
   - The hero arrives at the old wagon spot (`g.embark`).
-  - The fort's own save file is never written to. It is the player's memorial. The changes the adventurer makes are kept in the adventure's memo. *Open question 3.*
+  - **Looting changes the world** (decision 3). When the hero leaves a fallen fort having taken
+    from it (or slain its occupant), the visited `Game` is written back to the fort's own save, so
+    the artifact is gone for the next visitor and the game-over page's "look upon the ruins"
+    shows the empty pedestal. The ruin remembers who robbed it: `FortMark.robbed` gets a
+    `Robbery { by, year, took }`, in the adventure's overworld and in the copy inside the fort's
+    save. Before the **first** write, the save is copied to `<file>.pre-adventure.json` (never
+    overwritten afterwards), and the write uses the tmp-and-rename path. No `SiteMemo` is kept for
+    a fort: its save is its memory.
 
 #### People: talk, news, rumours, quests
 
@@ -309,7 +383,12 @@ DF's adventure mode is turn-based. We are turn-based at the player's end, with t
   - the hero;
   - the current `Visit`'s `Game` in full, if inside a site. A small site is a few hundred KB; a fallen fort is as big as its own save.
 - Autosave on leaving a site and on each dawn while travelling. F5 saves.
-- The adventure's overworld is the newest copy of the world. `n` and `a` from the death page carry it on, and a fallen fort's game-over page gets `a` to send an adventurer into *that* world. The loop is fort → ruin → adventurer → legend → fort. A separate world file is M8's FC6 and is not needed for this loop. *Open question 2.*
+- The adventure's overworld is the newest copy of the world. `n` and `a` from the death page carry it on, and a fallen fort's game-over page gets `a` to send an adventurer into *that* world. The loop is fort → ruin → adventurer → legend → fort.
+- **The shared world file** (decision 2, A19) makes the loop hold for games started from the
+  title too: `saves/<World>.world.json` is the world's newest overworld, written whenever a game
+  in that world saves its legends (a fort's fall or game-over save, an adventure's save, death or
+  retirement), and read by "New fort in a world" and "Adventure" in a known world. It is M8's FC6
+  built early.
 
 #### Keys (DF-style)
 
@@ -483,6 +562,8 @@ needs, each `#[serde(default)]`.
        #[serde(default)] pub coins: u32,
        #[serde(default)] pub home: Option<u32>,          // site id
        #[serde(default)] pub calling: Calling,           // Warrior, Hunter, Wanderer, Peasant (A1)
+       #[serde(default = "dwarf_race")] pub race: Race,  // the hero's people (decision 1)
+       #[serde(default)] pub civ: Option<u32>,           // the hero's civ
        #[serde(default)] pub known: BTreeSet<u32>,       // sites and fort marks heard of (A7)
        #[serde(default)] pub loyalty: i32,               // for companions
    }
@@ -502,9 +583,13 @@ needs, each `#[serde(default)]`.
 3. **Overworld** (overworld.rs): `#[serde(default)] pub forts: Vec<FortMark>` and `#[serde(default)] pub remains: Vec<Remains>`.
 
    ```rust
-   pub struct FortMark { pub name: String, pub x: i32, pub y: i32, pub civ: Option<u32>,
+   pub struct FortMark { pub name: String, pub site: (i32, i32), pub civ: Option<u32>,
        pub founded: i32, pub fell: Option<i32>, pub killer: Option<String>,
-       pub artifacts: Vec<String>, pub save_file: String, pub peak_pop: u32 }
+       pub artifacts: Vec<String>, pub save_file: String, pub peak_pop: usize,
+       #[serde(default)] pub journal: Vec<String>, #[serde(default)] pub occupant: Option<Occupant>,
+       #[serde(default)] pub robbed: Vec<Robbery> }      // field names as M8's FortRecord
+   pub struct Robbery { pub by: String, pub year: i32, pub took: Vec<String> }
+   pub enum Occupant { Army { civ: u32, n: u32 }, Beast { figure: u32 }, Horror { label: String }, Dead, Empty }
    pub struct Remains { pub name: String, pub x: i32, pub y: i32, pub site: Option<u32> /* site id, None in the wild or a fort */,
        pub pos: (i32, i32, i32), pub year: i32, pub gear: Vec<(ItemKind, Mat, String)>, pub figure: u32 }
    impl Overworld {
@@ -609,7 +694,10 @@ This spike de-risks the whole mode: the hero acts, the world answers, and blood 
   - The title's "Adventure" first asks **which world**:
     - **"A new world"** runs the world setup and generation, then comes here instead of the world map. A `App.after_worldgen: AfterGen { Embark, Adventure }` flag is added in W0.
     - **One of the worlds in `saves/`**: worlds grouped by `SaveMeta.world`, the newest save's overworld taken. The list shows the fallen forts each holds.
-  - **Race**: dwarf (the slice). *Open question 1.*
+  - **Race** (decision 1): the peoples of the world's living civs with a site to start from:
+    dwarf, human, elf, and goblin when a goblin civ holds a dark fortress. `[`/`]` or the arrow
+    keys pick; the race sets the name table, the kit and skill leanings (the table in "Peoples")
+    and the home site kinds, and the `Hero.race`/`Hero.civ` fields.
   - **Calling**, a starting budget of skill points and kit:
 
     | Calling | Skill | Kit |
@@ -619,12 +707,15 @@ This spike de-risks the whole mode: the hero acts, the world answers, and blood 
     | Wanderer | a little of each | walking staff (wood hammer), cloak, 30 coins |
     | Peasant | none | a pick, 5 coins: ruin is likelier, glory greater |
 
+    The race then adjusts the kit (`create.rs: kit(race, calling)`): an elf's metal becomes wood
+    and a dwarf warrior takes an axe, a human a spear or sword, a goblin an iron spear.
+
     Points can be moved between fighting and the labour skills (←→), like *Prepare carefully* (`loadout.rs`'s budget pattern: 150 points, costs from `skill_cost`).
   - **Name** is rolled with `person_name` and can be edited (`n`, the world-setup text field's pattern). **Looks and personality** come from `new_dwarf`; `r` rerolls them. The portrait is shown (`ui/life.rs: portrait`).
-  - **Home** is a living site of the hero's civ: the nearest Hamlet, Town or Fortress to a fallen fort if the world has one, otherwise a random one. `[` `]` cycle through them, and the travel map preview shows where it is.
+  - **Home** is a living site of the hero's civ, of a kind their race lives in (the Peoples table): the nearest Hamlet, Town or Fortress to a fallen fort if the world has one, otherwise a random one. `[` `]` cycle through them, and the travel map preview shows where it is.
   - The adventure starts at `ow.year + 1`, spring, at dawn, in the home's town map.
 - **Steps:**
-  1. *The creation screen and the world choice.* Test `create.rs: every_calling_makes_a_hero_with_its_kit` and `ui: make_a_hero_by_keys` (App test: title, Adventure, new world on seed 5 headless, Enter through to `Mode::Adventure` with the hero in a town).
+  1. *The creation screen and the world choice.* Test `create.rs: every_calling_makes_a_hero_with_its_kit`, `create.rs: each_people_starts_at_a_site_of_its_own` (on a world with all four races: a human starts in a Town or Hamlet of a human civ, an elf in a Retreat with no metal in the pack, a goblin in a DarkFortress; a race with no living site is not offered) and `ui: make_a_hero_by_keys` (App test: title, Adventure, new world on seed 5 headless, Enter through to `Mode::Adventure` with the hero in a town).
   2. *Home and start.* Test `create.rs: the_hero_starts_at_home_in_spring` (site of their civ, `clock` 0, `hour == 6`).
 - **Parallel work:**
   - **Writes:** create.rs, ui/adv_create.rs, app/adventure.rs (`key_create` only).
@@ -703,6 +794,9 @@ This spike de-risks the whole mode: the hero acts, the world answers, and blood 
     - At a dwarf civ's site the folk are `Dwarf`s instead: `Task::Idle` dwarves with the same `folk_tick` through a `dwarves` loop in `adv_step` (one line).
     - Names come from `person_name` and roles from a small table (smith, brewer, elder, hunter, bard).
     - A town is safe: resting there has no ambush roll.
+  - **Who is hostile**: `peoples::stance` (W0) sets the occupants' faction on entry, as in
+    "Peoples". Test `town.rs: a_goblin_is_not_welcome_in_a_dwarf_hamlet` (the guards attack a
+    goblin hero on sight; a dwarf hero walks in peacefully).
   - **Site memory**: `SiteMemo` is applied after generation, and site generation is deterministic in `(world seed, key)`. A slain figure is not respawned: its corpse, or bones after a season, lies where it fell (`corpses`). Looted items are not re-placed, matched by label (artifacts) or by kind and position (ordinary loot). `cleared` sites spawn no occupants for a year. The last two `Game`s are kept whole (`Adventure.recent: Vec<Visit>`, `#[serde(skip)]`).
 - **Steps:**
   1. *Land on demand and the edges.* Test `sites.rs: the_same_cell_gives_the_same_land` (enter, leave, enter: identical tiles) and `sites.rs: entering_is_quick` (release, Small, under 1.2 s on the CI machine, `#[ignore]`d in debug).
@@ -733,13 +827,29 @@ This spike de-risks the whole mode: the hero acts, the world answers, and blood 
       - nothing: cave things come up from opened caverns, and wildlife dens in the outer halls.
     - **The books**: the year's chronicle pages (`g.chronicles`), the overseer's last notes and the saga that ended it are placed as readable items (`ItemKind::Book` is not added: the slice uses a labelled `Crafts`/stone tablet item whose label carries the text key) on the nearest table or the floor of the main hall. `r` on it shows the text in a popup.
   - **Arrival**: the hero comes in at `g.embark`, the old wagon spot. A card says: "Copper Gate. It fell in 213, to the goblins of Snagrod. Seven years of silence."
+    If the ruin was robbed before, the card says by whom ("Urist of Ravenhold took its axe in 215").
+  - **Writing back** (decision 3): `fallen::write_back(dir, mark, &mut Visit, &Adventure)` runs on
+    leaving a fort whose visit changed it (items taken, creatures slain):
+    1. if `<file>.pre-adventure.json` doesn't exist, copy the save there first (a plain file copy:
+       the player's original, kept once and never overwritten);
+    2. push `Robbery { by: hero.called(), year, took: labels }` onto the mark in `adv.ow.forts`
+       and onto the same mark in the fort's own overworld (the fort keeps its own world copy; the
+       adventure's overworld is moved back out of the visit first, so only the mark changes);
+    3. write the visited `Game` with the tmp-and-rename `saves::write` path, keeping
+       `fallen = true`, its `SaveMeta.world` and `fortress`.
+    Ruin preparation (`ruin_prepare`) runs only on the first visit: a fort whose mark has a
+    robbery is entered as it was left.
 - **Steps:**
   1. *Scan and load.* Test `fallen.rs: a_fallen_fort_is_found_and_entered` (run `Game::new(5)` 10 days, `kill_for_test` everyone, step until fallen, save to a temp dir; scan finds it; enter loads it; the map tiles equal the save's; at least one artifact or the stockpiles are present).
   2. *Ruin and occupant.* Test `fallen.rs: what_killed_it_lives_there_now` (a fort fallen to a megabeast: the beast is in the fort and its figure's lair is the fort mark; a fort fallen to goblins: goblins are present).
   3. *Books.* Test `fallen.rs: the_overseers_last_notes_are_left_behind`.
+  4. *Write back.* Test `fallen.rs: a_looted_fort_stays_looted` (take the artifact, leave: the
+     backup exists and equals the original bytes; the save no longer holds the artifact; its
+     mark has the robbery; a second hero entering finds it gone and the card names the robber;
+     a second write leaves the backup unchanged).
 - **Parallel work:**
   - **Writes:** sitegen/fallen.rs.
-  - **Reads:** saves.rs, W0 `FortMark`, A4's `enter` (dispatch by `SiteKey::Fort`).
+  - **Reads:** saves.rs (`write`, `read`), W0 `FortMark`/`Robbery`, A4's `enter` (dispatch by `SiteKey::Fort`).
   - **Hot spots:** none.
 
 ### A6 Fighting as a person  (effort: 1.5 sessions; risk: medium)
@@ -811,6 +921,40 @@ The Done-when test and every tuning goal need adventures that play themselves (P
   - `trial_batch` with `--runs`, `--seed`, `--threads` and `--out`, plus a report section in `report.rs: adventures(trials)`. That is one new function; `report.rs` is touched by M2's W0-B, so this merges after it.
 - **Test:** `bot.rs: the_bot_goes_and_comes_back` (on a fixed seed, a calm world and a weak target: it returns home).
 - **Writes:** bot.rs, report.rs (one fn), main.rs (the W0 flag wired up).
+
+### A19 The shared world file  (effort: 1.5 sessions; risk: medium) — wave 2
+
+Decision 2: every later fort or adventure in a world hears of the hero. This is M8's FC6 built
+early, to its contract, so M8 extends it rather than builds another.
+
+- **Design** (new `src/worldfile.rs`, saves.rs `write_world`/`read_world`/`list_worlds`):
+  - `WorldRecord { seed, overworld: Overworld, #[serde(default)] wanderers: Vec<(Dwarf, String)> }`
+    saved as `saves/<World>.world.json`. The fort marks live in `overworld.forts` (`FortMark`,
+    which **is** M8's `FortRecord`: M8 adds its extra fields to `FortMark` with `serde(default)`
+    and may alias the name), so the overworld carries them wherever it goes.
+  - **Who writes**: a fort's fall (the game-over save, `AfterSave::*`), a fort's ordinary save once
+    a year (so a living fort's legends reach adventurers), an adventure's save, death and
+    retirement. One call each: `worldfile::record(dir, &ow)`.
+  - **Merging, not overwriting**: two games in one world can run apart (a fort from the title, an
+    adventure from the death page). `record` reads the file and merges: events by `(year, text)`,
+    sagas by title, figures by id (a death wins), `forts` by `save_file` (robberies unioned),
+    `remains` by `(figure, x, y)`, sites' `ruined` (true wins); `year` is the larger. Everything
+    else (cells, civs, regions) comes from the file. The merge is pure (`merge(a, b) -> Overworld`)
+    and tested on its own.
+  - **Who reads**: the title's "Adventure" world list (A1) and the world map's embark from a
+    known world: the newest of the world file and the save's own overworld (by `year`, then
+    events count) is taken.
+  - Old worlds have no file: the first `record` makes one from whatever game saves first.
+- **Steps:**
+  1. *The file and the merge.* Test `worldfile.rs: two_games_in_one_world_both_are_remembered`
+     (two copies of `Game::new(5).overworld`, each given a different legend and fort mark: the
+     merge holds both; a figure dead in one is dead in the merge).
+  2. *Writers and readers.* Test `app: a_fort_from_the_title_hears_of_the_hero` (an adventure
+     dies in world W and records; a new fort embarked from the title in W has the hero's saga in
+     `overworld.sagas` and the hero's figure in `figures`).
+- **Writes:** worldfile.rs (new), saves.rs (three fns), main.rs (one `mod`), one `record` line each
+  in app.rs's game-over save path and app/adventure.rs.
+- **Hot spots:** app.rs one line (after M2's wave 1 merges); saves.rs three new fns.
 
 ---
 
@@ -942,8 +1086,9 @@ Conflicts to manage in wave 1:
 | A10 Fame, saga, death, memory (1-4) | A2-A5 (A6 soft) | 2.5 |
 | A11 Saving | A4, A5 | 1 |
 | A18 The bot and the batch | A3, A4, A6 | 1.5 |
+| A19 The shared world file | A10 (records the death), A11 | 1.5 |
 
-A10 ∥ A11 ∥ A18. A10's Done-when step (4) needs A18's bot, so that one test lands last in the wave, by whichever merges second. After the wave: the first adventure batch (50 runs, about 15 minutes), and the slice is announced in the README.
+A10 ∥ A11 ∥ A18 ∥ A19. A10's Done-when step (4) needs A18's bot, so that one test lands last in the wave, by whichever merges second. After the wave: the first adventure batch (50 runs, about 15 minutes), and the slice is announced in the README.
 
 **Wave 3 (layer 2: people)**
 
@@ -984,7 +1129,9 @@ All in W0 unless noted.
 - `app.rs`: `Mode::Adventure`, `App.adv`, the `TITLE_*` consts, the game-over `a`. `app/adventure.rs` holds `AdvScreen`, `View` and one `key_<view>` per view. `jobs.rs` holds `JobDone::{Visited, AdvLoaded}`.
 - `ui/adventure.rs`: `draw` (and one file per view: `adv_create`, `adv_travel`, `adv_talk`, `adv_end`).
 - `combat.rs`: `strike_at` (A6), the `folk_tick` line (A4).
-- **For M8 P01**: `FortRecord` should hold or replace `FortMark`, with the same field names where they overlap (`name`, `site` ↔ `x,y`, `founded`, `fate` ↔ `fell`/`killer`, `artifacts`, `save_file`, `peak_pop`). `Occupant` in A5 uses P01's variants (Army, Beast, Horror, Dead, Empty). Whichever lands second adapts.
+- **For M8 P01**: `FortMark` (W0) **is** `FortRecord`'s base, with its field names: `name`, `site: (i32, i32)`, `civ`, `founded`, `save_file`, `peak_pop: usize`, `artifacts`, `journal`, `occupant: Option<Occupant>`, plus `fell: Option<i32>`/`killer: Option<String>` (P01's `fate` is derived from them, or added as a field) and `robbed: Vec<Robbery>` (decision 3). `Occupant` (W0, in overworld.rs) has P01's variants: `Army { civ, n }`, `Beast { figure }`, `Horror { label }`, `Dead`, `Empty`. M8 adds `site_id`, `reclaimed_by` and the rest to `FortMark` with `serde(default)`, and `WorldRecord` is A19's.
+- `game/adv/peoples.rs`: `Stance`, `stance(ow, race, civ, site)` (W0; A1 and A4 extend it).
+- `worldfile.rs` (A19): `WorldRecord`, `record`, `merge`; saves.rs `write_world`, `read_world`, `list_worlds`.
 
 ### Interaction with Milestone 2
 
@@ -1028,7 +1175,8 @@ Net: G03's wave 0 is the only part that touches shared files, and it waits for M
 | A10 | 2.5 |
 | A11 | 1 |
 | A18 | 1.5 |
-| **Slice (waves 0-2)** | **20** |
+| A19 | 1.5 |
+| **Slice (waves 0-2)** | **21.5** |
 | A7 | 2 |
 | A8 | 2 |
 | A9 | 2 |
@@ -1037,7 +1185,7 @@ Net: G03's wave 0 is the only part that touches shared files, and it waits for M
 | A14 | 1.5 |
 | A15 | 2 |
 | A16 | 2 |
-| **Total** | **35** |
+| **Total** | **36.5** |
 
 With 6 agents, the calendar is five waves: the slice in three (about 20 session slots), people in one, drama and tuning in one.
 
@@ -1051,9 +1199,9 @@ With 6 agents, the calendar is five waves: the slice in three (about 20 session 
 - **No world tick.** The world doesn't change while you travel, apart from your deeds and the nemesis. That is fine for the slice. Note it in the README, and connect it to M4's `world_daily` when it lands.
 - **Window mode.** It is free through `ui::draw`, but our tiles must draw crisply. `@`/`☺`, `×` and `!` come from the font; check A2's screenshot at cell sizes 8 and 32.
 
-### Open questions for the user
+### Open questions for the user (answered October 2026; see "Decisions" at the top)
 
 1. **Who can you play?** The slice is dwarves only, which reuses everything as it is. Should humans, elves (or goblins, as an outlaw) come later as a calling with their own towns, or stay out?
 2. **Does an adventure write back to the world for everyone?** As planned, a new fort or adventurer started *from the adventure's death page* (`n`/`a`) inherits its legends. A fort started from the title's "New world" does not, because there is no shared world file until M8's FC6. Is that enough for now, or should G03 build the world file (`saves/<World>.world.json`, about one extra session) so every later game in that world hears of you?
 3. **Is a fallen fort's save sacred?** The plan keeps the player's fallen-fort save untouched: the adventurer's looting is remembered only in the adventure. Or should looting it change that save, so the "look upon the ruins" from the game-over page shows the empty pedestal?
-4. **When to build it?** PLAN.md puts G03 after M4 and M8. This plan needs neither for its slice, only M2's wave 0. Start the slice once M2 wave 0 merges, in parallel with M2's waves (it lives in its own files), or wait?
+4. **When to build it?** (Answered: alongside M2.) PLAN.md puts G03 after M4 and M8. This plan needs neither for its slice, only M2's wave 0. Start the slice once M2 wave 0 merges, in parallel with M2's waves (it lives in its own files), or wait?

@@ -35,6 +35,9 @@ pub enum SagaKind {
     LastStand,
     /// An overseer the fort lost faith in: won back, or put aside (O07).
     Reign,
+    /// An adventurer's road: setting out, deeds, the fight of their life,
+    /// death or retirement (G03).
+    Wander,
 }
 
 impl SagaKind {
@@ -49,6 +52,7 @@ impl SagaKind {
             SagaKind::Siege => "a siege",
             SagaKind::LastStand => "the last dwarf",
             SagaKind::Reign => "a reign",
+            SagaKind::Wander => "a wanderer's road",
         }
     }
 }
@@ -136,6 +140,8 @@ impl Saga {
             SagaKind::Siege => n >= 3 && self.weight >= 4,
             SagaKind::LastStand => n >= 2,
             SagaKind::Reign => n >= 2,
+            // Two chapters that mattered, or a death after a deed.
+            SagaKind::Wander => (n >= 2 && self.weight >= 2) || (self.doom && self.ended.is_some() && has(Beat::Escalation)),
         }
     }
 
@@ -218,6 +224,7 @@ pub fn title_for(kind: SagaKind, fort: &str, tick: u64, who: &str) -> String {
         SagaKind::Siege => &["The Siege of {F}", "The Walls of {F}", "The {C} Siege", "The Long Watch at {F}"],
         SagaKind::LastStand => &["The Last of {F}", "{W} Alone", "The Last Lamp of {F}"],
         SagaKind::Reign => &["The Reign of {W}", "The Ledger of {W}", "The Doubting of {W}", "The {C} Reign"],
+        SagaKind::Wander => &["The Wanderings of {W}", "The Road of {W}", "The Long Walk of {W}", "The {C} Road"],
     };
     pick(h, 3, pool).replace("{F}", fort).replace("{W}", who).replace("{C}", col).replace("{B}", ban)
 }
@@ -443,6 +450,20 @@ impl Game {
             format!("The walls of {} held, and the songs of it are sung still.", fort)
         };
         self.saga_end(i, fell || s.dwarves_lost >= 3, Some(text), closing);
+    }
+
+    /// An adventurer's road (G03): a chapter of the hero's Wander saga,
+    /// keyed on their id, opened by the first.
+    #[allow(dead_code)] // G03 wave 2: A10 writes the chapters
+    pub(crate) fn saga_wander(&mut self, id: u32, who: &str, beat: Beat, text: String, weight: u32) {
+        let i = match self.saga_find(SagaKind::Wander, id as u64) {
+            Some(i) => {
+                self.saga_add(i, beat, text);
+                i
+            }
+            None => self.saga_open(SagaKind::Wander, id as u64, who, beat, text),
+        };
+        self.sagas.list[i].weight += weight;
     }
 
     /// A dwarf has won a name (`earn_epithet`).
@@ -797,6 +818,8 @@ impl Game {
             }
         }
         self.sagas.fell_by = great;
+        // The world marks where it fell (G03: adventurers find it).
+        self.mark_fallen(killer.clone());
         self.sagas.fall_told = true;
         if let Some(s) = great.and_then(|id| self.saga(id)).cloned() {
             for w in self.overworld.sagas.iter_mut().rev() {
