@@ -875,14 +875,10 @@ impl Game {
         self.msg(&format!("{} breathes fire!", c.title()), (255, 110, 30));
     }
 
-    /// A slain dragon leaves its skull and the hoard it carried.
+    /// A slain dragon leaves the hoard it carried (and its skull, a trophy:
+    /// `crafts.rs`).
     fn dragon_hoard(&mut self, c: &Creature) {
         self.milestone("dragon", &format!("A dragon slain: {}", c.title()));
-        let skull = self.spawn_item(ItemKind::Craft, Mat::Bone, c.pos);
-        if let Some(it) = self.items.get_mut(&skull) {
-            it.quality = 5;
-            it.label = Some(format!("skull of {}", c.title()));
-        }
         let n = self.rng.range(4, 9);
         for _ in 0..n {
             let (kind, mat) = *self.rng.pick(&[
@@ -1263,6 +1259,7 @@ impl Game {
             format!("The {} march to war! {} {}, led by {}, have come to settle an old score.", civ_name, n, plural, general_name)
         };
         let mut text = text;
+        text.push_str(&self.trophy_vengeance(&civ_name));
         if self.sworn_host() {
             text.push_str(" They are sworn to avenge the armies cut down before this gate, and every one of them is armed in their best.");
         }
@@ -1354,6 +1351,7 @@ impl Game {
         if c.breathes_fire {
             self.dragon_hoard(&c);
         }
+        self.take_trophy(&c);
         self.pet_died(&c);
         self.wild_death(&c);
         if let Some(f) = c.figure {

@@ -137,7 +137,7 @@ impl Game {
                     for dx in -2..=2 {
                         let q = pos.offset(dx, dy, 0);
                         let Some(t) = self.world.get(q) else { continue };
-                        if t.smooth >= super::detail::ENGRAVED && t.engraving > 0 && lived.contains(&(t.engraving as usize - 1)) {
+                        if t.smooth >= super::detail::ENGRAVED && t.engraving & !super::detail::GEM_SET > 0 && lived.contains(&((t.engraving & !super::detail::GEM_SET) as usize - 1)) {
                             found = Some(("admired an engraving of something they lived through".to_string(), false));
                             break 'eng;
                         }

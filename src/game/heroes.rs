@@ -15,6 +15,7 @@ impl Game {
     pub(super) fn credit_kill(&mut self, d: &mut Dwarf, c: &Creature) {
         d.kills += 1;
         self.story_kill(d, c);
+        self.weapon_blooded(d, c);
         let what = c.title();
         if c.species == crate::creature::Species::Undead && c.general.is_some() {
             self.earn_epithet(d, "Deathbane", RANK_BEAST + 1, &format!("destroyed {}", what));

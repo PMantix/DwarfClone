@@ -315,7 +315,7 @@ impl Game {
 
     /// Room tiles along its walls, clear of its doors: corners first, then
     /// the far ones.
-    fn wall_spots(&self, r: &Room) -> Vec<Pos> {
+    pub(super) fn wall_spots(&self, r: &Room) -> Vec<Pos> {
         let tiles = room_tiles(r);
         let doors: Vec<Pos> = r.doors.iter().copied().chain(std::iter::once(self.entry(r))).collect();
         let solid = |p: Pos| self.world.get(p).map_or(true, |t| t.kind.solid()) && !tiles.contains(&p);

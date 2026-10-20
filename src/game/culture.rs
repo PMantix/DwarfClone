@@ -117,6 +117,7 @@ impl Game {
             v.push(i.describe());
         }
         v.extend(self.depiction_lines(id));
+        v.extend(self.craft_lines(id));
         v
     }
 
