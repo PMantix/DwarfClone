@@ -131,6 +131,8 @@ pub mod inspire;
 mod gatehouse;
 mod fit;
 mod m2;
+pub mod lastwords;
+pub mod sound_reports;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -1779,9 +1781,10 @@ impl Game {
             self.mark_battlefield(pos);
         }
         let name = d.name.clone();
-        self.msg(&format!("{} {}.", name, cause), (255, 60, 60));
+        self.msg_at(&format!("{} {}.", name, cause), (255, 60, 60), Some(pos), logkind::LogKind::Death);
         self.note_death(d, cause);
         self.hero_fell(d, cause);
+        self.speak_last_words(d, cause);
         self.year_log.deaths.push(d.called());
         let tick = self.tick;
         d.died = Some(tick);
@@ -2773,8 +2776,8 @@ impl Game {
                                     }
                                 }
                                 if done {
-                                    let name = self.buildings[&bld].name();
-                                    self.msg(&format!("{} has been completed.", name), (160, 220, 255));
+                                    let (name, at) = (self.buildings[&bld].name(), self.buildings[&bld].pos);
+                                    self.msg_at(&format!("{} has been completed.", name), (160, 220, 255), Some(at), logkind::LogKind::Building);
                                     if self.buildings[&bld].kind == BuildingKind::Monument {
                                         self.dedicate_monument(bld, d);
                                     }

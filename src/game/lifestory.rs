@@ -220,6 +220,9 @@ impl Game {
         let mut s = format!("{}: {}", d.called(), list(&bits.into_iter().take(3).collect::<Vec<_>>()));
         if let Some(n) = self.annals.deaths.iter().rev().find(|n| n.name == d.name) {
             s.push_str(&format!("; {}", n.cause));
+            if let Some(w) = &n.last_words {
+                s.push_str(&format!(", saying \u{201c}{}\u{201d}", w));
+            }
         }
         s.push('.');
         s

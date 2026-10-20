@@ -150,7 +150,7 @@ impl Game {
                 self.buildings.insert(bid, b);
             }
             self.remove_building(bid);
-            self.msg(&format!("The {} has burned down.", name.to_lowercase()), (255, 140, 60));
+            self.msg_at(&format!("The {} has burned down.", name.to_lowercase()), (255, 140, 60), Some(p), super::logkind::LogKind::Other);
         }
         let t = self.world.t_mut(p);
         match t.kind {
@@ -179,7 +179,7 @@ impl Game {
         if self.world.kind(p) == Some(TileKind::Tree) {
             // Strike when the rain lets up a moment: it can still catch.
             if self.ignite(p) {
-                self.msg("Lightning strikes a tree!", (255, 255, 160));
+                self.msg_at("Lightning strikes a tree!", (255, 255, 160), Some(p), super::logkind::LogKind::Weather);
             }
         }
     }

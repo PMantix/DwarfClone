@@ -410,7 +410,7 @@ impl Game {
         d.satisfy(crate::dwarf::NeedKind::Fight, 60);
         if blow.notable {
             if let Some(m) = &blow.msg {
-                self.msg(m, (235, 225, 130));
+                self.msg_at(m, (235, 225, 130), Some(cpos), super::logkind::LogKind::Combat);
             }
         }
         let knocked = self.aftermath(&blow, d.pos, cpos, &owner, &seen, Some(species), false);
@@ -1366,7 +1366,7 @@ impl Game {
             let fort = self.fortress_name.clone();
             self.overworld.kill_figure(f, year, format!("slain at {}", fort));
             self.legend(format!("{} was slain at {}.", label, fort));
-            self.msg(&format!("{} has been slain! The fortress rejoices.", label), (255, 215, 60));
+            self.msg_at(&format!("{} has been slain! The fortress rejoices.", label), (255, 215, 60), Some(c.pos), super::logkind::LogKind::Combat);
             let tick = self.tick;
             for d in self.dwarves.iter_mut().filter(|d| d.alive) {
                 d.think(&format!("rejoiced at the death of {}", label), -15, tick);
@@ -1375,7 +1375,7 @@ impl Game {
             let label = c.title();
             let fort = self.fortress_name.clone();
             self.legend(format!("{} was slain at {}.", label, fort));
-            self.msg(&format!("{} has been slain!", label), (255, 215, 60));
+            self.msg_at(&format!("{} has been slain!", label), (255, 215, 60), Some(c.pos), super::logkind::LogKind::Combat);
             let tick = self.tick;
             for d in self.dwarves.iter_mut().filter(|d| d.alive) {
                 d.think(&format!("rejoiced at the death of {}", label), -10, tick);
@@ -1391,7 +1391,7 @@ impl Game {
                 self.overworld.kill_figure(f, year, format!("slain besieging {}", fort));
             }
             self.legend(format!("{}, {}, fell at {}.", label, c.desc.clone().unwrap_or_default(), fort));
-            self.msg(&format!("{}, who led the attack, has fallen!", label), (255, 215, 60));
+            self.msg_at(&format!("{}, who led the attack, has fallen!", label), (255, 215, 60), Some(c.pos), super::logkind::LogKind::Combat);
             self.spotlight("Their leader falls", &format!("{}, who led the attack, has fallen!", label), Some(c.pos), (255, 215, 60));
             self.saga_leader_fell(&label);
             let tick = self.tick;
@@ -1402,7 +1402,7 @@ impl Game {
                 self.rout();
             }
         } else if c.hostile() {
-            self.msg(&format!("The {} has been slain.", info.name), (160, 230, 160));
+            self.msg_at(&format!("The {} has been slain.", info.name), (160, 230, 160), Some(c.pos), super::logkind::LogKind::Combat);
         }
         // Horrors, made peoples, the thing in the night (horrors.rs).
         self.horror_died(&c);
@@ -1786,7 +1786,7 @@ impl Game {
         }
         if blow.notable {
             if let Some(m) = &blow.msg {
-                self.msg(m, (255, 120, 100));
+                self.msg_at(m, (255, 120, 100), Some(d.pos), super::logkind::LogKind::Combat);
             }
         }
         let first = d.name.split(' ').next().unwrap_or("someone").to_string();
