@@ -541,6 +541,8 @@ mod tests {
             t.kind = TileKind::Open;
             t.revealed = true;
         }
+        // (Damp stone near the column or not, dig on: O10's damp stone has its own test.)
+        g.damp.dig_wet_ok = true;
         g.designate(s, foot, Desig::StairUD);
         assert_eq!(g.world.t(s).desig, Desig::StairDown, "the head");
         assert_eq!(g.world.t(foot).desig, Desig::StairUp, "the foot");

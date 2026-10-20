@@ -2116,6 +2116,10 @@ impl App {
                 let o = &self.game.work_orders[sel];
                 self.flash = Some(format!("{}: {}.", o.name(), o.cond.describe(o.keep)));
             }
+            KeyCode::Char('w') => {
+                let on = self.game.toggle_dig_wet();
+                self.flash = Some(if on { "Miners dig on through damp and warm stone. Mind the water.".into() } else { "Miners stop at damp and warm stone.".into() });
+            }
             KeyCode::Char('a') => {
                 self.game.auto_conditions();
                 self.flash = Some("Food and drink by the mouths to feed, furniture by the beds wanted, arms by the squads.".into());
