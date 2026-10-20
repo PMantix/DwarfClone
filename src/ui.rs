@@ -690,6 +690,9 @@ fn cursor_info(g: &Game, p: Pos) -> Vec<Line<'static>> {
     if let Some(place) = g.story_place_at(p) {
         v.push(plain(place, Color::Rgb(230, 200, 150)));
     }
+    if let Some(field) = g.field_look(p) {
+        v.push(plain(field, Color::Rgb(200, 180, 170)));
+    }
     if t.water > 0 {
         let what = if t.frozen { "Ice" } else { "Water" };
         v.push(plain(format!("{} {}/7", what, t.water), Color::Rgb(90, 160, 255)));
@@ -3669,6 +3672,7 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
         keep += 1;
         keep += g.work_at(p).is_some() as usize;
         keep += g.story_place_at(p).is_some() as usize;
+        keep += g.field_look(p).is_some() as usize;
         keep += (t.water > 0) as usize;
         keep += (t.magma > 0) as usize;
         keep += t.aquifer as usize;

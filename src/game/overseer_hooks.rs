@@ -42,6 +42,8 @@ impl Game {
         self.ov_reflect(o);
         // O07: its journal, written up.
         self.ov_journal(o);
+        // O09: a memorial on an old battlefield (battlefields.rs).
+        self.ov_memorial(o);
         let _ = o;
     }
 

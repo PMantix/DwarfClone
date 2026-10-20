@@ -145,10 +145,12 @@ impl Game {
         if tick % DAY == DAY / 4 {
             for i in 0..self.dwarves.len() {
                 let d = &self.dwarves[i];
-                let restless = !d.alive && !d.rested && !d.ghost && d.died.map_or(false, |t| tick > t + GHOST_DAYS * DAY);
-                if restless && self.rng.chance(0.35) {
+                // The dead of a battlefield rise sooner, and there (battlefields.rs).
+                let (days, chance, field) = if d.alive { (GHOST_DAYS, 0.35, None) } else { self.ghost_terms(i, GHOST_DAYS, 0.35) };
+                let restless = !d.alive && !d.rested && !d.ghost && d.died.map_or(false, |t| tick > t + days * DAY);
+                if restless && self.rng.chance(chance) {
                     let name = d.name.clone();
-                    let at = self.remains_of(&name).unwrap_or(d.pos);
+                    let at = field.or_else(|| self.remains_of(&name)).unwrap_or(d.pos);
                     let d = &mut self.dwarves[i];
                     d.ghost = true;
                     d.pos = at;

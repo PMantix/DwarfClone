@@ -367,7 +367,7 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O09 Legends worth telling (M)
 - **Why:** The fort's history should read like a saga in the overseer's voice: named battles, named places, remembered battlefields.
-- **Steps:** [x] Named episodes and battles ([WLD-01](ideas/world-and-overseer.md), 15be5b2) · [ ] Old battlefields remembered ([WLD-12](ideas/world-and-overseer.md); partly: the place is named and later fights there are named after it, 6567979) · [ ] Ages named by the world ([WLD-13](ideas/world-and-overseer.md)) · [x] Sagas: named story arcs told on illuminated cards (f9d85c0, bde720d, this commit) · [ ] Legends that drift ([WLD-09](ideas/world-and-overseer.md)) · [ ] Forgotten lore ([WLD-18](ideas/world-and-overseer.md))
+- **Steps:** [x] Named episodes and battles ([WLD-01](ideas/world-and-overseer.md), 15be5b2) · [x] Old battlefields remembered ([WLD-12](ideas/world-and-overseer.md); the place is named and later fights there are named after it, 6567979; bones left lying, passers-by remember, anniversary vigils and feasts, ghosts walk the field, the overseer's memorial slab, this commit) · [ ] Ages named by the world ([WLD-13](ideas/world-and-overseer.md)) · [x] Sagas: named story arcs told on illuminated cards (f9d85c0, bde720d, this commit) · [ ] Legends that drift ([WLD-09](ideas/world-and-overseer.md)) · [ ] Forgotten lore ([WLD-18](ideas/world-and-overseer.md))
 - **Done when:** A siege goes into the chronicle under a name, and the place it broke is named after it.
 
 #### O10 A miner's craft (M)

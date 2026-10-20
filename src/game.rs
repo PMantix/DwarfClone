@@ -97,6 +97,7 @@ pub mod fortify;
 mod towers;
 mod shelter;
 pub mod stories;
+pub mod battlefields;
 pub mod arena;
 mod wargame;
 pub mod magic;
