@@ -7,21 +7,70 @@
 //! step keys (P6, O05), `key_journal` (P17, O07), `key_family` (P16, O06).
 
 use super::{App, Mode};
+use crate::game::logkind::LogKind;
+use crate::game::sound_reports::Earshot;
+use crate::game::DAY;
 use crossterm::event::{KeyCode, KeyEvent};
+use serde::{Deserialize, Serialize};
 
-/// Announcement control (O05, UI-07; P6 fills it in): for each kind of
-/// announcement, whether it pauses, recentres or hides.
-#[derive(Clone, Debug, Default)]
-#[allow(dead_code)] // wave 0: P6 fills it in
+/// Announcement control (O05, UI-07): for each kind of announcement,
+/// whether it pauses, recentres or hides. An app setting, kept in
+/// `saves/announce.json` rather than in the fortress's save.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Announce {
-    pub rules: Vec<(crate::game::logkind::LogKind, AnnounceRule)>,
+    #[serde(default)]
+    pub rules: Vec<(LogKind, AnnounceRule)>,
+    /// Read from the file yet (the first fortress frame reads it).
+    #[serde(skip)]
+    pub loaded: bool,
+    /// Ticks run by the step under way, for its "stepped" line.
+    #[serde(skip)]
+    pub stepped: u32,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AnnounceRule {
     pub pause: bool,
     pub recenter: bool,
     pub hide: bool,
+}
+
+/// The step keys while paused (O05, UI-32): a tick, an hour, a day.
+pub const STEP_TICK: u32 = 1;
+pub const STEP_HOUR: u32 = (DAY / 24) as u32;
+pub const STEP_DAY: u32 = DAY as u32;
+/// The most ticks a step runs in one frame, so a day's step stays smooth.
+const STEP_CHUNK: u32 = 400;
+
+impl Announce {
+    const FILE: &'static str = "announce.json";
+
+    /// What to do with announcements of `kind`. Unset kinds show, and
+    /// neither pause nor move the camera, as before there was a choice.
+    pub fn rule(&self, kind: LogKind) -> AnnounceRule {
+        self.rules.iter().find(|r| r.0 == kind).map_or(AnnounceRule::default(), |r| r.1)
+    }
+
+    pub fn set(&mut self, kind: LogKind, rule: AnnounceRule) {
+        match self.rules.iter_mut().find(|r| r.0 == kind) {
+            Some(r) => r.1 = rule,
+            None => self.rules.push((kind, rule)),
+        }
+    }
+
+    pub fn load(dir: &std::path::Path) -> Announce {
+        let a: Announce = std::fs::read_to_string(dir.join(Self::FILE)).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        Announce { loaded: true, ..a }
+    }
+
+    pub fn save(&self, dir: &std::path::Path) {
+        if std::fs::create_dir_all(dir).is_ok() {
+            if let Ok(s) = serde_json::to_string_pretty(self) {
+                let _ = std::fs::write(dir.join(Self::FILE), s);
+            }
+        }
+    }
 }
 
 impl App {
@@ -30,7 +79,106 @@ impl App {
     pub(super) fn key_m2(&mut self, k: KeyEvent) -> bool {
         #[allow(clippy::match_single_binding)]
         match k.code {
+            KeyCode::Char('s') => self.key_step(STEP_TICK),
+            KeyCode::Char('T') => self.key_step(STEP_HOUR),
+            KeyCode::Char('D') => self.key_step(STEP_DAY),
+            KeyCode::Enter => self.go_to_sound(),
             _ => false,
+        }
+    }
+
+    /// What the player can see now: the map's view and level.
+    pub fn earshot(&self) -> Earshot {
+        Earshot { x: self.view_x, y: self.view_y, w: self.map_rect.width.max(1) as i32, h: self.map_rect.height.max(1) as i32, z: self.cursor.z }
+    }
+
+    /// A step key (O05, UI-32): pause if running, then run `ticks` more
+    /// and stop again.
+    fn key_step(&mut self, ticks: u32) -> bool {
+        self.paused = true;
+        self.step_pending = self.step_pending.saturating_add(ticks);
+        true
+    }
+
+    /// Enter: the camera goes to the latest sound heard off screen (O05).
+    fn go_to_sound(&mut self) -> bool {
+        match self.game.last_heard(self.earshot()) {
+            Some((p, s)) => {
+                self.look_at(p);
+                self.flash = Some(format!("{} You go to look.", s));
+            }
+            None => self.flash = Some("Nothing heard off screen lately.".into()),
+        }
+        true
+    }
+
+    /// Centre the view and cursor on `p`.
+    fn look_at(&mut self, p: crate::geom::Pos) {
+        if !self.game.world.in_bounds(p) {
+            return;
+        }
+        self.free_view = false;
+        self.cursor = p;
+        self.view_x = p.x - self.map_rect.width as i32 / 2;
+        self.view_y = p.y - self.map_rect.height as i32 / 2;
+    }
+
+    /// Each frame, while paused: run what is left of a step, a chunk at a
+    /// time, and say when it is done. News that would pause the game (a
+    /// death, while you play) cuts the step short.
+    pub(super) fn step_frame(&mut self) {
+        if !self.paused || self.step_pending == 0 {
+            return;
+        }
+        let run = self.step_pending.min(STEP_CHUNK);
+        let mut ran = 0;
+        while ran < run {
+            self.game.step();
+            ran += 1;
+            if self.game.pause_request {
+                self.game.pause_request = false;
+                if self.game.overseer.is_none() {
+                    self.step_pending = ran;
+                    break;
+                }
+            }
+        }
+        self.step_pending -= ran;
+        self.announce.stepped = self.announce.stepped.saturating_add(ran);
+        if self.step_pending == 0 {
+            let n = std::mem::take(&mut self.announce.stepped);
+            self.flash = Some(match n {
+                1 => "Stepped a tick (s a tick, T an hour, D a day; Space runs).".to_string(),
+                n if n == STEP_HOUR => "Stepped an hour.".to_string(),
+                n if n == STEP_DAY => "Stepped a day.".to_string(),
+                n => format!("Stepped {} ticks.", n),
+            });
+        }
+    }
+
+    /// After the frame's ticks: honour the announcement rules for the
+    /// entries added since `mark` (the log's length before them).
+    pub(super) fn announce_frame(&mut self, mark: usize) {
+        if !self.announce.loaded {
+            self.announce = Announce::load(&self.save_dir);
+        }
+        let log = &self.game.log;
+        // The log drops its oldest 500 when it grows long.
+        let from = if log.len() < mark { mark.saturating_sub(500) } else { mark };
+        let (mut pause, mut go) = (false, None);
+        for e in log.iter().skip(from) {
+            let r = self.announce.rule(e.kind());
+            pause |= r.pause;
+            if r.recenter {
+                go = e.at.or(go);
+            }
+        }
+        if let Some(p) = go {
+            self.look_at(p);
+        }
+        if pause {
+            self.paused = true;
+            self.step_pending = 0;
         }
     }
 
@@ -66,10 +214,26 @@ impl App {
         }
     }
 
-    /// Announcement control (O05).
-    fn key_announce(&mut self, k: KeyEvent, _sel: usize) {
-        if k.code == KeyCode::Esc {
-            self.mode = Mode::Reports { filter: 0, scroll: 0 };
+    /// Announcement control (O05): a row per kind; `p` pauses, `c` moves
+    /// the camera, `h` hides or shows. Saved as soon as changed.
+    fn key_announce(&mut self, k: KeyEvent, sel: usize) {
+        let n = LogKind::ALL.len();
+        let kind = LogKind::ALL[sel.min(n - 1)];
+        let was = self.announce.rule(kind);
+        let mut r = was;
+        match k.code {
+            KeyCode::Up => self.mode = Mode::Announce { sel: (sel + n - 1) % n },
+            KeyCode::Down => self.mode = Mode::Announce { sel: (sel + 1) % n },
+            KeyCode::Char('p') => r.pause = !r.pause,
+            KeyCode::Char('c') => r.recenter = !r.recenter,
+            KeyCode::Char('h') | KeyCode::Enter => r.hide = !r.hide,
+            KeyCode::Esc => self.mode = Mode::Reports { filter: 0, scroll: 0 },
+            _ => {}
+        }
+        if r != was {
+            self.announce.set(kind, r);
+            self.announce.loaded = true;
+            self.announce.save(&self.save_dir);
         }
     }
 }
@@ -83,7 +247,7 @@ mod tests {
     #[test]
     fn the_m2_screens_open_and_close() {
         let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
-        for m in [Mode::OverseerTraits { sel: 0 }, Mode::Journal { year: 0 }, Mode::Family { id: 1, sel: 0 }, Mode::Announce { sel: 0 }] {
+        for m in [Mode::OverseerTraits { sel: 0 }, Mode::Journal { year: 0 }, Mode::Family { id: 1, sel: 0 }] {
             let mut app = App::with_game_for_tests(crate::game::Game::new(5));
             app.mode = m.clone();
             let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 40)).unwrap();
@@ -93,5 +257,121 @@ mod tests {
             app.on_key(esc);
             assert_ne!(app.mode, m);
         }
+    }
+
+    fn key(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)
+    }
+
+    /// A fort on screen, paused, saving its settings to a scratch folder.
+    fn fort(tag: &str) -> App {
+        let mut app = App::with_game_for_tests(crate::game::Game::new(5));
+        app.mode = Mode::Normal;
+        app.map_rect = ratatui::layout::Rect::new(1, 2, 80, 30);
+        app.save_dir = std::env::temp_dir().join(format!("dwarfclone-{}-{}", tag, std::process::id()));
+        app.game.spotlights.clear();
+        app
+    }
+
+    fn screen(app: &mut App) -> String {
+        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 40)).unwrap();
+        term.draw(|f| crate::ui::draw(f, app)).unwrap();
+        term.backend().buffer().content().iter().map(|c| c.symbol()).collect()
+    }
+
+    #[test]
+    fn hidden_announcements_dont_show_and_paused_ones_pause() {
+        let mut app = fort("announce");
+        let row = |k: LogKind| LogKind::ALL.iter().position(|&x| x == k).unwrap();
+        // From the reports screen, `a` opens the choices.
+        app.mode = Mode::Reports { filter: 0, scroll: 0 };
+        app.on_key(key('a'));
+        assert_eq!(app.mode, Mode::Announce { sel: 0 });
+        assert!(screen(&mut app).contains("Births and weddings"));
+        // Hide building completions; pause on deaths.
+        app.mode = Mode::Announce { sel: row(LogKind::Building) };
+        app.on_key(key('h'));
+        app.mode = Mode::Announce { sel: row(LogKind::Death) };
+        app.on_key(key('p'));
+        assert!(app.announce.rule(LogKind::Building).hide && app.announce.rule(LogKind::Death).pause);
+        // Kept for the next game.
+        let back = Announce::load(&app.save_dir);
+        assert_eq!((back.rule(LogKind::Building), back.rule(LogKind::Death)), (app.announce.rule(LogKind::Building), app.announce.rule(LogKind::Death)));
+        let _ = std::fs::remove_dir_all(&app.save_dir);
+        // Hidden ones are not on the panel; the rest are.
+        app.mode = Mode::Normal;
+        let at = app.cursor;
+        app.game.msg_at("The carpenter's workshop has been completed.", (160, 220, 255), Some(at), LogKind::Building);
+        app.game.msg("Plain news of the day.", (200, 200, 200));
+        let shown = screen(&mut app);
+        assert!(shown.contains("Plain news of the day.") && !shown.contains("has been completed"));
+        // A death pauses a running game.
+        app.paused = false;
+        let mark = app.game.log.len();
+        app.game.msg_at("Urist McTest has bled to death.", (255, 60, 60), Some(at), LogKind::Death);
+        app.announce_frame(mark);
+        assert!(app.paused);
+        // News of a kind that doesn't pause doesn't.
+        app.paused = false;
+        let mark = app.game.log.len();
+        app.game.msg("A caravan from the mountainhomes has arrived.", (200, 200, 200));
+        app.announce_frame(mark);
+        assert!(!app.paused);
+    }
+
+    #[test]
+    fn step_one_tick_and_one_hour() {
+        let mut app = fort("step");
+        // Hand it to the overseer so no news cuts a step short.
+        app.game.set_overseer(Some(crate::game::Style::Steady));
+        let t0 = app.game.tick;
+        app.on_key(key('s'));
+        app.frame();
+        assert_eq!(app.game.tick, t0 + 1);
+        assert!(app.paused);
+        assert!(app.flash.as_deref().unwrap_or("").contains("Stepped a tick"), "{:?}", app.flash);
+        // (No big moment's card takes the key.)
+        app.spot = None;
+        app.game.spotlights.clear();
+        app.on_key(key('T'));
+        app.frame();
+        assert_eq!(app.game.tick, t0 + 1 + STEP_HOUR as u64);
+        assert_eq!(app.flash.as_deref(), Some("Stepped an hour."));
+        // A day runs over a few frames, then stops.
+        app.spot = None;
+        app.game.spotlights.clear();
+        app.on_key(key('D'));
+        for _ in 0..10 {
+            app.frame();
+        }
+        assert_eq!(app.game.tick, t0 + 1 + STEP_HOUR as u64 + DAY);
+        assert_eq!(app.flash.as_deref(), Some("Stepped a day."));
+        assert!(app.paused);
+        // Pressed while running, it pauses first.
+        app.paused = false;
+        app.spot = None;
+        app.on_key(key('s'));
+        assert!(app.paused && app.step_pending == 1);
+    }
+
+    #[test]
+    fn a_far_fight_is_heard_not_seen() {
+        let mut app = fort("sound");
+        app.game.log.clear();
+        screen(&mut app);
+        let (w, h) = (app.map_rect.width as i32, app.map_rect.height as i32);
+        app.view_x = 0;
+        app.view_y = 0;
+        app.cursor = crate::geom::Pos::new(w / 2, h / 2, app.cursor.z);
+        // On another level, below: heard, not seen.
+        let below = (0..app.cursor.z).rev().map(|z| crate::geom::Pos::new(10, 10, z)).find(|p| app.game.world.in_bounds(*p)).expect("a level below");
+        app.game.msg_at("The goblin hacks Urist McTest in the head!", (255, 120, 100), Some(below), LogKind::Combat);
+        let shown = screen(&mut app);
+        assert!(!shown.contains("hacks Urist"), "told as seen");
+        assert!(shown.contains("~ ") && shown.contains("from below") && shown.contains("(Enter)"), "not heard");
+        // Enter goes to look; there, it is seen.
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(app.cursor, below);
+        assert!(screen(&mut app).contains("hacks Urist"));
     }
 }

@@ -313,7 +313,6 @@ pub enum Mode {
     #[cfg_attr(not(test), allow(dead_code))] // wave 0: opened by its package
     Family { id: u32, sel: usize },
     /// Which announcements pause, recentre or hide (O05).
-    #[cfg_attr(not(test), allow(dead_code))] // wave 0: opened by its package
     Announce { sel: usize },
 }
 
@@ -432,10 +431,8 @@ pub struct App {
     pub audio_spot: Option<(String, String)>,
     // Milestone 2 (app/m2.rs):
     /// Announcement control (O05, UI-07).
-    #[allow(dead_code)] // wave 0: P6 reads it
     pub announce: m2::Announce,
     /// Ticks still to run of a step taken while paused (O05, UI-32).
-    #[allow(dead_code)] // wave 0: P6 reads it
     pub step_pending: u32,
 }
 
@@ -544,6 +541,9 @@ impl App {
         if self.job.is_some() || self.game.is_placeholder() || !self.in_fortress() {
             return;
         }
+        // Announcement rules and the step keys (app/m2.rs).
+        let mark = self.game.log.len();
+        self.step_frame();
         if !self.paused {
             let watching = self.game.overseer.is_some();
             for _ in 0..self.ticks_per_frame() {
@@ -558,6 +558,7 @@ impl App {
                 }
             }
         }
+        self.announce_frame(mark);
         // The fortress has fallen.
         if self.in_fortress() && !self.game.fallen && !self.game.dwarves.is_empty() && self.game.alive_count() == 0 {
             self.game.fallen = true;
@@ -1630,6 +1631,7 @@ impl App {
                         self.paused = !self.paused;
                         Mode::Reports { filter, scroll }
                     }
+                    KeyCode::Char('a') => Mode::Announce { sel: 0 },
                     _ => Mode::Normal,
                 };
             }
