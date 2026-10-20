@@ -942,11 +942,19 @@ impl Game {
         }
         self.ambition_orders(o, &mut orders);
         self.interior_orders(o, &mut orders);
-        // What it raised to meet a shortage, on top.
-        for &(r, keep, _) in &o.boosts {
+        // Steel for the soldiers once there is iron to make it from.
+        if forge && matches!(o.style, Style::Warlord | Style::Delver) && self.iron_known() {
+            orders.push((Recipe::MakeSteel, 2 + 2 * self.squads.len() as u32));
+        }
+        // What it raised to meet a shortage, on top, for as long as it meant to.
+        let mut lasts: Vec<(Recipe, u64)> = Vec::new();
+        for &(r, keep, end) in &o.boosts {
             match orders.iter_mut().find(|x| x.0 == r) {
                 Some(x) => x.1 = x.1.max(keep),
-                None => orders.push((r, keep)),
+                None => {
+                    orders.push((r, keep));
+                    lasts.push((r, end));
+                }
             }
         }
         // Food short: no edible plant goes to the still while there's drink
@@ -980,6 +988,7 @@ impl Game {
         for (r, keep) in orders {
             if keep > 0 && self.buildings.values().any(|b| b.built && b.kind.recipes().contains(&r)) {
                 self.add_work_order(r, keep);
+                self.ov_order_terms(r, keep, lasts.iter().find(|l| l.0 == r).map_or(0, |l| l.1));
             }
         }
         // Soldiers hunt game for the butcher.

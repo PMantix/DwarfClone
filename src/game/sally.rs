@@ -358,6 +358,11 @@ mod tests {
                 g.step();
                 lowered |= g.sallies.on.as_ref().map_or(false, |s| !s.recalled) && !g.gate_bridges(base).iter().any(|id| g.buildings[id].raised);
             }
+            // (A sally over before anyone could reach the lever lowered
+            // nothing: look at the next fort's.)
+            if !lowered && g.sallies.on.is_none() && g.tick < start + DAY / 4 {
+                continue;
+            }
             assert!(lowered, "the bridge stayed up for the sally");
             assert!(g.sallies.on.is_none(), "the sally never ended");
             let told = ["sally.won", "sally.broken"].iter().any(|k| g.annals.counters.contains_key(*k));

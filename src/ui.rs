@@ -1207,15 +1207,29 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 }
                 for (i, o) in g.work_orders.iter().enumerate() {
                     let (kind, _) = o.recipe.product();
-                    let have = g.stock_of(kind);
-                    let queued = g.queued(o.recipe);
+                    let (have, mark) = match o.cond {
+                        crate::game::Cond::Below { kind, n } => (g.stock_of(kind), n),
+                        _ => (g.stock_of_mat(kind, o.recipe.product_mat(o.mat)), o.keep),
+                    };
+                    let queued = g.queued_for(o);
                     let style = if i == *sel { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
-                    let col = if have >= o.keep as usize { Color::Rgb(150, 220, 150) } else { Color::Rgb(230, 200, 90) };
+                    let col = if have >= mark as usize { Color::Rgb(150, 220, 150) } else { Color::Rgb(230, 200, 90) };
+                    // (An order queued to feed another is indented under it.)
+                    let name = if o.parent.is_some() { format!(" ↳{}", o.name()) } else { o.name() };
+                    let cond = match o.cond {
+                        crate::game::Cond::Keep => String::new(),
+                        c => format!(" {}", c.describe(o.keep)),
+                    };
                     v.push(Line::from(vec![
-                        Span::styled(format!("{:<24.24}", o.recipe.name()), style.fg(TEXT)),
-                        Span::styled(format!(" {:>3}/{:<3}", have, o.keep), style.fg(col)),
+                        Span::styled(format!("{:<24.24}", name), style.fg(TEXT)),
+                        Span::styled(format!(" {:>3}/{:<3}", have, mark), style.fg(col)),
                         Span::styled(if queued > 0 { format!(" +{} queued", queued) } else { String::new() }, style.fg(MUTED)),
+                        Span::styled(cond, style.fg(Color::Rgb(150, 190, 230))),
                     ]));
+                    if !o.waiting.is_empty() {
+                        let w: Vec<String> = o.waiting.iter().map(|w| w.describe()).collect();
+                        v.push(plain(format!("   waiting for {}", w.join(", ")), Color::Rgb(200, 170, 120)));
+                    }
                 }
                 v.push(Line::default());
                 v.push(plain("Each order keeps that many of its product".into(), MUTED));
@@ -1224,6 +1238,9 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.push(Line::default());
                 v.push(key_line("n", "New order", false));
                 v.push(key_line("←/→", "Fewer/more (Shift ×10)", false));
+                v.push(key_line("c", "Condition: keep/below/after/every", false));
+                v.push(key_line("m", "Material (from stock)", false));
+                v.push(key_line("a", "Auto conditions", false));
                 v.push(key_line("x", "Delete order", false));
                 v.push(plain("Esc: back".into(), MUTED));
             }
