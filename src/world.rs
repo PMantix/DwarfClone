@@ -366,10 +366,16 @@ impl World {
     /// Room value a tile adds for its detailing: smoothed 2, engraved 6 plus
     /// 3 per quality level.
     pub fn detail_value(&self, p: Pos) -> u32 {
-        match self.get(p).map_or(0, |t| t.smooth) {
+        let v = match self.get(p).map_or(0, |t| t.smooth) {
             0 => 0,
             1 => 2,
             s => 6 + 3 * (s - 2) as u32,
+        };
+        // Set with gems (`detail::GEM_SET`): twice as fine.
+        if self.get(p).map_or(false, |t| t.engraving >> 31 != 0) {
+            v * 2
+        } else {
+            v
         }
     }
 

@@ -29,6 +29,8 @@ impl Game {
         self.ov_wizard(o);
         // A culture of its own: instruments for the tavern.
         self.ov_culture(o);
+        // Trophies on display, gems set into furniture (crafts.rs).
+        self.ov_crafts(o);
         // Interface flair: the row of faces.
         self.ov_mood_strip(o);
         self.ov_reel(o);

@@ -6,6 +6,13 @@ use super::*;
 /// `Tile::smooth` at or above this is engraved, and the excess is its quality.
 pub const ENGRAVED: u8 = 2;
 
+/// The high bit of `Tile::engraving`: the engraving is set with cut gems
+/// (worth twice as much). The rest is the legend it shows.
+pub const GEM_SET: u32 = 1 << 31;
+
+/// How far an engraver will look for a cut gem to set into masterful work.
+const GEM_REACH: i32 = 20;
+
 impl Game {
     /// Engravers (no pick needed) look for smoothing and engraving work.
     pub(super) fn find_detail(&mut self, d: &mut Dwarf) -> bool {
@@ -52,14 +59,16 @@ impl Game {
         if desig == Desig::Engrave {
             let q = self.roll_quality(skill * d.focus().max(0) as u32 / 100);
             let scene = self.pick_scene();
+            let gem = if q >= 4 { self.gem_for_engraving(p) } else { None };
             let t = self.world.t_mut(p);
             t.smooth = ENGRAVED + q;
-            t.engraving = scene;
+            t.engraving = scene | if gem.is_some() { GEM_SET } else { 0 };
             d.gain_xp(Labor::Engraving, 30);
             if q >= 4 {
+                let set = gem.map_or(String::new(), |g| format!(", set with {}s", g.name()));
                 if let Some(e) = scene.checked_sub(1).and_then(|i| self.overworld.events.get(i as usize)) {
                     let text = e.text.clone();
-                    self.msg(&format!("{} has engraved a masterful scene: {}", d.name, text), (220, 200, 255));
+                    self.msg(&format!("{} has engraved a masterful scene{}: {}", d.name, set, text), (220, 200, 255));
                 }
             }
         } else {
@@ -89,8 +98,23 @@ impl Game {
         if t.smooth < ENGRAVED {
             return None;
         }
-        let e = t.engraving.checked_sub(1).and_then(|i| self.overworld.events.get(i as usize));
-        Some((t.smooth - ENGRAVED, e.map_or(0, |e| e.year), e.map_or("an abstract pattern".into(), |e| e.text.clone())))
+        let e = (t.engraving & !GEM_SET).checked_sub(1).and_then(|i| self.overworld.events.get(i as usize));
+        let mut text = e.map_or("an abstract pattern".into(), |e| e.text.clone());
+        if t.engraving & GEM_SET != 0 {
+            text.push_str(" Its figures are set with cut gems.");
+        }
+        Some((t.smooth - ENGRAVED, e.map_or(0, |e| e.year), text))
+    }
+
+    /// A rich fort's masterful engraving takes a cut gem lying near (the
+    /// overseer's at wealth tier 3; a player's fort keeps its gems).
+    fn gem_for_engraving(&mut self, p: Pos) -> Option<Mat> {
+        if !self.overseer.as_ref().map_or(false, |o| o.interior.tier >= 3) {
+            return None;
+        }
+        let near = |q: Pos| (q.z - p.z).abs() <= 1 && (q.x - p.x).abs().max((q.y - p.y).abs()) <= GEM_REACH;
+        let id = self.items.values().filter(|it| it.kind == ItemKind::Gem && it.free() && !it.to_depot && near(it.pos)).map(|it| it.id).min()?;
+        self.items.remove(&id).map(|it| it.mat)
     }
 }
 
@@ -138,5 +162,55 @@ mod tests {
         let (_, _, text) = g.engraving_at(wall).expect("never engraved");
         assert!(!text.is_empty());
         assert!(g.world.detail_value(wall) > g.world.detail_value(stand), "an engraved wall should add value");
+    }
+
+    #[test]
+    fn built_walls_can_be_engraved() {
+        let mut g = Game::new(81);
+        g.creatures.retain(|_, c| c.tame);
+        let e = g.embark;
+        let mut spots = (3..20).map(|r| e.offset(r, 0, 0)).filter(|&p| g.world.walkable(p) && g.world.walkable(p.offset(-1, 0, 0)) && g.world.t(p).building == 0);
+        let (wall, wood) = (spots.next().unwrap(), spots.next().unwrap());
+        for (p, mat, from) in [(wall, Mat::Granite, ItemKind::Block), (wood, Mat::Wood, ItemKind::Log)] {
+            let w = g.world.t_mut(p);
+            w.kind = TileKind::Wall;
+            w.mat = mat;
+            w.revealed = true;
+            w.built_from = Some(from);
+        }
+        assert!(g.desig_valid(wall, Desig::Smooth), "a wall of stone blocks can be smoothed");
+        assert!(!g.desig_valid(wood, Desig::Smooth), "a wooden wall can't");
+        for d in g.dwarves.iter_mut() {
+            d.labors[crate::dwarf::Labor::Engraving.idx()] = true;
+        }
+        assert_eq!(g.designate(wall, wall, Desig::Smooth), 1);
+        for _ in 0..DAY {
+            g.step();
+            if g.world.t(wall).smooth > 0 {
+                break;
+            }
+        }
+        assert_eq!(g.designate(wall, wall, Desig::Engrave), 1);
+        for _ in 0..DAY {
+            g.step();
+            if g.world.t(wall).smooth >= ENGRAVED {
+                break;
+            }
+        }
+        assert!(g.engraving_at(wall).is_some(), "the built wall was never engraved");
+        // A rich overseer's fort sets a gem lying near into masterful work.
+        let plain = g.world.detail_value(wall);
+        let gem = g.spawn_item(ItemKind::Gem, Mat::Amethyst, wall.offset(-1, 0, 0));
+        assert_eq!(g.gem_for_engraving(wall), None, "a player's fort keeps its gems");
+        let mut o = Overseer::new(Style::Steady);
+        o.interior.tier = 3;
+        g.overseer = Some(o);
+        assert_eq!(g.gem_for_engraving(wall), Some(Mat::Amethyst));
+        assert!(!g.items.contains_key(&gem), "the gem went into the wall");
+        g.world.t_mut(wall).engraving |= GEM_SET;
+        assert_eq!(g.world.detail_value(wall), plain * 2);
+        let (_, _, text) = g.engraving_at(wall).unwrap();
+        assert!(text.ends_with("set with cut gems."), "{}", text);
+        assert!(!text.starts_with("an abstract") || g.overworld.events.is_empty());
     }
 }

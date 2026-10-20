@@ -49,13 +49,15 @@ pub enum BuildingKind {
     Statue,
     /// A low stone stage in a tavern, where bards perform.
     Stage,
+    /// A pedestal showing a trophy of war (`crafts.rs`).
+    Display,
 }
 
 /// Stone blocks a monument takes.
 pub const MONUMENT_BLOCKS: u8 = 30;
 
 impl BuildingKind {
-    pub const ALL: [BuildingKind; 38] = [
+    pub const ALL: [BuildingKind; 39] = [
         BuildingKind::Carpenter,
         BuildingKind::Mason,
         BuildingKind::Still,
@@ -94,6 +96,7 @@ impl BuildingKind {
         BuildingKind::Chest,
         BuildingKind::Statue,
         BuildingKind::Stage,
+        BuildingKind::Display,
     ];
 
     pub fn name(self) -> &'static str {
@@ -136,6 +139,7 @@ impl BuildingKind {
             BuildingKind::Chest => "Chest",
             BuildingKind::Statue => "Statue",
             BuildingKind::Stage => "Stage",
+            BuildingKind::Display => "Trophy display",
         }
     }
 
@@ -179,6 +183,7 @@ impl BuildingKind {
             BuildingKind::Chest => 'H',
             BuildingKind::Statue => 'S',
             BuildingKind::Stage => 'A',
+            BuildingKind::Display => 'D',
         }
     }
 
@@ -209,6 +214,7 @@ impl BuildingKind {
                 | BuildingKind::Chest
                 | BuildingKind::Statue
                 | BuildingKind::Stage
+                | BuildingKind::Display
         )
     }
 
@@ -282,6 +288,7 @@ impl BuildingKind {
             BuildingKind::Cabinet => item.kind == ItemKind::Cabinet,
             BuildingKind::Chest => item.kind == ItemKind::Chest,
             BuildingKind::Statue => item.kind == ItemKind::Statue,
+            BuildingKind::Display => item.kind == ItemKind::Trophy,
             _ => item.kind == ItemKind::Boulder && item.mat.is_building_stone(),
         }
     }
@@ -298,6 +305,7 @@ impl BuildingKind {
             BuildingKind::Cabinet => "a cabinet",
             BuildingKind::Chest => "a chest",
             BuildingKind::Statue => "a statue",
+            BuildingKind::Display => "a trophy of war",
             BuildingKind::Lever => "a mechanism",
             BuildingKind::CageTrap => "a mechanism + an empty cage",
             BuildingKind::WeaponTrap => "a mechanism + a weapon",
@@ -335,7 +343,7 @@ impl BuildingKind {
                 ForgeCrossbow,
                 ForgeBolts,
             ],
-            BuildingKind::Craftsdwarf => &[StoneCraft, BoneCraft, CutGem, SpinThread, Instrument],
+            BuildingKind::Craftsdwarf => &[StoneCraft, BoneCraft, CutGem, SpinThread, Instrument, Encrust],
             BuildingKind::Tannery => &[Tan],
             BuildingKind::Leatherworks => &[LeatherArmor, LeatherHelm, LeatherCraft, LeatherShoes],
             BuildingKind::Loom => &[Weave],
@@ -373,6 +381,7 @@ impl BuildingKind {
             BuildingKind::Cabinet | BuildingKind::Chest => Color::Rgb(200, 160, 110),
             BuildingKind::Statue => Color::Rgb(235, 235, 245),
             BuildingKind::Stage => Color::Rgb(210, 170, 120),
+            BuildingKind::Display => Color::Rgb(240, 225, 170),
             _ => Color::Rgb(200, 200, 200),
         }
     }
@@ -415,6 +424,7 @@ impl BuildingKind {
             BuildingKind::Chest => '■',
             BuildingKind::Statue => '♀',
             BuildingKind::Stage => '▒',
+            BuildingKind::Display => 'Ψ',
         }
     }
 }
@@ -442,6 +452,10 @@ pub enum Input {
     Ash,
     Tallow,
     Grain,
+    /// A cut gem, to set into something.
+    CutGem,
+    /// A piece of furniture not yet set with gems.
+    Furniture,
 }
 
 impl Input {
@@ -467,6 +481,11 @@ impl Input {
             Input::Ash => it.kind == ItemKind::Ash,
             Input::Tallow => it.kind == ItemKind::Tallow,
             Input::Grain => it.kind == ItemKind::Plant && it.mat.crop().map_or(false, |c| c.mill),
+            Input::CutGem => it.kind == ItemKind::Gem,
+            Input::Furniture => {
+                it.decor.is_none()
+                    && matches!(it.kind, ItemKind::Table | ItemKind::Chair | ItemKind::Door | ItemKind::Cabinet | ItemKind::Chest | ItemKind::Statue | ItemKind::Craft)
+            }
         }
     }
 
@@ -492,6 +511,8 @@ impl Input {
             Input::Ash => "ash",
             Input::Tallow => "tallow",
             Input::Grain => "grain (hollowgrain or goldoat)",
+            Input::CutGem => "cut gem",
+            Input::Furniture => "furniture or a figurine",
         }
     }
 }
@@ -554,6 +575,8 @@ pub enum Recipe {
     Statue,
     /// One of the fortress's people's instruments (`arts.rs`).
     Instrument,
+    /// Set a cut gem into furniture or a figurine (`crafts.rs`).
+    Encrust,
 }
 
 impl Recipe {
@@ -615,6 +638,7 @@ impl Recipe {
             WoodChest => "Make wooden chest",
             Statue => "Carve a statue",
             Instrument => "Make a musical instrument",
+            Encrust => "Set a gem into furniture",
         }
     }
 
@@ -667,6 +691,7 @@ impl Recipe {
             WoodChest => 'e',
             Statue => 'a',
             Instrument => 'i',
+            Encrust => 'e',
         }
     }
 
@@ -696,6 +721,7 @@ impl Recipe {
             WoodCabinet | WoodChest => Labor::Carpentry,
             Statue => Labor::Masonry,
             Instrument => Labor::Crafting,
+            Encrust => Labor::Crafting,
         }
     }
 
@@ -726,6 +752,7 @@ impl Recipe {
             Ash => &[Input::Log],
             MakeSoap => &[Input::Ash, Input::Tallow],
             Mill => &[Input::Grain],
+            Encrust => &[Input::CutGem, Input::Furniture],
         }
     }
 
@@ -827,6 +854,9 @@ impl Recipe {
             WoodChest => one(ItemKind::Chest),
             Statue => one(ItemKind::Statue),
             Instrument => one(ItemKind::Instrument),
+            // The piece comes back as it was, set with the gem (its quality
+            // and decoration are kept in `crafts.rs`).
+            Encrust => inputs.get(1).map_or_else(|| vec![(ItemKind::Cabinet, Mat::Wood, None)], |f| vec![(f.kind, f.mat, f.label.clone())]),
             MakeSoap => {
                 let fat = inputs.get(1).and_then(|i| i.label.clone());
                 vec![(ItemKind::Soap, Mat::Flesh, fat.clone()), (ItemKind::Soap, Mat::Flesh, fat)]
@@ -845,7 +875,7 @@ impl Recipe {
             ForgeBreastplate => 260,
             ForgePick | ForgeAxe | ForgeSword | ForgeSpear | ForgeHammer | ForgeHelm | ForgeShield | ForgeCrossbow => 200,
             ForgeBolts => 180,
-            CutGem | Statue => 180,
+            CutGem | Statue | Encrust => 180,
             _ => 150,
         }
     }

@@ -133,6 +133,7 @@ mod fit;
 mod m2;
 pub mod lastwords;
 pub mod sound_reports;
+pub mod crafts;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -954,7 +955,9 @@ impl Game {
             Desig::Chop => t.kind == TileKind::Tree,
             Desig::Smooth => {
                 let stone = t.mat.is_building_stone() || t.mat.is_ore() || t.mat.is_gem();
-                t.revealed && t.built_from.is_none() && stone && t.smooth == 0 && matches!(t.kind, TileKind::Wall | TileKind::Floor)
+                // Natural rock, or a wall built of stone (`detail.rs`).
+                let built_stone = t.kind == TileKind::Wall && matches!(t.built_from, Some(ItemKind::Block | ItemKind::Boulder));
+                t.revealed && (t.built_from.is_none() || built_stone) && stone && t.smooth == 0 && matches!(t.kind, TileKind::Wall | TileKind::Floor)
             }
             Desig::Engrave => t.revealed && t.smooth == 1 && matches!(t.kind, TileKind::Wall | TileKind::Floor),
         }
@@ -2740,6 +2743,7 @@ impl Game {
                         }
                         Travel::Arrived => {
                             if Self::labor(d, 120, d.skill(Labor::Building)) {
+                                self.trophy_set_up(item, bld);
                                 let (ikind, mat, quality) =
                                     self.items.remove(&item).map_or((ItemKind::Log, Mat::Wood, 0), |it| (it.kind, it.mat, it.quality));
                                 self.art_moved(item, bld);
@@ -2846,6 +2850,8 @@ impl Game {
                         made.push(it.name());
                         made_ids.push(id);
                     }
+                    self.crafts_made(d, recipe, &used, &made_ids);
+                    made = made_ids.iter().filter_map(|id| self.items.get(id)).map(|it| it.name()).collect();
                     self.culture_crafted(d, &made_ids);
                     if d.likes_mat == used.first().map_or(Mat::Air, |it| it.mat) {
                         d.think("enjoyed working with a favorite material", -6, self.tick);

@@ -76,6 +76,9 @@ pub enum ItemKind {
     /// An animal product kept as goods (wool, feathers, ivory, pearls...),
     /// labelled with what it is ("sheep wool").
     Product,
+    /// A trophy of war: the skull of a slain beast or general, labelled
+    /// "skull of Ushat the dragon" (`crafts.rs`).
+    Trophy,
 }
 
 /// Items that fit in a barrel or a bin, ten to a container.
@@ -89,7 +92,7 @@ pub enum Slot {
 }
 
 impl ItemKind {
-    pub const ALL: [ItemKind; 56] = [
+    pub const ALL: [ItemKind; 57] = [
         ItemKind::Boulder,
         ItemKind::Log,
         ItemKind::Block,
@@ -146,6 +149,7 @@ impl ItemKind {
         ItemKind::Statue,
         ItemKind::Instrument,
         ItemKind::Product,
+        ItemKind::Trophy,
     ];
 
     /// Plural name for lists ("logs", "metal bars").
@@ -207,6 +211,7 @@ impl ItemKind {
             ItemKind::Statue => "statues",
             ItemKind::Instrument => "musical instruments",
             ItemKind::Product => "animal products",
+            ItemKind::Trophy => "trophies",
         }
     }
 
@@ -245,6 +250,7 @@ impl ItemKind {
             Meal => 6,
             Bed | Table | Chair | Door | Cabinet | Chest => 10,
             Statue => 30,
+            Trophy => 50,
             Product => 4,
             Bar => 10,
             Craft => 20,
@@ -382,7 +388,7 @@ impl StockFilter {
             StockFilter::Stone => matches!(k, Boulder | Block),
             StockFilter::Wood => k == Log,
             StockFilter::Food => matches!(k, Plant | Drink | Seed | Meat | Meal | Fish | Flour),
-            StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin | Cage | Coffin | Slab | Bucket | Cabinet | Chest | Statue),
+            StockFilter::Furniture => matches!(k, Bed | Table | Chair | Door | Barrel | Bin | Cage | Coffin | Slab | Bucket | Cabinet | Chest | Statue | Trophy),
             StockFilter::Metal => matches!(k, Bar | Charcoal),
             StockFilter::Goods => {
                 matches!(
@@ -448,6 +454,9 @@ pub const TATTERED: u16 = 300;
 /// Thrown away.
 pub const FALLS_APART: u16 = 400;
 
+/// A weapon is named after this many kills (`crafts.rs`).
+pub const NAMED_AT: u16 = 5;
+
 pub fn quality_prefix(q: u8) -> &'static str {
     match q {
         1 => "well-crafted ",
@@ -482,7 +491,15 @@ impl Item {
             w if w >= WORN => "worn ",
             _ => "",
         };
-        format!("{}{}{}", worn, quality_prefix(self.quality), self.base_name())
+        let set = self.decor.map_or(String::new(), |g| format!("{}-studded ", g.name()));
+        // A trophy is what it is: "skull of Ushat the dragon".
+        let q = if self.kind == ItemKind::Trophy { "" } else { quality_prefix(self.quality) };
+        let plain = format!("{}{}{}{}", worn, q, set, self.base_name());
+        // A weapon that has killed enough has a name of its own.
+        match &self.label {
+            Some(name) if self.kills >= NAMED_AT && self.kind.weapon_damage().is_some() => format!("{} ({})", name, plain),
+            _ => plain,
+        }
     }
 
     fn base_name(&self) -> String {
@@ -545,6 +562,7 @@ impl Item {
             Cabinet => format!("{} cabinet", m.adj()),
             Chest => format!("{} chest", m.adj()),
             Statue => format!("{} statue", m.adj()),
+            Trophy => self.label.clone().unwrap_or_else(|| "trophy".into()),
             Instrument => format!("{} {}", m.adj(), self.label.as_deref().unwrap_or("instrument")),
             Bucket if self.label.as_deref() == Some("water") => format!("{} bucket of water", m.adj()),
             Bucket => format!("{} bucket", m.adj()),
@@ -567,6 +585,8 @@ impl Item {
 
     pub fn value(&self) -> u32 {
         let v = self.kind.base_value() * self.mat.value() * quality_mult(self.quality);
+        // Set with gems: half as much again.
+        let v = if self.decor.is_some() { v * 3 / 2 } else { v };
         if self.wear >= WORN {
             v / 2
         } else {
@@ -630,6 +650,7 @@ impl Item {
             Statue => '♀',
             Instrument => '♫',
             Product => '♦',
+            Trophy => 'Ψ',
         };
         let col = match self.kind {
             Drink => Color::Rgb(230, 170, 60),
@@ -646,6 +667,7 @@ impl Item {
             BodyPart if self.mat == Mat::Bone => Color::Rgb(235, 225, 200),
             BodyPart => Color::Rgb(200, 50, 50),
             Bin | Barrel => Mat::Wood.color(),
+            Trophy => Color::Rgb(240, 225, 170),
             _ => self.mat.color(),
         };
         (c, col)

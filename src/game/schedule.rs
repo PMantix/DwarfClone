@@ -34,7 +34,7 @@ impl Game {
         if tick % 300 == 290 { self.prune_designations(); }
         if tick % 25 == 13 { self.miasma_tick(); }
         if tick % 100 == 60 { self.expedition_tick(); self.duels_tick(); self.mysteries_tick(); }
-        if tick % DAY == DAY / 2 + 7 { self.drama_daily(); self.pets_daily(); self.milestones_daily(); self.monument_daily(); }
+        if tick % DAY == DAY / 2 + 7 { self.drama_daily(); self.pets_daily(); self.milestones_daily(); self.monument_daily(); self.trophies_daily(); }
         if tick % 10 == 0 { self.grow_farms(); }
         // M1 (survival):
         if tick % 150 == 77 { self.doctor_check(); }
