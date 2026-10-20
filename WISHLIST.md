@@ -750,7 +750,7 @@ Goal: the same world and simulation, seen from other seats.
 - **Why:** take one character into the world for fame, fortune or utter ruin.
 - **Needs:** Milestone 4's living world (the world tick, sites as places, news) and Milestone
   8's fallen forts (ruins to explore).
-- **Steps:** [ ] make a character (race, skills, gear) and start at a site · [ ] travel the
+- **Steps:** [x] make a character (race, skills, gear) and start at a site (A1, this commit) · [ ] travel the
   world map; enter sites as local maps (towns, ruins, lairs, caves) · [ ] talk: hear news and
   rumours, take jobs, hire companions · [ ] fight with the same body and wounds as fortress
   mode; loot; rest and heal · [ ] fame and infamy in the legends; visit or reclaim your old

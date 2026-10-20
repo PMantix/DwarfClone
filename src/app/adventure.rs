@@ -20,23 +20,39 @@ pub struct AdvScreen {
     pub view: View,
     /// A line for the player (refusals, interrupts).
     pub flash: Option<String>,
+    /// The character maker's choices, while the hero is being made (A1).
+    pub maker: Option<Box<adv::create::Maker>>,
 }
 
 impl AdvScreen {
     pub fn new(adv: Adventure) -> AdvScreen {
-        let view = if adv.over.is_some() { View::Dead } else if adv.visit.is_some() { View::Local } else { View::Travel };
-        AdvScreen { adv, view, flash: None }
+        let maker = adv::create::unmade(&adv).then(|| Box::new(adv::create::Maker::new(&adv.ow, adv.seed)));
+        let view = if maker.is_some() {
+            View::Create
+        } else if adv.over.is_some() {
+            View::Dead
+        } else if adv.visit.is_some() {
+            View::Local
+        } else {
+            View::Travel
+        };
+        AdvScreen { adv, view, flash: None, maker }
     }
 }
 
 impl App {
-    /// From the title screen: a world made from the seed, and a hero set out
-    /// from home (A1's character maker comes in front of this).
+    /// From the title screen: a world made from the seed, then the character
+    /// maker (A1).
     pub fn open_adventure(&mut self) {
-        self.start_adventure_seeded(self.seed);
+        let seed = self.seed;
+        self.run_job("Making the world", move |report| {
+            let ow = Overworld::generate_with(seed, report);
+            Ok(JobDone::Visited(Box::new(adv::create::unmade_in(ow, seed))))
+        });
     }
 
-    /// An adventure in a fresh world from `seed` (also the window's `--adventure`).
+    /// The quick start: an adventure in a fresh world from `seed`, its hero
+    /// made for them (the window's `--adventure`, and tests).
     pub fn start_adventure_seeded(&mut self, seed: u64) {
         self.run_job("Setting out", move |report| {
             let ow = Overworld::generate_with(seed, report);
@@ -112,11 +128,76 @@ pub fn step_of(k: &KeyEvent) -> Option<(i32, i32)> {
 }
 
 impl App {
-    /// The character maker (A1).
+    /// The character maker (A1): ↑↓ a row, ←→ or `[` `]` change it (a
+    /// skill: less/more), `n` name, `r` another face and name, Enter set out.
     fn key_create(&mut self, k: KeyEvent) {
-        if k.code == KeyCode::Esc {
-            self.adventure_to_title();
+        use crate::game::adv::create::ROWS;
+        let Some(s) = self.adv.as_mut() else { return };
+        let ow = &s.adv.ow;
+        let Some(m) = s.maker.as_mut() else { return };
+        if m.naming {
+            match k.code {
+                KeyCode::Enter | KeyCode::Esc => {
+                    m.naming = false;
+                    if m.name.trim().is_empty() {
+                        m.name = m.rolled_name();
+                    }
+                }
+                KeyCode::Backspace => {
+                    m.name.pop();
+                }
+                KeyCode::Char(c) if m.name.chars().count() < 24 && (c.is_alphabetic() || c == ' ' || c == '\'' || c == '-') => m.name.push(c),
+                _ => {}
+            }
+            return;
         }
+        let by = match k.code {
+            KeyCode::Left | KeyCode::Char('[') | KeyCode::Char('4') => -1,
+            KeyCode::Right | KeyCode::Char(']') | KeyCode::Char('6') => 1,
+            _ => 0,
+        };
+        let rows = m.rows();
+        match k.code {
+            KeyCode::Esc => return self.adventure_to_title(),
+            KeyCode::Up | KeyCode::Char('8') => m.sel = (m.sel + rows - 1) % rows,
+            KeyCode::Down | KeyCode::Char('2') => m.sel = (m.sel + 1) % rows,
+            KeyCode::Char('n') => m.naming = true,
+            KeyCode::Char('r') => m.reroll(),
+            KeyCode::Enter if m.sel == 2 => m.naming = true,
+            KeyCode::Enter => return self.set_out(),
+            _ if by != 0 => {
+                let step = |i: usize, n: usize| (i as i32 + by).rem_euclid(n.max(1) as i32) as usize;
+                match m.sel {
+                    0 => {
+                        let i = step(m.race, m.races.len());
+                        m.set_race(ow, i);
+                    }
+                    1 => m.set_calling(step(m.calling, crate::game::adv::create::CALLINGS.len())),
+                    3 => m.home = step(m.home, m.homes.len()),
+                    i if i >= ROWS.len() && i < ROWS.len() + m.skills.len() => {
+                        if !m.adjust(i - ROWS.len(), by) {
+                            s.flash = Some(if by > 0 { "Not enough points left.".into() } else { "Already none.".into() });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The hero is made: into the world, at dawn, at home.
+    fn set_out(&mut self) {
+        let Some(s) = self.adv.as_mut() else { return };
+        let Some(m) = s.maker.as_ref() else { return };
+        if m.home_id().is_none() {
+            s.flash = Some("No people of this world has a home to set out from.".into());
+            return;
+        }
+        let hero = m.hero(&s.adv.ow);
+        let (ow, seed) = (std::mem::replace(&mut s.adv.ow, Overworld::empty()), s.adv.seed);
+        self.adv = None;
+        self.run_job("Setting out", move |_| Ok(JobDone::Visited(Box::new(adv::create::begin(ow, seed, hero)))));
     }
 }
 
@@ -216,6 +297,10 @@ mod tests {
         app.on_key(key(KeyCode::Enter));
         settle(&mut app);
         assert_eq!(app.mode, Mode::Adventure);
+        // The character maker first (A1); Enter sets out as it stands.
+        assert_eq!(app.adv.as_ref().unwrap().view, View::Create);
+        app.on_key(key(KeyCode::Enter));
+        settle(&mut app);
         let s = app.adv.as_ref().unwrap();
         assert_eq!(s.view, View::Local);
         let v = s.adv.visit.as_ref().expect("in a site");

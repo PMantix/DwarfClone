@@ -29,6 +29,7 @@ mod overseer;
 mod overlays;
 mod looks;
 mod adventure;
+mod adv_create;
 pub(crate) use looks::tile_look;
 use looks::foliage;
 
