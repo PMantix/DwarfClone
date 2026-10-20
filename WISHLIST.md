@@ -758,9 +758,11 @@ Goal: the same world and simulation, seen from other seats.
   world map; enter sites as local maps (towns, ruins, lairs, caves) (sites built on entry from the legends, with site memory: A4 3769753) · [ ] talk: hear news and
   rumours, take jobs, hire companions · [ ] fight with the same body and wounds as fortress
   mode; loot; rest and heal · [ ] fame and infamy in the legends; visit or reclaim your old
-  forts · [ ] death ends it, and the world remembers
+  forts (visit: a fallen fort entered from its own save, its killer moved in, its saga, journal
+  and walls to read, and looting written back to the save after a backup: A5 this commit) · [ ] death ends it, and the world remembers
 - **Done when:** a character can leave a town, find a ruin from a fallen fort, fight what lives
-  there, and come back with its treasure recorded in the legends.
+  there, and come back with its treasure recorded in the legends. (Tested, with the travel
+  and the bot's walking left to A3 and A18: `a_hero_brings_home_the_treasure_of_a_fallen_fort`.)
 
 ### Later
 

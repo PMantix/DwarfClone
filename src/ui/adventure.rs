@@ -85,6 +85,19 @@ pub(super) fn draw(f: &mut Frame, app: &App) {
     if s.help {
         draw_help(f, area);
     }
+    if let Some(w) = &s.page {
+        draw_writing(f, map, w);
+    }
+}
+
+/// A page being read (A5), on parchment over the map: a fallen fort's
+/// saga, its overseer's journal, its chronicle, its walls.
+fn draw_writing(f: &mut Frame, map: Rect, w: &crate::game::adv::sitegen::fallen::Writing) {
+    let p = super::saga::Page { title: w.title.clone(), doom: w.doom, open: false, sub: w.sub.clone(), chapters: w.chapters.clone(), closing: w.closing.clone(), fell: w.fell };
+    let width = map.width.saturating_sub(4).clamp(map.width.min(30), 76);
+    let h = super::saga::rows_needed(&p, width).min(map.height);
+    let r = Rect::new(map.x + map.width.saturating_sub(width) / 2, map.y + map.height.saturating_sub(h) / 2, width, h);
+    super::saga::draw_page(f, r, map, &p, None, "any key: put it down");
 }
 
 /// The site round the hero (or the look cursor) on the hero's level: what
@@ -724,6 +737,7 @@ fn draw_help(f: &mut Frame, area: Rect) {
         ("k", "talk to someone near"),
         ("g d", "get what lies here · drop something"),
         ("i", "inventory"),
+        ("R", "read a book here, or the engraved walls around"),
         ("w r", "wear or wield · take off or put away"),
         ("z", "status: body, wounds, skills, fame"),
         ("Z", "rest until healed or disturbed"),

@@ -69,8 +69,8 @@ pub struct Made {
 pub fn make(g: &mut Game, ctx: &Ctx) -> Made {
     let mut made = match ctx.key {
         SiteKey::Wild(..) => wild::make(g, ctx),
-        // A fallen fort is its own save (A5).
-        SiteKey::Fort(_) => Made::default(),
+        // A fallen fort is its own save (A5); this is one whose save is gone.
+        SiteKey::Fort(_) => fallen::make(g, ctx),
         SiteKey::Site(id) => {
             let Some(site) = g.overworld.sites.iter().find(|s| s.id == id).cloned() else { return Made::default() };
             let stance = peoples::stance(&g.overworld, ctx.race, ctx.civ, &site);

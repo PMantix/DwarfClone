@@ -244,7 +244,9 @@ pub fn screenshot(args: &[String]) -> Result<()> {
     let mut app = App::new(seed);
     // `--adventure`: a seeded adventure, the hero set out from home.
     let adventure = args.iter().any(|a| a == "--adventure");
-    if adventure {
+    if adventure && args.iter().any(|a| a == "--fallen") {
+        app.start_fallen_seeded(seed, !args.iter().any(|a| a == "--quiet"));
+    } else if adventure {
         app.start_adventure_seeded(seed);
     } else {
         app.start_watch_seeded(seed);
