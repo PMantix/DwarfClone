@@ -8,8 +8,10 @@
 //! `key_company` (A9).
 
 use super::{App, Mode, TITLE_ADVENTURE};
-use crate::game::adv::turn::{Action, Outcome};
+use crate::body::{Part, PARTS};
+use crate::game::adv::turn::{Action, Outcome, Target};
 use crate::game::adv::{self, Adventure, View};
+use crate::game::{Game, DAY};
 use crate::jobs::JobDone;
 use crate::overworld::Overworld;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -20,12 +22,53 @@ pub struct AdvScreen {
     pub view: View,
     /// A line for the player (refusals, interrupts).
     pub flash: Option<String>,
+    /// The local view's open list (A2): get, drop, wear, aim... and what
+    /// it offers, chosen by letter.
+    pub pick: Option<(Pick, Vec<u32>)>,
+    /// Sneaking: every step takes twice as long.
+    pub sneak: bool,
+    /// Resting until this tick (a slice a frame), unless woken; and
+    /// whether to stop once healed.
+    pub rest_until: Option<(u64, bool)>,
+    /// The help card is up.
+    pub help: bool,
+    /// When the last act began: the log's lines since are this turn's.
+    pub turn_from: u64,
+}
+
+/// What a letter list in the local view is for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pick {
+    Get,
+    Drop,
+    Wear,
+    Remove,
+    /// A foe in reach to aim at (`A`)...
+    Aim,
+    /// ...then the part of them (the list holds part indices).
+    AimPart(Target),
+    Talk,
+}
+
+impl Pick {
+    pub fn title(self) -> &'static str {
+        match self {
+            Pick::Get => "Pick up what?",
+            Pick::Drop => "Drop what?",
+            Pick::Wear => "Wear or wield what?",
+            Pick::Remove => "Take off what?",
+            Pick::Aim => "Attack whom?",
+            Pick::AimPart(_) => "Aim where?",
+            Pick::Talk => "Talk to whom?",
+        }
+    }
 }
 
 impl AdvScreen {
     pub fn new(adv: Adventure) -> AdvScreen {
         let view = if adv.over.is_some() { View::Dead } else if adv.visit.is_some() { View::Local } else { View::Travel };
-        AdvScreen { adv, view, flash: None }
+        let turn_from = adv.now();
+        AdvScreen { adv, view, flash: None, pick: None, sneak: false, rest_until: None, help: false, turn_from }
     }
 }
 
@@ -60,9 +103,61 @@ impl App {
         self.mode = Mode::Adventure;
     }
 
+    /// The window's `--adventure --fight` picture: a goblin raider comes at
+    /// the hero, who closes and trades blows until one of them is hurt, and
+    /// an iron helm lies on the ground.
+    pub fn adventure_skirmish(&mut self) {
+        let Some(s) = self.adv.as_mut() else { return };
+        let Some(v) = s.adv.visit.as_mut() else { return };
+        let h = v.hero;
+        let p = v.g.dwarves[h].pos;
+        v.g.spawn_item(crate::items::ItemKind::Helm, crate::material::Mat::Iron, p.offset(-1, 0, 0));
+        let gob = v.g.raider_for(h);
+        for _ in 0..40 {
+            let Some(s) = self.adv.as_ref() else { return };
+            let Some(v) = s.adv.visit.as_ref() else { return };
+            let Some(fp) = v.g.creatures.get(&gob).filter(|c| c.alive).map(|c| c.pos) else { break };
+            let d = &v.g.dwarves[h];
+            let hurt = |b: &crate::body::Body| PARTS.iter().any(|&p| b.part_status(p) != "fine");
+            if !d.alive || s.view == View::Dead || (hurt(&d.body) && v.g.creatures.get(&gob).map_or(true, |c| hurt(&c.body))) {
+                break;
+            }
+            let (dx, dy) = ((fp.x - d.pos.x).signum(), (fp.y - d.pos.y).signum());
+            self.adv_act(Action::Move(dx, dy));
+        }
+    }
+
     /// Each frame while the adventure is up: nothing runs while waiting for
-    /// a key (A2 runs long acts a slice at a time here).
-    pub fn adv_frame(&mut self) {}
+    /// a key, but a rest goes on a slice at a time until healed, woken or
+    /// done.
+    pub fn adv_frame(&mut self) {
+        let Some(s) = self.adv.as_mut() else { return };
+        let Some((until, mend)) = s.rest_until else { return };
+        let Some(v) = s.adv.visit.as_mut() else {
+            s.rest_until = None;
+            return;
+        };
+        let h = v.hero;
+        let left = until.saturating_sub(v.g.tick);
+        if left == 0 || (mend && whole(&v.g.dwarves[h])) {
+            s.rest_until = None;
+            s.flash = Some(if left == 0 { "You rise from your rest." } else { "You feel rested and whole." }.into());
+            return;
+        }
+        let out = v.g.act(h, Action::Wait(left.min(REST_SLICE) as u32));
+        v.g.reveal_seen(h);
+        match out {
+            Outcome::Done { .. } => {}
+            Outcome::Interrupted { why, .. } | Outcome::Refused(why) => {
+                s.rest_until = None;
+                s.flash = Some(format!("Your rest is broken: {}", why));
+            }
+            Outcome::Died => {
+                s.rest_until = None;
+                s.view = View::Dead;
+            }
+        }
+    }
 
     /// Every key while the adventure is up, by view.
     pub fn key_adventure(&mut self, k: KeyEvent) {
@@ -73,7 +168,7 @@ impl App {
         s.flash = None;
         match s.view.clone() {
             View::Create => self.key_create(k),
-            View::Local => self.key_local(k),
+            View::Local | View::Look(_) | View::Inventory { .. } | View::Status | View::Menu { .. } => self.key_local(k),
             View::Travel => self.key_travel(k),
             View::Dead => self.key_end(k),
             View::Talk { .. } => self.key_talk(k),
@@ -120,14 +215,49 @@ impl App {
     }
 }
 
+/// The most of a rest run in one frame.
+const REST_SLICE: u64 = 600;
+/// What a sneaking step costs on top of the step.
+const SNEAK_EXTRA: u32 = 3;
+/// How near someone must stand to be talked to.
+const TALK_REACH: i32 = 3;
+/// The menu's rows (A11 adds saving).
+pub const MENU: [&str; 2] = ["Back to the adventure", "Quit to the title"];
+
 impl App {
-    /// The local map: move, bump to fight, wait (A2 adds the rest).
+    /// The local map and its pages (look, inventory, status, menu): move,
+    /// bump to fight, and DF's adventure keys.
     fn key_local(&mut self, k: KeyEvent) {
-        if k.code == KeyCode::Esc {
-            return self.adventure_to_title();
-        }
         let Some(s) = self.adv.as_mut() else { return };
-        let Some(v) = s.adv.visit.as_mut() else { return };
+        // Any key wakes a rest and closes the help card.
+        if s.rest_until.take().is_some() {
+            s.flash = Some("You stop resting.".into());
+            return;
+        }
+        if s.help {
+            s.help = false;
+            return;
+        }
+        if s.pick.is_some() {
+            return self.adv_key_pick(k);
+        }
+        match s.view.clone() {
+            View::Look(p) => return self.adv_key_look(k, p),
+            View::Inventory { sel } => return self.adv_key_inventory(k, sel),
+            View::Menu { sel } => return self.adv_key_menu(k, sel),
+            View::Status => {
+                s.view = View::Local;
+                return;
+            }
+            _ => {}
+        }
+        let Some(v) = s.adv.visit.as_ref() else {
+            if k.code == KeyCode::Esc {
+                s.view = View::Menu { sel: 0 };
+            }
+            return;
+        };
+        let (h, g) = (v.hero, &v.g);
         let act = if let Some((dx, dy)) = step_of(&k) {
             Action::Move(dx, dy)
         } else {
@@ -135,15 +265,339 @@ impl App {
                 KeyCode::Char('.') | KeyCode::Char('5') => Action::Wait(10),
                 KeyCode::Char('<') => Action::Climb(1),
                 KeyCode::Char('>') => Action::Climb(-1),
+                KeyCode::Esc => {
+                    s.view = View::Menu { sel: 0 };
+                    return;
+                }
+                KeyCode::Char('?') => {
+                    s.help = true;
+                    return;
+                }
+                KeyCode::Char('z') => {
+                    s.view = View::Status;
+                    return;
+                }
+                KeyCode::Char('i') => {
+                    s.view = View::Inventory { sel: 0 };
+                    return;
+                }
+                KeyCode::Char('l') => {
+                    s.view = View::Look(g.dwarves[h].pos);
+                    return;
+                }
+                KeyCode::Char('s') => {
+                    s.sneak = !s.sneak;
+                    s.flash = Some(if s.sneak { "You move quietly now, keeping low." } else { "You stop sneaking." }.into());
+                    return;
+                }
+                KeyCode::Char('Z') => {
+                    if let Some(why) = g.alarm(h, g.tick) {
+                        s.flash = Some(format!("You can't rest now: {}", why));
+                        return;
+                    }
+                    let hurt = !whole(&g.dwarves[h]);
+                    let span = if hurt { DAY } else { crate::game::clock::HOUR * 2 };
+                    s.rest_until = Some((g.tick + span, hurt));
+                    s.flash = Some(if hurt { "You lie down to rest your wounds..." } else { "You sit down and rest a while..." }.into());
+                    return;
+                }
+                KeyCode::Char('g') => return self.adv_open_pick(Pick::Get),
+                KeyCode::Char('d') => return self.adv_open_pick(Pick::Drop),
+                KeyCode::Char('w') => return self.adv_open_pick(Pick::Wear),
+                KeyCode::Char('r') => return self.adv_open_pick(Pick::Remove),
+                KeyCode::Char('A') => return self.adv_open_pick(Pick::Aim),
+                KeyCode::Char('k') => return self.adv_open_pick(Pick::Talk),
                 _ => return,
             }
         };
+        self.adv_act(act);
+    }
+
+    /// The hero acts: the world runs, what they see is remembered, and a
+    /// refusal or an interruption is said.
+    fn adv_act(&mut self, act: Action) {
+        let Some(s) = self.adv.as_mut() else { return };
+        let Some(v) = s.adv.visit.as_mut() else { return };
         let h = v.hero;
-        match v.g.act(h, act) {
+        s.turn_from = v.g.tick;
+        let step = matches!(act, Action::Move(..) | Action::Climb(_));
+        let was = v.g.dwarves[h].pos;
+        let mut before = Bodies::take(&v.g, h);
+        before.swung = match &act {
+            Action::Move(dx, dy) => {
+                let to = was.offset(*dx, *dy, 0);
+                v.g.creatures.values().find(|c| c.alive && c.pos == to).map(|c| c.id)
+            }
+            Action::Attack { target: Target::Creature(id), .. } => Some(*id),
+            _ => None,
+        };
+        let mut out = v.g.act(h, act);
+        // Sneaking: each step taken slowly, as long again.
+        if s.sneak && step && v.g.dwarves[h].pos != was && matches!(out, Outcome::Done { .. }) {
+            out = v.g.act(h, Action::Wait(SNEAK_EXTRA));
+        }
+        before.tell(&mut v.g, h, s.turn_from);
+        v.g.reveal_seen(h);
+        match out {
             Outcome::Done { .. } => {}
             Outcome::Interrupted { why, .. } | Outcome::Refused(why) => s.flash = Some(why),
-            Outcome::Died => s.view = View::Dead,
+            Outcome::Died => {
+                s.pick = None;
+                s.view = View::Dead;
+            }
         }
+    }
+
+    /// Open a letter list, or say why there's nothing to choose.
+    fn adv_open_pick(&mut self, kind: Pick) {
+        let Some(s) = self.adv.as_mut() else { return };
+        let Some(v) = s.adv.visit.as_ref() else { return };
+        let ids = pick_choices(&v.g, v.hero, kind);
+        if ids.is_empty() {
+            let why = match kind {
+                Pick::Get => "There is nothing here to pick up.",
+                Pick::Drop => "You carry nothing.",
+                Pick::Wear => "You have nothing more to wear or wield.",
+                Pick::Remove => "You wear and hold nothing.",
+                Pick::Aim | Pick::AimPart(_) => "There is no one in reach to attack.",
+                Pick::Talk => "There is no one near enough to talk to.",
+            };
+            s.flash = Some(why.into());
+            return;
+        }
+        s.pick = Some((kind, ids));
+    }
+
+    /// A letter chooses from the open list; anything else closes it.
+    fn adv_key_pick(&mut self, k: KeyEvent) {
+        let Some(s) = self.adv.as_mut() else { return };
+        let Some((kind, ids)) = s.pick.take() else { return };
+        let i = match k.code {
+            KeyCode::Char(c) if c.is_ascii_lowercase() => (c as u8 - b'a') as usize,
+            KeyCode::Enter => 0,
+            _ => return,
+        };
+        let Some(&id) = ids.get(i) else {
+            s.pick = Some((kind, ids));
+            return;
+        };
+        let act = match kind {
+            Pick::Get => Action::Get(vec![id]),
+            Pick::Drop => Action::Drop(vec![id]),
+            Pick::Wear => Action::Wear(id),
+            Pick::Remove => Action::Remove(id),
+            Pick::Aim => {
+                s.pick = Some((Pick::AimPart(Target::Creature(id)), (0..PARTS.len() as u32).collect()));
+                return;
+            }
+            Pick::AimPart(target) => Action::Attack { target, part: Some(PARTS[id as usize]) },
+            Pick::Talk => Action::Talk(id),
+        };
+        self.adv_act(act);
+    }
+
+    /// The look cursor: moved by the movement keys; Esc or `l` closes it.
+    fn adv_key_look(&mut self, k: KeyEvent, p: crate::geom::Pos) {
+        let Some(s) = self.adv.as_mut() else { return };
+        if let Some((dx, dy)) = step_of(&k) {
+            if let Some(v) = s.adv.visit.as_ref() {
+                let q = p.offset(dx, dy, 0);
+                if v.g.world.in_bounds(q) {
+                    s.view = View::Look(q);
+                }
+            }
+            return;
+        }
+        if matches!(k.code, KeyCode::Esc | KeyCode::Char('l') | KeyCode::Enter) {
+            s.view = View::Local;
+        }
+    }
+
+    /// The inventory: choose a thing (arrows or its letter), then wear,
+    /// remove or drop it.
+    fn adv_key_inventory(&mut self, k: KeyEvent, sel: usize) {
+        let Some(s) = self.adv.as_mut() else { return };
+        let Some(v) = s.adv.visit.as_ref() else { return };
+        let ids = pick_choices(&v.g, v.hero, Pick::Drop);
+        let n = ids.len();
+        let sel = sel.min(n.saturating_sub(1));
+        let act = match k.code {
+            KeyCode::Esc | KeyCode::Char('i') => {
+                s.view = View::Local;
+                return;
+            }
+            KeyCode::Up | KeyCode::Char('8') => {
+                s.view = View::Inventory { sel: sel.saturating_sub(1) };
+                return;
+            }
+            KeyCode::Down | KeyCode::Char('2') => {
+                s.view = View::Inventory { sel: (sel + 1).min(n.saturating_sub(1)) };
+                return;
+            }
+            KeyCode::Char(c) if n > 0 && matches!(c, 'w' | 'r' | 'd') => {
+                let id = ids[sel];
+                match c {
+                    'w' => Action::Wear(id),
+                    'r' => Action::Remove(id),
+                    _ => Action::Drop(vec![id]),
+                }
+            }
+            KeyCode::Char(c) if c.is_ascii_lowercase() && ((c as u8 - b'a') as usize) < n => {
+                s.view = View::Inventory { sel: (c as u8 - b'a') as usize };
+                return;
+            }
+            _ => return,
+        };
+        self.adv_act(act);
+    }
+
+    /// The menu: back, or quit to the title (A11 adds saving).
+    fn adv_key_menu(&mut self, k: KeyEvent, sel: usize) {
+        let Some(s) = self.adv.as_mut() else { return };
+        match k.code {
+            KeyCode::Esc => s.view = View::Local,
+            KeyCode::Up | KeyCode::Char('8') => s.view = View::Menu { sel: sel.saturating_sub(1) },
+            KeyCode::Down | KeyCode::Char('2') => s.view = View::Menu { sel: (sel + 1).min(MENU.len() - 1) },
+            KeyCode::Enter => match sel {
+                0 => s.view = View::Local,
+                _ => self.adventure_to_title(),
+            },
+            _ => {}
+        }
+    }
+}
+
+/// The bodies round the hero before an act, so the combat log can tell
+/// every blow of it: which part, how bad, a limb lost, a foe slain.
+struct Bodies {
+    hero: crate::body::Body,
+    /// Creatures near the hero: id, name, body, alive.
+    near: Vec<(u32, String, crate::body::Body, bool)>,
+    /// Whom the hero struck at (a blow that did nothing missed).
+    swung: Option<u32>,
+}
+
+impl Bodies {
+    fn take(g: &Game, h: usize) -> Bodies {
+        let d = &g.dwarves[h];
+        let near = g
+            .creatures
+            .values()
+            .filter(|c| c.alive && c.pos.z == d.pos.z && (c.pos.x - d.pos.x).abs() <= 3 && (c.pos.y - d.pos.y).abs() <= 3)
+            .map(|c| (c.id, c.label.clone().unwrap_or_else(|| format!("the {}", c.species.info().name)), c.body.clone(), c.alive))
+            .collect();
+        Bodies { hero: d.body.clone(), near, swung: None }
+    }
+
+    /// The act's blows, as lines in the log: the hero's in gold, the foe's
+    /// in red, a death in bright red.
+    fn tell(self, g: &mut Game, h: usize, since: u64) {
+        let mut lines: Vec<(String, (u8, u8, u8))> = Vec::new();
+        for (id, name, b0, _) in &self.near {
+            let Some(c) = g.creatures.get(id) else {
+                lines.push((format!("{} falls dead!", cap_first(name)), (255, 90, 70)));
+                continue;
+            };
+            let hurt = wounds(b0, &c.body);
+            let by_me = c.body.hp != b0.hp || c.body.lost != b0.lost;
+            if by_me {
+                for (part, how) in hurt {
+                    lines.push((format!("You strike {} in the {}: {}.", name, part, how), (240, 210, 120)));
+                }
+            } else if self.swung == Some(*id) {
+                lines.push((format!("Your blow misses {}.", name), (170, 160, 130)));
+            }
+            if !c.alive {
+                lines.push((format!("{} falls dead!", cap_first(name)), (255, 90, 70)));
+            }
+        }
+        let d = &g.dwarves[h];
+        let by = d.attacker.filter(|(_, t)| *t >= since).and_then(|(cid, _)| self.near.iter().find(|n| n.0 == cid)).map_or("something".to_string(), |n| n.1.clone());
+        for (part, how) in wounds(&self.hero, &d.body) {
+            lines.push((format!("{} hits you in the {}: {}.", cap_first(&by), part, how), (235, 110, 90)));
+        }
+        if d.body.bleeding > 0 && self.hero.bleeding == 0 {
+            lines.push(("You are bleeding.".into(), (230, 60, 60)));
+        }
+        // The turn engine's one-line "is wounded by" says less than these.
+        if !lines.is_empty() {
+            let first = format!("{} is wounded by", d.name.split(' ').next().unwrap_or(""));
+            g.log.retain(|e| e.tick < since || !e.text.starts_with(&first));
+        }
+        for (t, c) in lines {
+            g.msg(&t, c);
+        }
+    }
+}
+
+/// Each part hurt from `a` to `b`, and how it is now.
+fn wounds(a: &crate::body::Body, b: &crate::body::Body) -> Vec<(&'static str, &'static str)> {
+    PARTS
+        .iter()
+        .filter(|p| b.hp[p.idx()] < a.hp[p.idx()] || (b.lost[p.idx()] && !a.lost[p.idx()]))
+        .map(|&p| (p.name(), if b.lost[p.idx()] && !a.lost[p.idx()] { "cut clean off!" } else { b.part_status(p) }))
+        .collect()
+}
+
+fn cap_first(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map_or(String::new(), |f| f.to_uppercase().collect::<String>() + c.as_str())
+}
+
+/// Healed and with all their blood: a rest has nothing left to mend.
+fn whole(d: &crate::dwarf::Dwarf) -> bool {
+    d.body.healed() && d.body.blood >= d.body.max_blood
+}
+
+/// What a letter list offers, in its order: items (get, drop, wear,
+/// remove), creatures in reach (aim) or people near (talk).
+pub fn pick_choices(g: &Game, hero: usize, kind: Pick) -> Vec<u32> {
+    let d = &g.dwarves[hero];
+    let (me, p) = (d.id, d.pos);
+    let mut mine: Vec<u32> = g.items.values().filter(|it| it.carried_by == Some(me)).map(|it| it.id).collect();
+    mine.sort();
+    let worn = |id: &u32| d.held == Some(*id) || d.armor.contains(id) || d.clothes.contains(id);
+    match kind {
+        Pick::Get => {
+            let mut v: Vec<u32> = g.items.values().filter(|it| it.pos == p && it.carried_by.is_none() && it.container.is_none()).map(|it| it.id).collect();
+            v.sort();
+            v
+        }
+        Pick::Drop => mine,
+        Pick::Wear => mine.into_iter().filter(|id| !worn(id)).collect(),
+        Pick::Remove => mine.into_iter().filter(|id| worn(id)).collect(),
+        Pick::Aim => {
+            let mut v: Vec<(bool, u32)> = g
+                .creatures
+                .values()
+                .filter(|c| c.alive && c.pos.z == p.z && c.pos != p && (c.pos.x - p.x).abs() <= 1 && (c.pos.y - p.y).abs() <= 1)
+                .map(|c| (!c.hostile(), c.id))
+                .collect();
+            v.sort();
+            v.into_iter().map(|(_, id)| id).collect()
+        }
+        Pick::AimPart(_) => (0..PARTS.len() as u32).collect(),
+        Pick::Talk => {
+            let mut v: Vec<(i32, u32)> = g
+                .dwarves
+                .iter()
+                .filter(|o| o.id != me && o.alive && !o.ghost && o.pos.z == p.z && (o.pos.x - p.x).abs().max((o.pos.y - p.y).abs()) <= TALK_REACH)
+                .map(|o| ((o.pos.x - p.x).pow(2) + (o.pos.y - p.y).pow(2), o.id))
+                .collect();
+            v.sort();
+            v.into_iter().map(|(_, id)| id).collect()
+        }
+    }
+}
+
+/// The chance-to-hit penalty for aiming at a part, in percent (A6 makes it
+/// real in `strike_at`): a small target is harder to hit.
+pub fn aim_penalty(p: Part) -> i32 {
+    match p {
+        Part::Head => 20,
+        Part::LeftArm | Part::RightArm => 10,
+        Part::LeftLeg | Part::RightLeg => 5,
+        _ => 0,
     }
 }
 
@@ -238,7 +692,234 @@ mod tests {
             let text: String = term.backend().buffer().content().iter().map(|c| c.symbol().to_string()).collect();
             assert!(text.contains('☺'), "the hero is drawn at {}x{}", w, h);
         }
+        // Esc is the menu; its last row quits to the title.
         app.on_key(key(KeyCode::Esc));
+        assert_eq!(app.adv.as_ref().unwrap().view, View::Menu { sel: 0 });
+        app.on_key(key(KeyCode::Down));
+        app.on_key(key(KeyCode::Enter));
         assert_eq!(app.mode, Mode::Title { sel: TITLE_ADVENTURE });
+    }
+
+    /// An app with a hero standing in a quiet field (no beasts about).
+    fn field_app(seed: u64) -> App {
+        static WORLD: std::sync::OnceLock<Overworld> = std::sync::OnceLock::new();
+        let ow = WORLD.get_or_init(|| Overworld::generate(5)).clone();
+        let mut app = App::new(seed);
+        app.save_dir = std::env::temp_dir().join("dwarfclone-no-saves-here");
+        let mut a = adv::quick_start(ow, seed);
+        let (x, y) = a.at;
+        a.enter(adv::SiteKey::Wild(x, y)).unwrap();
+        a.visit.as_mut().unwrap().g.creatures.clear();
+        app.adventure_ready(Box::new(a));
+        app
+    }
+
+    fn game(app: &App) -> &Game {
+        &app.adv.as_ref().unwrap().adv.visit.as_ref().unwrap().g
+    }
+
+    fn game_mut(app: &mut App) -> &mut Game {
+        &mut app.adv.as_mut().unwrap().adv.visit.as_mut().unwrap().g
+    }
+
+    fn hero(app: &App) -> &crate::dwarf::Dwarf {
+        app.adv.as_ref().unwrap().adv.hero_dwarf()
+    }
+
+    /// The screen as text.
+    fn screen(app: &mut App, w: u16, h: u16) -> String {
+        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
+        term.draw(|f| crate::ui::draw(f, app)).unwrap();
+        let b = term.backend().buffer();
+        let mut s = String::new();
+        for y in 0..h {
+            for x in 0..w {
+                s.push_str(b.get(x, y).symbol());
+            }
+            s.push('\n');
+        }
+        s
+    }
+
+    #[test]
+    fn keys_move_the_hero() {
+        let mut app = field_app(21);
+        let dirs = [
+            (KeyCode::Up, KeyCode::Char('8'), (0, -1)),
+            (KeyCode::Down, KeyCode::Char('2'), (0, 1)),
+            (KeyCode::Left, KeyCode::Char('4'), (-1, 0)),
+            (KeyCode::Right, KeyCode::Char('6'), (1, 0)),
+            (KeyCode::Home, KeyCode::Char('7'), (-1, -1)),
+            (KeyCode::PageUp, KeyCode::Char('9'), (1, -1)),
+            (KeyCode::End, KeyCode::Char('1'), (-1, 1)),
+            (KeyCode::PageDown, KeyCode::Char('3'), (1, 1)),
+        ];
+        for (arrow, digit, (dx, dy)) in dirs {
+            for k in [arrow, digit] {
+                let before = hero(&app).pos;
+                app.on_key(key(k));
+                let after = hero(&app).pos;
+                assert_eq!((after.x - before.x, after.y - before.y), (dx, dy), "{:?}", k);
+                // And back again, so the hero stays in the open.
+                game_mut(&mut app).dwarves.iter_mut().find(|d| d.id == adv::HERO_ID).unwrap().pos = before;
+            }
+        }
+        // `.` and numpad 5 wait ten ticks.
+        for k in [KeyCode::Char('.'), KeyCode::Char('5')] {
+            let t0 = game(&app).tick;
+            app.on_key(key(k));
+            assert_eq!(game(&app).tick, t0 + 10);
+        }
+        // Sneaking: a step takes twice as long.
+        let t0 = game(&app).tick;
+        app.on_key(key(KeyCode::Right));
+        let step = game(&app).tick - t0;
+        app.on_key(key(KeyCode::Char('s')));
+        assert!(app.adv.as_ref().unwrap().sneak);
+        let t0 = game(&app).tick;
+        app.on_key(key(KeyCode::Left));
+        assert_eq!(game(&app).tick - t0, step * 2, "a sneaking step");
+    }
+
+    #[test]
+    fn pick_up_wear_and_drop_by_keys() {
+        let mut app = field_app(22);
+        let p = hero(&app).pos;
+        let helm = game_mut(&mut app).spawn_item(crate::items::ItemKind::Helm, crate::material::Mat::Iron, p);
+        let ch = |c: char| key(KeyCode::Char(c));
+        // g: the list of what lies here; a takes the helm.
+        app.on_key(ch('g'));
+        assert_eq!(app.adv.as_ref().unwrap().pick, Some((Pick::Get, vec![helm])));
+        app.on_key(ch('a'));
+        assert_eq!(game(&app).items[&helm].carried_by, Some(adv::HERO_ID));
+        assert!(app.adv.as_ref().unwrap().pick.is_none());
+        // w: the axe is in hand already, so the helm is the first choice.
+        app.on_key(ch('w'));
+        app.on_key(ch('a'));
+        assert!(hero(&app).armor.contains(&helm), "the helm is worn");
+        let text = screen(&mut app, 130, 40);
+        assert!(text.contains("helm (worn)"), "the sidebar shows it worn:\n{}", text);
+        // z: the status page, any key back.
+        app.on_key(ch('z'));
+        assert!(screen(&mut app, 130, 40).contains("Skills"));
+        app.on_key(ch('z'));
+        assert_eq!(app.adv.as_ref().unwrap().view, View::Local);
+        // r takes it off, and d drops it (its letter in the drop list).
+        app.on_key(ch('r'));
+        let ids = app.adv.as_ref().unwrap().pick.clone().unwrap().1;
+        app.on_key(ch((b'a' + ids.iter().position(|&i| i == helm).unwrap() as u8) as char));
+        assert!(!hero(&app).armor.contains(&helm));
+        app.on_key(ch('d'));
+        let ids = app.adv.as_ref().unwrap().pick.clone().unwrap().1;
+        app.on_key(ch((b'a' + ids.iter().position(|&i| i == helm).unwrap() as u8) as char));
+        assert_eq!(game(&app).items[&helm].carried_by, None);
+        assert_eq!(game(&app).items[&helm].pos, hero(&app).pos);
+        // Esc closes a list without acting.
+        app.on_key(ch('g'));
+        assert!(app.adv.as_ref().unwrap().pick.is_some());
+        let t0 = game(&app).tick;
+        app.on_key(key(KeyCode::Esc));
+        assert!(app.adv.as_ref().unwrap().pick.is_none());
+        assert_eq!(game(&app).tick, t0);
+        // The inventory: the axe, chosen by its letter and put away.
+        app.on_key(ch('i'));
+        assert!(screen(&mut app, 80, 24).contains("Inventory"));
+        app.on_key(ch('a'));
+        app.on_key(ch('r'));
+        assert_eq!(hero(&app).held, None, "the axe put away");
+        app.on_key(ch('w'));
+        assert!(hero(&app).held.is_some(), "and taken up again");
+        app.on_key(key(KeyCode::Esc));
+        assert_eq!(app.adv.as_ref().unwrap().view, View::Local);
+    }
+
+    #[test]
+    fn aim_look_talk_and_rest() {
+        let mut app = field_app(23);
+        let ch = |c: char| key(KeyCode::Char(c));
+        // Nobody in reach: A says so and costs nothing.
+        app.on_key(ch('A'));
+        assert!(app.adv.as_ref().unwrap().pick.is_none());
+        assert!(app.adv.as_ref().unwrap().flash.is_some());
+        // A goblin beside the hero: A a, then the head (a).
+        let h = app.adv.as_ref().unwrap().adv.visit.as_ref().unwrap().hero;
+        let gob = game_mut(&mut app).raider_for(h);
+        let next = hero(&app).pos.offset(1, 0, 0);
+        game_mut(&mut app).creatures.get_mut(&gob).unwrap().pos = next;
+        app.on_key(ch('A'));
+        assert_eq!(app.adv.as_ref().unwrap().pick, Some((Pick::Aim, vec![gob])));
+        app.on_key(ch('a'));
+        assert!(matches!(app.adv.as_ref().unwrap().pick, Some((Pick::AimPart(_), _))));
+        assert!(screen(&mut app, 80, 24).contains("Aim where?"));
+        let t0 = game(&app).tick;
+        app.on_key(ch('a'));
+        assert!(game(&app).tick > t0, "the blow took time");
+        assert!(
+            game(&app).log.iter().any(|e| e.tick >= t0 && (e.text.starts_with("You strike the goblin") || e.text.starts_with("Your blow misses"))),
+            "the combat log tells the blow: {:?}",
+            game(&app).log.iter().rev().take(4).map(|e| &e.text).collect::<Vec<_>>()
+        );
+        // Look: a cursor that moves, and Esc closes it.
+        app.on_key(ch('l'));
+        app.on_key(key(KeyCode::Right));
+        assert_eq!(app.adv.as_ref().unwrap().view, View::Look(hero(&app).pos.offset(1, 0, 0)));
+        assert!(screen(&mut app, 130, 40).contains("Look"));
+        assert!(screen(&mut app, 80, 24).contains("Look"));
+        app.on_key(key(KeyCode::Esc));
+        assert_eq!(app.adv.as_ref().unwrap().view, View::Local);
+        // With a foe in sight there's no rest.
+        app.on_key(ch('Z'));
+        assert!(app.adv.as_ref().unwrap().rest_until.is_none());
+        assert!(app.adv.as_ref().unwrap().flash.as_deref().unwrap_or("").starts_with("You can't rest"));
+        // The foe gone and an arm hurt: Z rests, a slice a frame, until whole.
+        game_mut(&mut app).creatures.clear();
+        let arm = Part::LeftArm.idx();
+        let hid = adv::HERO_ID;
+        {
+            let d = game_mut(&mut app).dwarves.iter_mut().find(|d| d.id == hid).unwrap();
+            d.body.hp = d.body.max;
+            d.body.lost = [false; 7];
+            d.body.hp[arm] = d.body.max[arm] * 3 / 4;
+            d.body.bleeds = [0; 7];
+            d.body.bleeding = 0;
+            d.body.blood = d.body.max_blood;
+            d.attacker = None;
+        }
+        let t0 = game(&app).tick;
+        app.on_key(ch('Z'));
+        assert!(app.adv.as_ref().unwrap().rest_until.is_some());
+        for _ in 0..10 {
+            app.frame();
+        }
+        assert!(app.adv.as_ref().unwrap().rest_until.is_none(), "the rest ended");
+        assert!(hero(&app).body.healed(), "healed by resting");
+        assert!(game(&app).tick > t0 + 200 && game(&app).tick <= t0 + DAY);
+        // Talk: nobody near.
+        app.on_key(ch('k'));
+        assert!(app.adv.as_ref().unwrap().flash.as_deref().unwrap_or("").contains("no one"));
+    }
+
+    #[test]
+    fn the_local_view_draws_at_every_size() {
+        let mut app = field_app(24);
+        app.adventure_skirmish();
+        let views = [View::Local, View::Status, View::Inventory { sel: 0 }, View::Menu { sel: 1 }, View::Look(hero(&app).pos)];
+        for (w, hh) in [(80, 24), (130, 40), (200, 60), (40, 12)] {
+            for v in views.iter() {
+                app.adv.as_mut().unwrap().view = v.clone();
+                let text = screen(&mut app, w, hh);
+                if *v == View::Local && w >= 80 {
+                    assert!(text.contains('☺'), "the hero at {}x{}", w, hh);
+                    assert!(text.contains("Log"), "the log at {}x{}", w, hh);
+                    assert!(text.contains("Blood"), "the body at {}x{}", w, hh);
+                }
+                if *v == View::Local && w >= 118 {
+                    assert!(text.contains("Gear") && text.contains("In sight") && text.contains("Goblin"), "the sidebar at {}x{}:\n{}", w, hh, text);
+                }
+            }
+        }
+        app.adv.as_mut().unwrap().view = View::Local;
+        app.adv.as_mut().unwrap().help = true;
+        assert!(screen(&mut app, 80, 24).contains("Keys"));
     }
 }
