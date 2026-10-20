@@ -2,6 +2,7 @@
 //! season or so. Each style leans towards some more than others, and the
 //! fortress's troubles push it towards what's needed.
 
+use super::personality::NoteKind;
 use super::overseer::{Overseer, RoomUse, Style};
 use super::*;
 use crate::buildings::Recipe;
@@ -382,7 +383,7 @@ impl Game {
         let Some(mut o) = self.overseer.take() else { return };
         if o.base.is_some() {
             self.begin_ambition(&mut o, a);
-            Self::note_ov(&mut o, self.tick, format!("You talked it into: {}.", a.name()));
+            Self::note_as(&mut o, self.tick, NoteKind::Command, format!("You talked it into: {}.", a.name()));
         }
         self.overseer = Some(o);
     }
@@ -452,7 +453,7 @@ impl Game {
         };
         o.ambitions.push((tick, pick));
         self.msg(pick.announce(), (150, 210, 255));
-        Self::note_ov(o, tick, format!("Set its heart on: {}.", pick.name()));
+        Self::note_as(o, tick, NoteKind::Ambition, format!("Set its heart on: {}.", pick.name()));
         // What some ambitions want dug.
         let has = |o: &Overseer, k: RoomUse| o.rooms.iter().filter(|r| r.kind == k).count();
         match pick {
@@ -487,7 +488,7 @@ impl Game {
         match a {
             Ambition::Provision => {
                 if self.ov_more_fields(o) {
-                    Self::note_ov(o, tick, "Sowed new fields.".into());
+                    Self::note_as(o, tick, NoteKind::Ambition, "Sowed new fields.".into());
                 }
                 let fishers = self.dwarves.iter().filter(|d| d.alive && d.has(Labor::Fishing)).count();
                 if fishers < 2 {
@@ -509,7 +510,7 @@ impl Game {
                 if self.squads.len() < 2 && self.dwarves.iter().filter(|d| d.alive && d.soldier).count() >= 6 {
                     self.new_squad();
                     let name = self.squads.last().unwrap().name.clone();
-                    Self::note_ov(o, tick, format!("Raised a second squad, {}.", name));
+                    Self::note_as(o, tick, NoteKind::Ambition, format!("Raised a second squad, {}.", name));
                 }
             }
             Ambition::Prosper => {
@@ -518,7 +519,7 @@ impl Game {
                     if let Some(p) = self.ov_spot(BuildingKind::Monument, e.offset(0, 6, 0), 16) {
                         self.place_building(BuildingKind::Monument, p);
                         o.done.push("monument".into());
-                        Self::note_ov(o, tick, "Began a great monument.".into());
+                        Self::note_as(o, tick, NoteKind::Ambition, "Began a great monument.".into());
                     }
                 }
                 self.ov_detail(o, true);
@@ -558,7 +559,7 @@ impl Game {
             }
             if n > 0 {
                 o.done.push("stonetraps".into());
-                Self::note_ov(o, self.tick, format!("Set {} stone-fall traps deeper in the corridor.", n));
+                Self::note_as(o, self.tick, NoteKind::Gate, format!("Set {} stone-fall traps deeper in the corridor.", n));
             }
         }
     }
@@ -606,7 +607,7 @@ impl Game {
             }
         }
         self.place_building(BuildingKind::Door, gate);
-        Self::note_ov(o, self.tick, format!("Planned a walled yard round the stair ({} wall sections) with a gate.", n));
+        Self::note_as(o, self.tick, NoteKind::Gate, format!("Planned a walled yard round the stair ({} wall sections) with a gate.", n));
     }
 
     /// Work orders the ambition adds or raises.
@@ -717,7 +718,7 @@ impl Game {
             let key = format!("shaft{}", to.z);
             if !o.did(&key) {
                 o.done.push(key);
-                Self::note_ov(o, self.tick, format!("Sank the shaft to level {}.", to.z));
+                Self::note_as(o, self.tick, NoteKind::Dug, format!("Sank the shaft to level {}.", to.z));
             }
         }
         self.ov_mine(o, 20, 14);

@@ -578,7 +578,7 @@ impl App {
         // plays, the card goes by on its own after a few seconds.
         if let Some((s, frames)) = self.spot.as_mut() {
             *frames += 1;
-            let stay = if s.saga.is_some() { 260 } else { 100 };
+            let stay = if s.saga.is_some() { 260 } else if !s.actions.is_empty() { 200 } else { 100 };
             if self.game.overseer.is_some() && *frames > stay {
                 self.spot = None;
             }
@@ -1226,6 +1226,10 @@ impl App {
         }
         // A big moment on screen: any key goes on (Space unpauses too).
         if self.spot.is_some() && self.mode == Mode::Normal {
+            // O01: a key the card offers gives the overseer that command.
+            if let Some(c) = self.spot.as_ref().and_then(|(s, _)| s.actions.iter().copied().find(|c| k.code == KeyCode::Char(c.key()))) {
+                self.flash = Some(self.game.command_overseer(c));
+            }
             self.spot = None;
             if k.code == KeyCode::Char(' ') {
                 self.paused = false;
@@ -1630,6 +1634,8 @@ impl App {
                         self.mode = Mode::Normal;
                     }
                     KeyCode::Char('b') if self.game.overseer.is_some() => self.mode = Mode::Brain { sel: 0 },
+                    // O01: choose its traits by hand.
+                    KeyCode::Char('t') if self.game.overseer.is_some() => self.mode = Mode::OverseerTraits { sel: 0 },
                     // Another overseer of the same style: a new name and traits.
                     KeyCode::Char('r') if self.game.overseer.is_some() => {
                         let mut o = self.game.overseer.take().unwrap();

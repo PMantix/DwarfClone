@@ -165,7 +165,7 @@ fn sagas_summary(all: &[game::Trial]) {
     println!("    Fallen forts led by the saga that ended them: {} of {}.", led, fallen);
 }
 
-/// `--autoplay [--runs N] [--years Y] [--style NAME] [--seed S] [--story]
+/// `--autoplay [--runs N] [--years Y] [--style NAME] [--traits A,B] [--seed S] [--story]
 /// [--out FILE] [--knob name=v]... [--knobs FILE] [--list-knobs]`: play many
 /// fortresses with the overseer, side by side, tell how each ended and why
 /// forts fell; `--story` adds each fort's timeline, `--out` saves the batch
@@ -173,7 +173,7 @@ fn sagas_summary(all: &[game::Trial]) {
 /// map) change tunable numbers from their defaults; `--list-knobs` plays one
 /// fort for 30 days and lists every knob it read.
 fn autoplay_batch(args: &[String]) {
-    use game::{run_trial, Knobs, Style};
+    use game::{Knobs, Style};
     let opt = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
     let mut knobs = Knobs::default();
     if let Some(path) = opt("--knobs") {
@@ -214,6 +214,8 @@ fn autoplay_batch(args: &[String]) {
     let runs: u64 = opt("--runs").and_then(|s| s.parse().ok()).unwrap_or(10);
     let years: u64 = opt("--years").and_then(|s| s.parse().ok()).unwrap_or(5);
     let style = opt("--style").and_then(|s| Style::parse(&s));
+    // `--traits cautious,vain`: every overseer of the batch has these two.
+    let traits: Option<Vec<game::personality::Trait>> = opt("--traits").map(|t| t.split(',').filter_map(game::personality::Trait::parse).collect());
     let base: u64 = opt("--seed").and_then(|s| s.parse().ok()).unwrap_or_else(|| SystemTime::now().duration_since(UNIX_EPOCH).map_or(1, |d| d.as_secs() % 100_000));
     let threads = opt("--threads").and_then(|s| s.parse().ok()).unwrap_or_else(|| std::thread::available_parallelism().map_or(4, |n| n.get())).max(1);
     println!(
@@ -224,6 +226,9 @@ fn autoplay_batch(args: &[String]) {
         style.map_or(String::new(), |s| format!(", all {}", s.name())),
         if knobs.set.is_empty() { String::new() } else { format!("; knobs: {}", knobs.describe()) }
     );
+    if let Some(t) = &traits {
+        println!("Every overseer is {}.", t.iter().map(|t| t.name()).collect::<Vec<_>>().join(" and "));
+    }
     let jobs: Vec<(u64, Style)> = (0..runs).map(|i| (base + i, style.unwrap_or(Style::ALL[(i % Style::ALL.len() as u64) as usize]))).collect();
     let queue = std::sync::Arc::new(std::sync::Mutex::new(jobs.into_iter()));
     let (tx, rx) = std::sync::mpsc::channel();
@@ -232,11 +237,12 @@ fn autoplay_batch(args: &[String]) {
         let queue = queue.clone();
         let tx = tx.clone();
         let knobs = knobs.clone();
+        let traits = traits.clone();
         handles.push(std::thread::spawn(move || {
             loop {
                 let next = queue.lock().unwrap().next();
                 let Some((seed, style)) = next else { break };
-                let _ = tx.send(run_trial(seed, style, years, &knobs));
+                let _ = tx.send(game::run_trial_with(seed, style, years, &knobs, traits.clone()));
             }
             // The knobs this thread's forts read, to catch a misspelt --knob.
             game::knobs::seen()

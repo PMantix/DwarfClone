@@ -35,6 +35,8 @@ impl Game {
         self.ov_eulogies(o);
         // O07: the overseer as a dwarf of the fort, its faith and its fall.
         self.ov_reign(o);
+        // O01: the deaths and sieges since, as its traits take them.
+        self.ov_reflect(o);
         let _ = o;
     }
 

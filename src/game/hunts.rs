@@ -160,7 +160,7 @@ impl Game {
         self.msg(&text, (240, 200, 120));
         self.spotlight("Into the wild", &text, Some(pos), (240, 200, 120));
         self.saga_hunt_out(Some(i), 0, &name, &text);
-        Self::note_ov(o, self.tick, format!("Sent {} to clear the {} out of {}.", squad, p, name));
+        Self::note_as(o, self.tick, super::personality::NoteKind::Venture, format!("Sent {} to clear the {} out of {}.", squad, p, name));
     }
 
     /// The squad on its way to a den: when they get within 4, those at home
@@ -351,7 +351,7 @@ impl Game {
         self.msg(&text, (255, 200, 90));
         self.spotlight("The hunt for a legend", &format!("The overseer will not cower from {}. {}", title, text), Some(at), (255, 200, 90));
         self.saga_hunt_out(None, beast, &title, &text);
-        Self::note_ov(o, self.tick, format!("Sent {} to slay {}.", squad, title));
+        Self::note_as(o, self.tick, super::personality::NoteKind::Venture, format!("Sent {} to slay {}.", squad, title));
     }
 
     /// The squad's members fit to hunt, and how many of them are kit-ready.
@@ -402,7 +402,7 @@ impl Game {
         self.hunts.on = Some(Hunt { squad: self.squads[s].id, target, pack, name, plural, kills: 0, since: self.tick, quarry: pack_ids.iter().filter_map(|id| self.creatures.get(id)).map(|c| (c.id, c.pos, c.leaving)).collect(), legend: false, lair: None, home: None });
         self.count("hunts", 1);
         self.msg(&format!("{} set out after the {}.", squad, what), (240, 200, 120));
-        Self::note_ov(o, self.tick, format!("Sent {} after the {}.", squad, what));
+        Self::note_as(o, self.tick, super::personality::NoteKind::Venture, format!("Sent {} after the {}.", squad, what));
     }
 
     /// Hunters at drill, on station or idling go at once, rather than when

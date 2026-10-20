@@ -21,13 +21,20 @@ pub struct Spotlight {
 impl Game {
     /// Stop and look: something that matters has happened.
     pub(super) fn spotlight(&mut self, title: &str, text: &str, at: Option<Pos>, color: (u8, u8, u8)) {
+        // While the overseer plays, a card about danger offers commands (O01).
+        let actions = if self.overseer.is_some() { super::commands::Command::for_card(title) } else { Vec::new() };
+        self.spotlight_with(title, text, at, color, actions);
+    }
+
+    /// `spotlight`, with commands the card offers on their keys.
+    pub(super) fn spotlight_with(&mut self, title: &str, text: &str, at: Option<Pos>, color: (u8, u8, u8), actions: Vec<super::commands::Command>) {
         // Every big moment goes on the highlight reel (reel.rs).
         self.film(title, text, at);
         // A flurry of the same kind (a dozen undead rising) is one moment.
         if self.spotlights.iter().any(|s| s.title == title) {
             return;
         }
-        self.spotlights.push(Spotlight { title: title.into(), text: text.into(), at, color, saga: None, actions: Vec::new() });
+        self.spotlights.push(Spotlight { title: title.into(), text: text.into(), at, color, saga: None, actions });
         self.pause_request = true;
     }
 

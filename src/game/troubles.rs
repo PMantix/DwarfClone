@@ -4,6 +4,7 @@
 //! it notices, and what it bothers with, depends on its style and on
 //! whether it has a manager.
 
+use super::personality::NoteKind;
 use super::overseer::{Overseer, RoomUse, Style};
 use super::*;
 use crate::buildings::{Input, Recipe};
@@ -533,7 +534,7 @@ impl Game {
         let key = if plan.is_empty() { raw[1..].to_string() } else { format!("of {}: {}.", name, plan) };
         let echo = o.notes.iter().any(|n| n.1.contains(&key) && tick < n.0 + RESAY);
         let (said, noted) = if (changed || stale) && !echo {
-            Self::note_ov(o, tick, text.clone());
+            Self::note_as(o, tick, NoteKind::Saw, text.clone());
             (text, tick)
         } else {
             known.map_or((String::new(), 0), |w| (w.said.clone(), w.noted))
@@ -576,7 +577,7 @@ impl Game {
         };
         let text = o.voiced_as(&raw, true);
         if !o.notes.iter().any(|n| n.1.contains(&raw[1..])) {
-            Self::note_ov(o, tick, text.clone());
+            Self::note_as(o, tick, NoteKind::Saw, text.clone());
         }
         Worry { lack: tops[0], plan: String::new(), status, until: tick + SEASON, buying, said: text, noted: tick, also: tops[1..].to_vec() }
     }
