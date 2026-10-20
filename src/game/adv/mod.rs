@@ -148,6 +148,9 @@ pub struct Visit {
     pub g: Game,
     /// Index of the hero in `g.dwarves`.
     pub hero: usize,
+    /// What the site was made with, for its memory (A4: `sitegen::remember`).
+    #[serde(default)]
+    pub placed: Vec<(u32, String)>,
 }
 
 /// What screen the adventure shows (App-side, never saved).

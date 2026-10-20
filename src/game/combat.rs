@@ -1454,6 +1454,10 @@ impl Game {
         if !self.creature_active(c) {
             return true;
         }
+        // An adventure's townsfolk and guards (adv/sitegen/town.rs).
+        if let Some(keep) = (c.visitor >= super::adv::sitegen::town::FOLK).then(|| self.folk_tick(c)).flatten() {
+            return keep;
+        }
         if c.tame {
             return self.tame_tick(c);
         }
