@@ -33,6 +33,8 @@ impl Game {
         self.ov_mood_strip(o);
         self.ov_reel(o);
         self.ov_eulogies(o);
+        // O01: the deaths and sieges since, as its traits take them.
+        self.ov_reflect(o);
         let _ = o;
     }
 

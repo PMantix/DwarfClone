@@ -25,8 +25,28 @@ fn coming_soon(f: &mut Frame, area: Rect, title: &str) {
     popup(f, area, 40, 6, title, v);
 }
 
-fn draw_overseer_traits(f: &mut Frame, area: Rect, _app: &App, _sel: usize) {
-    coming_soon(f, area, " The overseer's traits ");
+/// The eight traits with a box each: ☑ for the overseer's own. Two at most.
+fn draw_overseer_traits(f: &mut Frame, area: Rect, app: &App, sel: usize) {
+    use crate::game::personality::Trait;
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::text::Span;
+    let Some(o) = &app.game.overseer else {
+        coming_soon(f, area, " The overseer's traits ");
+        return;
+    };
+    let mut v: Vec<Line<'static>> = vec![plain(format!(" {}: pick up to two.", o.title()), Color::Rgb(150, 210, 255)), Line::default()];
+    for (i, t) in Trait::ALL.iter().enumerate() {
+        let hi = if i == sel { Style::default().bg(Color::Rgb(50, 60, 120)) } else { Style::default() };
+        let on = o.has(*t);
+        v.push(Line::from(vec![
+            Span::styled(format!(" {} {:<12}", if on { '☑' } else { '☐' }, t.name()), hi.fg(Color::Rgb(210, 210, 210)).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("{:<62}", t.blurb()), hi.fg(MUTED)),
+        ]));
+    }
+    v.push(Line::default());
+    v.push(plain(" ↑↓ choose · Enter tick · Esc done".into(), MUTED));
+    let h = v.len() as u16 + 2;
+    popup(f, area, 82, h, " The overseer's traits ", v);
 }
 
 fn draw_journal(f: &mut Frame, area: Rect, _app: &App, _year: usize) {

@@ -3,6 +3,7 @@
 //! its drawbridge on a lever, the cage traps behind it, and barring the
 //! gate and raising the bridge when an army comes.
 
+use super::personality::NoteKind;
 use super::overseer::{Overseer, Style};
 use super::*;
 
@@ -55,6 +56,8 @@ impl Game {
             // (Not while the squads are out on a sally: sally.rs. Called
             // back, they're left to hunt down any who got inside.)
             let want = any && (at_gate || inside || waited) && !(long && !at_gate && o.raised_at > 0) && !self.sallying();
+            // Or because you said so, from a card (commands.rs).
+            let want = want || (o.ordered(super::commands::Command::RaiseBridge, self.tick) && !self.sallying());
             let bridges = self.gate_bridges(base);
             let raised = bridges.iter().any(|id| self.buildings.get(id).map_or(false, |b| b.raised));
             if let Some(lever) = self.gate_lever(base) {
@@ -103,7 +106,7 @@ impl Game {
             }
             if hung == 2 && !o.did("gate") {
                 o.done.push("gate".into());
-                Self::note(o, self.tick, "Hung a gate at the foot of the stair, to bar when enemies come.".into());
+                Self::note_as(o, self.tick, NoteKind::Gate, "Hung a gate at the foot of the stair, to bar when enemies come.".into());
             }
         }
         // Where the miners broke into a cavern, a door: beasts can't open one.
@@ -115,7 +118,7 @@ impl Game {
             let fit: Vec<Pos> = spots.filter(|&p| !gate_part(p) && self.world.get(p).map_or(false, |t| t.dug && t.kind == TileKind::Floor && t.building == 0)).collect();
             let hung = fit.into_iter().any(|p| self.place_building(BuildingKind::Door, p));
             if hung {
-                Self::note(o, self.tick, "Hung a door where the miners broke into the caverns.".into());
+                Self::note_as(o, self.tick, NoteKind::Gate, "Hung a door where the miners broke into the caverns.".into());
             }
         }
         // A drawbridge behind the doors, on a lever: raised, nothing gets in.
@@ -126,7 +129,7 @@ impl Game {
             let placed = parts.iter().filter(|&&(k, p)| self.building_at(p) == Some(k) || self.place_building(k, p)).count();
             if placed == parts.len() && !o.did("bridge") {
                 o.done.push("bridge".into());
-                Self::note(o, self.tick, "Began a drawbridge at the gate, worked by a lever inside.".into());
+                Self::note_as(o, self.tick, NoteKind::Gate, "Began a drawbridge at the gate, worked by a lever inside.".into());
             }
         }
         // The lever works every half of the bridge (again, after a rebuild).
@@ -141,7 +144,7 @@ impl Game {
                 }
                 if !unlinked.is_empty() && !o.did("linked") {
                     o.done.push("linked".into());
-                    Self::note(o, self.tick, "Linked the lever to the drawbridge. The gate can be shut fast.".into());
+                    Self::note_as(o, self.tick, NoteKind::Gate, "Linked the lever to the drawbridge. The gate can be shut fast.".into());
                 }
             }
         }
@@ -157,7 +160,7 @@ impl Game {
             }
             if n > 0 {
                 o.done.push("traps".into());
-                Self::note(o, self.tick, format!("Set {} cage traps in the entrance corridor.", n));
+                Self::note_as(o, self.tick, NoteKind::Gate, format!("Set {} cage traps in the entrance corridor.", n));
             }
         }
     }
@@ -189,5 +192,43 @@ impl Game {
     /// from: it would open a way round the doors and the bridge.
     pub(super) fn gatehouse(base: Pos, p: Pos) -> bool {
         p.z == base.z && (-2..=16).contains(&(p.x - base.x)) && (-2..=3).contains(&(p.y - base.y))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::commands::Command;
+    use super::super::personality::Trait;
+    use super::*;
+
+    /// O01: "b" on a siege card raises the bridge, though no army is near;
+    /// a stubborn overseer may refuse, but says so.
+    #[test]
+    fn raise_the_bridge_from_the_card() {
+        let (found, passed) = super::super::overseer::fort_where(Style::Steady, 5000, 12, 20, |g| g.overseer.as_ref().map_or(false, |o| o.did("linked")));
+        let Some((seed, mut g)) = found else { panic!("no fort from 5000 on had its gate linked by day 20 (passed over {:?})", passed) };
+        g.set_traits(vec![Trait::Cautious]).unwrap();
+        let base = g.overseer.as_ref().unwrap().base.unwrap();
+        let raised = |g: &Game| g.gate_bridges(base).iter().any(|id| g.buildings.get(id).map_or(false, |b| b.raised));
+        assert!(!raised(&g), "seed {}: the bridge is up already", seed);
+        let said = g.command_overseer(Command::RaiseBridge);
+        let mut t = 0;
+        while t < 200 && !raised(&g) {
+            g.step();
+            t += 1;
+        }
+        assert!(raised(&g), "seed {}: the bridge never went up ({})", seed, said);
+        // Half a day on, the order has lapsed.
+        for _ in 0..DAY / 2 {
+            g.step();
+        }
+        assert!(!g.overseer.as_ref().unwrap().ordered(Command::RaiseBridge, g.tick));
+        // A stubborn overseer may refuse; then it says so in its notes.
+        g.set_traits(vec![Trait::Stubborn]).unwrap();
+        for i in 0..6 {
+            g.tick += i * 7;
+            let said = g.command_overseer(Command::RaiseBridge);
+            assert!(g.overseer.as_ref().unwrap().notes.iter().any(|n| n.1 == said), "{}", said);
+        }
     }
 }

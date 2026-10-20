@@ -4,6 +4,7 @@
 //! only cut where solid rock surrounds them, then tunnelled back to the
 //! halls, always behind the gate.
 
+use super::personality::NoteKind;
 use super::overseer::{Overseer, Room, RoomUse, Style};
 use super::*;
 use serde::{Deserialize, Serialize};
@@ -554,7 +555,7 @@ impl Game {
                 ),
                 _ => format!("Opened a new level of halls, at depth {}.", base.z - z),
             };
-            Self::note_ov(o, self.tick, text);
+            Self::note_as(o, self.tick, NoteKind::Dug, text);
         }
         // The shelter reaches it, and the way there (down the inner stair too).
         if let Some(i) = self.burrows.iter().position(|bw| Some(bw.bit) == self.alert_burrow) {

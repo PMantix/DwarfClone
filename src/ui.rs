@@ -2903,6 +2903,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         match &g.overseer {
             Some(o) => Span::styled(
                 match o.ambition {
+                    // O01: and what it means to do next, when there's room.
+                    Some(a) if area.width >= 150 => format!("│ AUTO: {} · {} · {} ", o.style.name(), a.name(), o.intent(g)),
                     Some(a) => format!("│ AUTO: {} · {} ", o.style.name(), a.name()),
                     None => format!("│ AUTO: {} ", o.style.name()),
                 },
@@ -3176,10 +3178,21 @@ fn draw_spotlight(f: &mut Frame, map: Rect, s: &crate::game::spotlight::Spotligh
         lines.push(Line::from(Span::styled(format!(" {}", l), Style::default().fg(TEXT))));
     }
     lines.push(Line::default());
-    lines.push(Line::from(Span::styled(
-        if auto { " (the overseer carries on)" } else { " Enter: go on · Space: go on and unpause" },
-        Style::default().fg(MUTED),
-    )));
+    if !s.actions.is_empty() {
+        // O01: what you can tell the overseer from here.
+        let mut spans: Vec<Span<'static>> = vec![Span::raw(" ")];
+        for c in &s.actions {
+            spans.push(Span::styled(format!("{} ", c.key()), Style::default().fg(KEY)));
+            spans.push(Span::styled(format!("{} · ", c.label()), Style::default().fg(TEXT)));
+        }
+        spans.push(Span::styled("Enter go on", Style::default().fg(MUTED)));
+        lines.push(Line::from(spans));
+    } else {
+        lines.push(Line::from(Span::styled(
+            if auto { " (the overseer carries on)" } else { " Enter: go on · Space: go on and unpause" },
+            Style::default().fg(MUTED),
+        )));
+    }
     let h = lines.len() as u16 + 2;
     let r = Rect::new(map.x + (map.width.saturating_sub(w)) / 2, map.y + 1, w.min(map.width), h.min(map.height));
     f.render_widget(Clear, r);
@@ -4509,6 +4522,7 @@ fn draw_brain(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
         format!("{} ({} days)", a.name(), g.tick.saturating_sub(o.ambition_since) / crate::game::DAY)
     });
     v.push(plain(format!(" Now: {}", now), Color::Rgb(255, 215, 60)));
+    v.push(plain(format!(" {}", o.intent(g)), TEXT));
     v.push(Line::default());
     v.push(Line::from(Span::styled(format!(" {}", chosen.name()), Style::default().fg(Color::Rgb(150, 210, 255)).add_modifier(Modifier::BOLD))));
     v.push(plain(format!(" {}", chosen.announce().split(": ").nth(1).unwrap_or(chosen.announce())), MUTED));
@@ -4554,7 +4568,7 @@ fn draw_autoplay(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
     }
     if let Some(o) = &g.overseer {
         v.push(Line::default());
-        v.push(plain(format!(" The overseer: {}  (r: another)", o.title()), Color::Rgb(150, 210, 255)));
+        v.push(plain(format!(" The overseer: {}  (r: another · t: its traits)", o.title()), Color::Rgb(150, 210, 255)));
         for t in &o.traits {
             v.push(plain(format!("   {}: {}", t.name(), t.blurb()), MUTED));
         }

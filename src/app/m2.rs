@@ -45,10 +45,35 @@ impl App {
         }
     }
 
-    /// Picking the overseer's traits by hand (O01).
-    fn key_overseer_traits(&mut self, k: KeyEvent, _sel: usize) {
-        if k.code == KeyCode::Esc {
-            self.mode = Mode::Autoplay { sel: 0 };
+    /// Picking the overseer's traits by hand (O01): Enter ticks or unticks
+    /// the trait under the cursor, at most two and none that clash (the
+    /// game says why not); Esc goes back to the Autoplay screen. (Space is
+    /// pause everywhere.)
+    fn key_overseer_traits(&mut self, k: KeyEvent, sel: usize) {
+        use crate::game::personality::Trait;
+        let n = Trait::ALL.len();
+        match k.code {
+            KeyCode::Up => self.mode = Mode::OverseerTraits { sel: (sel + n - 1) % n },
+            KeyCode::Down => self.mode = Mode::OverseerTraits { sel: (sel + 1) % n },
+            KeyCode::Enter => {
+                let Some(o) = self.game.overseer.as_ref() else { return };
+                let t = Trait::ALL[sel.min(n - 1)];
+                let mut traits = o.traits.clone();
+                if traits.contains(&t) {
+                    traits.retain(|&x| x != t);
+                } else {
+                    traits.push(t);
+                }
+                self.flash = Some(match self.game.set_traits(traits) {
+                    Ok(m) | Err(m) => m,
+                });
+            }
+            KeyCode::Esc => {
+                let style = self.game.overseer.as_ref().map(|o| o.style);
+                let row = crate::game::Style::ALL.iter().position(|&s| Some(s) == style).map_or(0, |i| i + 1);
+                self.mode = Mode::Autoplay { sel: row };
+            }
+            _ => {}
         }
     }
 
@@ -83,7 +108,7 @@ mod tests {
     #[test]
     fn the_m2_screens_open_and_close() {
         let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
-        for m in [Mode::OverseerTraits { sel: 0 }, Mode::Journal { year: 0 }, Mode::Family { id: 1, sel: 0 }, Mode::Announce { sel: 0 }] {
+        for m in [Mode::Journal { year: 0 }, Mode::Family { id: 1, sel: 0 }, Mode::Announce { sel: 0 }] {
             let mut app = App::with_game_for_tests(crate::game::Game::new(5));
             app.mode = m.clone();
             let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 40)).unwrap();
@@ -93,5 +118,35 @@ mod tests {
             app.on_key(esc);
             assert_ne!(app.mode, m);
         }
+    }
+
+    /// O01: `A`, `t`, two traits ticked, Esc: the overseer is as chosen;
+    /// a third, or a clashing pair, is refused.
+    #[test]
+    fn pick_the_overseers_traits_by_hand() {
+        use crate::game::personality::Trait;
+        let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
+        let mut app = App::with_game_for_tests(crate::game::Game::new(5));
+        app.game.set_overseer(Some(crate::game::Style::Steady));
+        app.game.overseer.as_mut().unwrap().traits.clear();
+        app.mode = Mode::Autoplay { sel: 0 };
+        app.on_key(key(KeyCode::Char('t')));
+        assert_eq!(app.mode, Mode::OverseerTraits { sel: 0 });
+        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 40)).unwrap();
+        // Cautious (row 0), then Bold (row 1) is refused, then Vain (row 2).
+        app.on_key(key(KeyCode::Enter));
+        assert_eq!(app.game.overseer.as_ref().unwrap().traits, vec![Trait::Cautious], "{:?} {:?}", app.flash, app.mode);
+        app.on_key(key(KeyCode::Down));
+        assert_eq!(app.mode, Mode::OverseerTraits { sel: 1 });
+        app.on_key(key(KeyCode::Enter));
+        assert_eq!(app.game.overseer.as_ref().unwrap().traits, vec![Trait::Cautious], "{:?}", app.flash);
+        app.on_key(key(KeyCode::Down));
+        app.on_key(key(KeyCode::Enter));
+        term.draw(|f| crate::ui::draw(f, &mut app)).unwrap();
+        let shown: String = term.backend().buffer().content().iter().map(|c| c.symbol()).collect();
+        assert!(shown.contains("☑ vain"), "{}", shown);
+        app.on_key(key(KeyCode::Esc));
+        assert_eq!(app.game.overseer.as_ref().unwrap().traits, vec![Trait::Cautious, Trait::Vain]);
+        assert!(matches!(app.mode, Mode::Autoplay { .. }));
     }
 }

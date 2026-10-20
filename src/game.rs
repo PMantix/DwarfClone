@@ -134,7 +134,7 @@ mod m2;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
-pub use overseer::{run_trial, trial_game_with, Overseer, Style, Trial};
+pub use overseer::{run_trial, run_trial_with, trial_game_with, Overseer, Style, Trial};
 pub use blueprint::Ghost;
 #[allow(unused_imports)] // for tests that look inside a trial
 pub use overseer::trial_game;

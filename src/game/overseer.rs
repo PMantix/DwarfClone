@@ -4,6 +4,7 @@
 //! fortress, watch one from the title screen, or run many from the command
 //! line to see which styles end in ruin and which in glory.
 
+use super::personality::NoteKind;
 use super::*;
 use crate::buildings::Recipe;
 use super::ambitions::Ambition;
@@ -450,7 +451,7 @@ impl Game {
     }
 
     pub(super) fn note_ov(o: &mut Overseer, tick: u64, text: String) {
-        Self::note(o, tick, text);
+        Self::note_as(o, tick, super::personality::NoteKind::Plain, text);
     }
 
     pub(super) fn note(o: &mut Overseer, tick: u64, text: String) {
@@ -557,7 +558,7 @@ impl Game {
         if let Some(m) = self.candidates(Position::Manager).first().copied() {
             self.appoint(Position::Manager, Some(m));
         }
-        Self::note(o, tick, format!("Struck the earth: a stair down {} levels, farms and a stockpile by the wagon.", depth));
+        Self::note_as(o, tick, NoteKind::Dug, format!("Struck the earth: a stair down {} levels, farms and a stockpile by the wagon.", depth));
     }
 
     /// Where the stair goes down from the surface, and how deep: on open
@@ -728,7 +729,7 @@ impl Game {
                     } else {
                         o.planned += 1;
                     }
-                    Self::note(o, tick, what);
+                    Self::note_as(o, tick, NoteKind::Dug, what);
                 }
                 None => {
                     // Nowhere for it. A want is put by for the season (not
@@ -875,7 +876,7 @@ impl Game {
         if let Some(k) = z {
             self.add_zone(r.a, r.b, k);
         }
-        Self::note(o, tick, format!("Fitted out the {:?}.", r.kind).to_lowercase().replace("fitted", "Fitted"));
+        Self::note_as(o, tick, NoteKind::Fitted, format!("Fitted out the {:?}.", r.kind).to_lowercase().replace("fitted", "Fitted"));
     }
 
     /// Keep stocks up with work orders, scaled to the fortress.
@@ -1023,7 +1024,7 @@ impl Game {
         if self.squads.is_empty() {
             self.new_squad();
             let name = self.squads[0].name.clone();
-            Self::note(o, self.tick, format!("Raised a squad, {}.", name));
+            Self::note_as(o, self.tick, NoteKind::Gate, format!("Raised a squad, {}.", name));
         }
         // Crossbows from the carpenter arm a squad soonest; once there are
         // axes, spears and hammers enough for the squad, it fights with those.
@@ -1087,7 +1088,8 @@ impl Game {
         if danger && self.creatures.values().any(|c| c.alive && c.siege && !c.legendary() && c.hostile()) {
             o.last_siege = self.tick;
         }
-        if o.style != Style::Reckless && self.alert_burrow.is_some() && danger != self.civ_alert {
+        let shelter = danger || o.ordered(super::commands::Command::Shelter, self.tick);
+        if o.style != Style::Reckless && self.alert_burrow.is_some() && shelter != self.civ_alert {
             let _ = self.toggle_civ_alert();
         }
         // The gate: barred, and its bridge raised (gatehouse.rs).
@@ -1201,7 +1203,7 @@ impl Game {
             self.count("gate.quarry", 1);
             if !o.did("quarry") {
                 o.done.push("quarry".into());
-                Self::note(o, self.tick, "Had plain stone quarried beside the halls, for the gate's mechanisms.".into());
+                Self::note_as(o, self.tick, NoteKind::Gate, "Had plain stone quarried beside the halls, for the gate's mechanisms.".into());
             }
             return;
         }
@@ -1460,7 +1462,7 @@ impl Game {
                 self.burrow_add(i, &dug);
                 self.set_alert_burrow(i);
                 o.done.push("burrow".into());
-                Self::note(o, tick, "Marked out a burrow to shelter in when enemies come.".into());
+                Self::note_as(o, tick, NoteKind::Gate, "Marked out a burrow to shelter in when enemies come.".into());
             }
         }
         // Mine what's been found: ore and gems in sight of the halls.
@@ -1477,7 +1479,7 @@ impl Game {
             if let Some(p) = self.ov_spot(BuildingKind::Monument, e.offset(0, 6, 0), 16) {
                 self.place_building(BuildingKind::Monument, p);
                 o.done.push("monument".into());
-                Self::note(o, tick, "Began a great monument.".into());
+                Self::note_as(o, tick, NoteKind::Ambition, "Began a great monument.".into());
             }
         }
         // Warlords (and now and then others with a strong squad) send expeditions.
@@ -1537,7 +1539,7 @@ impl Game {
         }
         if let Ok(m) = self.trade(&ours, &theirs) {
             self.mark_for_trade(false);
-            Self::note(o, self.tick, m);
+            Self::note_as(o, self.tick, NoteKind::Trade, m);
         }
     }
 }
@@ -1628,9 +1630,17 @@ pub fn fort_where(style: Style, first: u64, n: u64, day: u64, want: impl Fn(&Gam
 /// Play one fortress with `style` for up to `years`, from a fresh world,
 /// with `knobs` changed from their defaults.
 pub fn run_trial(seed: u64, style: Style, years: u64, knobs: &Knobs) -> Trial {
+    run_trial_with(seed, style, years, knobs, None)
+}
+
+/// `run_trial`, with the overseer's traits chosen (`--traits`) rather than rolled.
+pub fn run_trial_with(seed: u64, style: Style, years: u64, knobs: &Knobs, traits: Option<Vec<super::personality::Trait>>) -> Trial {
     let mut g = Game::new(seed);
     g.knobs = knobs.clone();
     g.set_overseer(Some(style));
+    if let Some(t) = traits {
+        let _ = g.set_traits(t);
+    }
     let mut last_death = String::new();
     let end = years * YEAR;
     let mut seen = 0u64;

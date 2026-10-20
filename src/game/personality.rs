@@ -37,6 +37,11 @@ impl Trait {
         }
     }
 
+    /// The trait by its name ("cautious"), for `--traits`.
+    pub fn parse(name: &str) -> Option<Trait> {
+        Trait::ALL.iter().copied().find(|t| t.name() == name.trim().to_lowercase())
+    }
+
     pub fn blurb(self) -> &'static str {
         match self {
             Trait::Cautious => "walls and traps first; raises the bridge early; won't send the squad far",
@@ -51,7 +56,7 @@ impl Trait {
     }
 
     /// Pairs that can't both be true of one overseer.
-    fn clashes(self, other: Trait) -> bool {
+    pub fn clashes(self, other: Trait) -> bool {
         matches!((self, other), (Trait::Cautious, Trait::Bold) | (Trait::Bold, Trait::Cautious))
     }
 
@@ -112,6 +117,100 @@ impl Trait {
     }
 }
 
+/// What a note is about: it picks the words a trait puts at its head
+/// (`Trait::voice_for`). Notes nobody tagged are `Plain`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NoteKind {
+    Plain,
+    /// What it saw the fortress short of (`troubles.rs`, already voiced).
+    Saw,
+    /// A room dug out, a level opened, the stair sunk.
+    Dug,
+    /// A room fitted out.
+    Fitted,
+    /// The gate, its bridge and traps, the shelter.
+    Gate,
+    /// A new ambition, or a step toward it.
+    Ambition,
+    Siege,
+    Death,
+    Trade,
+    /// An expedition or a hunt.
+    Venture,
+    /// What it says back to an order from you.
+    Command,
+}
+
+impl NoteKind {
+    /// Kinds whose notes now and then open in the overseer's voice when
+    /// written (Saw notes are voiced where they are made; Siege, Death and
+    /// Command notes are written whole in its voice).
+    fn voiced(self) -> bool {
+        matches!(self, NoteKind::Dug | NoteKind::Fitted | NoteKind::Gate | NoteKind::Ambition | NoteKind::Venture)
+    }
+}
+
+impl Trait {
+    /// Ways it puts a note of this kind, at its head: each ends in "it",
+    /// and the note goes on in lower case ("Proudly, it dug out a tavern.").
+    pub fn voice_for(self, kind: NoteKind) -> &'static [&'static str] {
+        use NoteKind::*;
+        use Trait::*;
+        match (self, kind) {
+            (Cautious, Dug) => &["Shoring every span, it", "Testing the rock twice, it", "Mindful of the ceiling, it"],
+            (Cautious, Fitted) => &["Checking every hinge, it", "With a place for everything, it", "Leaving nothing to chance, it"],
+            (Cautious, Gate) => &["Sleeping easier for it, it", "Glancing at the hills, it", "Never trusting the quiet, it"],
+            (Cautious, Ambition) => &["Having thought it over for days, it", "Against the day the worst comes, it", "Slowly and surely, it"],
+            (Cautious, Venture) => &["Against its better judgement, it", "Praying they'd come back, it", "With a long list of warnings, it"],
+            (Bold, Dug) => &["Swinging the first pick itself, it", "Too impatient to plan, it", "Straight into the rock, it"],
+            (Bold, Fitted) => &["Not fussing over it, it", "Quick about it, it", "Kicking the crates open, it"],
+            (Bold, Gate) => &["Thinking it hardly needed, it", "Since the others fretted, it", "Rolling its eyes, it"],
+            (Bold, Ambition) => &["Thumping the table, it", "Hungry for something bigger, it", "Without a second thought, it"],
+            (Bold, Venture) => &["Itching to go along, it", "With a roar, it", "Spoiling for a fight, it"],
+            (Vain, Dug) => &["Picturing the visitors' faces, it", "Proud of the stonework, it", "For a hall worth boasting of, it"],
+            (Vain, Fitted) => &["Choosing only the finest, it", "Fussing over every chair, it", "So no guest could sneer, it"],
+            (Vain, Gate) => &["Wanting a gate fit for a king, it", "With an eye to how it looks, it", "Grandly, it"],
+            (Vain, Ambition) => &["Dreaming of its name in the legends, it", "For the fortress's good name, it", "Admiring itself in a polished shield, it"],
+            (Vain, Venture) => &["For the glory of it, it", "Already drafting the song, it", "To be talked of in the hillhalls, it"],
+            (Pious, Dug) => &["Asking the stone's pardon, it", "With a blessing on every pick, it", "Gods willing, it"],
+            (Pious, Fitted) => &["Blessing every bed, it", "With a prayer at the threshold, it", "Murmuring a blessing, it"],
+            (Pious, Gate) => &["Trusting the gods and a good lever, it", "With a charm hung on the hinge, it", "Taking no sign for granted, it"],
+            (Pious, Ambition) => &["Taking it as a sign, it", "After a long night of prayer, it", "As the gods would want, it"],
+            (Pious, Venture) => &["Commending them to the gods, it", "With a quick prayer, it", "Burning incense for their luck, it"],
+            (Greedy, Dug) => &["Hoping for ore behind the wall, it", "Counting the stone it would sell, it", "With an eye on the seams, it"],
+            (Greedy, Fitted) => &["Haggling over every plank, it", "Begrudging every coin, it", "Making do where it could, it"],
+            (Greedy, Gate) => &["Guarding what's ours, it", "To keep thieves from the vault, it", "Weighing the price, it"],
+            (Greedy, Ambition) => &["Smelling a profit, it", "Tallying the stores, it", "With an eye on the ledger, it"],
+            (Greedy, Venture) => &["Expecting loot, it", "Counting the spoils in advance, it", "For a share of whatever they found, it"],
+            (Sentimental, Dug) => &["Thinking of the dwarves who'd live there, it", "Fondly, it", "Making room for the young ones, it"],
+            (Sentimental, Fitted) => &["Wanting them to feel at home, it", "With a soft spot for the old ones, it", "Thinking of its dwarves, it"],
+            (Sentimental, Gate) => &["Worried for them all, it", "To keep its dwarves safe, it", "Sighing, it"],
+            (Sentimental, Ambition) => &["For the dwarves' sake, it", "Thinking of the ones it lost, it", "Wistful, it"],
+            (Sentimental, Venture) => &["Waving them off at the gate, it", "Hugging each one, it", "With a lump in its throat, it"],
+            (Stubborn, Dug) => &["Just as it planned, it", "Ignoring every complaint, it", "Its way and no other, it"],
+            (Stubborn, Fitted) => &["Refusing all advice, it", "Exactly as it said it would, it", "Muttering, it"],
+            (Stubborn, Gate) => &["Since it must, it", "With bad grace, it", "Grudgingly, it"],
+            (Stubborn, Ambition) => &["Having made up its mind long ago, it", "Not to be talked out of it, it", "Scowling, it"],
+            (Stubborn, Venture) => &["Whatever the council said, it", "Unmoved by the grumbling, it", "Once and for all, it"],
+            (Cheerful, Dug) => &["Whistling as the picks rang, it", "Humming a tune, it", "With a skip in its step, it"],
+            (Cheerful, Fitted) => &["Hanging a garland over the door, it", "Smiling, it", "Cheerily, it"],
+            (Cheerful, Gate) => &["Never one to fret, it", "Joking about goblins, it", "With a wink, it"],
+            (Cheerful, Ambition) => &["Delighted with the idea, it", "Over a round of ale, it", "Grinning ear to ear, it"],
+            (Cheerful, Venture) => &["With a song for the road, it", "Packing them a hamper, it", "Cheering them off, it"],
+            _ => self.voices(),
+        }
+    }
+}
+
+/// Whether a note starts with something it did ("Dug out...", "Set...",
+/// "Hung..."), so it reads on after "Proudly, it".
+fn starts_with_a_deed(text: &str) -> bool {
+    let word = text.split(|c: char| !c.is_alphabetic()).next().unwrap_or("");
+    word.len() > 2
+        && word.chars().next().map_or(false, |c| c.is_uppercase())
+        && (word.ends_with("ed") || ["Dug", "Sent", "Set", "Hung", "Began", "Sank", "Took", "Made", "Struck", "Kept", "Had", "Laid", "Built", "Cut", "Put", "Gave", "Led"].contains(&word))
+}
+
 impl Overseer {
     pub fn has(&self, t: Trait) -> bool {
         self.traits.contains(&t)
@@ -128,6 +227,20 @@ impl Overseer {
         } else {
             format!("{}, {}", self.name, traits.join(" and "))
         }
+    }
+
+    /// A note of this kind in its voice, always (when it has a trait and
+    /// the note starts with a deed): which trait speaks, and which opening,
+    /// follow the tick and how far its notes have run, never the game rng.
+    pub fn voiced_in(&self, kind: NoteKind, text: &str, tick: u64) -> String {
+        if self.traits.is_empty() || !starts_with_a_deed(text) {
+            return text.to_string();
+        }
+        let h = super::names::hash(&[tick, self.notes.len() as u64, kind as u64]);
+        let t = self.traits[(h % self.traits.len() as u64) as usize];
+        let pool = t.voice_for(kind);
+        let opening = pool[((h / 7) % pool.len() as u64) as usize];
+        format!("{} {}{}", opening, text[..1].to_lowercase(), &text[1..])
     }
 
     /// The traits' lean toward an ambition, all told.
@@ -164,6 +277,134 @@ impl Overseer {
             i = (i + 1 + (h / 7 % (pool.len() as u64 - 1)) as usize) % pool.len();
         }
         format!("{} {}{}", pool[i], text[..1].to_lowercase(), &text[1..])
+    }
+}
+
+/// One of `lines`, picked by a steady hash of `parts` (never the game rng).
+fn one_of(lines: &[String], parts: &[u64]) -> String {
+    lines[(super::names::hash(parts) % lines.len() as u64) as usize].clone()
+}
+
+/// "Kib Ironhand, struck down by a goblin", "Kib Ironhand, dead of thirst".
+fn how_they_died(d: &super::annals::DeathNote) -> String {
+    let how = if d.cause.contains(' ') { d.cause.clone() } else { format!("dead of {}", d.cause) };
+    match &d.killer {
+        Some(k) if !how.contains(k.as_str()) && d.cause == "struck down" => format!("{}, {} by {} {}", d.name, how, if k.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" }, k),
+        _ => format!("{}, {}", d.name, how),
+    }
+}
+
+impl Game {
+    /// Daily: the overseer takes in the deaths and the sieges since it last
+    /// looked, and the ones its traits make it feel say so in its notes. A
+    /// sentimental one mourns each dwarf by name, a bold one sneers at a
+    /// foe that slunk off, a cautious one frets, a greedy one counts the cost.
+    pub(super) fn ov_reflect(&mut self, o: &mut Overseer) {
+        let tick = self.tick;
+        // Deaths, each once (those from before it took charge pass unremarked).
+        let n = self.annals.deaths.len();
+        for i in o.seen_deaths.min(n)..n {
+            let d = &self.annals.deaths[i];
+            if d.name.is_empty() || d.tick + SEASON < tick {
+                continue;
+            }
+            let who = how_they_died(d);
+            let name = d.name.clone();
+            let h = [d.tick, i as u64];
+            let line = o.traits.iter().find_map(|t| match t {
+                Trait::Sentimental => Some(one_of(
+                    &[
+                        format!("With a heavy heart, it mourned {}.", who),
+                        format!("It sat a long while by the body of {}.", who),
+                        format!("Wistful, it told the others stories of {} late into the night.", name),
+                    ],
+                    &h,
+                )),
+                Trait::Pious => Some(one_of(&[format!("It prayed for the soul of {}.", who), format!("It asked the gods to take {} kindly.", name)], &h)),
+                Trait::Bold if d.soldier => Some(format!("It raised a tankard to {}, who fell with a weapon in hand.", name)),
+                Trait::Cautious if d.outside => Some(format!("Uneasy, it counted heads again: {} should never have been outside.", name)),
+                Trait::Greedy if d.soldier => Some(format!("Counting the cost, it had {}'s kit taken back to the stores.", name)),
+                _ => None,
+            });
+            if let Some(line) = line {
+                Self::note_as(o, tick, NoteKind::Death, line);
+            }
+        }
+        o.seen_deaths = n;
+        // Sieges, once they are over.
+        while let Some(s) = self.annals.sieges.get(o.seen_sieges) {
+            if s.ended.is_none() {
+                break;
+            }
+            let i = o.seen_sieges;
+            o.seen_sieges += 1;
+            if s.ended.map_or(true, |e| e + SEASON < tick) || s.outcome == "the fortress fell" {
+                continue;
+            }
+            let foe = s.foe.clone();
+            let lost = s.dwarves_lost;
+            let h = [s.tick, i as u64, 7];
+            let withdrew = s.outcome == "withdrew";
+            let line = o.traits.iter().find_map(|t| match t {
+                Trait::Bold if withdrew => Some(one_of(
+                    &[
+                        format!("Laughing, it watched the {} slink off without a fight. Cowards.", foe),
+                        format!("It shouted after the {} from the gate: come back when you've found your nerve!", foe),
+                    ],
+                    &h,
+                )),
+                Trait::Bold => Some(format!("It strutted the halls: the {} had come for us and got what they came for.", foe)),
+                Trait::Cautious => Some(one_of(
+                    &[
+                        format!("Fearing the worst, it doubled the watch: the {} will be back, and more of them.", foe),
+                        format!("It lay awake going over the gate again: next time the {} might get in.", foe),
+                    ],
+                    &h,
+                )),
+                Trait::Greedy => Some(format!("It tallied the siege: {} of ours lost, and the {}' gear for the smelter.", lost, foe)),
+                Trait::Sentimental if lost > 0 => Some(format!("It sat long with the families of the {} who fell to the {}.", lost, foe)),
+                Trait::Pious => Some(format!("It gave thanks to the gods: the {} are gone.", foe)),
+                Trait::Cheerful => Some(format!("It called for a round on the house: the {} are gone!", foe)),
+                Trait::Vain => Some(format!("It had the tale of the siege told in every hall, with itself at the heart of it: the {} broke on our gate.", foe)),
+                Trait::Stubborn => Some(format!("It changed nothing after the {} left: the plan was sound all along.", foe)),
+                _ => None,
+            });
+            if let Some(line) = line {
+                Self::note_as(o, tick, NoteKind::Siege, line);
+            }
+        }
+    }
+}
+
+impl Game {
+    /// A note tagged with what it is about: about one in three of the kinds
+    /// that take a voice opens in the overseer's ("Proud of the stonework,
+    /// it dug out a tavern."); the rest go in plain, as `note_ov`.
+    pub(super) fn note_as(o: &mut Overseer, tick: u64, kind: NoteKind, text: String) {
+        let speak = kind.voiced() && super::names::hash(&[tick, o.notes.len() as u64, 31]) % 3 == 0;
+        let text = if speak { o.voiced_in(kind, &text, tick) } else { text };
+        Self::note(o, tick, text);
+    }
+
+    /// Choose the overseer's traits by hand: one or two, none twice and no
+    /// pair that clashes (cautious and bold). What to tell the player.
+    pub fn set_traits(&mut self, traits: Vec<Trait>) -> Result<String, String> {
+        let Some(o) = self.overseer.as_mut() else { return Err("There is no overseer: pick a style first.".into()) };
+        if traits.len() > 2 {
+            return Err("Two traits at most: untick one first.".into());
+        }
+        for (i, a) in traits.iter().enumerate() {
+            if traits[..i].contains(a) {
+                return Err(format!("It is {} once already.", a.name()));
+            }
+            if let Some(b) = traits[..i].iter().find(|b| a.clashes(**b)) {
+                return Err(format!("Nobody is both {} and {}.", b.name(), a.name()));
+            }
+        }
+        o.traits = traits;
+        // Its layout is picked when it first breaks ground (`ov_setup`), so
+        // an overseer that hasn't dug in yet lays out by its new traits.
+        Ok(format!("The overseer is now {}.", o.title()))
     }
 }
 
@@ -220,6 +461,115 @@ mod tests {
             assert_eq!(voiced, 10, "{:?}", t);
             assert_eq!(o.voiced("Dug out a room."), "Dug out a room.");
         }
+    }
+
+    #[test]
+    fn every_trait_speaks_in_its_own_voice() {
+        let plain = "Dug out a tavern.";
+        let said = |t: Trait, tick: u64| {
+            let mut o = Overseer::new(Style::Steady);
+            o.traits = vec![t];
+            o.voiced_in(NoteKind::Dug, plain, tick)
+        };
+        for t in Trait::ALL {
+            let text = said(t, 100);
+            assert_ne!(text, plain, "{:?}", t);
+            assert!(text.ends_with("dug out a tavern."), "{}", text);
+            assert!(t.voice_for(NoteKind::Dug).iter().any(|v| text.starts_with(v)), "{:?}: {}", t, text);
+            // The same tick, the same words: no rng in it.
+            assert_eq!(text, said(t, 100));
+            // And no other trait has those words for it.
+            for u in Trait::ALL.iter().filter(|&&u| u != t) {
+                assert!(!u.voice_for(NoteKind::Dug).iter().any(|v| text.starts_with(v)), "{:?} and {:?} share {}", t, u, text);
+            }
+        }
+        // A note that doesn't start with a deed is left as it is.
+        let mut o = Overseer::new(Style::Steady);
+        o.traits = vec![Trait::Vain];
+        assert_eq!(o.voiced_in(NoteKind::Dug, "It means to lay the fortress out as a grid.", 5), "It means to lay the fortress out as a grid.");
+        // Written as notes, about one in three of a voiced kind is in its voice.
+        let mut voiced = 0;
+        for i in 0..60 {
+            Game::note_as(&mut o, i * 1000, NoteKind::Fitted, format!("Fitted out room {}.", i));
+            voiced += !o.notes.last().unwrap().1.starts_with("Fitted") as usize;
+        }
+        assert!((10..=30).contains(&voiced), "{} of 60 voiced", voiced);
+    }
+
+    #[test]
+    fn a_sentimental_overseer_mourns_by_name() {
+        let mut g = Game::new(5);
+        g.set_overseer(Some(Style::Steady));
+        assert!(g.set_traits(vec![Trait::Sentimental, Trait::Greedy]).is_ok());
+        g.tick = 3 * DAY;
+        let mut d = std::mem::take(&mut g.dwarves[2]);
+        g.kill_for_test(&mut d, "struck down");
+        let name = d.name.clone();
+        g.dwarves[2] = d;
+        let mut o = g.overseer.take().unwrap();
+        g.tick += 10;
+        g.ov_reflect(&mut o);
+        let mourned = |o: &Overseer| o.notes.iter().filter(|n| n.1.contains(&name) && !n.1.starts_with("Remembered")).count();
+        assert_eq!(mourned(&o), 1, "{:?}", o.notes);
+        // Once only.
+        g.tick += DAY;
+        g.ov_reflect(&mut o);
+        assert_eq!(mourned(&o), 1);
+        // A greedy, cheerful one has nothing to say of a civilian's death,
+        // but a siege that slinks off gets a word from a bold one.
+        let mut d = std::mem::take(&mut g.dwarves[3]);
+        g.kill_for_test(&mut d, "struck down");
+        let other = d.name.clone();
+        g.dwarves[3] = d;
+        o.traits = vec![Trait::Bold, Trait::Cheerful];
+        g.annals.sieges.push(crate::game::annals::SiegeNote { tick: g.tick, foe: "goblins".into(), outcome: "withdrew".into(), ended: Some(g.tick), ..Default::default() });
+        g.tick += 10;
+        g.ov_reflect(&mut o);
+        assert!(!o.notes.iter().any(|n| n.1.contains(&other)) || g.annals.deaths.last().map_or(false, |d| d.soldier));
+        assert!(o.notes.last().unwrap().1.contains("goblins"), "{:?}", o.notes.last());
+    }
+
+    #[test]
+    fn traits_can_be_chosen_but_not_clashing() {
+        let mut g = Game::new(5);
+        assert!(g.set_traits(vec![Trait::Vain]).is_err(), "no overseer yet");
+        g.set_overseer(Some(Style::Steady));
+        let before = g.overseer.as_ref().unwrap().traits.clone();
+        assert!(g.set_traits(vec![Trait::Cautious, Trait::Bold]).is_err());
+        assert!(g.set_traits(vec![Trait::Vain, Trait::Vain]).is_err());
+        assert!(g.set_traits(vec![Trait::Vain, Trait::Pious, Trait::Greedy]).is_err());
+        assert_eq!(g.overseer.as_ref().unwrap().traits, before, "a refused pick changes nothing");
+        assert!(g.set_traits(vec![Trait::Vain, Trait::Pious]).is_ok());
+        assert!(g.overseer.as_ref().unwrap().title().ends_with("vain and pious"));
+        assert_eq!(Trait::parse(" Greedy"), Some(Trait::Greedy));
+    }
+
+    /// O01's "done when": the same seed and style, other traits, another fort.
+    #[test]
+    fn two_tempers_build_different_forts() {
+        use crate::buildings::BuildingKind;
+        use crate::game::overseer::RoomUse;
+        let fort = |traits: Vec<Trait>| {
+            let mut g = Game::new(5);
+            g.set_overseer(Some(Style::Steady));
+            g.set_traits(traits).unwrap();
+            for _ in 0..SEASON * 2 {
+                g.step();
+            }
+            let o = g.overseer.clone().unwrap();
+            let traps = g.buildings.values().filter(|b| matches!(b.kind, BuildingKind::CageTrap | BuildingKind::StoneTrap | BuildingKind::WeaponTrap)).count();
+            let rooms = o.rooms.iter().filter(|r| matches!(r.kind, RoomUse::Tavern | RoomUse::Temple | RoomUse::Grand)).map(|r| format!("{:?}", r.kind)).collect::<Vec<_>>();
+            let ambitions: Vec<String> = o.ambitions.iter().map(|a| a.1.name().to_string()).collect();
+            let architect = g.brain(&o).odds_of(Ambition::Architect);
+            let print = format!("{:?} {:?} {:?} traps {} patience {}", o.layout, ambitions, rooms, traps, g.bar_patience(&o));
+            (print, o.layout, traps, rooms, architect)
+        };
+        let (a, _, traps_a, _, arch_a) = fort(vec![Trait::Cautious, Trait::Greedy]);
+        let (b, layout_b, traps_b, rooms_b, arch_b) = fort(vec![Trait::Vain, Trait::Cheerful]);
+        assert_ne!(a, b, "the same fort twice");
+        assert!(traps_a >= traps_b, "the cautious one has fewer traps: {} | {}", a, b);
+        let showy = matches!(layout_b, Layout::Radial | Layout::Symmetric) || rooms_b.iter().any(|r| r == "Grand") || arch_b > arch_a;
+        assert!(showy, "the vain one is no showier: {} | {}", a, b);
     }
 
     #[test]
