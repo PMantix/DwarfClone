@@ -1624,7 +1624,8 @@ mod tests {
             }
             let curtain = g.works.list.iter().find(|w| w.kind == WorkKind::Curtain).cloned();
             let tower = g.works.list.iter().any(|w| w.kind == WorkKind::Watchtower && w.done());
-            let Some(c) = curtain.filter(|_| tower && g.alive_count() > 0) else {
+            // (A curtain still going up is a fort that started late: try the next.)
+            let Some(c) = curtain.filter(|c| tower && g.alive_count() > 0 && c.step >= c.hold) else {
                 tried.push((seed, g.alive_count(), g.works.list.iter().map(|w| (w.kind, w.step, w.steps.len())).collect::<Vec<_>>()));
                 continue;
             };

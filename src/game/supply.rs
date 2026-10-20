@@ -486,7 +486,9 @@ mod tests {
         for _ in 0..10 * DAY {
             g.step();
         }
-        let flux = g.log[start..].iter().filter(|l| l.text.contains("flux")).count();
-        assert!(flux <= 1, "said {} times: {:?}", flux, g.log[start..].iter().filter(|l| l.text.contains("flux")).map(|l| &l.text).collect::<Vec<_>>());
+        // (The prospector's report names the flux too; it isn't a complaint.)
+        let wants = |l: &&super::LogEntry| l.text.contains("flux") && !l.text.starts_with("The prospector");
+        let flux = g.log[start..].iter().filter(wants).count();
+        assert!(flux <= 1, "said {} times: {:?}", flux, g.log[start..].iter().filter(wants).map(|l| &l.text).collect::<Vec<_>>());
     }
 }

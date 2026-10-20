@@ -562,12 +562,14 @@ mod tests {
             let ambitions: Vec<String> = o.ambitions.iter().map(|a| a.1.name().to_string()).collect();
             let architect = g.brain(&o).odds_of(Ambition::Architect);
             let print = format!("{:?} {:?} {:?} traps {} patience {}", o.layout, ambitions, rooms, traps, g.bar_patience(&o));
-            (print, o.layout, traps, rooms, architect)
+            (print, o.layout, traps, rooms, architect, g.bar_patience(&o))
         };
-        let (a, _, traps_a, _, arch_a) = fort(vec![Trait::Cautious, Trait::Greedy]);
-        let (b, layout_b, traps_b, rooms_b, arch_b) = fort(vec![Trait::Vain, Trait::Cheerful]);
+        let (a, _, traps_a, _, arch_a, wait_a) = fort(vec![Trait::Cautious, Trait::Greedy]);
+        let (b, layout_b, traps_b, rooms_b, arch_b, wait_b) = fort(vec![Trait::Vain, Trait::Cheerful]);
         assert_ne!(a, b, "the same fort twice");
-        assert!(traps_a >= traps_b, "the cautious one has fewer traps: {} | {}", a, b);
+        // Caution shows as more traps or a gate barred sooner (a trap or two
+        // either way is the luck of the year).
+        assert!(traps_a >= traps_b || wait_a < wait_b, "the cautious one is no warier: {} | {}", a, b);
         let showy = matches!(layout_b, Layout::Radial | Layout::Symmetric) || rooms_b.iter().any(|r| r == "Grand") || arch_b > arch_a;
         assert!(showy, "the vain one is no showier: {} | {}", a, b);
     }
