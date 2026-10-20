@@ -37,6 +37,63 @@ fn draw_family(f: &mut Frame, area: Rect, _app: &App, _id: u32, _sel: usize) {
     coming_soon(f, area, " Family ");
 }
 
-fn draw_announce(f: &mut Frame, area: Rect, _app: &App, _sel: usize) {
-    coming_soon(f, area, " Announcements ");
+/// Announcement control (O05, UI-07): a row per kind of announcement,
+/// with whether it pauses, moves the camera and shows.
+fn draw_announce(f: &mut Frame, area: Rect, app: &App, sel: usize) {
+    use crate::game::logkind::LogKind;
+    use ratatui::style::{Color, Style};
+    use ratatui::text::Span;
+    let on = |b: bool, c: Color| Span::styled(format!("{:^8}", if b { "yes" } else { "-" }), Style::default().fg(if b { c } else { MUTED }));
+    let mut v: Vec<Line<'static>> = vec![
+        plain(format!("  {:<22}{:^8}{:^8}{:^8}", "Announcements of", "Pause", "Camera", "Shown"), super::KEY),
+        Line::default(),
+    ];
+    for (i, &k) in LogKind::ALL.iter().enumerate() {
+        let r = app.announce.rule(k);
+        let st = if i == sel { Style::default().fg(super::BLACK).bg(super::KEY) } else { Style::default().fg(super::TEXT) };
+        v.push(Line::from(vec![
+            Span::styled(format!("{} {:<21}", if i == sel { ">" } else { " " }, k.name()), st),
+            on(r.pause, Color::Rgb(255, 140, 90)),
+            on(r.recenter, Color::Rgb(140, 200, 255)),
+            on(!r.hide, Color::Rgb(140, 230, 140)),
+        ]));
+    }
+    v.push(Line::default());
+    v.push(plain("  Hidden ones stay in the reports (r).".into(), MUTED));
+    v.push(plain("  Up/Down choose · p pause · c camera · h hide/show · Esc back".into(), MUTED));
+    let h = v.len() as u16 + 2;
+    popup(f, area, 70, h, " Announcements ", v);
+}
+
+/// The announcements panel's lines (O05): the newest `n` not hidden by
+/// announcement control, oldest first. What happened out of sight is
+/// told as a sound (`sound_reports.rs`), the newest marked for Enter.
+pub(super) fn announcement_lines(app: &App, n: usize) -> Vec<Line<'static>> {
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::text::Span;
+    let g = &app.game;
+    let ear = app.earshot();
+    let mut marked = false;
+    let mut v: Vec<Line<'static>> = g
+        .log
+        .iter()
+        .rev()
+        .take(600)
+        .filter(|e| !app.announce.rule(e.kind()).hide)
+        .take(n)
+        .map(|e| match g.heard(e, ear) {
+            Some(s) => {
+                let (r, gr, b) = e.color;
+                let mut spans = vec![Span::styled(format!("~ {}", s), Style::default().fg(Color::Rgb(r / 2 + 70, gr / 2 + 70, b / 2 + 70)).add_modifier(Modifier::ITALIC))];
+                if !marked && g.tick <= e.tick + crate::game::DAY * 2 {
+                    marked = true;
+                    spans.push(Span::styled(" (Enter)", Style::default().fg(MUTED)));
+                }
+                Line::from(spans)
+            }
+            None => plain(e.text.clone(), super::rgb(e.color)),
+        })
+        .collect();
+    v.reverse();
+    v
 }

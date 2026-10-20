@@ -80,7 +80,7 @@ impl Game {
         self.water_cells = None;
         self.year_log.cave_in = true;
         let tick_msg = "Cave-in! The ceiling of a wide hall has come down. Halls need a pillar every ten tiles.";
-        self.msg(tick_msg, (255, 120, 60));
+        self.msg_at(tick_msg, (255, 120, 60), Some(q), super::logkind::LogKind::Other);
         let fort = self.fortress_name.clone();
         self.legend(format!("The ceiling of a great hall in {} fell in.", fort));
         self.spotlight("Cave-in!", tick_msg, Some(q), (255, 120, 60));

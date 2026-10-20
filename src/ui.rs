@@ -1765,6 +1765,8 @@ fn help_text() -> Vec<Line<'static>> {
         k("< > or , .", "up / down a z-level (also PgUp/PgDn)"),
         k("Space", "pause / resume"),
         k("+ / -", "game speed"),
+        k("s T D", "step a tick, an hour, a day (pauses)"),
+        k("Enter", "go to the last sound heard off screen"),
         k("d", "designate: mine, channel, stairs, chop"),
         k("Ctrl+Z", "undo the last designation"),
         k("p", "stockpiles"),
@@ -3006,14 +3008,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let rows = [rows[0], rows[1], news];
     let n = rows[2].height.saturating_sub(2) as usize;
     let news_rows = n;
-    let log: Vec<Line> = g
-        .log
-        .iter()
-        .rev()
-        .take(n)
-        .rev()
-        .map(|e| plain(e.text.clone(), rgb(e.color)))
-        .collect();
+    let log: Vec<Line> = overseer::announcement_lines(app, n);
     f.render_widget(
         Paragraph::new(log).block(
             Block::default()
@@ -4406,7 +4401,7 @@ fn draw_reports(f: &mut Frame, area: Rect, g: &Game, filter: usize, scroll: usiz
         v.push(Line::from(vec![Span::styled(format!("{:<16}", date), Style::default().fg(MUTED)), Span::styled(e.text.clone(), Style::default().fg(rgb(e.color)))]));
     }
     let title = format!(
-        " Reports: {} of {} ({}) · ↑↓ PgUp PgDn scroll · Tab/1-5 filter · Esc back ",
+        " Reports: {} of {} ({}) · ↑↓ PgUp PgDn scroll · Tab/1-5 filter · a choose what shows · Esc back ",
         end,
         shown.len(),
         if scroll == 0 { "newest at the bottom".to_string() } else { format!("{} back", scroll) }
