@@ -287,6 +287,9 @@ impl Game {
             let fort = self.fortress_name.clone();
             self.legend(format!("{} and {} married in {}.", an, bn, fort));
             self.wedding(i, j);
+            if let Some(p) = self.wedding_hall() {
+                self.deed_at(p, super::naming::DeedKind::Wedding, &[ai, bi]);
+            }
         }
         // Pregnancies.
         for i in 0..self.dwarves.len() {

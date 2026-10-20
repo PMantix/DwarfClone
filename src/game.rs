@@ -122,6 +122,7 @@ pub mod sagas;
 pub mod memory;
 pub mod names;
 pub mod places;
+pub mod naming;
 pub mod logkind;
 pub mod commands;
 pub mod reign;
@@ -1793,6 +1794,7 @@ impl Game {
         self.msg_at(&format!("{} {}.", name, cause), (255, 60, 60), Some(pos), logkind::LogKind::Death);
         self.note_death(d, cause);
         self.reign_kill(d, cause);
+        self.deed_at(pos, naming::DeedKind::Death, &[d.id]);
         self.hero_fell(d, cause);
         self.speak_last_words(d, cause);
         self.year_log.deaths.push(d.called());

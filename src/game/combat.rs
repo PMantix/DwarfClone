@@ -1364,6 +1364,7 @@ impl Game {
             let fort = self.fortress_name.clone();
             self.overworld.kill_figure(f, year, format!("slain at {}", fort));
             self.legend(format!("{} was slain at {}.", label, fort));
+            self.deed_at(c.pos, super::naming::DeedKind::BeastSlain, &[]);
             self.msg_at(&format!("{} has been slain! The fortress rejoices.", label), (255, 215, 60), Some(c.pos), super::logkind::LogKind::Combat);
             let tick = self.tick;
             for d in self.dwarves.iter_mut().filter(|d| d.alive) {
@@ -1392,6 +1393,7 @@ impl Game {
             self.msg_at(&format!("{}, who led the attack, has fallen!", label), (255, 215, 60), Some(c.pos), super::logkind::LogKind::Combat);
             self.spotlight("Their leader falls", &format!("{}, who led the attack, has fallen!", label), Some(c.pos), (255, 215, 60));
             self.saga_leader_fell(&label);
+            self.deed_at(c.pos, super::naming::DeedKind::LeaderSlain, &[]);
             let tick = self.tick;
             for d in self.dwarves.iter_mut().filter(|d| d.alive) {
                 d.think(&format!("cheered the fall of {}", label), -8, tick);

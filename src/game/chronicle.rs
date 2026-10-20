@@ -201,6 +201,7 @@ impl Game {
         let mut lines = Vec::new();
         // O07: changes of reign.
         lines.extend(self.lines_reigns(log));
+        lines.extend(self.lines_named(log));
         lines
     }
 }
