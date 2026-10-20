@@ -464,6 +464,7 @@ impl Game {
         if o.notes.iter().any(|n| n.1 == text && tick < n.0 + SEASON / 2) {
             return;
         }
+        Self::jot(o, tick, &text);
         o.notes.push((tick, text));
         if o.notes.len() > 60 {
             o.notes.remove(0);

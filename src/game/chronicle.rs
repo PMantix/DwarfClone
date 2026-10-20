@@ -46,6 +46,9 @@ pub struct YearLog {
     /// Changes of overseer this year (O07, `reign.rs`).
     #[serde(default)]
     pub reigns: Vec<String>,
+    /// Sieges the overseer told as victories: (the truth, its tale) (O07).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub spun: Vec<(String, String)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -201,6 +204,7 @@ impl Game {
         let mut lines = Vec::new();
         // O07: changes of reign.
         lines.extend(self.lines_reigns(log));
+        lines.extend(self.lines_spin(log));
         lines.extend(self.lines_named(log));
         lines
     }

@@ -79,11 +79,23 @@ pub struct Reign {
     /// The fort has turned against it (a reign saga is open).
     #[serde(default)]
     pub doubted: bool,
+    /// Its traits last drifted then (0: never), and what it has lived
+    /// through is reckoned up to here (OVR-10).
+    #[serde(default)]
+    pub drifted: u64,
+    #[serde(default)]
+    pub drift_seen: u64,
+    /// The larder has been bare since then (0: it isn't).
+    #[serde(default)]
+    pub hungry_since: u64,
+    /// How it changed: "bold → cautious: the Battle of the Gate".
+    #[serde(default)]
+    pub drifts: Vec<String>,
 }
 
 impl Reign {
     fn new(name: String, dwarf: u32, traits: Vec<Trait>, from: u64) -> Reign {
-        Reign { name, dwarf: Some(dwarf), traits, from, to: None, end: None, checked: from, low_since: 0, grumbled: from, riot: 0, feasts: 0, doubted: false }
+        Reign { name, dwarf: Some(dwarf), traits, from, to: None, end: None, checked: from, low_since: 0, grumbled: from, riot: 0, feasts: 0, doubted: false, drifted: 0, drift_seen: from, hungry_since: 0, drifts: Vec::new() }
     }
 
     /// "Urist the Cautious".
@@ -96,11 +108,21 @@ impl Reign {
     }
 }
 
-/// A page of the overseer's journal (OVR-06), one a season.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct JournalPage {
-    pub tick: u64,
-    pub lines: Vec<String>,
+pub use super::journal::JournalPage;
+
+/// What the overseer lives through that can change it (OVR-10).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Drift {
+    /// A siege that cost three lives or more.
+    Massacre,
+    /// A siege routed without a dwarf lost.
+    Victory,
+    /// Ten days and more of a bare larder.
+    Famine,
+    Artifact,
+    Monument,
+    /// A friend or kin of the overseer dwarf died.
+    Loss,
 }
 
 /// Faith in an overseer starts here (0..100).
@@ -268,6 +290,7 @@ impl Game {
         }
         self.trust_daily(o);
         self.trust_effects(o);
+        self.ov_drift(o);
     }
 
     /// Is the overseer dwarf still fit to rule? If not, how its reign ended.
@@ -567,7 +590,10 @@ impl Game {
         let who: Vec<u32> = std::iter::once(new_id).chain(old_id).collect();
         self.record(super::memory::MemoryKind::Overseer, &who, Some(pos), line.clone(), 7);
         self.year_log.reigns.push(line);
-        Self::note_ov(o, tick, format!("Took up the ledger from {}.", old_first));
+        let took = format!("Took up the ledger from {}.", old_first);
+        Self::note_ov(o, tick, took.clone());
+        Self::unjot(o, &took);
+        Self::journal(o, tick, super::journal::EntryKind::Changed, format!("{}. Today I took up the ledger as the {} overseer of {}.", short, ordinal(n), fort));
         // A reign the fort had turned against ends its saga, in grief.
         if doubted || matches!(end, ReignEnd::Deposed) {
             let close = match &end {
@@ -618,6 +644,10 @@ impl Game {
         if !why.is_empty() {
             v.push(format!("  lately: {}", why.join(" · ")));
         }
+        // How what it lived through has changed it (OVR-10).
+        if let Some(d) = o.reigns.last().and_then(|r| r.drifts.last()) {
+            v.push(format!("  changed: {}", d));
+        }
         for r in o.reigns.iter().rev().skip(1).take(2) {
             let end = match &r.end {
                 Some(ReignEnd::Died(c)) => past(c),
@@ -638,6 +668,273 @@ impl Game {
             self.count("m2.faith_end", f as u32);
         }
     }
+}
+
+/// Is `other` dear to `d`: wed, parent or child, or a close friend?
+fn dear(d: &Dwarf, other: &Dwarf) -> bool {
+    d.spouse == Some(other.id)
+        || d.parents.map_or(false, |(m, f)| m == other.id || f == other.id)
+        || other.parents.map_or(false, |(m, f)| m == d.id || f == d.id)
+        || d.regard(other.id) >= 40
+}
+
+impl Game {
+    /// A roll that comes from a hash of the fort and the moment, never the
+    /// game's dice: true `chance` of the time.
+    fn hashed_chance(&self, parts: &[u64], chance: f64) -> bool {
+        let mut all = vec![self.fort_seed()];
+        all.extend_from_slice(parts);
+        (super::names::hash(&all) % 10_000) as f64 / 10_000.0 < chance
+    }
+
+    /// Daily (from `ov_reign`): what the overseer lived through since it
+    /// last looked may change it. At most once a season.
+    fn ov_drift(&mut self, o: &mut Overseer) {
+        let tick = self.tick;
+        let Some(r) = o.reigns.last().cloned() else { return };
+        let since = r.drift_seen.max(r.from);
+        let hungry = o.worries.iter().any(|w| matches!(w.lack, Lack::Food | Lack::Drink));
+        let mut hungry_since = if !hungry { 0 } else if r.hungry_since == 0 { tick } else { r.hungry_since };
+        let mut causes: Vec<(Drift, String, u64)> = Vec::new();
+        let massacre = self.knob("drift.massacre", 3.0) as u32;
+        for (i, s) in self.annals.sieges.iter().enumerate() {
+            if !s.ended.map_or(false, |e| e >= since && e < tick) || s.outcome == "the fortress fell" {
+                continue;
+            }
+            let called = s.name.clone().unwrap_or_else(|| format!("the siege of the {}", s.foe));
+            if s.dwarves_lost >= massacre {
+                causes.push((Drift::Massacre, format!("{}|{}", called, s.dwarves_lost), i as u64));
+            } else if s.outcome == "routed" && s.dwarves_lost == 0 {
+                causes.push((Drift::Victory, called, i as u64));
+            }
+        }
+        if hungry_since > 0 && tick >= hungry_since + self.knob("drift.famine_days", 10.0) as u64 * DAY {
+            causes.push((Drift::Famine, String::new(), hungry_since));
+            // One reckoning per ten hungry days.
+            hungry_since = tick;
+        }
+        let me = o.dwarf.and_then(|id| self.dwarves.iter().find(|d| d.id == id));
+        for m in self.memory_since(since).filter(|m| m.tick < tick) {
+            match m.kind {
+                super::memory::MemoryKind::Artifact => causes.push((Drift::Artifact, m.text.clone(), m.id as u64)),
+                super::memory::MemoryKind::Monument => causes.push((Drift::Monument, m.text.clone(), m.id as u64)),
+                super::memory::MemoryKind::Died => {
+                    let dead = m.who.first().and_then(|id| self.dwarves.iter().find(|d| d.id == *id));
+                    if let (Some(me), Some(dead)) = (me, dead) {
+                        if me.id != dead.id && dear(me, dead) {
+                            causes.push((Drift::Loss, dead.name.clone(), m.id as u64));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if let Some(r) = o.reigns.last_mut() {
+            r.drift_seen = tick;
+            r.hungry_since = hungry_since;
+        }
+        if r.drifted != 0 && tick < r.drifted + SEASON {
+            return;
+        }
+        for (cause, why, key) in causes {
+            let Some((from, to, chance)) = self.drift_for(o, cause) else { continue };
+            if self.hashed_chance(&[tick, cause as u64, key], chance) {
+                self.drift(o, cause, from, to, &why);
+                break;
+            }
+        }
+    }
+
+    /// What a cause would make of this overseer: which trait goes (None:
+    /// a free slot is filled), which comes, and how likely it is.
+    fn drift_for(&self, o: &Overseer, cause: Drift) -> Option<(Option<Trait>, Trait, f64)> {
+        let has = |t: Trait| o.traits.contains(&t);
+        let (from, to, chance) = match cause {
+            Drift::Massacre if has(Trait::Bold) => (Some(Trait::Bold), Trait::Cautious, self.knob("drift.massacre_bold", 0.5)),
+            Drift::Massacre if has(Trait::Cheerful) => (Some(Trait::Cheerful), Trait::Sentimental, self.knob("drift.massacre_cheer", 0.5)),
+            Drift::Victory if has(Trait::Cautious) => (Some(Trait::Cautious), Trait::Bold, self.knob("drift.victory", 0.4)),
+            Drift::Famine if has(Trait::Cheerful) => (Some(Trait::Cheerful), Trait::Greedy, self.knob("drift.famine", 0.5)),
+            Drift::Artifact if o.traits.len() < 2 => (None, Trait::Pious, 1.0),
+            Drift::Artifact if has(Trait::Stubborn) => (Some(Trait::Stubborn), Trait::Pious, self.knob("drift.artifact", 0.3)),
+            Drift::Monument if o.traits.len() < 2 => (None, Trait::Vain, 1.0),
+            Drift::Monument => (o.traits.last().copied(), Trait::Vain, self.knob("drift.monument", 0.6)),
+            Drift::Loss => {
+                let hard = [Trait::Stubborn, Trait::Greedy, Trait::Bold].into_iter().find(|t| has(*t))?;
+                (Some(hard), Trait::Sentimental, self.knob("drift.loss", 0.4))
+            }
+            _ => return None,
+        };
+        let rest: Vec<Trait> = o.traits.iter().copied().filter(|t| Some(*t) != from).collect();
+        if rest.contains(&to) || rest.iter().any(|t| t.clashes(to)) {
+            return None;
+        }
+        Some((from, to, chance))
+    }
+
+    /// The overseer is changed: its traits, the reign's record, a note, its
+    /// journal, and word through the fort.
+    pub(super) fn drift(&mut self, o: &mut Overseer, cause: Drift, from: Option<Trait>, to: Trait, why: &str) {
+        let tick = self.tick;
+        match from.and_then(|f| o.traits.iter().position(|t| *t == f)) {
+            Some(i) => o.traits[i] = to,
+            None => o.traits.push(to),
+        }
+        let first = super::stories::first_name(&o.name).to_string();
+        let (what, lost) = match why.split_once('|') {
+            Some((w, n)) => (w.to_string(), n.parse::<u32>().unwrap_or(0)),
+            None => (why.to_string(), 0),
+        };
+        let was = from.map_or(String::new(), |f| format!("no longer {}, ", f.name()));
+        let (note, page) = match cause {
+            Drift::Massacre if to == Trait::Cautious => (
+                format!("{} broke its nerve: {}it is cautious now.", cap(&what), was),
+                format!("{} cost us {} dead. I used to laugh at talk of sieges. I will not laugh again: I had the gate checked twice tonight, and I will check it again before I sleep.", cap(&what), lost),
+            ),
+            Drift::Massacre => (
+                format!("There was no singing after {}: {}it is sentimental now.", what, was),
+                format!("There was no singing after {}. I tried to start a song and could not finish it. I keep seeing their faces, all {} of them.", what, lost),
+            ),
+            Drift::Victory => (
+                format!("{} put fire in its belly: {}it is bold now.", cap(&what), was),
+                format!("Not one of ours fell in {}. Not one! What have I been afraid of all this time? Let them come.", what),
+            ),
+            Drift::Famine => (
+                format!("The hungry weeks soured it: {}it counts every crumb now.", was),
+                "Weeks of empty bowls. I count every crumb now, and I am not sorry for it. Laughter is for full bellies.".to_string(),
+            ),
+            Drift::Artifact => (
+                format!("{} moved it: {}it is pious now.", what.trim_end_matches('.'), was),
+                format!("{} No hand did that alone. I think the gods were in the workshop with them, and I have begun to pray again.", what),
+            ),
+            Drift::Monument => (
+                format!("The monument went to its head: {}it is vain now.", was),
+                format!("{} I stood beneath it for an hour. They will remember who raised it. They will remember me.", what),
+            ),
+            Drift::Loss => (
+                format!("Losing {} softened it: {}it is sentimental now.", super::stories::first_name(&what), was),
+                format!("{} is dead. I was hard, before. I find I cannot be, now.", what),
+            ),
+        };
+        let short = match from {
+            Some(f) => format!("{} \u{2192} {}: {}", f.name(), to.name(), if what.is_empty() { "famine".to_string() } else { what.clone() }),
+            None => format!("now {}: {}", to.name(), what),
+        };
+        if let Some(r) = o.reigns.last_mut() {
+            r.traits = o.traits.clone();
+            r.drifted = tick;
+            r.drifts.push(short);
+        }
+        Self::note_ov(o, tick, note.clone());
+        Self::unjot(o, &note);
+        Self::journal(o, tick, super::journal::EntryKind::Changed, page);
+        let text = match from {
+            Some(f) => format!("The overseer {} is changed: no longer {}, now {}.", first, f.name(), to.name()),
+            None => format!("The overseer {} is changed: now {} as well.", first, to.name()),
+        };
+        self.msg(&text, (200, 170, 255));
+        if matches!(cause, Drift::Massacre | Drift::Victory | Drift::Monument) {
+            let at = o.dwarf.and_then(|id| self.dwarves.iter().find(|d| d.id == id)).map(|d| d.pos);
+            let now = o.traits.iter().map(|t| t.name()).collect::<Vec<_>>().join(" and ");
+            self.spotlight("The overseer is changed", &format!("{} {}\n\nIt is {} now.", first, note.replacen("it is", "is", 1), now), at, (200, 170, 255));
+        }
+        self.count("m2.drifts", 1);
+    }
+}
+
+/// Spin (OVR-05): the overseer tells a lost siege as a victory.
+impl Game {
+    /// A siege has just ended (`on_siege_end`): a vain overseer, or one the
+    /// fort doubts, may tell it as a glorious stand.
+    pub(super) fn spin_siege(&mut self, i: usize) {
+        let Some(mut o) = self.overseer.take() else { return };
+        self.spin_with(&mut o, i);
+        self.overseer = Some(o);
+    }
+
+    fn spin_with(&mut self, o: &mut Overseer, i: usize) {
+        let Some(s) = self.annals.sieges.get(i).cloned() else { return };
+        if o.dwarf.is_none() || s.outcome == "the fortress fell" || s.dwarves_lost == 0 || !(s.dwarves_lost > s.foes_slain || s.outcome == "withdrew") {
+            return;
+        }
+        let (grumble, _, _) = self.faith_marks();
+        let chance = if o.has(Trait::Vain) {
+            self.knob("spin.vain", 0.75)
+        } else if o.faith < grumble {
+            self.knob("spin.doubted", 0.5)
+        } else {
+            0.0
+        };
+        if !self.hashed_chance(&[s.tick, i as u64, 0x5b1], chance) {
+            return;
+        }
+        let tick = self.tick;
+        let fort = self.fortress_name.clone();
+        let first = super::stories::first_name(&o.name).to_string();
+        let how = if s.outcome == "routed" { "were beaten off" } else { "withdrew when it suited them" };
+        let truth = format!("The {} {}, and it cost us {} dead for {} of theirs.", s.foe, how, s.dwarves_lost, s.foes_slain);
+        let spun = [
+            format!("A glorious stand: the {} were driven from our gate.", s.foe),
+            format!("The {} broke upon {} and fled, just as the overseer foresaw.", s.foe, fort),
+            format!("Not one step did {} yield; the {} crept away beaten.", fort, s.foe),
+            format!("The {} learned what dwarven steel is worth, and ran from it.", s.foe),
+        ];
+        let spun = spun[(super::names::hash(&[self.fort_seed(), s.tick, 3]) % spun.len() as u64) as usize].clone();
+        self.msg(&format!("The overseer {} proclaims: {}", first, spun), (240, 210, 110));
+        self.year_log.spun.push((truth.clone(), spun.clone()));
+        self.faith(o, 4, "a glorious stand, as it tells it");
+        let told = "Had the siege told in every hall as a glorious stand.".to_string();
+        Self::note_ov(o, tick, told.clone());
+        Self::unjot(o, &told);
+        let mine = if o.has(Trait::Vain) {
+            format!("I told them it was a glorious stand. It was not. {} Let them have their song; I will carry the rest.", truth)
+        } else {
+            format!("I need them to believe in me, so I told them the {} were beaten. {} I hope no one counts the graves.", s.foe, truth)
+        };
+        Self::journal(o, tick, super::journal::EntryKind::Secret, mine);
+        // Who knows better: those who fought, or lost someone dear in it.
+        let dead: Vec<String> = self.annals.deaths.iter().filter(|n| n.siege == Some(i)).map(|n| n.name.clone()).collect();
+        let dead_ids: Vec<u32> = self.dwarves.iter().filter(|d| !d.alive && dead.contains(&d.name)).map(|d| d.id).collect();
+        let late: Vec<u32> = self.memory.events.iter().filter(|m| m.kind == super::memory::MemoryKind::Arrived && m.tick > s.tick).flat_map(|m| m.who.iter().copied()).collect();
+        let me = o.dwarf;
+        let mut doubters: Vec<usize> = Vec::new();
+        for (j, d) in self.dwarves.iter().enumerate() {
+            if !d.alive || d.is_child() || Some(d.id) == me || late.contains(&d.id) {
+                continue;
+            }
+            let grieving = dead_ids.iter().any(|id| self.dwarves.iter().find(|x| x.id == *id).map_or(false, |x| dear(d, x)));
+            if grieving || (d.soldier && d.personality.anxiety < 10) {
+                doubters.push(j);
+            }
+        }
+        let mut names = Vec::new();
+        for &j in &doubters {
+            self.dwarves[j].think("doesn't believe the overseer's tale of the siege", 12, tick);
+            names.push(super::stories::first_name(&self.dwarves[j].name).to_string());
+        }
+        self.faith(o, -(doubters.len() as i32).min(6), "dwarves who were there doubt its tale");
+        self.count("m2.spins", 1);
+        if doubters.len() >= self.knob("spin.caught", 3.0) as usize {
+            self.faith(o, -4, "caught in a lie about the siege");
+            let n = names.len();
+            let who = format!("{} and {}", names[..n - 1].join(", "), names[n - 1]);
+            let text = format!("{} were there. They know how it went: {} In the halls they laugh at the overseer {}'s glorious stand.", who, lower_first(&truth), first);
+            let at = self.dwarves.get(doubters[0]).map(|d| d.pos);
+            self.spotlight("The lie is found out", &text, at, (230, 140, 70));
+            self.msg(&format!("The fort sees through the overseer {}'s tale of the siege.", first), (230, 140, 70));
+            Self::journal(o, tick, super::journal::EntryKind::Secret, format!("{} looked at me across the table tonight and said nothing. They know. They all know.", names[0]));
+            self.count("m2.spin_caught", 1);
+        }
+    }
+
+    /// The chronicle's lines for the year's sieges as the overseer told them.
+    pub(super) fn lines_spin(&self, log: &chronicle::YearLog) -> Vec<String> {
+        log.spun.iter().map(|(_, spun)| spun.clone()).collect()
+    }
+}
+
+fn lower_first(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map_or(String::new(), |f| f.to_lowercase().collect::<String>() + c.as_str())
 }
 
 #[cfg(test)]
@@ -768,6 +1065,117 @@ mod tests {
         let o = g.overseer.as_ref().unwrap();
         assert_eq!(o.dwarf, Some(other));
         assert_eq!(o.reigns[0].end, Some(ReignEnd::Elected));
+    }
+
+    /// A siege just ended, `lost` of ours dead.
+    fn siege_ended(g: &mut Game, lost: u32, slain: u32, outcome: &str) {
+        g.note_siege("goblins", 12, "Snaga");
+        let t = g.tick;
+        let s = g.annals.sieges.last_mut().unwrap();
+        s.dwarves_lost = lost;
+        s.foes_slain = slain;
+        s.ended = Some(t);
+        s.outcome = outcome.into();
+    }
+
+    #[test]
+    fn a_massacre_makes_a_bold_overseer_cautious() {
+        let mut changed = 0;
+        for seed in 1..=5 {
+            let mut g = fort(seed);
+            let mut o = g.overseer.take().unwrap();
+            o.traits = vec![Trait::Bold, Trait::Cheerful];
+            g.tick = 10 * DAY + 1;
+            g.ov_reign(&mut o);
+            siege_ended(&mut g, 4, 1, "withdrew");
+            g.tick += DAY;
+            g.ov_reign(&mut o);
+            if o.traits[0] == Trait::Cautious {
+                changed += 1;
+                assert_eq!(o.reigns.last().unwrap().traits, o.traits);
+                assert!(o.notes.iter().any(|n| n.1.contains("broke its nerve") && n.1.contains("no longer bold")), "{:?}", o.notes);
+                assert!(o.journal.last().unwrap().entries.iter().any(|e| e.kind == super::super::journal::EntryKind::Changed), "in its journal");
+                assert!(g.spotlights.iter().any(|s| s.title == "The overseer is changed"));
+                // Never twice in a season: another massacre leaves its cheer alone.
+                for _ in 0..10 {
+                    siege_ended(&mut g, 5, 0, "withdrew");
+                    g.tick += DAY;
+                    g.ov_reign(&mut o);
+                }
+                assert_eq!(o.traits, vec![Trait::Cautious, Trait::Cheerful]);
+            } else {
+                assert_eq!(o.traits, vec![Trait::Bold, Trait::Cheerful], "seed {}", seed);
+            }
+        }
+        assert!((1..=5).contains(&changed), "{} of 5", changed);
+        // A siege routed with no losses can make a cautious one bold.
+        let mut bolder = 0;
+        for seed in 1..=8 {
+            let mut g = fort(seed);
+            let mut o = g.overseer.take().unwrap();
+            o.traits = vec![Trait::Cautious, Trait::Greedy];
+            g.tick = 10 * DAY + 1;
+            g.ov_reign(&mut o);
+            siege_ended(&mut g, 0, 6, "routed");
+            g.tick += DAY;
+            g.ov_reign(&mut o);
+            bolder += (o.traits[0] == Trait::Bold) as usize;
+        }
+        assert!((1..8).contains(&bolder), "{} of 8", bolder);
+    }
+
+    #[test]
+    fn a_vain_overseer_spins_a_defeat_and_some_dont_believe_it() {
+        let mut spun = 0;
+        for seed in 1..=6 {
+            let mut g = fort(seed);
+            g.tick = 10 * DAY + 1;
+            {
+                let o = g.overseer.as_mut().unwrap();
+                o.traits = vec![Trait::Vain, Trait::Greedy];
+            }
+            let me = overseer_dwarf(&g);
+            // Three soldiers who don't scare easily were at the gate.
+            for d in g.dwarves.iter_mut().filter(|d| d.id != me && !d.is_child()).take(3) {
+                d.soldier = true;
+                d.personality.anxiety = -10;
+            }
+            siege_ended(&mut g, 3, 1, "withdrew");
+            let faith = g.overseer.as_ref().unwrap().faith;
+            g.spin_siege(g.annals.sieges.len() - 1);
+            if g.year_log.spun.is_empty() {
+                continue;
+            }
+            spun += 1;
+            let o = g.overseer.as_ref().unwrap();
+            let (truth, tale) = g.year_log.spun[0].clone();
+            assert!(truth.contains("3 dead") && !tale.contains("dead"), "{} | {}", truth, tale);
+            assert!(g.log.iter().any(|e| e.text.contains("proclaims")));
+            assert_eq!(g.annals.sieges.last().unwrap().outcome, "withdrew", "the annals keep the truth");
+            let doubters = g.dwarves.iter().filter(|d| d.thoughts.iter().any(|t| t.text.contains("doesn't believe the overseer's tale"))).count();
+            assert!(doubters >= 3, "{}", doubters);
+            // Found out: the tale cost more faith than it won.
+            assert!(o.faith < faith, "{} -> {}", faith, o.faith);
+            assert!(g.spotlights.iter().any(|s| s.title == "The lie is found out"));
+            let secrets: Vec<&String> = o.journal.last().unwrap().entries.iter().filter(|e| e.kind == super::super::journal::EntryKind::Secret).map(|e| &e.text).collect();
+            assert!(secrets.iter().any(|s| s.contains("It was not") && s.contains("3 dead")), "{:?}", secrets);
+            // The chronicle tells the tale, not the truth.
+            g.tick = YEAR;
+            g.write_chronicle_for_test();
+            let c = g.chronicles.last().unwrap();
+            assert!(c.lines.contains(&tale), "{:?}", c.lines);
+        }
+        assert!(spun >= 2, "{} of 6 spun", spun);
+        // A sieged routed at small cost, or a modest overseer, tells it straight.
+        let mut g = fort(3);
+        g.overseer.as_mut().unwrap().traits = vec![Trait::Cautious, Trait::Pious];
+        siege_ended(&mut g, 3, 1, "withdrew");
+        g.spin_siege(0);
+        assert!(g.year_log.spun.is_empty());
+        g.overseer.as_mut().unwrap().traits = vec![Trait::Vain, Trait::Pious];
+        siege_ended(&mut g, 1, 9, "routed");
+        g.spin_siege(1);
+        assert!(g.year_log.spun.is_empty());
     }
 
     #[test]

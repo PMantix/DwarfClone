@@ -40,6 +40,8 @@ impl Game {
         self.ov_reign(o);
         // O01: the deaths and sieges since, as its traits take them.
         self.ov_reflect(o);
+        // O07: its journal, written up.
+        self.ov_journal(o);
         let _ = o;
     }
 
@@ -102,5 +104,7 @@ impl Game {
         self.judge_wargame(i);
         // Interface flair: the battle gets its name on the reel.
         self.reel_siege_end(i);
+        // O07: a lost siege told as a victory.
+        self.spin_siege(i);
     }
 }

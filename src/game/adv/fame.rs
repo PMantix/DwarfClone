@@ -23,7 +23,7 @@ impl Game {
             artifacts,
             save_file: crate::saves::fort_file(&self.fortress_name),
             peak_pop: self.dwarves.len(),
-            journal: Vec::new(),
+            journal: self.journal_last_page(),
             occupant: None,
             robbed: Vec::new(),
         };
