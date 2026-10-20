@@ -36,6 +36,9 @@ pub struct AdvScreen {
     pub help: bool,
     /// When the last act began: the log's lines since are this turn's.
     pub turn_from: u64,
+    /// A page being read (A5): a fallen fort's saga on arrival, a book, the
+    /// walls. Any key puts it down.
+    pub page: Option<adv::sitegen::fallen::Writing>,
 }
 
 /// What a letter list in the local view is for.
@@ -79,7 +82,7 @@ impl AdvScreen {
             View::Travel
         };
         let turn_from = adv.now();
-        AdvScreen { adv, view, flash: None, maker, pick: None, sneak: false, rest_until: None, help: false, turn_from }
+        AdvScreen { adv, view, flash: None, maker, pick: None, sneak: false, rest_until: None, help: false, turn_from, page: None }
     }
 }
 
@@ -88,8 +91,11 @@ impl App {
     /// maker (A1).
     pub fn open_adventure(&mut self) {
         let seed = self.seed;
+        let dir = self.save_dir.clone();
         self.run_job("Making the world", move |report| {
-            let ow = Overworld::generate_with(seed, report);
+            let mut ow = Overworld::generate_with(seed, report);
+            // The forts that fell in this world before (A5).
+            adv::sitegen::fallen::scan(&dir, &mut ow);
             Ok(JobDone::Visited(Box::new(adv::create::unmade_in(ow, seed))))
         });
     }
@@ -107,16 +113,50 @@ impl App {
     /// The game-over page's `a` (after the save): an adventurer into this
     /// fallen fort's world.
     pub fn adventure_in_this_world(&mut self) {
-        let ow = std::mem::replace(&mut self.game.overworld, Overworld::empty());
+        let mut ow = std::mem::replace(&mut self.game.overworld, Overworld::empty());
         let seed = self.seed ^ 0xA0;
+        let dir = self.save_dir.clone();
         self.game = crate::game::Game::placeholder(Overworld::empty());
-        self.run_job("Setting out", move |_| Ok(JobDone::Visited(Box::new(adv::quick_start(ow, seed)))));
+        self.run_job("Setting out", move |_| {
+            adv::sitegen::fallen::scan(&dir, &mut ow);
+            Ok(JobDone::Visited(Box::new(adv::quick_start(ow, seed))))
+        });
+    }
+
+    /// The window's `--fallen` picture (A5): a fort of `seed` run two
+    /// months, fallen to goblins and saved to a scratch folder (never the
+    /// player's saves), and a hero of its world in its halls; `card`: the
+    /// saga of its fall is told on arrival.
+    pub fn start_fallen_seeded(&mut self, seed: u64, card: bool) {
+        let dir = std::env::temp_dir().join(format!("dwarfclone-fallen-shot-{}", seed));
+        self.save_dir = dir.clone();
+        self.run_job("Visiting the fallen", move |_| {
+            let mut a = adv::sitegen::fallen::demo(seed, 60, &dir)?;
+            if !card {
+                if let Some(v) = a.visit.as_mut() {
+                    v.g.spotlights.clear();
+                }
+            }
+            Ok(JobDone::Visited(Box::new(a)))
+        });
     }
 
     /// An adventure is ready (begun, a site entered, or loaded).
     pub fn adventure_ready(&mut self, a: Box<Adventure>) {
-        self.adv = Some(Box::new(AdvScreen::new(*a)));
+        let mut a = *a;
+        a.saves_dir = Some(self.save_dir.clone());
+        self.adv = Some(Box::new(AdvScreen::new(a)));
         self.mode = Mode::Adventure;
+        self.adv_take_page();
+    }
+
+    /// A fallen fort's saga, told as the hero walks in (A5).
+    fn adv_take_page(&mut self) {
+        let Some(s) = self.adv.as_mut() else { return };
+        let Some(v) = s.adv.visit.as_mut() else { return };
+        if s.page.is_none() {
+            s.page = adv::sitegen::fallen::take_reading(&mut v.g);
+        }
     }
 
     /// The window's `--adventure --fight` picture: a goblin raider comes at
@@ -147,6 +187,7 @@ impl App {
     /// a key, but a rest goes on a slice at a time until healed, woken or
     /// done.
     pub fn adv_frame(&mut self) {
+        self.adv_take_page();
         let Some(s) = self.adv.as_mut() else { return };
         let Some((until, mend)) = s.rest_until else { return };
         let Some(v) = s.adv.visit.as_mut() else {
@@ -319,6 +360,9 @@ impl App {
             s.help = false;
             return;
         }
+        if s.page.take().is_some() {
+            return;
+        }
         if s.pick.is_some() {
             return self.adv_key_pick(k);
         }
@@ -388,6 +432,13 @@ impl App {
                 KeyCode::Char('r') => return self.adv_open_pick(Pick::Remove),
                 KeyCode::Char('A') => return self.adv_open_pick(Pick::Aim),
                 KeyCode::Char('k') => return self.adv_open_pick(Pick::Talk),
+                KeyCode::Char('R') => {
+                    match adv::sitegen::fallen::read_here(g, h) {
+                        Ok(w) => s.page = Some(w),
+                        Err(why) => s.flash = Some(why),
+                    }
+                    return;
+                }
                 _ => return,
             }
         };
