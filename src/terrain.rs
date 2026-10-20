@@ -682,6 +682,16 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
             } else if rng.chance(0.04 + 0.05 * m) {
                 world.t_mut(p).kind = TileKind::Shrub;
             }
+            // A great boulder bedded in rocky ground, here and there (by
+            // the place, not the dice, so the rest of the land is unchanged).
+            if matches!(b, Biome::Hills | Biome::Mountain | Biome::Badlands) && !shape.pass[i] && world.t(p).kind == TileKind::Floor && boulder_at(ax, ay) {
+                let rock = (1..8).filter_map(|k| world.get(Pos::new(x, y, hh - k))).find(|t| t.kind == TileKind::Wall && t.mat.is_building_stone()).map(|t| t.mat);
+                if let Some(rock) = rock {
+                    let t = world.t_mut(p);
+                    t.kind = TileKind::Boulder;
+                    t.mat = rock;
+                }
+            }
         }
     }
     sink_pools(&mut world, marsh, 2, true);
@@ -1068,6 +1078,17 @@ pub fn embark_spot(w: &World) -> Pos {
         }
     }
     best.unwrap_or(Pos::new(cx, cy, w.surface_z(cx, cy)))
+}
+
+
+/// Whether a boulder lies bedded at this spot of rocky ground (about one
+/// tile in two hundred).
+fn boulder_at(ax: i32, ay: i32) -> bool {
+    let mut h = (ax as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (ay as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ 0xB0_17DE;
+    h ^= h >> 29;
+    h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    h ^= h >> 32;
+    h % 1000 < 5
 }
 
 #[cfg(test)]

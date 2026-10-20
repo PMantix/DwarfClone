@@ -126,6 +126,8 @@ pub mod logkind;
 pub mod commands;
 pub mod reign;
 pub mod veins;
+mod picks;
+mod boulders;
 pub mod supply;
 pub mod inspire;
 mod gatehouse;
@@ -936,7 +938,9 @@ impl Game {
         let wall = t.kind == TileKind::Wall && t.mat.diggable() && t.built_from.is_none();
         match d {
             Desig::None => true,
-            Desig::Dig | Desig::StairUp | Desig::Ramp => wall,
+            // (A boulder bedded in the ground is dug out like rock.)
+            Desig::Dig => wall || t.kind == TileKind::Boulder && t.mat.diggable(),
+            Desig::StairUp | Desig::Ramp => wall,
             Desig::StairDown => {
                 wall || matches!(t.kind, TileKind::Floor | TileKind::Ramp | TileKind::StairUp | TileKind::Shrub)
             }
@@ -2366,6 +2370,9 @@ impl Game {
                 return false;
             }
         }
+        if let Some(started) = self.better_pick(d, chop) {
+            return started;
+        }
         if let Some(started) = self.need_tool(d, if chop { ItemKind::Axe } else { ItemKind::Pick }) {
             return started;
         }
@@ -2660,10 +2667,12 @@ impl Game {
                     Travel::Arrived => {
                         let labor = if desig == Desig::Chop { Labor::Woodcutting } else { Labor::Mining };
                         let tree = desig == Desig::Chop && self.world.t(target).kind == TileKind::Tree;
-                        let base = if desig == Desig::Chop { 80 } else { self.world.t(target).mat.dig_ticks() };
+                        let base = self.dig_base(d, target, desig);
                         if Self::labor(d, base, d.skill(labor)) {
-                            let gem = self.world.t(target).kind == TileKind::Wall && self.world.t(target).mat.is_gem();
+                            let was = *self.world.t(target);
+                            let gem = was.kind == TileKind::Wall && was.mat.is_gem();
                             self.complete_dig(target);
+                            self.dug_by(d, target, was);
                             if tree {
                                 self.tree_felled(d, target);
                             }
@@ -3065,7 +3074,12 @@ impl Game {
         let was_wall = t.kind == TileKind::Wall;
         let mut drop_at = q;
         match t.desig {
-            Desig::Dig => self.world.t_mut(q).kind = TileKind::Floor,
+            Desig::Dig => {
+                self.world.t_mut(q).kind = TileKind::Floor;
+                if t.kind == TileKind::Boulder {
+                    self.spawn_item(ItemKind::Boulder, t.mat, q);
+                }
+            }
             Desig::StairUp => self.world.t_mut(q).kind = TileKind::StairUp,
             Desig::StairDown => {
                 self.world.t_mut(q).kind =
@@ -3123,11 +3137,6 @@ impl Game {
             if drop {
                 self.spawn_item(ItemKind::Boulder, m, drop_at);
             }
-            if m.is_gem() {
-                self.msg(&format!("You have struck {}!", m.name()), (220, 140, 255));
-            } else if m.is_ore() && self.rng.chance(0.15) {
-                self.msg(&format!("You have struck {}!", m.name()), (255, 210, 90));
-            }
         }
         let wet = std::iter::once(q).chain(DIRS4.iter().map(|&(dx, dy)| q.offset(dx, dy, 0))).any(|p| self.world.get(p).map_or(false, |t| t.aquifer));
         if wet && self.world.aquifer > 0 {
@@ -3136,6 +3145,8 @@ impl Game {
         let up = matches!(t.desig, Desig::StairUp | Desig::StairUD | Desig::Ramp);
         let down = matches!(t.desig, Desig::StairDown | Desig::StairUD | Desig::Channel);
         let broke_in = self.world.reveal_around(q, up, down) && !self.world.outside(q);
+        // A followed vein spreads; ore and gems come into sight (veins.rs).
+        self.vein_dug(q);
         if broke_in {
             self.check_vault();
         }

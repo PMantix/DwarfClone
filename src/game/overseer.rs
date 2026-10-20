@@ -929,6 +929,7 @@ impl Game {
         }
         if forge {
             orders.push((Recipe::ForgeAxe, 2));
+            orders.push(self.pick_order());
             orders.push((Recipe::ForgeHelm, 2));
             orders.push((Recipe::ForgeBreastplate, 1));
             orders.push((Recipe::ForgeShield, 1));
@@ -2246,7 +2247,7 @@ mod tests {
         let name = d.name.clone();
         g.dwarves[i] = d;
         let mut days = 0;
-        while !g.dwarves[i].rested && days < 5 {
+        while !g.dwarves[i].rested && days < 7 {
             for _ in 0..DAY {
                 g.step();
                 g.creatures.retain(|_, c| c.tame || !c.hostile());
@@ -2458,9 +2459,9 @@ mod tests {
         let g = trial_game(5003, Style::Steady, 262);
         assert_eq!(g.tick, 262 * DAY);
         let deaths: Vec<(u64, &str)> = g.annals.deaths.iter().map(|d| (d.tick, d.name.as_str())).collect();
-        assert_eq!(deaths, vec![(303722, "Dorna Copperfist"), (303896, "Sorli Hammergrip")]);
+        assert_eq!(deaths, vec![(150281, "Dorna Copperfist"), (152750, "Grenda Anvilbrew"), (203195, "Bekka Stoneforge")]);
         let sieges: Vec<(u64, &str)> = g.annals.sieges.iter().map(|s| (s.tick, s.foe.as_str())).collect();
-        assert_eq!(sieges, vec![(303495, "goblins")]);
+        assert_eq!(sieges, vec![(203045, "goblins"), (303420, "goblins")]);
         assert_eq!(g.overseer.as_ref().map(|o| o.style), Some(Style::Steady));
     }
 

@@ -39,15 +39,18 @@ pub enum TileKind {
     Shrub,
     /// Built wall with arrow slits: blocks walkers, lets water through.
     Fortification,
+    /// A great boulder bedded in the ground (rocky surfaces): in the way like
+    /// a tree; dug out, it leaves a boulder to carry off and bare ground.
+    Boulder,
 }
 
 impl TileKind {
     pub fn solid(self) -> bool {
-        matches!(self, TileKind::Wall | TileKind::Tree)
+        matches!(self, TileKind::Wall | TileKind::Tree | TileKind::Boulder)
     }
 
     pub fn has_floor(self) -> bool {
-        !matches!(self, TileKind::Open | TileKind::Wall | TileKind::Tree | TileKind::Fortification)
+        !matches!(self, TileKind::Open | TileKind::Wall | TileKind::Tree | TileKind::Fortification | TileKind::Boulder)
     }
 
     /// Bounds a room the way a wall does.
@@ -67,6 +70,7 @@ impl TileKind {
             TileKind::Tree => "tree",
             TileKind::Shrub => "shrub",
             TileKind::Fortification => "fortification",
+            TileKind::Boulder => "boulder",
         }
     }
 }

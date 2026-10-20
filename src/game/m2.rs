@@ -14,7 +14,7 @@ impl Game {
         // P3 O03-b: named places
         // P8 O07-a: reigns, faith at the end
         // P9 O08-a: chained orders
-        // P10 O10-a: ore mined
+        // P10 O10-a: ore mined (`m2.ore_mined`) is counted as each tile is dug (veins.rs: dug_by).
     }
 }
 

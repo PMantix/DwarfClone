@@ -150,6 +150,7 @@ pub(crate) fn tile_look(w: &World, p: Pos) -> (char, Color, Color) {
             }
         }
         TileKind::Fortification => ('#', mc, BLACK),
+        TileKind::Boulder => ('●', mc, BLACK),
         TileKind::Floor => {
             use crate::overworld::Biome as B;
             let h = hash2(p.x, p.y);

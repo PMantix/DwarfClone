@@ -70,6 +70,8 @@ impl Game {
         senses.extend(self.lesson_sense(o));
         // Myth and magic: an ill omen readies the fort.
         senses.push((Sense::Omens, self.omen_sense(), vec![(Ambition::Fortify, 0.8), (Ambition::Muster, 0.8), (Ambition::Venture, -1.0)]));
+        // O10: how rich the ground looks pulls toward Delve and Prosper.
+        senses.push(self.ore_sense());
         let _ = o;
         senses
     }

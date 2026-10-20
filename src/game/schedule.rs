@@ -72,6 +72,8 @@ impl Game {
             self.haunt_daily();
             // Sagas: arcs that end of themselves, the last dwarf (sagas.rs).
             self.sagas_daily();
+            // O10: the prospector's report, on the first morning (veins.rs).
+            self.prospect_daily();
         }
         if tick % SEASON == 0 { self.season_turns(); }
         // Interface flair: the highlight reel films its next frame.
@@ -137,11 +139,11 @@ mod tests {
     fn same_story_after_refactor() {
         let t = run_trial(5003, Style::Steady, 1, &Knobs::default());
         let deaths: Vec<(u64, &str, &str)> = t.deaths.iter().map(|d| (d.tick, d.name.as_str(), d.cause.as_str())).collect();
-        assert_eq!(deaths, vec![(303722, "Dorna Copperfist", "struck down"), (303896, "Sorli Hammergrip", "struck down")]);
+        assert_eq!(deaths, vec![(150281, "Dorna Copperfist", "struck down"), (152750, "Grenda Anvilbrew", "struck down"), (203195, "Bekka Stoneforge", "struck down")]);
         let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
-        assert_eq!(sieges, vec![(303495, "goblins", 3, "withdrew")]);
-        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (16, 27053, 29));
-        assert_eq!(t.ambitions, ["Delve", "Muster", "Provision", "Fortify", "Revel", "Architect", "Fortify", "Revel", "Fortify", "Provision", "Expand", "Fortify", "Prosper", "Fortify", "Provision", "Fortify", "Prosper"]);
+        assert_eq!(sieges, vec![(203045, "goblins", 2, "withdrew"), (303420, "goblins", 7, "withdrew")]);
+        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (13, 22375, 25));
+        assert_eq!(t.ambitions, ["Delve", "Expand", "Delve", "Prosper", "Revel", "Provision", "Revel", "Muster", "Revel", "Fortify", "Prosper", "Fortify", "Architect"]);
     }
 
     /// The survival items' tasks save and load by name, and a dwarf given one

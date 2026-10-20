@@ -269,18 +269,40 @@ impl Mat {
         self != Mat::Bedrock
     }
 
-    /// Base number of ticks a novice needs to dig through this material.
-    pub fn dig_ticks(self) -> u32 {
+    /// How hard this is to cut, soil 20 to obsidian 95 (O10, DIG-06). With
+    /// the pick's `edge` it sets how long a dig takes.
+    pub fn hardness(self) -> u32 {
         match self {
-            Mat::Grass | Mat::Loam | Mat::Sand => 35,
-            Mat::Clay => 45,
-            Mat::Sandstone | Mat::Limestone | Mat::Coal => 90,
-            Mat::Marble => 110,
-            Mat::Hematite | Mat::Malachite | Mat::NativeGold => 120,
-            Mat::Granite | Mat::Basalt => 140,
-            Mat::Obsidian => 160,
-            Mat::Amethyst => 150,
-            _ => 100,
+            Mat::Grass | Mat::Loam | Mat::Sand => 20,
+            Mat::Clay => 26,
+            Mat::Sandstone | Mat::Coal => 50,
+            Mat::Limestone => 55,
+            Mat::NativeGold => 60,
+            Mat::Marble | Mat::Malachite => 65,
+            Mat::Hematite => 70,
+            Mat::Granite => 80,
+            Mat::Basalt | Mat::Amethyst => 85,
+            Mat::Obsidian => 95,
+            _ => 57,
         }
+    }
+
+    /// How well a tool of this metal bites into rock: copper 60 to steel
+    /// 120; anything that isn't a tool metal is as good as a bare hand (30).
+    pub fn edge(self) -> u32 {
+        match self {
+            Mat::Steel => 120,
+            Mat::Iron => 90,
+            Mat::Bronze => 75,
+            Mat::Copper => 60,
+            Mat::Gold => 40,
+            _ => 30,
+        }
+    }
+
+    /// Base number of ticks a novice needs to dig through this material
+    /// with a tool of the given edge (a copper pick on granite: 140).
+    pub fn dig_ticks_with(self, edge: u32) -> u32 {
+        (self.hardness() * 105 / edge.max(1)).max(10)
     }
 }
