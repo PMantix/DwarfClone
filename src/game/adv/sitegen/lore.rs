@@ -28,6 +28,17 @@ pub fn in_year(y: i32) -> String {
     }
 }
 
+/// "twice", "five times".
+fn times(n: usize) -> String {
+    match n {
+        2 => "twice".into(),
+        3 => "three times".into(),
+        4 => "four times".into(),
+        5 => "five times".into(),
+        n => format!("{} times", n),
+    }
+}
+
 /// The events that name `name`, oldest first, with their indices.
 pub fn about<'a>(ow: &'a Overworld, name: &str) -> Vec<(usize, i32, &'a str)> {
     if name.is_empty() {
@@ -140,20 +151,36 @@ fn founding(ow: &Overworld, s: &Site) -> Option<String> {
 /// The other things history tells of a place: beasts driven from its
 /// gates, battles at its walls, the works made there.
 fn deeds_at(ow: &Overworld, s: &Site, skip_year: Option<i32>) -> Vec<String> {
-    let mut v = Vec::new();
     let off = format!(" attacked {} and was driven off.", s.name);
-    let gates = "broke upon the gates of the mountainhome.";
+    let gates = " broke upon the gates of the mountainhome.";
     let repulsed = " were repulsed.";
+    // Who came against it, and in which years (told once each).
+    let mut foes: Vec<(String, bool, Vec<i32>)> = Vec::new();
     for e in ow.events.iter() {
         if Some(e.year) == skip_year && e.text.contains(&s.name) {
             continue;
         }
-        if let Some(b) = e.text.strip_suffix(&off) {
-            v.push(format!("{} was driven from its gates {}.", b, in_year(e.year)));
+        let (who, beast) = if let Some(b) = e.text.strip_suffix(&off) {
+            (b.to_string(), true)
         } else if e.text.contains(&format!("of {}:", s.name)) && (e.text.ends_with(gates) || e.text.ends_with(repulsed)) {
-            let who = e.text.split_once(": the ").map_or("its foes", |(_, w)| w).trim_end_matches(gates).trim_end_matches(repulsed).trim();
-            v.push(format!("The {} were thrown back from it {}.", who.trim_end_matches(" broke upon the gates of the mountainhome."), in_year(e.year)));
+            let w = e.text.split_once(": the ").map_or("its foes", |(_, w)| w);
+            (format!("the {}", w.trim_end_matches(gates).trim_end_matches(repulsed).trim()), false)
+        } else {
+            continue;
+        };
+        match foes.iter_mut().find(|f| f.0 == who) {
+            Some(f) => f.2.push(e.year),
+            None => foes.push((who, beast, vec![e.year])),
         }
+    }
+    let mut v = Vec::new();
+    for (who, beast, years) in foes {
+        let what = if beast { "was driven from its gates" } else { "were thrown back from its walls" };
+        v.push(match years.as_slice() {
+            [y] => format!("{} {} {}.", cap(&who), what, in_year(*y)),
+            [a, .., b] => format!("{} {} {}, between the years {} and {}.", cap(&who), what, times(years.len()), a, b),
+            [] => continue,
+        });
     }
     for (y, maker, art, what) in artifacts_of(ow, s) {
         v.push(format!("{} made {}, a {}, here {}.", maker, art, what, in_year(y)));

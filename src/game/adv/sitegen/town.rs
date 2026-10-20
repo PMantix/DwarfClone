@@ -124,6 +124,7 @@ pub fn lay_out(g: &mut Game, center: Pos, kind: SiteKind, mat: Mat, rng: &mut Rn
         }
     }
     for r in taken.iter() {
+        flatten(g, r);
         let border = r.border();
         // The door: the middle of the side facing the centre.
         let door = if (center.y - r.mid().y).abs() >= (center.x - r.mid().x).abs() {
@@ -157,6 +158,36 @@ pub fn lay_out(g: &mut Game, center: Pos, kind: SiteKind, mat: Mat, rng: &mut Rn
     plan
 }
 
+/// Cut and fill a building's ground to its level.
+fn flatten(g: &mut Game, r: &Rect) {
+    let w = &mut g.world;
+    for y in r.y0..=r.y1 {
+        for x in r.x0..=r.x1 {
+            let s = w.surface_z(x, y);
+            let fill = w.get(Pos::new(x, y, s.min(r.z) - 1)).map_or(Mat::Loam, |t| if t.kind == TileKind::Wall { t.mat } else { Mat::Loam });
+            for z in (r.z + 1)..=s.max(r.z) {
+                let t = w.t_mut(Pos::new(x, y, z));
+                t.kind = TileKind::Open;
+                t.mat = Mat::Air;
+                t.revealed = true;
+            }
+            for z in s..r.z {
+                let t = w.t_mut(Pos::new(x, y, z));
+                t.kind = TileKind::Wall;
+                t.mat = fill;
+            }
+            let t = w.t_mut(Pos::new(x, y, r.z));
+            if t.kind != TileKind::Floor {
+                t.kind = TileKind::Floor;
+                t.mat = fill;
+            }
+            t.revealed = true;
+            let i = (y * w.w + x) as usize;
+            w.surface[i] = r.z;
+        }
+    }
+}
+
 /// A spot for a `w`×`h` building within `r` of `center`: level, dry, open
 /// ground, clear of the map's edge and of the others.
 fn place(g: &Game, center: Pos, r: i32, w: i32, h: i32, taken: &[Rect], rng: &mut Rng) -> Option<Rect> {
@@ -168,21 +199,22 @@ fn place(g: &Game, center: Pos, r: i32, w: i32, h: i32, taken: &[Rect], rng: &mu
         if x0 < 3 || y0 < 3 || x1 >= world.w - 3 || y1 >= world.h - 3 {
             continue;
         }
-        let z = world.surface_z(x0, y0);
+        // One level for the whole place, the centre's.
+        let z = center.z;
         let rect = Rect { x0, y0, x1, y1, z };
         if taken.iter().any(|o| rect.overlaps(o, 2)) {
             continue;
         }
         // The one arriving at the centre isn't walled in.
-        if center.x >= x0 - 1 && center.x <= x1 + 1 && center.y >= y0 - 1 && center.y <= y1 + 1 && taken.is_empty() && r > 5 {
+        if center.x >= x0 - 1 && center.x <= x1 + 1 && center.y >= y0 - 1 && center.y <= y1 + 1 && r > 5 {
             continue;
         }
+        // Near enough level to be made level: dry, and no cliff.
         let level = (y0..=y1).all(|y| {
             (x0..=x1).all(|x| {
-                let p = Pos::new(x, y, z);
-                world.surface_z(x, y) == z
-                    && world.get(p).map_or(false, |t| matches!(t.kind, TileKind::Floor | TileKind::Tree | TileKind::Shrub | TileKind::Boulder) && t.water == 0 && t.magma == 0 && !t.frozen)
-                    && world.solid(p.down())
+                let s = world.surface_z(x, y);
+                let top = Pos::new(x, y, s);
+                (s - z).abs() <= 2 && world.get(top).map_or(false, |t| t.water == 0 && t.magma == 0 && !t.frozen)
             })
         });
         if level {

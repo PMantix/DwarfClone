@@ -313,5 +313,7 @@ pub fn approach(w: &World, from: Pos, lo: i32, hi: i32, rng: &mut Rng) -> Pos {
     if far.is_empty() {
         return all.last().copied().unwrap_or(from);
     }
-    *rng.pick(&far)
+    // On the same level, where there is one, so the place is in view.
+    let level: Vec<Pos> = far.iter().copied().filter(|p| p.z == from.z).collect();
+    *rng.pick(if level.is_empty() { &far } else { &level })
 }

@@ -135,7 +135,7 @@ fn arrival(g: &mut Game, made: &sitegen::Made, at: Pos, again: bool) {
     if again {
         g.msg(&format!("You return to {}.", lowered(&made.title)), color);
     }
-    for (i, line) in made.story.iter().enumerate() {
+    for (i, line) in made.story.iter().take(4).enumerate() {
         g.msg(line, if i == 0 { color } else { (200, 190, 170) });
     }
     if !again && !made.title.is_empty() {
