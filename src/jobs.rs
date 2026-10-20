@@ -16,6 +16,8 @@ pub enum AfterSave {
     /// To the world map, to found a new fort in the same world (whose
     /// legends keep the fallen fort's sagas).
     World,
+    /// An adventurer into the same world (G03).
+    Adventure,
 }
 
 pub enum JobDone {
@@ -24,6 +26,10 @@ pub enum JobDone {
     Grown(Game, (i32, i32)),
     Saved(Game, SaveMeta, AfterSave),
     Loaded(Game),
+    /// An adventure's site is ready (G03: entered, or a new adventure begun).
+    Visited(Box<crate::game::adv::Adventure>),
+    /// An adventure loaded from its save.
+    AdvLoaded(Box<crate::game::adv::Adventure>),
 }
 
 /// Reports the current stage and how far along the job is (0..1).

@@ -6,6 +6,9 @@ use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 
 mod peoples;
+mod marks;
+#[allow(unused_imports)] // G03 wave 1 (A5) uses them
+pub use marks::{FortMark, Occupant, Remains, Robbery};
 #[allow(unused_imports)]
 pub use peoples::{MadeRace, Temper};
 
@@ -507,6 +510,12 @@ pub struct Overworld {
     /// Finished sagas of the forts played in this world (`game/sagas.rs`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sagas: Vec<crate::game::sagas::WorldSaga>,
+    /// The forts that fell in this world (`overworld/marks.rs`, G03).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forts: Vec<FortMark>,
+    /// Where dead adventurers lie, with their gear (G03).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub remains: Vec<Remains>,
 }
 
 /// How a clash ended for the place attacked.
@@ -681,6 +690,8 @@ impl WorldGen {
             made: Vec::new(),
             arts: Default::default(),
             sagas: Vec::new(),
+            forts: Vec::new(),
+            remains: Vec::new(),
         };
         WorldGen { params, ow, rng, land: None, row: 0, stage: GenStage::Terrain, rivers: Vec::new(), trace: None }
     }
@@ -1366,6 +1377,10 @@ impl Overworld {
         if c.site > 0 {
             (ch, fg) = self.site_look(&self.sites[(c.site - 1) as usize]);
         }
+        // A fort that fell here (G03).
+        if self.fort_at(x, y).is_some() {
+            (ch, fg) = ('×', Color::Rgb(200, 30, 50));
+        }
         (ch, fg, bg)
     }
 
@@ -1564,6 +1579,8 @@ impl Overworld {
             made: Vec::new(),
             arts: Default::default(),
             sagas: Vec::new(),
+            forts: Vec::new(),
+            remains: Vec::new(),
         }
     }
 

@@ -1,11 +1,21 @@
 //! Save slots: one file per fortress plus an autosave, each with a small
 //! metadata file so the load menu can list saves without reading them.
 
+use crate::game::adv::Adventure;
 use crate::game::Game;
 use crate::jobs::Report;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+/// What a save holds.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SaveKind {
+    #[default]
+    Fort,
+    /// An adventure (`<Hero>.adv.json`, G03).
+    Adventure,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SaveMeta {
@@ -17,6 +27,8 @@ pub struct SaveMeta {
     pub autosave: bool,
     /// File name of the save itself, inside the saves folder.
     pub file: String,
+    #[serde(default)]
+    pub kind: SaveKind,
 }
 
 fn slot(fortress: &str, autosave: bool) -> String {
@@ -27,6 +39,11 @@ fn slot(fortress: &str, autosave: bool) -> String {
     } else {
         base
     }
+}
+
+/// The file a fort's own save goes to (not the autosave).
+pub fn fort_file(fortress: &str) -> String {
+    format!("{}.json", slot(fortress, false))
 }
 
 fn meta_path(dir: &Path, file: &str) -> PathBuf {
@@ -55,11 +72,53 @@ pub fn write(dir: &Path, game: &Game, autosave: bool, report: Report) -> Result<
         saved_unix: now_unix(),
         autosave,
         file,
+        kind: SaveKind::Fort,
     };
     let m = serde_json::to_string_pretty(&meta).map_err(|e| e.to_string())?;
     std::fs::write(meta_path(dir, &meta.file), m).map_err(|e| format!("Save failed: {}", e))?;
     report("Saved", 1.0);
     Ok(meta)
+}
+
+#[allow(dead_code)] // G03 A11 (F5, autosaves) calls it; tests already do
+/// Save an adventure as `<Hero>.adv.json` (or its autosave), with its meta.
+pub fn write_adventure(dir: &Path, adv: &Adventure, autosave: bool, report: Report) -> Result<SaveMeta, String> {
+    report("Packing the hero's things", 0.1);
+    std::fs::create_dir_all(dir).map_err(|e| format!("Can't create {}: {}", dir.display(), e))?;
+    let data = serde_json::to_string(adv).map_err(|e| format!("Save failed: {}", e))?;
+    report("Writing to disk", 0.6);
+    let hero = &adv.hero_dwarf().name;
+    let file = format!("{}.adv.json", slot(hero, autosave));
+    let tmp = dir.join(format!("{}.tmp", file));
+    std::fs::write(&tmp, data).map_err(|e| format!("Save failed: {}", e))?;
+    std::fs::rename(&tmp, dir.join(&file)).map_err(|e| format!("Save failed: {}", e))?;
+    let place = adv.visit.as_ref().map_or_else(|| "on the road".to_string(), |v| format!("in {}", v.g.fortress_name));
+    let meta = SaveMeta {
+        fortress: hero.clone(),
+        date: format!("Year {}, {}", adv.year(), place),
+        dwarves: usize::from(adv.hero_dwarf().alive),
+        world: adv.ow().name.clone(),
+        saved_unix: now_unix(),
+        autosave,
+        file,
+        kind: SaveKind::Adventure,
+    };
+    let m = serde_json::to_string_pretty(&meta).map_err(|e| e.to_string())?;
+    std::fs::write(meta_path(dir, &meta.file), m).map_err(|e| format!("Save failed: {}", e))?;
+    report("Saved", 1.0);
+    Ok(meta)
+}
+
+pub fn read_adventure(dir: &Path, file: &str, report: Report) -> Result<Adventure, String> {
+    report("Reading the save file", 0.1);
+    let data = std::fs::read_to_string(dir.join(file)).map_err(|e| format!("Load failed: {}", e))?;
+    report("Unpacking the hero's things", 0.5);
+    let mut a: Adventure = serde_json::from_str(&data).map_err(|e| format!("Load failed (an older save?): {}", e))?;
+    if let Some(v) = a.visit.as_mut() {
+        v.g.after_load();
+    }
+    report("Loaded", 1.0);
+    Ok(a)
 }
 
 pub fn read(dir: &Path, file: &str, report: Report) -> Result<Game, String> {
@@ -122,6 +181,23 @@ mod tests {
         // And it saves again as it is now.
         let back: Game = serde_json::from_str(&serde_json::to_string(&g).unwrap()).unwrap();
         assert_eq!((back.tick, back.dwarves.len()), (g.tick, g.dwarves.len()));
+    }
+
+    /// A save's meta and world from before adventurer mode (no `kind`, no
+    /// `forts` or `remains` in its world) load, as a fort, with them empty.
+    #[test]
+    fn old_saves_load_without_adventure_fields() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures");
+        let g = read(&dir, "goldfist-before-m1.json", &|_, _| {}).unwrap();
+        assert!(g.overworld.forts.is_empty() && g.overworld.remains.is_empty());
+        let old = r#"{"fortress":"Goldfist","date":"1st Granite","dwarves":7,"world":"The Wilds","saved_unix":5,"autosave":false,"file":"Goldfist.json"}"#;
+        let m: SaveMeta = serde_json::from_str(old).unwrap();
+        assert_eq!(m.kind, SaveKind::Fort);
+        // And a world written without them still reads.
+        let mut ow = serde_json::to_value(&Game::new(5).overworld).unwrap();
+        ow.as_object_mut().unwrap().retain(|k, _| k != "forts" && k != "remains");
+        let ow: crate::overworld::Overworld = serde_json::from_value(ow).unwrap();
+        assert!(ow.forts.is_empty() && ow.remains.is_empty() && ow.fort_at(0, 0).is_none());
     }
 
     /// Drop from `new` whatever `old` (the same thing as an older save wrote
