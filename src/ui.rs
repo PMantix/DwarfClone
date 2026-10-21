@@ -6133,7 +6133,9 @@ mod tests {
         wait(&mut app, "Saving");
         assert_eq!(app.mode, Mode::Normal);
         assert_eq!(app.game.fortress_name, name, "game not handed back after saving");
-        assert_eq!(app.saves().len(), 1);
+        // (The fort and its world's shared file, A19.)
+        assert_eq!(app.saves().iter().filter(|m| m.kind != saves::SaveKind::World).count(), 1);
+        assert_eq!(saves::list_worlds(&app.save_dir).len(), 1);
 
         // Save and return to the title, then continue.
         app.on_key(key(KeyCode::Char('Q')));

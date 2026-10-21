@@ -1780,6 +1780,11 @@ mod tests {
         app.adv.as_mut().unwrap().meet = None;
         app.adv.as_mut().unwrap().adv.knobs.set.insert("travel.encounters".into(), 0.0);
         app.on_key(key(KeyCode::Right));
+        // (A dawn's autosave on the way, a second after F5's save and its
+        // world file, would be the newer: F9 is for the hand save here.)
+        for m in crate::saves::list(&dir).into_iter().filter(|m| m.autosave) {
+            crate::saves::delete(&dir, &m).unwrap();
+        }
         app.on_key(key(KeyCode::F(9)));
         settle(&mut app);
         let s = app.adv.as_ref().unwrap();
