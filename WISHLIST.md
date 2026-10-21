@@ -757,12 +757,13 @@ Goal: the same world and simulation, seen from other seats.
 - **Steps:** [x] make a character (race, skills, gear) and start at a site (A1, this commit) · [x] travel the
   world map; enter sites as local maps (towns, ruins, lairs, caves) (sites built on entry from the legends, with site memory: A4 3769753; the road with its travel log, night, weather, encounters, camps and wounds that bleed on the way: A3 31a02ad; saved and loaded whole, the road's encounters and a fallen fort's halls too (Esc menu, F5/F9, autosaves going in and out of sites and at each dawn on the road): A11 a90bc86) · [ ] talk: hear news and
   rumours, take jobs, hire companions · [x] fight with the same body and wounds as fortress
-  mode; loot; rest and heal (aimed blows and called shots at the eyes and teeth, crossbow bolts seen to fly, binding wounds, the dead's gear taken, the fight's blood drawn on the adventure map: A6, this commit) · [ ] fame and infamy in the legends; visit or reclaim your old
+  mode; loot; rest and heal (aimed blows and called shots at the eyes and teeth, crossbow bolts seen to fly, binding wounds, the dead's gear taken, the fight's blood drawn on the adventure map: A6, this commit) · [x] fame and infamy in the legends (deeds counted after every act: beasts of legend slain, names won, ruins dared, treasure taken and brought home; townsfolk murdered for infamy; each a chapter of the hero's Wander saga, the great ones legends: A10, this commit); visit or reclaim your old
   forts (visit: a fallen fort entered from its own save, its killer moved in, its saga, journal
-  and walls to read, and looting written back to the save after a backup: A5 df2b3d8) · [ ] death ends it, and the world remembers
+  and walls to read, and looting written back to the save after a backup: A5 df2b3d8) · [x] death ends it, and the world remembers (the end page leads with the hero's saga; the hero a figure of the legends, their bones and gear left where they fell for the next hero to find; `n` a fort in this world, `a` another hero; `S` then `R` retires a hero in a friendly town: A10, this commit)
 - **Done when:** a character can leave a town, find a ruin from a fallen fort, fight what lives
-  there, and come back with its treasure recorded in the legends. (Tested, with the travel
-  and the bot's walking left to A3 and A18: `a_hero_brings_home_the_treasure_of_a_fallen_fort`.)
+  there, and come back with its treasure recorded in the legends. (Tested with real travel both ways and real fights, a scripted walker in place of A18's bot; the first
+  three heroes die on the road or in the ruin before one comes home:
+  `a_hero_walks_home_with_the_treasure_of_a_fallen_fort`.)
 - **Measured by:** the adventure bot and its batch (A18, 759fecc): `--adventure-trial --runs N` plays heroes to a fallen fort, a lair and a ruin in turn and reports how they ended, where and to what, with days, kills, loot and fame; `--adventure-trial --compare A B`.
 
 ### Later

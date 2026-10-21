@@ -163,6 +163,7 @@ impl App {
         a.saves_dir = Some(self.save_dir.clone());
         self.adv = Some(Box::new(AdvScreen::new(a)));
         self.mode = Mode::Adventure;
+        self.adv_notice();
         self.adv_take_page();
     }
 
@@ -250,6 +251,7 @@ impl App {
                 s.view = View::Dead;
             }
         }
+        self.adv_notice();
     }
 
     /// Every key while the adventure is up, by view.
@@ -270,8 +272,19 @@ impl App {
                 _ => {}
             }
         }
+        // A saga card over the road: any key puts it down (A10).
+        if s.view == View::Travel && s.meet.is_none() && s.page.take().is_some() {
+            return;
+        }
+        // The hero's saga so far (A10).
+        let free = s.pick.is_none() && s.page.is_none() && s.meet.is_none() && !s.help && s.rest_until.is_none();
+        if k.code == KeyCode::Char('S') && free && matches!(s.view, View::Local | View::Travel) {
+            s.view = View::Saga;
+            return;
+        }
         match s.view.clone() {
-            View::Create => self.key_create(k),
+            View::Create => return self.key_create(k),
+            View::Saga => self.key_saga(k),
             View::Local | View::Look(_) | View::Inventory { .. } | View::Status | View::Menu { .. } => self.key_local(k),
             View::Travel => self.key_travel(k),
             View::Dead => self.key_end(k),
@@ -284,6 +297,25 @@ impl App {
                     }
                 }
             }
+        }
+        self.adv_notice();
+    }
+
+    /// What the hero has done (A10): deeds counted, a saga card to show,
+    /// and the end page once the adventure is over.
+    pub fn adv_notice(&mut self) {
+        let Some(s) = self.adv.as_mut() else { return };
+        if s.view == View::Create || s.maker.is_some() {
+            return;
+        }
+        s.adv.notice();
+        if s.adv.over.is_some() {
+            s.view = View::Dead;
+            s.pick = None;
+            s.rest_until = None;
+            s.meet = None;
+        } else if s.page.is_none() {
+            s.page = s.adv.take_card();
         }
     }
 
@@ -1112,11 +1144,67 @@ impl App {
 }
 
 impl App {
-    /// The death page (A10).
+    /// The end page (A10): `n` a fort in this world, `a` another hero in
+    /// it, `t` the title.
     fn key_end(&mut self, k: KeyEvent) {
-        if matches!(k.code, KeyCode::Esc | KeyCode::Char('t')) {
-            self.adventure_to_title();
+        match k.code {
+            KeyCode::Esc | KeyCode::Char('t') => self.adventure_to_title(),
+            KeyCode::Char('n') => {
+                let Some(mut s) = self.adv.take() else { return };
+                let at = s.adv.at;
+                let ow = s.adv.take_world();
+                self.game = Game::placeholder(ow);
+                let (x, y) = if self.game.overworld.w > 1 { at } else { self.game.site };
+                self.mode = Mode::WorldMap { x, y };
+            }
+            KeyCode::Char('a') => {
+                let Some(mut s) = self.adv.take() else { return };
+                let seed = s.adv.seed.wrapping_mul(31).wrapping_add(s.adv.fame.deeds.len() as u64 + 7);
+                let ow = s.adv.take_world();
+                self.run_job("Another hero", move |_| Ok(JobDone::Visited(Box::new(adv::create::unmade_in(ow, seed)))));
+            }
+            _ => {}
         }
+    }
+
+    /// The window's `--adventure --dead` picture: a hero who went into a
+    /// beast's lair, did a deed there, and bled out from a goblin's
+    /// wounds; the end page.
+    pub fn adventure_death(&mut self) {
+        let Some(s) = self.adv.as_mut() else { return };
+        s.adv.notice();
+        let lair = s.adv.ow().sites.iter().find(|x| x.kind == crate::overworld::SiteKind::Lair && !x.ruined).map(|x| x.id);
+        if let Some(l) = lair {
+            if s.adv.enter(adv::SiteKey::Site(l)).is_ok() {
+                s.adv.notice();
+            }
+        }
+        s.adv.deed("drove the last of the cave-wolves from the old hills", 2);
+        let Some(v) = s.adv.visit.as_mut() else { return };
+        let h = v.hero;
+        let tick = v.g.tick;
+        v.g.annals.wounded_by.push((adv::HERO_ID, "goblin".into(), tick));
+        v.g.dwarves[h].body.wound(Part::LeftArm, 30, true);
+        v.g.dwarves[h].body.blood = 0;
+        let _ = v.g.act(h, Action::Wait(20));
+        self.adv_notice();
+    }
+
+    /// The saga so far (`S`): `R` settles the hero in a friendly town for
+    /// good; any other key goes back.
+    fn key_saga(&mut self, k: KeyEvent) {
+        let Some(s) = self.adv.as_mut() else { return };
+        if k.code == KeyCode::Char('R') {
+            match s.adv.can_retire() {
+                Ok(()) => {
+                    s.adv.retire();
+                    s.view = View::Dead;
+                }
+                Err(why) => s.flash = Some(why),
+            }
+            return;
+        }
+        s.view = if s.adv.visit.is_some() { View::Local } else { View::Travel };
     }
 }
 
