@@ -1406,8 +1406,8 @@ impl Game {
         if let Some(it) = self.items.get_mut(&id) {
             it.label = Some(info.name.to_string());
         }
-        if c.species == Species::Undead {
-            // Dust, or one of our own to bury.
+        if matches!(c.species, Species::Undead | Species::Automaton) {
+            // Dust, or one of our own to bury (or a heap of gears: clockwork.rs).
             self.items.remove(&id);
         }
         if c.breathes_fire {
@@ -1468,6 +1468,8 @@ impl Game {
         }
         // Horrors, made peoples, the thing in the night (horrors.rs).
         self.horror_died(&c);
+        // Automatons: what it carried, and its gears (clockwork.rs).
+        self.clockwork_died(&c);
         if c.siege && !c.legendary() {
             self.check_rout();
         }
@@ -1498,6 +1500,10 @@ impl Game {
             self.msg(&format!("The {} is consumed by magma.", info.name), (255, 120, 40));
             self.creature_died(c.clone());
             return false;
+        }
+        // Automatons: springs and gears, not blood (clockwork.rs).
+        if let Some(keep) = self.clockwork_tick(c) {
+            return keep;
         }
         if self.tick % 10 == 0 {
             c.body.tick_with(&self.bleed_params(), !c.path.is_empty() || c.target.is_some() || c.foe.is_some());

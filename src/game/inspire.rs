@@ -21,4 +21,7 @@ pub struct Inspiration {
 pub struct Inspirations {
     #[serde(default)]
     pub list: Vec<Inspiration>,
+    /// Automatons and trinkets (P26, `clockwork.rs`).
+    #[serde(default)]
+    pub clockwork: super::clockwork::Clockworks,
 }

@@ -141,6 +141,7 @@ pub mod ledger;
 pub mod masters;
 pub mod priority;
 pub mod inspire;
+pub mod clockwork;
 mod gatehouse;
 mod fit;
 mod m2;
@@ -2967,6 +2968,7 @@ impl Game {
                         made_ids.push(id);
                     }
                     self.crafts_made(d, recipe, &used, &made_ids);
+                    self.clockwork_made(d, recipe, &used, &made_ids);
                     self.ledger_made(d.id, &made_ids);
                     made = made_ids.iter().filter_map(|id| self.items.get(id)).map(|it| it.name()).collect();
                     self.culture_crafted(d, &made_ids);
@@ -2989,7 +2991,10 @@ impl Game {
                         k => format!("{} x{}", made[0], k),
                     };
                     let who = d.name.clone();
-                    self.msg(&format!("{} has made {}.", who, n), (190, 190, 190));
+                    // (An automaton walks off the bench, and a tuning makes nothing: clockwork.rs tells those.)
+                    if !made.is_empty() {
+                        self.msg(&format!("{} has made {}.", who, n), (190, 190, 190));
+                    }
                 }
             }
             Task::Gather { pos } => self.do_gather(d, pos),
