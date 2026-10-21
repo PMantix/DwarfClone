@@ -1608,7 +1608,8 @@ mod tests {
     /// lives that long. Few do by day 440, and which ones shifts whenever
     /// the year's events do: of seeds 5000-5023, 5003 and 5009 did before
     /// MAGIC, HORRORS, CULTURE and FLAIR came in, 5013 after; the
-    /// cisterns moved it on again, so a few more are tried.)
+    /// cisterns moved it on again, and the trap hall that kills (O04) once
+    /// more, so a few more are tried.)
     #[test]
     // (Plays up to a dozen forts for well over a year: run it with `--ignored`.)
     #[ignore]

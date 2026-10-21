@@ -79,6 +79,10 @@ pub struct SiegeNote {
     /// Where its foes fell, for remembering the battlefield.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub kill_spots: Vec<Pos>,
+    /// Besiegers a trap has wounded while it lasts, so one that bleeds out
+    /// later is the trap hall's (traps.rs: `hall_death`); emptied at its end.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trap_hurt: Vec<u32>,
 }
 
 fn is_zero(n: &u32) -> bool {
@@ -227,6 +231,8 @@ impl Game {
         if !c.siege || c.legendary() {
             return;
         }
+        // M2 O04: the trap hall's toll (traps.rs).
+        self.hall_death(c);
         if let Some(s) = self.annals.sieges.iter_mut().rev().find(|s| s.ended.is_none()) {
             s.foes_slain += 1;
         }
