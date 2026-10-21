@@ -1250,6 +1250,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.push(key_line("m", "Material (from stock)", false));
                 v.push(key_line("a", "Auto conditions", false));
                 v.push(key_line("x", "Delete order", false));
+                v.push(key_line("w", if g.damp.dig_wet_ok { "Dig through damp stone: yes" } else { "Dig through damp stone: no" }, false));
                 v.push(plain("Esc: back".into(), MUTED));
             }
         }
