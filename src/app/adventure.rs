@@ -312,7 +312,7 @@ impl App {
         match saved {
             Ok(m) => {
                 if !autosave {
-                    s.flash = Some(format!("Saved to {} ({}).", dir.join(&m.file).display(), m.date));
+                    s.flash = Some(format!("Saved as {}: {}.", m.file, m.date));
                 }
                 true
             }
@@ -1645,7 +1645,7 @@ mod tests {
         let s = app.adv.as_ref().unwrap();
         let (e, at, clock, lines) = (s.meet.clone().expect("met something"), s.adv.at, s.adv.clock, s.adv.log.len());
         app.on_key(key(KeyCode::F(5)));
-        assert!(app.adv.as_ref().unwrap().flash.as_deref().unwrap_or("").starts_with("Saved to"));
+        assert!(app.adv.as_ref().unwrap().flash.as_deref().unwrap_or("").starts_with("Saved as"));
         let (_, a) = newest(&app, false);
         assert_eq!(a.meet.as_ref(), Some(&e), "saved waiting");
         // Slip away (or not) and wander; F9 brings it all back.
