@@ -822,7 +822,7 @@ fn draw_pick(f: &mut Frame, area: Rect, g: &Game, hero: usize, kind: Pick, ids: 
     popup(f, area, w, h, &format!(" {} ", kind.title()), v);
 }
 
-/// The menu (A11 adds saving).
+/// The menu: back, save, save and quit, quit.
 pub(super) fn draw_menu(f: &mut Frame, area: Rect, sel: usize) {
     let mut v: Vec<Line<'static>> = Vec::new();
     for (i, m) in MENU.iter().enumerate() {
@@ -854,7 +854,8 @@ fn draw_help(f: &mut Frame, area: Rect) {
         ("z", "status: body, wounds, skills, fame"),
         ("Z", "rest until healed or disturbed"),
         ("s", "sneak (slower, quieter)"),
-        ("Esc", "menu"),
+        ("F5 F9", "save · back to the last save"),
+        ("Esc", "menu: save, save and quit"),
     ];
     let mut v: Vec<Line<'static>> = rows.iter().map(|(k, d)| key_line(k, d, false)).collect();
     v.push(Line::default());

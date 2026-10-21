@@ -4375,10 +4375,13 @@ fn draw_load_menu(f: &mut Frame, app: &App, sel: usize, confirm: bool) {
     for (i, m) in saves.iter().enumerate() {
         let st = if i == sel { Style::default().fg(BLACK).bg(KEY) } else { Style::default().fg(TEXT) };
         let tag = if m.autosave { " (autosave)" } else { "" };
+        // (An adventurer's save, marked with `@`: their date says where they are.)
+        let hero = m.kind == saves::SaveKind::Adventure;
+        let who = if !hero { format!(" {:>3} dwarves ", m.dwarves) } else if m.dwarves > 0 { "  adventurer ".into() } else { "  dead       ".into() };
         v.push(Line::from(vec![
-            Span::styled(format!(" {:<18}", format!("{}{}", m.fortress, tag)), st.add_modifier(Modifier::BOLD)),
+            Span::styled(format!(" {:<18}", format!("{}{}{}", if hero { "@ " } else { "" }, m.fortress, tag)), st.add_modifier(Modifier::BOLD)),
             Span::styled(format!(" {:<34}", m.date), st),
-            Span::styled(format!(" {:>3} dwarves ", m.dwarves), st),
+            Span::styled(who, st),
             Span::styled(format!(" {:<12}", saves::ago(m.saved_unix)), st),
         ]));
         v.push(plain(format!("   {}", m.world), MUTED));

@@ -7,7 +7,7 @@
 //! (A2), `key_travel` (A3), `key_end` (A10), `key_talk` (A7),
 //! `key_company` (A9).
 
-use super::{App, Mode, TITLE_ADVENTURE};
+use super::{App, Mode, TITLE_ADVENTURE, TITLE_CONTINUE};
 use crate::body::{Part, PARTS};
 use crate::game::adv::fight::AIMS;
 use crate::game::adv::turn::{Action, Outcome, Target};
@@ -15,6 +15,7 @@ use crate::game::adv::{self, Adventure, View};
 use crate::game::{Game, DAY};
 use crate::jobs::JobDone;
 use crate::overworld::Overworld;
+use crate::saves;
 use crossterm::event::{KeyCode, KeyEvent};
 
 /// The adventure on screen.
@@ -83,7 +84,7 @@ impl Pick {
 }
 
 impl AdvScreen {
-    pub fn new(adv: Adventure) -> AdvScreen {
+    pub fn new(mut adv: Adventure) -> AdvScreen {
         let maker = adv::create::unmade(&adv).then(|| Box::new(adv::create::Maker::new(&adv.ow, adv.seed)));
         let view = if maker.is_some() {
             View::Create
@@ -95,7 +96,9 @@ impl AdvScreen {
             View::Travel
         };
         let turn_from = adv.now();
-        AdvScreen { adv, view, flash: None, maker, pick: None, sneak: false, rest_until: None, help: false, turn_from, page: None, meet: None, replay: None }
+        // (A save made with something met on the road: it waits still.)
+        let meet = adv.meet.take();
+        AdvScreen { adv, view, flash: None, maker, pick: None, sneak: false, rest_until: None, help: false, turn_from, page: None, meet, replay: None }
     }
 }
 
@@ -205,6 +208,17 @@ impl App {
         }
     }
 
+    /// The window's `--adventure --saved` picture (A11): the adventure saved
+    /// (to a scratch folder, never the player's saves) and the menu up.
+    pub fn adventure_saved(&mut self) {
+        self.save_dir = std::env::temp_dir().join("dwarfclone-saved-shot");
+        let _ = std::fs::remove_dir_all(&self.save_dir);
+        self.adv_save(false);
+        if let Some(s) = self.adv.as_mut() {
+            s.view = View::Menu { sel: 1 };
+        }
+    }
+
     /// Each frame while the adventure is up: nothing runs while waiting for
     /// a key, but a rest goes on a slice at a time until healed, woken or
     /// done.
@@ -245,6 +259,17 @@ impl App {
             return;
         };
         s.flash = None;
+        // (Not once it's over: death is for keeps.)
+        if s.view != View::Create && s.adv.over.is_none() {
+            match k.code {
+                KeyCode::F(5) => {
+                    self.adv_save(false);
+                    return;
+                }
+                KeyCode::F(9) => return self.adv_reload(),
+                _ => {}
+            }
+        }
         match s.view.clone() {
             View::Create => self.key_create(k),
             View::Local | View::Look(_) | View::Inventory { .. } | View::Status | View::Menu { .. } => self.key_local(k),
@@ -262,10 +287,86 @@ impl App {
         }
     }
 
-    /// Leave the adventure for the title (A11 saves first).
+    /// Leave the adventure for the title (the menu's "Save and quit"
+    /// saves first).
     fn adventure_to_title(&mut self) {
         self.adv = None;
         self.mode = Mode::Title { sel: TITLE_ADVENTURE };
+    }
+}
+
+impl App {
+    /// Save the adventure as it stands (F5, the menu), or its autosave
+    /// (`<Hero>-autosave.adv.json`), with anything met on the road still
+    /// waiting. On the spot: on the road a save is small, and in a site
+    /// its map is a moment's writing. True if it was written.
+    pub fn adv_save(&mut self, autosave: bool) -> bool {
+        let dir = self.save_dir.clone();
+        let Some(s) = self.adv.as_mut() else { return false };
+        if s.view == View::Create || (autosave && s.adv.over.is_some()) {
+            return false;
+        }
+        s.adv.meet = s.meet.clone();
+        let saved = saves::write_adventure(&dir, &s.adv, autosave, &|_, _| {});
+        s.adv.meet = None;
+        match saved {
+            Ok(m) => {
+                if !autosave {
+                    s.flash = Some(format!("Saved to {} ({}).", dir.join(&m.file).display(), m.date));
+                }
+                true
+            }
+            Err(e) => {
+                s.flash = Some(e);
+                false
+            }
+        }
+    }
+
+    /// F9: back to this hero's newest save (their own or the autosave). If
+    /// it won't load, the adventure goes on as it was.
+    fn adv_reload(&mut self) {
+        let Some(s) = self.adv.as_mut() else { return };
+        let name = s.adv.hero_dwarf().name.clone();
+        let dir = self.save_dir.clone();
+        let Some(m) = saves::list(&dir).into_iter().find(|m| m.kind == saves::SaveKind::Adventure && m.fortress == name) else {
+            s.flash = Some("No save of this adventure yet (F5 saves).".into());
+            return;
+        };
+        let Some(s) = self.adv.take() else { return };
+        let mut now = s.adv;
+        self.run_job("Loading", move |report| match saves::read_adventure(&dir, &m.file, report) {
+            Ok(a) => Ok(JobDone::AdvLoaded(Box::new(a))),
+            Err(e) => {
+                now.say(&e, (240, 150, 110));
+                Ok(JobDone::Visited(Box::new(now)))
+            }
+        });
+    }
+
+    /// The road's autosave: on leaving a site, and at each dawn on the
+    /// road (`since`: the clock before the step or the camp).
+    fn adv_road_autosave(&mut self, since: u64, left: bool) {
+        let Some(s) = self.adv.as_ref() else { return };
+        if left || dawns(s.adv.now()) > dawns(since) {
+            self.adv_save(true);
+        }
+    }
+}
+
+/// Dawns since the world began, by tick (the clock starts at the first).
+fn dawns(tick: u64) -> u64 {
+    (tick + DAY - crate::game::clock::DAWN_TICK) / DAY
+}
+
+/// The autosave on going into a site, written on the job thread that went
+/// in (a fallen fort's can be large). A save that fails is told in the log.
+fn enter_autosave(a: &mut Adventure, dir: &std::path::Path, report: crate::jobs::Report) {
+    if a.over.is_some() || a.visit.is_none() {
+        return;
+    }
+    if let Err(e) = saves::write_adventure(dir, a, true, report) {
+        a.say(&format!("(Not autosaved: {})", e), (240, 150, 110));
     }
 }
 
@@ -355,7 +456,12 @@ impl App {
         let hero = m.hero(&s.adv.ow);
         let (ow, seed) = (std::mem::replace(&mut s.adv.ow, Overworld::empty()), s.adv.seed);
         self.adv = None;
-        self.run_job("Setting out", move |_| Ok(JobDone::Visited(Box::new(adv::create::begin(ow, seed, hero)))));
+        let dir = self.save_dir.clone();
+        self.run_job("Setting out", move |report| {
+            let mut a = adv::create::begin(ow, seed, hero);
+            enter_autosave(&mut a, &dir, report);
+            Ok(JobDone::Visited(Box::new(a)))
+        });
     }
 }
 
@@ -369,8 +475,8 @@ pub const REPLAY_MS: u64 = 30;
 const REPLAY_MAX: u64 = 80;
 /// How near someone must stand to be talked to.
 const TALK_REACH: i32 = 3;
-/// The menu's rows (A11 adds saving).
-pub const MENU: [&str; 2] = ["Back to the adventure", "Quit to the title"];
+/// The menu's rows.
+pub const MENU: [&str; 4] = ["Back to the adventure", "Save", "Save and quit to the title", "Quit without saving"];
 
 impl App {
     /// The local map and its pages (look, inventory, status, menu): move,
@@ -638,7 +744,7 @@ impl App {
         self.adv_act(act);
     }
 
-    /// The menu: back, or quit to the title (A11 adds saving).
+    /// The menu: back, save, save and quit, or quit to the title.
     fn adv_key_menu(&mut self, k: KeyEvent, sel: usize) {
         let Some(s) = self.adv.as_mut() else { return };
         match k.code {
@@ -647,6 +753,16 @@ impl App {
             KeyCode::Down | KeyCode::Char('2') => s.view = View::Menu { sel: (sel + 1).min(MENU.len() - 1) },
             KeyCode::Enter => match sel {
                 0 => s.view = back(s),
+                1 => {
+                    s.view = back(s);
+                    self.adv_save(false);
+                }
+                2 => {
+                    if self.adv_save(false) {
+                        self.adventure_to_title();
+                        self.mode = Mode::Title { sel: TITLE_CONTINUE };
+                    }
+                }
                 _ => self.adventure_to_title(),
             },
             _ => {}
@@ -836,10 +952,12 @@ impl App {
             }
             return;
         }
+        let since = s.adv.now();
         if let Some((dx, dy)) = step_of(&k) {
             let quiet = s.sneak;
             let out = s.adv.travel_with(dx, dy, quiet);
             self.adv_after_road(out);
+            self.adv_road_autosave(since, false);
             return;
         }
         match k.code {
@@ -850,6 +968,7 @@ impl App {
                 } else if s.adv.over.is_some() {
                     s.view = View::Dead;
                 }
+                self.adv_road_autosave(since, false);
             }
             KeyCode::Char('s') => {
                 s.sneak = !s.sneak;
@@ -889,7 +1008,8 @@ impl App {
             _ => adv::SiteKey::Wild(x, y),
         };
         let name = adv::sites::site_name(ow, key);
-        self.run_job(&format!("Into {}", name), move |_| {
+        let dir = self.save_dir.clone();
+        self.run_job(&format!("Into {}", name), move |report| {
             if let Err(why) = a.enter(key) {
                 a.say(&why, (240, 150, 110));
                 // (A fallen fort that can't be opened: its wild land instead.)
@@ -897,6 +1017,7 @@ impl App {
                     a.leave();
                 }
             }
+            enter_autosave(&mut a, &dir, report);
             Ok(JobDone::Visited(Box::new(a)))
         });
     }
@@ -905,10 +1026,12 @@ impl App {
     fn adv_meet(&mut self, e: adv::travel::Encounter) {
         let Some(s) = self.adv.take() else { return };
         let mut a = s.adv;
-        self.run_job("To arms", move |_| {
+        let dir = self.save_dir.clone();
+        self.run_job("To arms", move |report| {
             if let Err(why) = a.meet(&e) {
                 a.say(&why, (240, 150, 110));
             }
+            enter_autosave(&mut a, &dir, report);
             Ok(JobDone::Visited(Box::new(a)))
         });
     }
@@ -936,6 +1059,7 @@ impl App {
         s.view = View::Travel;
         s.pick = None;
         s.rest_until = None;
+        self.adv_save(true);
     }
 
     /// A step off the edge of a site's map walks on into the next cell
@@ -956,6 +1080,7 @@ impl App {
         let quiet = s.sneak;
         let out = s.adv.travel_with(dx, dy, quiet);
         self.adv_after_road(out);
+        self.adv_road_autosave(0, true);
         true
     }
 
@@ -1027,6 +1152,15 @@ mod tests {
     }
 
     /// Wait out the loading screen.
+    /// A fresh folder of saves for a test (autosaves land there).
+    fn scratch() -> std::path::PathBuf {
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let d = std::env::temp_dir().join(format!("dwarfclone-adv-saves-{}-{}", std::process::id(), n));
+        let _ = std::fs::remove_dir_all(&d);
+        d
+    }
+
     fn settle(app: &mut App) {
         let t = std::time::Instant::now();
         while app.mode == Mode::Loading && t.elapsed().as_secs() < 120 {
@@ -1038,7 +1172,7 @@ mod tests {
     #[test]
     fn the_title_offers_an_adventure() {
         let mut app = App::new(5);
-        app.save_dir = std::env::temp_dir().join("dwarfclone-no-saves-here");
+        app.save_dir = scratch();
         app.mode = Mode::Title { sel: 0 };
         while app.mode != (Mode::Title { sel: TITLE_ADVENTURE }) {
             app.on_key(key(KeyCode::Down));
@@ -1075,7 +1209,9 @@ mod tests {
         // Esc is the menu; its last row quits to the title.
         app.on_key(key(KeyCode::Esc));
         assert_eq!(app.adv.as_ref().unwrap().view, View::Menu { sel: 0 });
-        app.on_key(key(KeyCode::Down));
+        for _ in 0..MENU.len() {
+            app.on_key(key(KeyCode::Down));
+        }
         app.on_key(key(KeyCode::Enter));
         assert_eq!(app.mode, Mode::Title { sel: TITLE_ADVENTURE });
     }
@@ -1085,7 +1221,7 @@ mod tests {
         static WORLD: std::sync::OnceLock<Overworld> = std::sync::OnceLock::new();
         let ow = WORLD.get_or_init(|| Overworld::generate(5)).clone();
         let mut app = App::new(seed);
-        app.save_dir = std::env::temp_dir().join("dwarfclone-no-saves-here");
+        app.save_dir = scratch();
         let mut a = adv::quick_start(ow, seed);
         let (x, y) = a.at;
         a.enter(adv::SiteKey::Wild(x, y)).unwrap();
@@ -1383,7 +1519,7 @@ mod tests {
         static WORLD: std::sync::OnceLock<Overworld> = std::sync::OnceLock::new();
         let ow = WORLD.get_or_init(|| Overworld::generate(5)).clone();
         let mut app = App::new(seed);
-        app.save_dir = std::env::temp_dir().join("dwarfclone-no-saves-here");
+        app.save_dir = scratch();
         let mut a = adv::quick_start(ow, seed);
         a.leave();
         let ow = a.ow();
@@ -1470,5 +1606,80 @@ mod tests {
         let s = app.adv.as_ref().unwrap();
         assert_eq!(s.view, View::Local);
         assert!(s.flash.as_deref().map_or(false, |f| f.starts_with("You can't leave now")), "{:?}", s.flash);
+    }
+
+    /// The adventure's newest save of `kind` (autosave or not), loaded.
+    fn newest(app: &App, autosave: bool) -> (crate::saves::SaveMeta, Adventure) {
+        let m = crate::saves::list(&app.save_dir).into_iter().find(|m| m.kind == crate::saves::SaveKind::Adventure && m.autosave == autosave).expect("a save");
+        let a = crate::saves::read_adventure(&app.save_dir, &m.file, &|_, _| {}).unwrap();
+        (m, a)
+    }
+
+    /// Saved by the autosaves on the way (leaving a site, at dawn on the
+    /// road, going in), by F5 with something met on the road waiting, and
+    /// by the menu's "Save and quit"; F9 and the title's Continue put the
+    /// hero back just where they were.
+    #[test]
+    fn saved_and_loaded_by_keys() {
+        let (mut app, _) = road_app(14);
+        let dir = app.save_dir.clone();
+        assert!(crate::saves::list(&dir).is_empty());
+        // Out onto the road: the autosave, on the road.
+        app.on_key(key(KeyCode::Char('T')));
+        let (m, a) = newest(&app, true);
+        assert!(m.file.ends_with("-autosave.adv.json") && m.date.contains("on the road"), "{:?}", m);
+        assert!(a.visit.is_none() && a.at == app.adv.as_ref().unwrap().adv.at);
+        // A night's camp: autosaved at dawn.
+        app.on_key(key(KeyCode::Char('Z')));
+        let s = app.adv.as_ref().unwrap();
+        assert_eq!(crate::game::clock::hour(s.adv.clock), 6, "woke at dawn: {:?}", s.flash);
+        assert_eq!(newest(&app, true).1.clock, s.adv.clock, "the dawn's autosave");
+        // Something met: F5 saves it waiting.
+        app.adv.as_mut().unwrap().adv.knobs.set.insert("travel.encounters".into(), 50.0);
+        for i in 0..20 {
+            app.on_key(key(if i % 2 == 0 { KeyCode::Right } else { KeyCode::Left }));
+            if app.adv.as_ref().unwrap().meet.is_some() {
+                break;
+            }
+        }
+        let s = app.adv.as_ref().unwrap();
+        let (e, at, clock, lines) = (s.meet.clone().expect("met something"), s.adv.at, s.adv.clock, s.adv.log.len());
+        app.on_key(key(KeyCode::F(5)));
+        assert!(app.adv.as_ref().unwrap().flash.as_deref().unwrap_or("").starts_with("Saved to"));
+        let (_, a) = newest(&app, false);
+        assert_eq!(a.meet.as_ref(), Some(&e), "saved waiting");
+        // Slip away (or not) and wander; F9 brings it all back.
+        app.adv.as_mut().unwrap().meet = None;
+        app.adv.as_mut().unwrap().adv.knobs.set.insert("travel.encounters".into(), 0.0);
+        app.on_key(key(KeyCode::Right));
+        app.on_key(key(KeyCode::F(9)));
+        settle(&mut app);
+        let s = app.adv.as_ref().unwrap();
+        assert_eq!((s.view.clone(), s.adv.at, s.adv.clock, s.adv.log.len()), (View::Travel, at, clock, lines));
+        assert_eq!(s.meet.as_ref(), Some(&e), "it waits still");
+        // Stand and fight: in the wild with foes about, autosaved there.
+        app.on_key(key(KeyCode::Enter));
+        settle(&mut app);
+        let (m, a) = newest(&app, true);
+        assert!(a.visit.is_some() && m.date.contains(" in "), "{:?}", m);
+        let pos = hero(&app).pos;
+        let foes = |g: &Game| g.creatures.values().filter(|c| c.alive && c.target == Some(adv::HERO_ID)).count();
+        let n = foes(game(&app));
+        assert!(n > 0);
+        // The menu: save and quit; the title's Continue puts the hero back.
+        app.on_key(key(KeyCode::Esc));
+        app.on_key(key(KeyCode::Down));
+        app.on_key(key(KeyCode::Down));
+        assert_eq!(app.adv.as_ref().unwrap().view, View::Menu { sel: 2 });
+        app.on_key(key(KeyCode::Enter));
+        assert_eq!(app.mode, Mode::Title { sel: TITLE_CONTINUE });
+        assert!(app.adv.is_none());
+        app.on_key(key(KeyCode::Enter));
+        settle(&mut app);
+        assert_eq!(app.mode, Mode::Adventure);
+        let s = app.adv.as_ref().unwrap();
+        assert_eq!(s.view, View::Local);
+        assert_eq!((hero(&app).pos, foes(game(&app))), (pos, n), "just where they were, foes and all");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

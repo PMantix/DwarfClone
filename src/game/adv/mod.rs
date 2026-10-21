@@ -60,8 +60,12 @@ pub struct Adventure {
     /// The site the hero is in, its `Game` whole.
     #[serde(default)]
     pub visit: Option<Box<Visit>>,
+    /// Something met on the road and not yet fought or fled, held here
+    /// only while saved (the screen holds it in play: A11).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meet: Option<travel::Encounter>,
     /// What the hero changed in each site (a fort's save is its own memory).
-    #[serde(default)]
+    #[serde(default, with = "crate::saves::keyed")]
     pub memos: BTreeMap<SiteKey, SiteMemo>,
     #[serde(default)]
     pub fame: Fame,
@@ -303,6 +307,7 @@ impl Adventure {
             hero,
             company: Vec::new(),
             visit: None,
+            meet: None,
             memos: BTreeMap::new(),
             fame: Fame::default(),
             quests: Vec::new(),

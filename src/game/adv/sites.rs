@@ -15,6 +15,16 @@ use crate::geom::Pos;
 use crate::overworld::Overworld;
 use crate::world::World;
 
+impl Visit {
+    /// A visit just read from a save (A11): its lookups rebuilt, and nothing
+    /// more. Not a fort's `after_load`, which brings an old fort up to date
+    /// with a vault, a necromancer and lairs: a town loaded must not gain
+    /// them. (A fallen fort had those when it was first loaded.)
+    pub fn after_load(&mut self) {
+        self.g.rebuild_zone_over();
+    }
+}
+
 impl Adventure {
     /// Go into a site (leaving any site the hero is in first).
     pub fn enter(&mut self, key: SiteKey) -> Result<(), String> {
