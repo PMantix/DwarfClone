@@ -119,6 +119,7 @@ pub fn sources(input: Input) -> &'static [Source] {
         Input::CutGem => &[Craft(Recipe::CutGem)],
         // (The jeweler takes what furniture there is; none is made for it.)
         Input::Furniture => &[],
+        Input::Mechanism => &[Craft(Recipe::Mechanism)],
     }
 }
 
@@ -131,7 +132,7 @@ pub fn ore_for(metal: Mat) -> Option<Mat> {
 const MAX_DEPTH: u8 = 3;
 
 /// Every input, for counting them all in one pass.
-const INPUTS: [Input; 22] = [
+const INPUTS: [Input; 23] = [
     Input::Log,
     Input::Stone,
     Input::Brewable,
@@ -154,6 +155,7 @@ const INPUTS: [Input; 22] = [
     Input::Grain,
     Input::CutGem,
     Input::Furniture,
+    Input::Mechanism,
 ];
 
 /// Free items by input, counted once for a round of orders.

@@ -75,7 +75,7 @@ impl Blood {
 /// What bleeds this colour: None for a dwarf.
 pub fn blood_of(who: Option<Species>) -> Blood {
     match who {
-        Some(Species::Undead | Species::Husk) => Blood::Black,
+        Some(Species::Undead | Species::Husk | Species::Automaton) => Blood::Black,
         Some(Species::GiantSpider | Species::Scorpion) => Blood::Ichor,
         Some(Species::CaveHorror) => Blood::Violet,
         Some(Species::Beast(i)) => match crate::bestiary::beast(i).class {
