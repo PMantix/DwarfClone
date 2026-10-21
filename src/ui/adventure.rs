@@ -25,6 +25,29 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
+/// What a map cell holds for the window's big tiles to show through (in
+/// the window the map's tiles can be bigger than the text's cells).
+pub(crate) const HOLE: char = '\u{E000}';
+
+/// The adventure map at its own tile size, for the window: `cells` are
+/// `cols` x `rows` tiles, row by row, to be painted `tile` pixels square
+/// and centred over `area` (in cells) wherever a `HOLE` shows.
+pub(crate) struct BigMap {
+    pub area: Rect,
+    pub cols: u16,
+    pub rows: u16,
+    pub tile: u16,
+    pub cells: Vec<ratatui::buffer::Cell>,
+}
+
+thread_local! {
+    /// Set by the window before it draws: its cell size and the size it
+    /// would like the adventure map's tiles, in pixels. Unset in a terminal.
+    pub(crate) static TILE_PX: std::cell::Cell<Option<(u16, u16)>> = const { std::cell::Cell::new(None) };
+    /// The map drawn big this frame, for the window to take.
+    pub(crate) static BIG_MAP: std::cell::RefCell<Option<BigMap>> = const { std::cell::RefCell::new(None) };
+}
+
 /// The sidebar's width, as the fort's.
 const SIDE_W: u16 = 38;
 /// Rows of the log box under the map (with its border).
@@ -119,19 +142,25 @@ fn draw_local(f: &mut Frame, area: Rect, a: &Adventure, sight: &Sight, look: Opt
     let r = block.inner(area);
     f.render_widget(block, area);
     let w = &g.world;
-    let (vw, vh) = (r.width as i32, r.height as i32);
+    // In the window the tiles are drawn bigger than the text, so the hero,
+    // their foes and the blood read at a glance; Ctrl and + or - zoom them.
+    let big = TILE_PX.with(|t| t.get()).filter(|&(c, t)| c > 0 && t > c);
+    let (vw, vh) = match big {
+        Some((c, t)) => ((r.width as u32 * c as u32 / t as u32) as i32, (r.height as u32 * c as u32 / t as u32) as i32),
+        None => (r.width as i32, r.height as i32),
+    };
     if vw <= 0 || vh <= 0 {
         return;
     }
-    // Centred on the hero, unless the look cursor has wandered off screen.
+    // The view follows the hero, centred on them as in DF's adventure
+    // mode, unless the look cursor has wandered off screen.
     let mut focus = me;
     if let Some(p) = look {
         if (p.x - me.x).abs() > vw / 2 - 2 || (p.y - me.y).abs() > vh / 2 - 2 {
             focus = p;
         }
     }
-    let ox = if vw >= w.w { -(vw - w.w) / 2 } else { (focus.x - vw / 2).clamp(0, w.w - vw) };
-    let oy = if vh >= w.h { -(vh - w.h) / 2 } else { (focus.y - vh / 2).clamp(0, w.h - vh) };
+    let (ox, oy) = view_origin(focus, vw, vh);
     let z = me.z;
     // Under the sky the light of the hour tints what is seen.
     let sky = w.in_bounds(me) && w.outside(me);
@@ -181,11 +210,17 @@ fn draw_local(f: &mut Frame, area: Rect, a: &Adventure, sight: &Sight, look: Opt
         folk.insert((d.pos.x, d.pos.y), d);
     }
     let race = a.hero.race.color();
-    let buf = f.buffer_mut();
+    // (Big tiles go into a grid of their own, one a cell, and the map's
+    // cells are left as holes for the window to paint them through.)
+    let mut grid = big.map(|_| ratatui::buffer::Buffer::empty(Rect::new(0, 0, vw as u16, vh as u16)));
+    let (buf, bx, by) = match grid.as_mut() {
+        Some(g) => (g, 0, 0),
+        None => (f.buffer_mut(), r.x, r.y),
+    };
     for sy in 0..vh {
         for sx in 0..vw {
             let (x, y) = (ox + sx, oy + sy);
-            let cell = buf.get_mut(r.x + sx as u16, r.y + sy as u16);
+            let cell = buf.get_mut(bx + sx as u16, by + sy as u16);
             let p = Pos::new(x, y, z);
             if !w.in_bounds(p) {
                 cell.set_char(' ').set_fg(BLACK).set_bg(BLACK);
@@ -306,6 +341,22 @@ fn draw_local(f: &mut Frame, area: Rect, a: &Adventure, sight: &Sight, look: Opt
             cell.set_char(ch).set_fg(fg).set_bg(bg);
         }
     }
+    if let (Some(grid), Some((_, tile))) = (grid, big) {
+        let buf = f.buffer_mut();
+        for y in r.top()..r.bottom() {
+            for x in r.left()..r.right() {
+                buf.get_mut(x, y).set_char(HOLE).set_fg(BLACK).set_bg(BLACK);
+            }
+        }
+        let m = BigMap { area: r, cols: vw as u16, rows: vh as u16, tile, cells: grid.content };
+        BIG_MAP.with(|b| *b.borrow_mut() = Some(m));
+    }
+}
+
+/// The site tile at the view's top left corner, for a view `vw` x `vh`
+/// tiles centred on `focus` (what lies past the site's edge is dark).
+fn view_origin(focus: Pos, vw: i32, vh: i32) -> (i32, i32) {
+    (focus.x - vw / 2, focus.y - vh / 2)
 }
 
 /// A colour washed towards grey (for what is remembered, not seen).
