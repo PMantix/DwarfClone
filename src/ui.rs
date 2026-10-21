@@ -253,7 +253,7 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
             ('D', (255, 90, 40))
         } else if c.species == crate::creature::Species::Undead && c.general.is_some() {
             ('N', (190, 110, 240))
-        } else if let Some(look) = g.kin_look(c) {
+        } else if let Some(look) = g.kin_look(c).or_else(|| g.clockwork_look(c)) {
             look
         } else {
             (info.glyph, info.color)
@@ -3561,6 +3561,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 }
                 if let Some(desc) = &c.desc {
                     v.push(plain(desc.clone(), Color::Rgb(210, 160, 255)));
+                }
+                for line in g.clockwork_lines(c) {
+                    v.push(plain(line, Color::Rgb(215, 175, 90)));
                 }
                 let state = if c.body.unconscious() {
                     "Unconscious"
