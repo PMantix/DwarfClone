@@ -162,6 +162,13 @@ fn voice<'a>(p: &Person, topic: u64, tables: &[&'a [&'a str]; 4]) -> &'a str {
     stories::pick(p.h(topic), topic, tables[race_idx(p.race)])
 }
 
+/// The `n`th of a speaker's lines from a table: one speaker telling of
+/// two ruins doesn't say the same thing of both.
+fn voice_n<'a>(p: &Person, topic: u64, tables: &[&'a [&'a str]; 4], n: usize) -> &'a str {
+    let t = tables[race_idx(p.race)];
+    t[((p.h(topic) as usize % t.len()) + n) % t.len()]
+}
+
 fn race_idx(r: Race) -> usize {
     match r {
         Race::Dwarf => 0,
@@ -636,6 +643,8 @@ impl Adventure {
         let r = self.reach(p);
         let year = self.year();
         let mut v: Vec<Rumour> = Vec::new();
+        // How many of each kind told so far (forts, lairs, ruins, bones, sagas).
+        let mut told = [0usize; 5];
         let near = |d: i32| 100 * (r + 1) / (d + 2);
         let way = |to: (i32, i32)| format!(" {} {}.", cap(&days_words(cheb(to, at))), way_to(at, to));
         // A people talks most of what it cares for: dwarves of forts, elves
@@ -666,7 +675,7 @@ impl Adventure {
                 (_, Some(k)) => format!(", the last of them slain by {}", a_an(k)),
                 _ => String::new(),
             };
-            let mut text = fill(voice(p, 30 + i as u64, &FORT), &[("place", &f.name), ("when", &when_words(year, fell)), ("killer", &killer), ("treasure", &treasure)]);
+            let mut text = fill(voice_n(p, 30, &FORT, { told[0] += 1; told[0] - 1 }), &[("place", &f.name), ("when", &when_words(year, fell)), ("killer", &killer), ("treasure", &treasure)]);
             text.push_str(&way(f.site));
             v.push(Rumour { text: cap(&text), about: Some(About::Fort(i)), weight: near(d) * (2 + left.len() as i32).min(5) * likes(0) });
         }
@@ -676,7 +685,7 @@ impl Adventure {
             let d = cheb((lair.x, lair.y), at);
             let beast = format!("{} the {}", b.name, b.kind);
             let place = format!("{}, in {}", lair.name, land_name(ow, lair.x, lair.y));
-            let mut text = fill(voice(p, 50 + fid as u64, &LAIR), &[("beast", &beast), ("place", &place)]);
+            let mut text = fill(voice_n(p, 50, &LAIR, { told[1] += 1; told[1] - 1 }), &[("beast", &beast), ("place", &place)]);
             text.push_str(&way((lair.x, lair.y)));
             v.push(Rumour { text, about: Some(About::Figure(fid)), weight: near(d) * (3 + b.kills.min(4) as i32) * likes(1) / 2 });
         }
@@ -685,7 +694,7 @@ impl Adventure {
             if d > r || ow.fort_at(s.x, s.y).is_some() {
                 continue;
             }
-            let mut text = fill(voice(p, 70 + s.id as u64, &RUIN), &[("place", &s.name), ("kind", s.kind.name())]);
+            let mut text = fill(voice_n(p, 70, &RUIN, { told[2] += 1; told[2] - 1 }), &[("place", &s.name), ("kind", s.kind.name())]);
             text.push_str(&way((s.x, s.y)));
             v.push(Rumour { text, about: Some(About::Site(s.id)), weight: near(d) * 2 * likes(2) });
         }
@@ -695,12 +704,12 @@ impl Adventure {
                 continue;
             }
             let land = land_name(ow, b.x, b.y);
-            let mut text = fill(voice(p, 90 + i as u64, &BONES), &[("name", &b.name), ("land", &land), ("when", &when_words(year, b.year))]);
+            let mut text = fill(voice_n(p, 90, &BONES, { told[3] += 1; told[3] - 1 }), &[("name", &b.name), ("land", &land), ("when", &when_words(year, b.year))]);
             text.push_str(&way((b.x, b.y)));
             v.push(Rumour { text, about: Some(About::Remains(i)), weight: near(d) * (1 + b.gear.len().min(4) as i32) * likes(3) });
         }
-        for (i, s) in ow.sagas.iter().enumerate().rev().take(6) {
-            let text = fill(voice(p, 110 + i as u64, &SAGA), &[("title", &s.title)]);
+        for s in ow.sagas.iter().rev().take(6) {
+            let text = fill(voice_n(p, 110, &SAGA, { told[4] += 1; told[4] - 1 }), &[("title", &s.title)]);
             v.push(Rumour { text, about: None, weight: 40 * likes(4) });
         }
         if p.race == Race::Goblin {
@@ -821,6 +830,24 @@ impl Adventure {
                 format!("{}? {} {}{}.", cap(&n), cap(&days_words(d)), way_to(at, c), past)
             })
             .collect()
+    }
+
+    /// Before setting out, the bot (A18) asks one of the home folk for
+    /// rumours, as a player would: the places heard of are marked, and the
+    /// first rumour is the line for its story. No time passes, no dice.
+    pub fn hear_at_home(&mut self) -> Option<String> {
+        let v = self.visit.as_ref()?;
+        let id = v.g.creatures.values().filter(|c| c.alive && c.visitor == FOLK && !c.hostile() && !c.siege).map(|c| c.id).min()?;
+        let p = self.person(id)?;
+        let chat = self.greet(&p);
+        if chat.closed {
+            return None;
+        }
+        let rs = self.rumours(&p, self.at);
+        for r in &rs {
+            self.hear(r);
+        }
+        rs.first().map(|r| format!("{}, {}, says: \"{}\"", p.name, p.role, r.text))
     }
 
     /// "Tell me of yourself": name, role, home, a memory, a temper.
