@@ -177,6 +177,10 @@ impl Game {
         if !lost.is_empty() {
             hurt.push(format!("{} lost {} {}.", cap(they), if they == "she" { "her" } else if they == "he" { "his" } else { "their" }, list(&lost.iter().map(|s| s.to_string()).collect::<Vec<_>>())));
         }
+        let scars = d.body.losses();
+        if !scars.is_empty() {
+            hurt.push(format!("{} {} the marks of battle: {}.", cap(they), if they == "they" { "bear" } else { "bears" }, scars.join(", ")));
+        }
         if !hurt.is_empty() {
             out.push(hurt.join(" "));
         }

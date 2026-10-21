@@ -347,10 +347,8 @@ impl Battle {
                 let body = self.body_mut(i);
                 body.tick_with(&bp, true);
                 let (rate, dead) = (body.bleed_rate(), body.dead);
-                if rate > 0 {
-                    let (p, who) = (self.pos(i), self.blood(i));
-                    self.g.blood_trail(p, who, rate);
-                }
+                let (p, who, id) = (self.pos(i), self.blood(i), self.warriors[i].id);
+                self.g.walk_gore(id, p, who, rate);
                 if dead {
                     self.die(i, None, None);
                     continue;
@@ -546,7 +544,7 @@ impl Battle {
         w.shots += 1;
         w.attack_cd = 14;
         let dmg = Game::bolt_damage(Some(w.ammo_mat)) * self.g.knob("bolt.mult", 1.0) as f32;
-        let att = Fighter { name: base.name, skill: base.skill + draw, dmg, verb: "shoots", edged: true, helm: 0, mail: 0, shield: false, size: 1.0, teeth: true };
+        let att = Fighter { name: base.name, skill: base.skill + draw, dmg, verb: "shoots", edged: true, helm: 0, mail: 0, shield: false, size: 1.0, teeth: true, weapon: None, held: None };
         let def = self.fighter(d);
         self.g.count("arena.bolts", 1);
         if self.warriors[a].ammo == 0 {

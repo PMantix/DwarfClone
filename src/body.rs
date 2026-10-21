@@ -110,6 +110,99 @@ pub struct Body {
     /// Hundredths of each part's rate clotted but not yet taken from `bleeds`.
     #[serde(default)]
     pub clot_frac: [i32; 7],
+    /// What blows did beyond hit points: teeth, eyes, broken bones, opened
+    /// arteries, spilled guts, being knocked out cold.
+    #[serde(default)]
+    pub harm: Harm,
+}
+
+/// Lasting losses and hurts a blow can leave, DF-style. Losses (teeth,
+/// eyes, ears, nose, fingers) never come back; bones knit as the part
+/// heals; arteries close as the bleeding stops; one knocked out comes to.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Harm {
+    /// Teeth knocked out.
+    #[serde(default)]
+    pub teeth: u8,
+    /// Eyes put out or gouged (0..=2): the fighter sees and aims worse.
+    #[serde(default)]
+    pub eyes: u8,
+    /// Ears torn off (0..=2).
+    #[serde(default)]
+    pub ears: u8,
+    /// The nose torn or cut off.
+    #[serde(default)]
+    pub nose: bool,
+    /// Fingers cut off the left and the right hand: a weaker grip.
+    #[serde(default)]
+    pub fingers: [u8; 2],
+    /// A broken bone in the part (ribs for the upper body, the skull for the head).
+    #[serde(default)]
+    pub broken: [bool; 7],
+    /// An artery opened in the part: it spurts until it clots.
+    #[serde(default)]
+    pub artery: [bool; 7],
+    /// The belly opened and the guts spilled out.
+    #[serde(default)]
+    pub guts: bool,
+    /// Body ticks left senseless (knocked about the head, or swooning from
+    /// the pain): they can't dodge or block, and blows find the openings.
+    /// (Not `unconscious`: they stay on their feet, a threat still.)
+    #[serde(default)]
+    pub out: i32,
+    /// Body ticks left of nausea (from a blow to the gut, or the sight of one).
+    #[serde(default)]
+    pub sick: i32,
+}
+
+/// One of the extra hurts a blow did (beyond the wound itself), for the
+/// telling and the mess.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hurt {
+    Teeth(u8),
+    /// Put out by a blunt blow (`false`) or gouged by an edge (`true`).
+    Eye(bool),
+    Ear,
+    Nose,
+    Fingers(u8),
+    Bone,
+    Skull,
+    Ribs,
+    Guts,
+    Artery,
+    /// Knocked senseless by a blow to the head.
+    KnockedOut,
+    /// Fainted from the pain.
+    Fainted,
+    /// Retched (from a blow to the gut).
+    Vomit,
+}
+
+/// How deep a blow went, in DF's layered way: "cutting through the skin
+/// and tearing the muscle", "bruising the muscle and cracking the bone".
+/// Empty for a severing or a killing blow (they're told otherwise). `h`
+/// picks between wordings.
+pub fn layers(part: Part, dmg: i32, max: i32, edged: bool, w: Wound, h: u64) -> &'static str {
+    let r = dmg * 100 / max.max(1);
+    let pick = |a: &'static str, b: &'static str| if h % 2 == 0 { a } else { b };
+    let skull = part == Part::Head;
+    match (edged, w) {
+        (_, Wound::Sever | Wound::Fatal) => "",
+        (true, _) if r < 15 => pick("cutting the skin", "opening the skin"),
+        (true, _) if r < 40 => pick("cutting through the skin and tearing the muscle", "slicing through the skin and into the muscle"),
+        (true, Wound::Mangle) if skull => pick("cutting through the flesh and cracking the skull", "hewing through the flesh and splitting the skull"),
+        (true, Wound::Mangle) => pick("tearing apart the muscle and shattering the bone", "hacking through the muscle and splintering the bone"),
+        (true, _) if r < 75 => pick("tearing apart the muscle and chipping the bone", "cutting deep into the muscle and nicking the bone"),
+        (true, _) if skull => "cleaving through the flesh and cracking the skull",
+        (true, _) => "cleaving through the muscle and cracking the bone",
+        (false, _) if r < 15 => pick("bruising the skin", "raising a welt"),
+        (false, _) if r < 40 => pick("bruising the muscle", "bruising the flesh deeply"),
+        (false, Wound::Mangle) if skull => "fracturing the skull",
+        (false, Wound::Mangle) => pick("crushing the muscle and shattering the bone", "pulping the flesh and breaking the bone"),
+        (false, _) if r < 75 => pick("bruising the muscle and cracking the bone", "jarring the bone"),
+        (false, _) if skull => "cracking the skull",
+        (false, _) => "crushing the muscle and breaking the bone",
+    }
 }
 
 /// Infection level at which a wound has festered.
@@ -173,7 +266,197 @@ impl Body {
             bandaged: [false; 7],
             blood_frac: 0,
             clot_frac: [0; 7],
+            harm: Harm::default(),
         }
+    }
+
+    /// The extra hurts a blow does beyond its wound (`w`, already dealt),
+    /// chosen by the hash `h`: an ear or an eye from a blow to the head,
+    /// fingers from a cut to an arm, an opened artery, spilled guts, broken
+    /// bones, a cracked skull that knocks one out, fainting from the pain.
+    /// They're applied to the body (extra bleeding, the count out cold) and
+    /// returned for the telling. `artery` is the bleed an opened artery
+    /// adds (in tenths per body tick).
+    pub fn harm_from(&mut self, part: Part, w: Wound, dmg: i32, edged: bool, h: u64, artery: i32) -> Vec<Hurt> {
+        let mut v = Vec::new();
+        let i = part.idx();
+        let hard = w == Wound::Gash || w == Wound::Mangle || w == Wound::Bruise && dmg * 2 >= self.max[i];
+        if self.dead || !hard || self.lost[i] {
+            return v;
+        }
+        let roll = |k: u64| (h >> (k * 7)) % 100;
+        let heavy = w == Wound::Mangle;
+        match part {
+            Part::Head => {
+                let r = roll(1);
+                if edged {
+                    if r < 14 && self.harm.ears < 2 {
+                        self.harm.ears += 1;
+                        v.push(Hurt::Ear);
+                    } else if r < 24 && !self.harm.nose {
+                        self.harm.nose = true;
+                        v.push(Hurt::Nose);
+                    } else if r < 34 && self.harm.eyes < 2 {
+                        self.harm.eyes += 1;
+                        v.push(Hurt::Eye(true));
+                    }
+                } else if r < 10 && self.harm.eyes < 2 {
+                    self.harm.eyes += 1;
+                    v.push(Hurt::Eye(false));
+                }
+                if heavy {
+                    if !self.harm.broken[i] {
+                        self.harm.broken[i] = true;
+                        v.push(Hurt::Skull);
+                    }
+                    if roll(2) < if edged { 10 } else { 35 } {
+                        self.harm.out = self.harm.out.max(2 + (roll(3) % 3) as i32);
+                        v.push(Hurt::KnockedOut);
+                    }
+                } else if !edged && roll(2) < 4 {
+                    self.harm.out = self.harm.out.max(1 + (roll(3) % 2) as i32);
+                    v.push(Hurt::KnockedOut);
+                }
+            }
+            Part::LowerBody => {
+                if edged && (heavy && roll(1) < 35 || roll(1) < 4) && !self.harm.guts {
+                    self.harm.guts = true;
+                    self.bleeds[i] += artery / 3;
+                    v.push(Hurt::Guts);
+                }
+                if roll(2) < if edged { 12 } else { 30 } {
+                    self.harm.sick = self.harm.sick.max(6);
+                    v.push(Hurt::Vomit);
+                }
+            }
+            Part::UpperBody => {
+                if !edged && heavy && !self.harm.broken[i] {
+                    self.harm.broken[i] = true;
+                    v.push(Hurt::Ribs);
+                } else if edged && roll(1) < if heavy { 8 } else { 3 } && !self.harm.artery[i] {
+                    self.harm.artery[i] = true;
+                    self.bleeds[i] += artery;
+                    v.push(Hurt::Artery);
+                }
+            }
+            _ => {
+                if edged {
+                    if roll(1) < if heavy { 10 } else { 5 } && !self.harm.artery[i] {
+                        self.harm.artery[i] = true;
+                        self.bleeds[i] += artery;
+                        v.push(Hurt::Artery);
+                    }
+                    let hand = match part {
+                        Part::LeftArm => Some(0),
+                        Part::RightArm => Some(1),
+                        _ => None,
+                    };
+                    if let Some(k) = hand {
+                        if roll(2) < 12 && self.harm.fingers[k] < 5 {
+                            let n = ((1 + roll(3) % 3) as u8).min(5 - self.harm.fingers[k]);
+                            self.harm.fingers[k] += n;
+                            v.push(Hurt::Fingers(n));
+                        }
+                    }
+                }
+                if (heavy || !edged && dmg * 2 >= self.max[i] && roll(2) < 30) && !self.harm.broken[i] {
+                    self.harm.broken[i] = true;
+                    v.push(Hurt::Bone);
+                }
+            }
+        }
+        // The pain of a heavy wound: now and then one faints from it.
+        if heavy && part != Part::Head && roll(4) < 4 && self.harm.out == 0 {
+            self.harm.out = 1 + (roll(5) % 2) as i32;
+            v.push(Hurt::Fainted);
+        }
+        if v.iter().any(|h| matches!(h, Hurt::Artery | Hurt::Guts)) {
+            self.bandaged[i] = false;
+            self.sync_bleeding();
+        }
+        v
+    }
+
+    /// What a fighter's lasting hurts cost them: (a multiplier on the
+    /// damage they deal, a penalty to their skill). Lost fingers or a
+    /// broken weapon arm weaken the grip; a lost eye spoils the aim.
+    pub fn fight_mods(&self) -> (f32, u32) {
+        let h = &self.harm;
+        let mut dmg = 1.0 - 0.08 * h.fingers[1] as f32;
+        if h.broken[Part::RightArm.idx()] && !self.splint[Part::RightArm.idx()] {
+            dmg -= 0.1;
+        }
+        let skill = match h.eyes {
+            0 => 0,
+            1 => 1,
+            _ => 4,
+        };
+        (dmg.max(0.4), skill)
+    }
+
+    /// Lasting losses in words ("missing 3 teeth", "one eye lost"), for
+    /// the unit sheet and the life story.
+    pub fn losses(&self) -> Vec<String> {
+        let h = &self.harm;
+        let mut v = Vec::new();
+        match h.eyes {
+            0 => {}
+            1 => v.push("one eye lost".to_string()),
+            _ => v.push("blinded, both eyes lost".to_string()),
+        }
+        match h.teeth {
+            0 => {}
+            1 => v.push("missing a tooth".to_string()),
+            n => v.push(format!("missing {} teeth", n)),
+        }
+        if h.nose {
+            v.push("nose torn off".to_string());
+        }
+        match h.ears {
+            0 => {}
+            1 => v.push("an ear torn off".to_string()),
+            _ => v.push("both ears torn off".to_string()),
+        }
+        for (k, hand) in ["left", "right"].iter().enumerate() {
+            match h.fingers[k] {
+                0 => {}
+                1 => v.push(format!("a finger lost from the {} hand", hand)),
+                5 => v.push(format!("every finger lost from the {} hand", hand)),
+                n => v.push(format!("{} fingers lost from the {} hand", n, hand)),
+            }
+        }
+        v
+    }
+
+    /// Hurts that mend, in words: broken bones, opened arteries, spilled
+    /// guts, out cold.
+    pub fn hurts(&self) -> Vec<String> {
+        let h = &self.harm;
+        let mut v = Vec::new();
+        for p in PARTS {
+            let i = p.idx();
+            if h.broken[i] && !self.lost[i] {
+                v.push(match p {
+                    Part::Head => "cracked skull".to_string(),
+                    Part::UpperBody => "broken ribs".to_string(),
+                    Part::LowerBody => "broken hip".to_string(),
+                    _ => format!("broken {}", p.name()),
+                });
+            }
+            if h.artery[i] {
+                v.push(format!("opened artery in the {}", p.name()));
+            }
+        }
+        if h.guts {
+            v.push("belly torn open".to_string());
+        }
+        if h.out > 0 && !self.dead {
+            v.push("knocked out".to_string());
+        }
+        if h.sick > 0 {
+            v.push("nauseous".to_string());
+        }
+        v
     }
 
     pub fn pick_part(&self, rng: &mut Rng) -> Part {
@@ -257,6 +540,14 @@ impl Body {
     pub fn tick_with(&mut self, p: &BleedParams, moving: bool) {
         if self.dead {
             return;
+        }
+        // One out cold comes to; nausea passes; an artery that has clotted is shut.
+        self.harm.out = (self.harm.out - 1).max(0);
+        self.harm.sick = (self.harm.sick - 1).max(0);
+        for i in 0..7 {
+            if self.harm.artery[i] && self.bleeds[i] == 0 {
+                self.harm.artery[i] = false;
+            }
         }
         // A save from before per-part bleeding: its bleeding goes on the upper body.
         if self.bleeding > 0 && self.bleeds == [0; 7] {
@@ -380,6 +671,13 @@ impl Body {
                 // A set bone mends twice as fast.
                 let a = if self.splint[i] { amount * 2 } else { amount };
                 self.hp[i] = (self.hp[i] + a).min(self.max[i]);
+                // A bone knits as the part heals; the belly closes.
+                if self.hp[i] * 10 >= self.max[i] * 6 {
+                    self.harm.broken[i] = false;
+                    if i == Part::LowerBody.idx() {
+                        self.harm.guts = false;
+                    }
+                }
             }
         }
     }

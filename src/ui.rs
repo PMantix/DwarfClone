@@ -260,7 +260,8 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
         beasts.insert((c.pos.x, c.pos.y), (glyph, rgb(color), c.hostile()));
     }
     let mut items: HashMap<(i32, i32), (char, Color)> = HashMap::new();
-    for it in g.items.values().filter(|it| it.pos.z == z && it.carried_by.is_none() && it.container.is_none()) {
+    let flying = g.flying_items();
+    for it in g.items.values().filter(|it| it.pos.z == z && it.carried_by.is_none() && it.container.is_none() && !flying.contains(&it.id)) {
         // Containers win the tile so stockpiles read as rows of barrels and bins.
         let key = (it.pos.x, it.pos.y);
         if it.kind.is_container() || !items.contains_key(&key) {
@@ -269,6 +270,8 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
     }
     // Swings, parries and bolts in flight at drill (and bolts in battle).
     let fx: HashMap<(i32, i32), (char, Color)> = g.drill_fx(z).into_iter().map(|(p, c, col)| ((p.x, p.y), (c, rgb(col)))).collect();
+    // Blows flashing, blood and severed parts flying (gore.rs).
+    let gore_fx: HashMap<(i32, i32), (char, (u8, u8, u8), Option<(u8, u8, u8)>)> = g.gore_fx(z).into_iter().map(|(p, c, f, b)| ((p.x, p.y), (c, f, b))).collect();
     let planned: HashMap<(i32, i32), crate::game::ConstructKind> =
         g.constructions.values().filter(|c| c.pos.z == z).map(|c| ((c.pos.x, c.pos.y), c.kind)).collect();
     let sel = selection_box(app);
@@ -391,16 +394,10 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                 }
             }
             if t.revealed && !t.kind.solid() {
-                // Blood soaks the floor: a dark stain, a pool where it's thick.
+                // Blood soaks the floor: drops, pools, vomit, footprints (gore.rs).
                 if let Some(s) = g.gore.stains.get(&p) {
-                    let (r, gg, b) = s.rgb();
-                    bg = Color::Rgb(r, gg, b);
-                    let plain = matches!(ch, '.' | ',' | '`' | '\'' | '·' | '"' | '=' | ';');
-                    if plain {
-                        let bright = |v: u8| (v as u16 * 3 / 2 + 40).min(255) as u8;
-                        fg = Color::Rgb(bright(r), bright(gg), bright(b));
-                        ch = if s.amt >= crate::game::gore::POOL { '≈' } else if s.amt >= 2 { '·' } else { ch };
-                    }
+                    let (c, f2, b2) = crate::game::gore::floor_look(s, ch, tup(fg), tup(bg));
+                    (ch, fg, bg) = (c, rgb(f2), rgb(b2));
                 }
                 // Smoke drifting over it.
                 let k = g.smoke_at(p) as u32;
@@ -410,6 +407,13 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                         ch = if k >= 4 { '▒' } else { '░' };
                         fg = Color::Rgb(175, 175, 180);
                     }
+                }
+            }
+            // Blood dashed up the walls.
+            if t.revealed && t.kind.solid() {
+                if let Some(s) = g.wall_stain(p) {
+                    let (c, f2, b2) = crate::game::gore::wall_look(s, ch, tup(fg));
+                    (ch, fg, bg) = (c, rgb(f2), rgb(b2));
                 }
             }
             if t.revealed && g.web_at(p) {
@@ -464,6 +468,15 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
                 if t.revealed {
                     ch = fc;
                     fg = fcol;
+                }
+            }
+            if let Some(&(gc, gcol, gbg)) = gore_fx.get(&(wx, wy)) {
+                if t.revealed {
+                    ch = gc;
+                    fg = rgb(gcol);
+                    if let Some(b) = gbg {
+                        bg = rgb(b);
+                    }
                 }
             }
             match app.mode {
@@ -1659,6 +1672,9 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
             v.push(plain("  A dirty wound (needs cleaning)".into(), Color::Rgb(200, 180, 90)));
         }
         v.extend(hurt);
+    }
+    if let Some(w) = g.coat_words(d.id) {
+        v.push(plain(format!("  {}", w), Color::Rgb(220, 70, 70)));
     }
     v.extend(health::card_history(d));
     v.push(Line::default());
@@ -3545,7 +3561,7 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                     v.push(plain(line, Color::Rgb(230, 160, 255)));
                 }
                 if let Some(w) = c.weapon.and_then(|id| g.items.get(&id)) {
-                    v.push(plain(format!("Wields {}", w.name()), detail_col));
+                    v.push(plain(format!("Wields {}", g.weapon_words(w)), detail_col));
                 }
                 for a in c.armor.iter().filter_map(|id| g.items.get(id)) {
                     v.push(plain(format!("Wears {}", a.name()), detail_col));
@@ -3573,6 +3589,12 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 }
                 for part in PARTS.iter().filter(|p| c.body.part_status(**p) != "fine") {
                     v.push(plain(format!("{}: {}", part.name(), c.body.part_status(*part)), Color::Rgb(240, 130, 100)));
+                }
+                for h in c.body.hurts().into_iter().chain(c.body.losses()) {
+                    v.push(plain(cap(&h), Color::Rgb(240, 130, 100)));
+                }
+                if let Some(w) = g.coat_words(c.id) {
+                    v.push(plain(w, Color::Rgb(220, 70, 70)));
                 }
             }
         }
@@ -3703,6 +3725,11 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
             let bright = |v: u8| (v as u16 * 3 / 2 + 60).min(255) as u8;
             v.push(plain(cap(&s.describe()), Color::Rgb(bright(r), bright(gg), bright(b))));
         }
+        if let Some(s) = g.wall_stain(p) {
+            let (r, gg, b) = s.rgb();
+            let bright = |v: u8| (v as u16 * 3 / 2 + 60).min(255) as u8;
+            v.push(plain(format!("The wall is splashed with {}", s.stuff()), Color::Rgb(bright(r), bright(gg), bright(b))));
+        }
         for line in g.magic_tile_lines(p) {
             v.push(plain(line, Color::Rgb(255, 225, 150)));
         }
@@ -3717,6 +3744,14 @@ fn cursor_info_terrain(g: &Game, p: Pos) -> Vec<Line<'static>> {
         v.push(plain("Underground".into(), MUTED));
     }
     v
+}
+
+/// A colour as its red, green and blue (grey for a named colour).
+fn tup(c: Color) -> (u8, u8, u8) {
+    match c {
+        Color::Rgb(r, g, b) => (r, g, b),
+        _ => (128, 128, 128),
+    }
 }
 
 fn cap(s: &str) -> String {
@@ -4420,16 +4455,39 @@ fn draw_grow(f: &mut Frame, area: Rect, g: &Game, (n, e, s, w): (i32, i32, i32, 
 }
 
 /// Filters for the reports screen.
-pub const REPORT_FILTERS: [&str; 5] = ["All", "News", "Combat", "Deaths", "People"];
+pub const REPORT_FILTERS: [&str; 6] = ["All", "News", "Combat", "Deaths", "People", "Fights"];
 
-fn report_kind(text: &str, color: (u8, u8, u8)) -> [bool; 5] {
+fn report_kind(text: &str, color: (u8, u8, u8)) -> [bool; 6] {
     let has = |words: &[&str]| words.iter().any(|w| text.contains(w));
     let death = color == (255, 60, 60) || has(&["has died", "bled to death", "starved to death", "struck down", "has been slain", "fell on the expedition"]);
     let blow = has(&[" in the head", " in the upper body", " in the lower body", " in the left ", " in the right ", "blocks", "deflects", "misses"]);
     let combat = blow || death || has(&["siege", "goblin", "flees", "fleeing", "attack", "army", "breathes fire", "cage trap", "raises the dead", "duel"]);
     let people = has(&["arrived", "born", "married", "mood", "artifact", "known as", "elected", "made", "hero", "visitor", "bard", "stranger", "joined", "come of age", "festival", "feast"]) && !blow;
     let routine = blow || has(&["has made ", "has been completed", "Work order", "waiting to be built", "needs ", "It has started", "skies have"]);
-    [true, !routine, combat, death, people]
+    [true, !routine, combat, death, people, false]
+}
+
+/// The fights lately, blow by blow (the Reports' last tab): each under a
+/// heading of where and how bloody, misses counted rather than repeated.
+fn fight_report_lines(g: &Game) -> Vec<Line<'static>> {
+    let mut v = Vec::new();
+    if g.gore.fights.is_empty() {
+        v.push(plain("No fights yet. Every blow of the next one will be told here.".into(), MUTED));
+    }
+    for f in &g.gore.fights {
+        v.push(Line::default());
+        v.push(Line::from(Span::styled(g.fight_title(f), Style::default().fg(KEY).add_modifier(Modifier::BOLD))));
+        for (text, grade) in Game::fight_lines(f) {
+            let c = match grade {
+                0 => MUTED,
+                1 => Color::Rgb(215, 185, 165),
+                2 => Color::Rgb(255, 150, 110),
+                _ => Color::Rgb(255, 90, 90),
+            };
+            v.push(plain(format!("  {}", text), c));
+        }
+    }
+    v
 }
 
 /// Every announcement still on record, newest at the bottom.
@@ -4444,8 +4502,23 @@ fn draw_reports(f: &mut Frame, area: Rect, g: &Game, filter: usize, scroll: usiz
             [Span::styled(format!(" {} {} ", i + 1, n), st), Span::raw(" ")]
         })
         .collect();
-    let shown: Vec<&crate::game::LogEntry> = g.log.iter().filter(|e| report_kind(&e.text, e.color)[filter]).collect();
     let rows = r.height.saturating_sub(4) as usize;
+    if REPORT_FILTERS[filter] == "Fights" {
+        let all = fight_report_lines(g);
+        let scroll = scroll.min(all.len().saturating_sub(rows));
+        let end = all.len() - scroll;
+        let mut v: Vec<Line<'static>> = vec![Line::from(tabs), Line::default()];
+        v.extend(all[end.saturating_sub(rows)..end].iter().cloned());
+        let title = format!(" Fight log: {} fights · ↑↓ PgUp PgDn scroll · Tab/1-6 filter · Esc back ", g.gore.fights.len());
+        f.render_widget(
+            Paragraph::new(v).style(Style::default().bg(Color::Rgb(12, 12, 20))).block(
+                Block::default().borders(Borders::ALL).border_style(Style::default().fg(KEY)).title(Span::styled(title, Style::default().fg(KEY))),
+            ),
+            r,
+        );
+        return;
+    }
+    let shown: Vec<&crate::game::LogEntry> = g.log.iter().filter(|e| report_kind(&e.text, e.color)[filter]).collect();
     let max_scroll = shown.len().saturating_sub(rows);
     let scroll = scroll.min(max_scroll);
     let end = shown.len() - scroll;

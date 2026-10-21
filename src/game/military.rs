@@ -310,6 +310,8 @@ impl Game {
             shield: false,
             size: 1.0,
             teeth: true,
+            weapon: None,
+            held: None,
         };
         let def = self.creature_fighter(c);
         let mut body = c.body.clone();
@@ -470,6 +472,8 @@ mod tests {
                 shield: false,
                 size: 1.0,
                 teeth: true,
+                weapon: None,
+                held: None,
             };
             let mut lost = 0;
             for _ in 0..400 {
