@@ -505,14 +505,14 @@ impl Game {
             .gore
             .stains
             .iter()
-            .filter(|(p, s)| tick >= s.at + 100 && w.t(**p).revealed && !w.outside(**p) && !self.claimed.contains(*p))
+            .filter(|(p, s)| !s.prints && tick >= s.at + 100 && w.t(**p).revealed && !w.outside(**p) && !self.claimed.contains(*p))
             .map(|(p, _)| *p)
             .take(400)
             .collect();
         // A floor beside a bloodied wall, to scrub the wall from.
         let mut spots = spots;
         for (q, s) in self.gore.walls.iter().take(200) {
-            if tick < s.at + 100 || w.outside(*q) {
+            if tick < s.at + 100 || s.amt < 2 || w.outside(*q) {
                 continue;
             }
             if let Some(f) = DIRS4.iter().map(|&(dx, dy)| q.offset(dx, dy, 0)).find(|f| w.in_bounds(*f) && w.walkable(*f) && w.t(*f).revealed && !self.claimed.contains(f)) {
@@ -887,8 +887,12 @@ impl Game {
     pub(super) fn drop_bit(&mut self, label: String, mat: Mat, at: Pos, from: Pos, far: i32, who: Option<Species>) -> u32 {
         let lands = self.fling(at, from, far, who, label.len() as u64);
         let id = self.spawn_item(ItemKind::BodyPart, mat, lands);
+        // An ear, an eye, a nose, fingers: left lying as part of the scene
+        // (nobody goes out to fetch them; they rot where they fell).
+        let small = [" ear", " eye", " nose"].iter().any(|e| label.ends_with(e)) || label.contains("finger");
         if let Some(it) = self.items.get_mut(&id) {
             it.label = Some(label);
+            it.forbidden = small;
         }
         if lands != at && lands.z == at.z {
             let steps = (lands.x - at.x).abs().max((lands.y - at.y).abs()) as u64;
@@ -903,7 +907,11 @@ impl Game {
     /// guts spilled, an artery spurting, vomit; and what the witnesses saw.
     pub(super) fn hurt_mess(&mut self, b: &Blow, from: Pos, at: Pos, owner: &str, seen: &str, who: Option<Species>) {
         let whose = possessive(owner);
+        let bits = self.knob("gore.bits", 1.0) > 0.0;
         for h in b.hurts.clone() {
+            if !bits && matches!(h, Hurt::Ear | Hurt::Nose | Hurt::Eye(true) | Hurt::Fingers(_)) {
+                continue;
+            }
             match h {
                 Hurt::Ear => {
                     self.drop_bit(format!("{} ear", whose), Mat::Flesh, at, from, 1, who);
@@ -1217,8 +1225,8 @@ pub(super) fn blow_words(
             Hurt::Ribs => pick(4, &["Ribs are broken!", "Ribs crack!"]).to_string(),
             Hurt::Guts => pick(5, &["The belly is opened and the guts spill out!", "The guts spill out onto the ground!"]).to_string(),
             Hurt::Artery => pick(6, &["An artery has been opened!", "An artery is cut, and blood spurts!"]).to_string(),
-            Hurt::KnockedOut => format!("{} is knocked unconscious!", them),
-            Hurt::Fainted => format!("{} faints from the pain!", them),
+            Hurt::KnockedOut => format!("{} is knocked senseless!", them),
+            Hurt::Fainted => format!("{} nearly faints from the pain!", them),
             Hurt::Vomit => format!("{} {}.", them, pick(7, &["vomits", "retches", "doubles over, retching"])),
             _ => continue,
         };
@@ -1621,17 +1629,17 @@ mod tests {
         assert!(b.fight_mods().1 >= 1 && b.losses().iter().any(|s| s.contains("eye")));
         let mut b = find(Part::Head, Wound::Mangle, false, &|h| *h == Hurt::KnockedOut).unwrap();
         b.hp = b.max;
-        assert!(b.unconscious(), "knocked out, yet awake");
+        assert!(b.harm.out > 0 && b.hurts().contains(&"knocked out".to_string()), "knocked out, yet awake");
         for _ in 0..20 {
             b.tick();
         }
-        assert!(!b.unconscious(), "never came to");
+        assert!(b.harm.out == 0, "never came to");
         // Losses stay; a broken bone knits as the part heals.
         let mut b = find(Part::LeftLeg, Wound::Mangle, false, &|h| *h == Hurt::Bone).unwrap();
-        assert!(b.limp() > 0);
+        assert!(b.hurts().contains(&"broken left leg".to_string()));
         b.harm.teeth = 3;
         b.heal(100);
-        assert!(!b.harm.broken[Part::LeftLeg.idx()] && b.limp() == 0);
+        assert!(!b.harm.broken[Part::LeftLeg.idx()]);
         assert!(b.losses().contains(&"missing 3 teeth".to_string()));
         // And it all saves.
         let back: Body = serde_json::from_str(&serde_json::to_string(&b).unwrap()).unwrap();

@@ -197,7 +197,8 @@ impl Game {
             held: None,
         };
         self.apply_gear(&mut f, c.weapon, &c.armor, c.body.can_hold());
-        f.weapon = f.weapon.map(|w| format!("its {}", w));
+        let pron = if c.species.person() { "their" } else { "its" };
+        f.weapon = f.weapon.map(|w| format!("{} {}", pron, w));
         self.gifted_fighter(c, &mut f);
         super::gore::hurt_fighter(&mut f, &c.body);
         f
@@ -212,12 +213,15 @@ impl Game {
         // An opening: one who lies senseless can't dodge or block, and the
         // blow goes where it ends things (openings.rs).
         let downed = body.unconscious();
+        // Senseless on their feet: they can't dodge or block.
+        let dazed = !downed && body.harm.out > 0;
         let chance = (0.55 + 0.05 * (att.skill as f64 - def.skill as f64)).clamp(0.15, 0.95);
+        let chance = if dazed { chance.max(0.85) } else { chance };
         if !self.rng.chance(if downed { self.knob("opening.hit", 0.95) } else { chance }) {
             b.report = Some(self.miss_words(att, def));
             return b;
         }
-        if !downed && def.shield && self.rng.chance(0.25) {
+        if !downed && !dazed && def.shield && self.rng.chance(0.25) {
             b.msg = Some(format!("{} blocks {}'s attack with a shield.", cap(&def.name), att.name));
             return b;
         }
@@ -295,9 +299,17 @@ impl Game {
         // The rest of what it did (an ear, an eye, an artery, the guts...),
         // chosen by a hash so the telling never shifts the dice.
         let h = self.gore_roll(dmg as u64 ^ (part.idx() as u64) << 8);
+        // `gore.harm` scales what they do in the fight (an artery's and the
+        // guts' bleeding, being dazed); the losses are kept and told either way.
+        // Off by default until it's tuned: the 10-fort batch lost forts with it on.
         if !body.dead {
-            let artery = self.knob("gore.artery", 10.0) as i32;
+            let fx = self.knob("gore.harm", 0.0);
+            let artery = (self.knob("gore.artery", 10.0) * fx) as i32;
+            let out = body.harm.out;
             b.hurts = body.harm_from(part, w, dmg, att.edged, h, artery);
+            if fx <= 0.0 {
+                body.harm.out = out;
+            }
         }
         if b.teeth > 0 {
             b.hurts.insert(0, crate::body::Hurt::Teeth(b.teeth));

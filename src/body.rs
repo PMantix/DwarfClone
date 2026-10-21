@@ -145,7 +145,9 @@ pub struct Harm {
     /// The belly opened and the guts spilled out.
     #[serde(default)]
     pub guts: bool,
-    /// Body ticks left out cold (knocked senseless, or fainted from the pain).
+    /// Body ticks left senseless (knocked about the head, or swooning from
+    /// the pain): they can't dodge or block, and blows find the openings.
+    /// (Not `unconscious`: they stay on their feet, a threat still.)
     #[serde(default)]
     pub out: i32,
     /// Body ticks left of nausea (from a blow to the gut, or the sight of one).
@@ -307,19 +309,19 @@ impl Body {
                         self.harm.broken[i] = true;
                         v.push(Hurt::Skull);
                     }
-                    if roll(2) < if edged { 20 } else { 50 } {
+                    if roll(2) < if edged { 10 } else { 35 } {
                         self.harm.out = self.harm.out.max(2 + (roll(3) % 3) as i32);
                         v.push(Hurt::KnockedOut);
                     }
-                } else if !edged && roll(2) < 8 {
+                } else if !edged && roll(2) < 4 {
                     self.harm.out = self.harm.out.max(1 + (roll(3) % 2) as i32);
                     v.push(Hurt::KnockedOut);
                 }
             }
             Part::LowerBody => {
-                if edged && (heavy && roll(1) < 55 || roll(1) < 8) && !self.harm.guts {
+                if edged && (heavy && roll(1) < 35 || roll(1) < 4) && !self.harm.guts {
                     self.harm.guts = true;
-                    self.bleeds[i] += artery / 2;
+                    self.bleeds[i] += artery / 3;
                     v.push(Hurt::Guts);
                 }
                 if roll(2) < if edged { 12 } else { 30 } {
@@ -364,7 +366,7 @@ impl Body {
             }
         }
         // The pain of a heavy wound: now and then one faints from it.
-        if heavy && part != Part::Head && roll(4) < 6 && self.harm.out == 0 {
+        if heavy && part != Part::Head && roll(4) < 4 && self.harm.out == 0 {
             self.harm.out = 1 + (roll(5) % 2) as i32;
             v.push(Hurt::Fainted);
         }
@@ -382,7 +384,7 @@ impl Body {
         let h = &self.harm;
         let mut dmg = 1.0 - 0.08 * h.fingers[1] as f32;
         if h.broken[Part::RightArm.idx()] && !self.splint[Part::RightArm.idx()] {
-            dmg -= 0.2;
+            dmg -= 0.1;
         }
         let skill = match h.eyes {
             0 => 0,
@@ -670,7 +672,7 @@ impl Body {
                 let a = if self.splint[i] { amount * 2 } else { amount };
                 self.hp[i] = (self.hp[i] + a).min(self.max[i]);
                 // A bone knits as the part heals; the belly closes.
-                if self.hp[i] * 10 >= self.max[i] * 9 {
+                if self.hp[i] * 10 >= self.max[i] * 6 {
                     self.harm.broken[i] = false;
                     if i == Part::LowerBody.idx() {
                         self.harm.guts = false;
@@ -687,7 +689,7 @@ impl Body {
     }
 
     pub fn unconscious(&self) -> bool {
-        !self.dead && (self.blood < self.max_blood / 3 || self.hp[Part::Head.idx()] < self.max[Part::Head.idx()] / 4 || self.harm.out > 0)
+        !self.dead && (self.blood < self.max_blood / 3 || self.hp[Part::Head.idx()] < self.max[Part::Head.idx()] / 4)
     }
 
     /// Extra ticks per step from one leg: splints and crutches help.
@@ -697,8 +699,6 @@ impl Body {
             if self.crutch { 2 } else { 5 }
         } else if self.hp[i] <= 0 {
             if self.splint[i] { 1 } else { 3 }
-        } else if self.harm.broken[i] {
-            if self.splint[i] { 1 } else { 2 }
         } else {
             0
         }
