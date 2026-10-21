@@ -46,6 +46,8 @@ impl Game {
         self.ov_journal(o);
         // O09: a memorial on an old battlefield (battlefields.rs).
         self.ov_memorial(o);
+        // O12: automatons and trinkets from the mechanic (clockwork.rs).
+        self.ov_clockwork(o);
         let _ = o;
     }
 
