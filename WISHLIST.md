@@ -763,6 +763,7 @@ Goal: the same world and simulation, seen from other seats.
 - **Done when:** a character can leave a town, find a ruin from a fallen fort, fight what lives
   there, and come back with its treasure recorded in the legends. (Tested, with the travel
   and the bot's walking left to A3 and A18: `a_hero_brings_home_the_treasure_of_a_fallen_fort`.)
+- **Measured by:** the adventure bot and its batch (A18, 759fecc): `--adventure-trial --runs N` plays heroes to a fallen fort, a lair and a ruin in turn and reports how they ended, where and to what, with days, kills, loot and fame; `--adventure-trial --compare A B`.
 
 ### Later
 
