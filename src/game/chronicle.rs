@@ -206,6 +206,8 @@ impl Game {
         lines.extend(self.lines_reigns(log));
         lines.extend(self.lines_spin(log));
         lines.extend(self.lines_named(log));
+        // O08: the year's work, from the ledger.
+        lines.extend(self.lines_ledger());
         lines
     }
 }

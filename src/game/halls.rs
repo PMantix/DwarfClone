@@ -120,7 +120,8 @@ impl Game {
             }
         }
         for &q in &tiles {
-            self.designate(q, q, d);
+            // Detailing waits on everything else (priority.rs).
+            self.designate_prio(q, q, d, 6);
         }
         tiles.len()
     }
@@ -214,6 +215,11 @@ mod tests {
         let o = g.overseer.as_ref().unwrap();
         assert!(o.notes.iter().any(|n| n.1.contains("main hall smoothed")), "no note");
         assert_eq!(engraved(&g), 0, "engraved before it came of age");
+        // (Two engravers at it, whoever the fort's labors fell to.)
+        while g.dwarves.iter().filter(|d| d.alive && d.has(Labor::Engraving)).count() < 2 {
+            let Some(d) = g.dwarves.iter_mut().find(|d| d.alive && !d.soldier && !d.is_child() && !d.has(Labor::Engraving)) else { break };
+            d.labors[Labor::Engraving.idx()] = true;
+        }
         set_tier(&mut g, 3);
         peace(&mut g, 20);
         assert!(engraved(&g) >= 10, "only {} hall tiles engraved", engraved(&g));

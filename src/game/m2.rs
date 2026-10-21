@@ -17,6 +17,9 @@ impl Game {
         // P8 O07-a: reigns, faith at the end
         self.reign_stats();
         // P9 O08-a: chained orders
+        // P18 O08-b: workshops with a master (urgent pulls are counted as they happen: priority.rs).
+        let masters = self.buildings.values().filter(|b| b.master.is_some()).count() as u32;
+        self.count("m2.masters", masters);
         // P14 O04-a: how far the gatehouse has grown (trap kills are counted as they fall: traps.rs).
         let stage = self.overseer.as_ref().map_or(0, |o| o.gate_stage as u32);
         self.count("m2.gate_stage", stage);

@@ -58,11 +58,22 @@ pub struct WorkOrder {
     /// What its jobs wait on, for the screen.
     #[serde(skip)]
     pub waiting: Vec<Want>,
+    /// 1 (urgent) .. 7 (when there's nothing else); 4 is normal (priority.rs).
+    #[serde(default = "normal_prio", skip_serializing_if = "is_normal_prio")]
+    pub prio: u8,
+}
+
+fn normal_prio() -> u8 {
+    super::priority::NORMAL
+}
+
+fn is_normal_prio(p: &u8) -> bool {
+    *p == super::priority::NORMAL
 }
 
 impl WorkOrder {
     pub fn new(recipe: Recipe, keep: u32) -> WorkOrder {
-        WorkOrder { recipe, keep, mat: None, cond: Cond::Keep, parent: None, until: 0, waiting: Vec::new() }
+        WorkOrder { recipe, keep, mat: None, cond: Cond::Keep, parent: None, until: 0, waiting: Vec::new(), prio: normal_prio() }
     }
 
     /// "Make steel", "Carve stone table (granite)".

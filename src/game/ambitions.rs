@@ -705,13 +705,13 @@ impl Game {
         for r in halls {
             let smooth = format!("engrave{}", r.a.x * 1000 + r.a.y + r.a.z * 1_000_000);
             if !o.did(&smooth) {
-                self.designate(r.a.offset(-1, -1, 0), r.b.offset(1, 1, 0), Desig::Smooth);
+                self.designate_prio(r.a.offset(-1, -1, 0), r.b.offset(1, 1, 0), Desig::Smooth, 6);
                 o.done.push(smooth);
                 return;
             }
             let carve = format!("carve{}", r.a.x * 1000 + r.a.y + r.a.z * 1_000_000);
             if engrave && !o.did(&carve) && self.tick > YEAR / 3 {
-                self.designate(r.a.offset(-1, -1, 0), r.b.offset(1, 1, 0), Desig::Engrave);
+                self.designate_prio(r.a.offset(-1, -1, 0), r.b.offset(1, 1, 0), Desig::Engrave, 6);
                 o.done.push(carve);
                 return;
             }

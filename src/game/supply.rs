@@ -6,15 +6,9 @@
 
 use super::*;
 use crate::buildings::{Input, Recipe};
-use serde::{Deserialize, Serialize};
 
-/// Records of production (`Game.ledger`, ECO-15).
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct Ledger {
-    /// (season index, what, made, used), newest last.
-    #[serde(default)]
-    pub rows: Vec<(u32, String, u32, u32)>,
-}
+/// Records of production (`Game.ledger`, ECO-15) live in ledger.rs.
+pub use super::ledger::Ledger;
 
 /// Where an input comes from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

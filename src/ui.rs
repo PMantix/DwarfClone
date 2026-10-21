@@ -20,6 +20,7 @@ mod health;
 mod highlights;
 mod life;
 mod units;
+mod ledger;
 pub mod saga;
 mod moodstrip;
 mod ambient;
@@ -920,6 +921,8 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.push(key_line(&k.to_string(), d.name(), d == kind));
             }
             v.push(key_line("v/V", "follow a vein of ore/gems", false));
+            let p = match g.prio.new_desigs { 0 => 4, n => n };
+            v.push(key_line("1-7", &format!("priority {}{}", p, if p == 4 { " (normal)" } else if p <= 2 { " (urgent)" } else { "" }), p != 4));
             v.push(Line::default());
             v.push(plain(
                 if corner.is_some() { "Enter: set second corner".into() } else { "Enter: set first corner".into() },
@@ -1070,6 +1073,11 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                             MUTED,
                         ));
                         v.push(key_line("w", "Choose who may work here", false));
+                        if let Some(m) = g.master_line(b.id) {
+                            v.push(plain(m, MUTED));
+                        }
+                        v.push(key_line("M", "Master (most skilled first)", false));
+                        v.push(key_line("[/]", "Least skill to work here", false));
                     }
                 }
                 if b.kind == BuildingKind::Depot && b.built {
@@ -1221,10 +1229,13 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                     let col = if have >= mark as usize { Color::Rgb(150, 220, 150) } else { Color::Rgb(230, 200, 90) };
                     // (An order queued to feed another is indented under it.)
                     let name = if o.parent.is_some() { format!(" ↳{}", o.name()) } else { o.name() };
-                    let cond = match o.cond {
+                    let mut cond = match o.cond {
                         crate::game::Cond::Keep => String::new(),
                         c => format!(" {}", c.describe(o.keep)),
                     };
+                    if o.prio != 4 {
+                        cond.push_str(&format!(" p{}", o.prio));
+                    }
                     v.push(Line::from(vec![
                         Span::styled(format!("{:<24.24}", name), style.fg(TEXT)),
                         Span::styled(format!(" {:>3}/{:<3}", have, mark), style.fg(col)),
@@ -1245,10 +1256,16 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.push(key_line("←/→", "Fewer/more (Shift ×10)", false));
                 v.push(key_line("c", "Condition: keep/below/after/every", false));
                 v.push(key_line("m", "Material (from stock)", false));
+                v.push(key_line("p", "Priority 1 urgent .. 7 last", false));
+                v.push(key_line("l", "Ledger: who made what", false));
                 v.push(key_line("a", "Auto conditions", false));
                 v.push(key_line("x", "Delete order", false));
                 v.push(plain("Esc: back".into(), MUTED));
             }
+        }
+        Mode::Ledger { all, scroll } => {
+            title = "Ledger".to_string();
+            v.extend(ledger::ledger_lines(g, *all, *scroll));
         }
         Mode::Units { sel, cat, sort } => {
             title = "Units".to_string();
@@ -3357,6 +3374,9 @@ fn draw_game_over(f: &mut Frame, area: Rect, g: &Game) {
     if !heroes.is_empty() {
         v.push(plain(format!(" Its heroes: {}.", heroes.join(", ")), gold));
     }
+    if let Some(s) = g.ledger_summary() {
+        v.push(plain(format!(" {}", s), TEXT));
+    }
     v.push(Line::default());
     v.push(plain(" How they died:".into(), KEY));
     for (what, n) in causes.iter().take(6) {
@@ -5380,6 +5400,15 @@ mod tests {
         assert_eq!(app.game.work_orders.len(), 1);
         assert_eq!(app.game.work_orders[0].keep, 6, "bed order starts at 5, Right adds one");
         assert!(s.contains("Make wooden bed") && s.contains("/6"));
+        // p sets its priority; l opens the ledger.
+        app.on_key(key(crossterm::event::KeyCode::Char('p')));
+        assert_eq!(app.game.work_orders[0].prio, 5);
+        assert!(dump(&mut app, 130, 45).contains(" p5"));
+        app.on_key(key(crossterm::event::KeyCode::Char('l')));
+        let s = dump(&mut app, 130, 45);
+        assert!(s.contains("Ledger") && s.contains("Makers") && s.contains("Masters"), "{}", s);
+        app.on_key(key(crossterm::event::KeyCode::Esc));
+        assert_eq!(app.mode, Mode::Orders { sel: 0, pick: None });
     }
 
     #[test]

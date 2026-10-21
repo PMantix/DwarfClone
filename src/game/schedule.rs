@@ -31,7 +31,7 @@ impl Game {
         if tick % 150 == 7 && self.overseer.is_some() { self.oversee(); }
         if tick % 10 == 3 && self.overseer.is_some() { self.oversee_alert(); }
         self.prof_add(1, t);
-        if tick % 300 == 290 { self.prune_designations(); }
+        if tick % 300 == 290 { self.prune_designations(); self.prune_priorities(); }
         if tick % 25 == 13 { self.miasma_tick(); }
         if tick % 100 == 60 { self.expedition_tick(); self.duels_tick(); self.mysteries_tick(); }
         if tick % DAY == DAY / 2 + 7 { self.drama_daily(); self.pets_daily(); self.milestones_daily(); self.monument_daily(); self.trophies_daily(); }
@@ -143,11 +143,11 @@ mod tests {
     fn same_story_after_refactor() {
         let t = run_trial(5003, Style::Steady, 1, &Knobs::default());
         let deaths: Vec<(u64, &str, &str)> = t.deaths.iter().map(|d| (d.tick, d.name.as_str(), d.cause.as_str())).collect();
-        assert_eq!(deaths, vec![(202614, "Vigdor Hammerforge", "struck down"), (256230, "Perrin Frosthearth", "struck down"), (259853, "Grenda Anvilbrew", "struck down"), (263294, "Dorna Stonebeard", "struck down"), (303451, "Kelda Aleforge", "struck down"), (303645, "Gruni Hammerforge", "struck down"), (303840, "Dorna Copperfist", "bled to death")]);
+        assert_eq!(deaths, vec![(203434, "Esk Coalhearth", "struck down"), (303923, "Kelda Runemantle", "struck down")]);
         let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
-        assert_eq!(sieges, vec![(202245, "goblins", 2, "withdrew"), (303120, "goblins", 9, "routed")]);
-        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (12, 32109, 28));
-        assert_eq!(t.ambitions, ["Delve", "Revel", "Fortify", "Muster", "Provision", "Fortify", "Delve", "Muster", "Revel"]);
+        assert_eq!(sieges, vec![(203195, "goblins", 3, "withdrew"), (303420, "goblins", 7, "withdrew")]);
+        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (15, 49253, 21));
+        assert_eq!(t.ambitions, ["Delve", "Muster", "Delve", "Muster", "Provision", "Fortify", "Muster", "Expand", "Prosper", "Delve"]);
     }
 
     /// The survival items' tasks save and load by name, and a dwarf given one

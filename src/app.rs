@@ -243,6 +243,8 @@ pub enum Mode {
     /// Fortress-wide work orders; `pick` is the cursor in the recipe list
     /// while choosing a new one.
     Orders { sel: usize, pick: Option<usize> },
+    /// The ledger of what the fort made and dug (O08), this year or all time.
+    Ledger { all: bool, scroll: usize },
     /// Pick a door, bridge or floodgate for a lever to work.
     LinkLever { lever: u32 },
     /// Pick a creature for a squad to kill.
@@ -1340,6 +1342,12 @@ impl App {
                     self.flash = Some(if n > 0 { format!("Following {} vein{}", if c == 'v' { "the ore" } else { "the gem" }, if n == 1 { "" } else { "s" }) } else { "No seen vein there to follow".into() });
                     self.mode = Mode::Designate { kind, corner: None };
                 }
+                // Priority of new designations (O08): 1 urgent .. 4 normal .. 7 last.
+                KeyCode::Char(c @ '1'..='7') => {
+                    let n = c as u8 - b'0';
+                    self.game.prio.new_desigs = n;
+                    self.flash = Some(format!("New designations at priority {}{}.", n, if n == 4 { " (normal)" } else if n <= 2 { " (urgent)" } else { "" }));
+                }
                 KeyCode::Char(c) => {
                     if let Some(&(_, d)) = DESIG_KEYS.iter().find(|(kc, _)| *kc == c) {
                         self.mode = Mode::Designate { kind: d, corner };
@@ -1418,6 +1426,15 @@ impl App {
             },
             Mode::Query { bld, adding } => self.key_query(k, bld, adding),
             Mode::Orders { sel, pick } => self.key_orders(k, sel, pick),
+            Mode::Ledger { all, scroll } => match k.code {
+                KeyCode::Esc | KeyCode::Char('l') => self.mode = Mode::Orders { sel: 0, pick: None },
+                KeyCode::Tab | KeyCode::BackTab => self.mode = Mode::Ledger { all: !all, scroll: 0 },
+                KeyCode::Up => self.mode = Mode::Ledger { all, scroll: scroll.saturating_sub(1) },
+                KeyCode::Down => self.mode = Mode::Ledger { all, scroll: scroll + 1 },
+                KeyCode::PageUp => self.mode = Mode::Ledger { all, scroll: scroll.saturating_sub(10) },
+                KeyCode::PageDown => self.mode = Mode::Ledger { all, scroll: scroll + 10 },
+                _ => {}
+            },
             Mode::Profile { bld, sel } => {
                 let ids: Vec<u32> = self.game.dwarves.iter().filter(|d| d.alive && !d.is_child()).map(|d| d.id).collect();
                 let n = ids.len().max(1);
@@ -2120,6 +2137,17 @@ impl App {
                 self.game.auto_conditions();
                 self.flash = Some("Food and drink by the mouths to feed, furniture by the beds wanted, arms by the squads.".into());
             }
+            KeyCode::Char('l') => self.mode = Mode::Ledger { all: false, scroll: 0 },
+            KeyCode::Char('p') if sel < n => {
+                let o = &mut self.game.work_orders[sel];
+                o.prio = o.prio % 7 + 1;
+                self.flash = Some(format!("{}: priority {}{}.", o.name(), o.prio, match o.prio {
+                    1 | 2 => " (urgent)",
+                    4 => " (normal)",
+                    6 | 7 => " (when there's nothing else)",
+                    _ => "",
+                }));
+            }
             KeyCode::Char('m') if sel < n => {
                 self.game.cycle_order_mat(sel);
                 let o = &self.game.work_orders[sel];
@@ -2290,6 +2318,19 @@ impl App {
             }
             KeyCode::Char('w') if kind.is_workshop() && kind != BuildingKind::Depot => {
                 self.mode = Mode::Profile { bld, sel: 0 };
+            }
+            // Its master, and the least skill to work there (O08).
+            KeyCode::Char('M') if kind.is_workshop() && !kind.recipes().is_empty() => {
+                let m = self.game.cycle_master(bld);
+                self.flash = Some(match m.and_then(|m| self.game.dwarves.iter().find(|d| d.id == m)) {
+                    Some(d) => format!("{} is master here.", d.name),
+                    None => "No master here.".into(),
+                });
+            }
+            KeyCode::Char(c @ ('[' | ']')) if kind.is_workshop() && !kind.recipes().is_empty() => {
+                if let Some(b) = self.game.buildings.get_mut(&bld) {
+                    b.min_skill = if c == ']' { (b.min_skill + 1).min(15) } else { b.min_skill.saturating_sub(1) };
+                }
             }
             KeyCode::Char('r') => {
                 if let Some(o) = self.game.buildings.get_mut(&bld).and_then(|b| b.orders.last_mut()) {
