@@ -47,6 +47,8 @@ impl Game {
         if tick % 100 == 40 { self.culture_tick(); }
         // O09: dwarves crossing an old battlefield (battlefields.rs).
         if tick % 100 == 85 { self.battlefield_tick(); }
+        // O12: a dreamer at a table over the plans, and plans gathering dust (inspire.rs).
+        if tick % 100 == 90 { self.inspire_tick(); }
     }
 
     /// After the dwarves and creatures have moved: wildlife, the day's
@@ -119,6 +121,8 @@ impl Game {
         self.lairs_season(season);
         // Myth and magic, seasonal:
         self.magic_season();
+        // O12: a dwarf struck by a vision of a great work (inspire.rs).
+        self.inspire_season();
         // A made people's traders in winter (kin.rs).
         self.kin_caravan(season);
     }
@@ -147,11 +151,11 @@ mod tests {
     fn same_story_after_refactor() {
         let t = run_trial(5003, Style::Steady, 1, &Knobs::default());
         let deaths: Vec<(u64, &str, &str)> = t.deaths.iter().map(|d| (d.tick, d.name.as_str(), d.cause.as_str())).collect();
-        assert_eq!(deaths, vec![(296860, "Vigdor Hammerforge", "struck down")]);
+        assert_eq!(deaths, vec![(303681, "Sorli Aleshaper", "struck down"), (303820, "Dorna Stonebeard", "struck down"), (388190, "Grenda Anvilbrew", "struck down")]);
         let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
-        assert_eq!(sieges, vec![(203295, "goblins", 3, "withdrew"), (303495, "goblins", 9, "withdrew")]);
-        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (16, 32933, 24));
-        assert_eq!(t.ambitions, ["Delve", "Muster", "Revel", "Provision", "Muster", "Revel", "Muster", "Revel", "Provision", "Delve", "Muster", "Delve", "Venture"]);
+        assert_eq!(sieges, vec![(203295, "goblins", 3, "withdrew"), (303395, "goblins", 8, "routed")]);
+        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (14, 32288, 32));
+        assert_eq!(t.ambitions, ["Delve", "Muster", "Revel", "Provision", "Muster", "Revel", "Muster", "Revel", "Provision", "Fortify", "Architect", "Revel", "Muster", "Provision", "Prosper", "Delve"]);
     }
 
     /// The survival items' tasks save and load by name, and a dwarf given one

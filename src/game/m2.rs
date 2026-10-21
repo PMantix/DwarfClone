@@ -23,6 +23,7 @@ impl Game {
         // P14 O04-a: how far the gatehouse has grown (trap kills are counted as they fall: traps.rs).
         let stage = self.overseer.as_ref().map_or(0, |o| o.gate_stage as u32);
         self.count("m2.gate_stage", stage);
+        // P25 O12-a: dreams (`m2.inspired`), plans drawn, adopted, finished and ignored are counted as they happen (inspire.rs).
         // P10 O10-a: ore mined (`m2.ore_mined`) is counted as each tile is dug (veins.rs: dug_by).
     }
 }

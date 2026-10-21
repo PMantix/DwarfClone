@@ -4669,6 +4669,9 @@ fn draw_brain(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
     });
     v.push(plain(format!(" Now: {}", now), Color::Rgb(255, 215, 60)));
     v.push(plain(format!(" {}", o.intent(g)), TEXT));
+    if let Some(p) = g.adopted_plans() {
+        v.push(plain(format!(" Building {}", p), Color::Rgb(190, 160, 255)));
+    }
     v.push(Line::default());
     v.push(Line::from(Span::styled(format!(" {}", chosen.name()), Style::default().fg(Color::Rgb(150, 210, 255)).add_modifier(Modifier::BOLD))));
     v.push(plain(format!(" {}", chosen.announce().split(": ").nth(1).unwrap_or(chosen.announce())), MUTED));

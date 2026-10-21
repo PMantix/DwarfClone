@@ -192,6 +192,10 @@ impl Game {
 
     fn pick_shape(&mut self, o: &Overseer, kind: RoomUse) -> Shape {
         let r = |g: &mut Game, a: i32, b: i32| g.rng.range(a, b + 1);
+        // A dwarf's plans the overseer took up (O12, inspire.rs).
+        if let Some(s) = self.inspired_shape(o).filter(|_| kind == RoomUse::Grand) {
+            return s;
+        }
         // The architect's own rooms, and its taste (architect.rs).
         if let Some(s) = super::architect::taste_shape(o, kind) {
             return s;

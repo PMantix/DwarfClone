@@ -46,6 +46,8 @@ impl Game {
         self.ov_journal(o);
         // O09: a memorial on an old battlefield (battlefields.rs).
         self.ov_memorial(o);
+        // O12: the plans it took up, cut, named and celebrated (inspire.rs).
+        self.ov_inspirations(o);
         // O12: automatons and trinkets from the mechanic (clockwork.rs).
         self.ov_clockwork(o);
         let _ = o;
@@ -93,6 +95,8 @@ impl Game {
         senses.push((Sense::Omens, self.omen_sense(), vec![(Ambition::Fortify, 0.8), (Ambition::Muster, 0.8), (Ambition::Venture, -1.0)]));
         // O10: how rich the ground looks pulls toward Delve and Prosper.
         senses.push(self.ore_sense());
+        // O12: a dwarf's plans for a great work pull toward Architect.
+        senses.push(self.inspired_sense(o));
         let _ = o;
         senses
     }
