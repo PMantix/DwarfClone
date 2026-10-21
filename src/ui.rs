@@ -4320,7 +4320,8 @@ fn draw_title(f: &mut Frame, app: &App, sel: usize) {
     for (i, item) in TITLE_MENU.iter().enumerate() {
         let detail = match i {
             0 => Some("forge a world and its history".to_string()),
-            1 => saves.first().map(|m| format!("{} ({})", m.fortress, m.date)),
+            // (Continue picks up a game, never a world file.)
+            1 => saves.iter().find(|m| m.kind != saves::SaveKind::World).map(|m| format!("{} ({})", m.fortress, m.date)),
             2 if !saves.is_empty() => Some(format!("{} saved", saves.len())),
             3 => Some("the overseer plays a fortress for you".to_string()),
             crate::app::TITLE_ADVENTURE => Some("one hero against the world".to_string()),
