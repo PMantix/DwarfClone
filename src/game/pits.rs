@@ -758,6 +758,34 @@ mod tests {
         assert!(g.world.walkable(p), "lowered again, the deck is back");
     }
 
+    /// The pit's lever never raises the bridge with one of ours on it, and
+    /// a dwarf who lived through a fall climbs back out.
+    #[test]
+    fn the_pit_spares_the_fort() {
+        let mut g = Game::new(51);
+        let (p, _, lever) = bridge(&mut g);
+        g.channel_under_bridge(p);
+        g.pits.decks = vec![p];
+        g.pits.lever = Some(g.buildings[&lever].pos);
+        assert_eq!(g.pit_lever(), Some(lever));
+        g.dwarves[0].pos = p;
+        g.pull_lever(lever);
+        assert!(g.world.walkable(p) && g.dwarves[0].pos == p, "the bridge rose under a dwarf");
+        let out = g.embark;
+        g.dwarves[0].pos = out;
+        g.pull_lever(lever);
+        assert!(!g.world.walkable(p), "with nobody on it, it rises");
+        // One fallen in, the stun worn off: they climb out.
+        g.dwarves[0].pos = p.offset(0, 0, -PIT_DEPTH);
+        g.dwarves[0].move_cd = 0;
+        g.drown_tick();
+        let at = g.dwarves[0].pos;
+        assert!(at.z == p.z && g.world.walkable(at), "still down the pit at {:?}", at);
+        assert!(g.log.iter().any(|l| l.text.contains("climbed out of")));
+        // And the cause of a death by falling is told as such.
+        assert_eq!(super::super::annals::cause_of("fell to their death in the Belly"), "fell into a pit");
+    }
+
     /// Over hollow rock two levels down, the gatehouse's pit is cut a level
     /// deep: the deck stands over its dug floor, the miners don't channel it
     /// again, and raised, the bridge drops a goblin one level.
