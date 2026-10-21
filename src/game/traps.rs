@@ -399,7 +399,7 @@ impl Game {
             name: att.name.clone(),
             skill: att.skill + if down { self.knob("trap.sprawl_skill", 8.0) as u32 } else { 0 },
             dmg: att.dmg * if down { self.knob("trap.sprawl_dmg", 1.5) as f32 } else { 1.0 },
-            ..*att
+            ..att.clone()
         }
     }
 

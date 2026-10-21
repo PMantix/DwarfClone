@@ -7,6 +7,7 @@ use crate::items::Slot;
 use crate::world::{DOOR_LOCKED, DOOR_NONE};
 use super::melee::a_or_name;
 
+#[derive(Clone)]
 pub(super) struct Fighter {
     pub name: String,
     pub skill: u32,
