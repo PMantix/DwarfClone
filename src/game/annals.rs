@@ -129,6 +129,8 @@ pub fn cause_of(text: &str) -> String {
         "thirst"
     } else if has("starved") {
         "starvation"
+    } else if has("fell to their death") {
+        "fell into a pit"
     } else if has("drowned") {
         "drowned"
     } else if has("magma") || has("burned") {

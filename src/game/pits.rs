@@ -369,14 +369,26 @@ impl Game {
             .count();
         let army = self.creatures.values().any(|c| c.alive && c.siege && c.hostile() && !c.leaving);
         let gate_up = self.gate_bridges(base).iter().any(|id| self.buildings.get(id).map_or(false, |b| b.raised));
-        let want = if raised {
-            // Kept up while they're at it; down again when the way is clear.
+        let safe = self.knob("pit.safe", 1.0) > 0.0;
+        let want = if raised && safe {
+            // Kept up while the alert lasts and they're at it; down again
+            // when the way is clear, or once the alert is over (a beast or
+            // a straggler left in the corridor mustn't keep the fort cut off
+            // from its gate, its fields and its water).
+            self.alert && (gate_side > 0 || (army && !gate_up))
+        } else if raised {
             gate_side > 0 || (army && !gate_up && self.alert)
         } else {
             let min = self.knob("pit.crowd", 2.0) as usize;
             on_deck >= min || (on_deck >= 1 && gate_side == 0)
         };
         let want = if !raised && ours { false } else { want };
+        if want != raised && std::env::var("TRIAL_PIT").is_ok() {
+            eprintln!("PIT day {} tick {}: raised {} -> want {} | on deck {} gate side {} army {} gate up {} alert {} ours {}", self.tick / DAY, self.tick, raised, want, on_deck, gate_side, army, gate_up, self.alert, ours);
+        }
+        if raised && self.tick % DAY < 10 && std::env::var("TRIAL_PIT").is_ok() {
+            eprintln!("PIT day {}: still raised | gate side {} army {} alert {}", self.tick / DAY, gate_side, army, self.alert);
+        }
         if on_deck > 0 && !raised {
             self.count("m2.pit_foe_on_deck", 1);
         }
@@ -390,6 +402,37 @@ impl Game {
             self.pull_lever(lever);
         } else if !self.buildings[&lever].pull {
             self.request_pull(lever);
+        }
+    }
+
+    /// Every ten ticks: one of ours who lived through a fall into the pit
+    /// climbs out once the stun wears off, onto the corridor on the fort's
+    /// side (a dwarf can climb what a goblin can't; else they'd die of
+    /// thirst down there).
+    fn climb_out(&mut self) {
+        if self.pits.decks.is_empty() || self.knob("pit.safe", 1.0) <= 0.0 {
+            return;
+        }
+        let decks = self.pits.decks.clone();
+        let in_pit = |p: Pos| decks.iter().any(|d| d.x == p.x && d.y == p.y && p.z < d.z && p.z >= d.z - PIT_DEPTH - 1);
+        let out: Option<Pos> = decks
+            .iter()
+            .flat_map(|d| crate::geom::DIRS4.iter().map(move |&(dx, dy)| d.offset(dx, dy, 0)))
+            .filter(|p| !decks.contains(p) && self.world.walkable(*p))
+            .max_by_key(|p| (p.x, p.y));
+        let Some(out) = out else { return };
+        for i in 0..self.dwarves.len() {
+            let d = &self.dwarves[i];
+            if !d.alive || d.move_cd > 0 || !in_pit(d.pos) {
+                continue;
+            }
+            let name = d.name.clone();
+            let d = &mut self.dwarves[i];
+            d.pos = out;
+            d.path.clear();
+            let pit = self.pit_name();
+            self.msg_at(&format!("{} climbed out of {}.", cap(&name), pit), (200, 200, 140), Some(out), super::logkind::LogKind::Job);
+            self.count("m2.pit_climbed", 1);
         }
     }
 
@@ -421,6 +464,10 @@ impl Game {
             let dids: Vec<usize> = (0..self.dwarves.len()).filter(|&i| self.dwarves[i].alive && self.dwarves[i].pos == p).collect();
             for i in dids {
                 let name = self.dwarves[i].name.clone();
+                self.count("m2.pit_dwarf_fell", 1);
+                if std::env::var("TRIAL_PIT").is_ok() {
+                    eprintln!("PIT day {}: {} fell", self.tick / DAY, name);
+                }
                 let died = self.fall_dwarf(i, p);
                 fallen.push((name, false, died));
             }
@@ -573,6 +620,7 @@ impl Game {
     /// Every ten ticks (`traps_tick`): whatever can't swim drowns in deep
     /// water (the pond), as dwarves do; a foe of a siege counts toward it.
     pub(super) fn drown_tick(&mut self) {
+        self.climb_out();
         let wet: Vec<u32> = self
             .creatures
             .values()
