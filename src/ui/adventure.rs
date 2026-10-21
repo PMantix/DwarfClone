@@ -514,7 +514,8 @@ fn draw_side(f: &mut Frame, r: Rect, s: &AdvScreen, sight: &Sight) {
     let keys = vec![
         plain("move: arrows · numpad · 7 9 1 3".into(), MUTED),
         plain("l look  g get  i pack  z status".into(), MUTED),
-        plain("A aim  s sneak  Z rest  ? help".into(), MUTED),
+        plain("A aim  f fire  b bind  s sneak".into(), MUTED),
+        plain("Z rest  ? help".into(), MUTED),
     ];
     if v.len() + keys.len() < inner_h {
         v.resize(inner_h - keys.len(), Line::default());
