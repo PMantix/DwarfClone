@@ -37,6 +37,15 @@ fn opt<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).map(|s| s.as_str())
 }
 
+/// Draw a frame, telling the adventure map how big the window wants its tiles.
+fn draw(terminal: &mut Terminal<TileBackend>, app: &mut App) -> Result<()> {
+    let b = terminal.backend();
+    let px = (b.cell() as u16, b.tile as u16);
+    ui::adventure::TILE_PX.with(|t| t.set(Some(px)));
+    terminal.draw(|f| ui::draw(f, app))?;
+    Ok(())
+}
+
 fn load_fonts(args: &[String]) -> Result<Fonts> {
     Fonts::load(opt(args, "--font")).map_err(|e| anyhow!(e))
 }
@@ -135,7 +144,7 @@ pub fn play(app: &mut App, args: &[String]) -> Result<()> {
     let mut last = Instant::now();
     while !app.quit {
         let start = Instant::now();
-        terminal.draw(|f| ui::draw(f, app))?;
+        draw(&mut terminal, app)?;
         let b = terminal.backend_mut();
         if b.dirty {
             shell.present(b);
@@ -203,7 +212,16 @@ pub fn play(app: &mut App, args: &[String]) -> Result<()> {
                     }
                     _ => {}
                 }
-                if zoom != 0 {
+                if zoom != 0 && terminal.backend().showing_big() {
+                    // (Over the adventure map the zoom keys zoom its tiles;
+                    // never quite as small as the text.)
+                    let b = terminal.backend_mut();
+                    let to = (b.tile as i32 + 4 * zoom).clamp(cell as i32 + 2, backend::MAX_TILE as i32) as usize;
+                    if to != b.tile {
+                        b.tile = to;
+                        terminal.clear()?;
+                    }
+                } else if zoom != 0 {
                     let b = terminal.backend_mut();
                     let to = (cell as i32 + 2 * zoom).clamp(backend::MIN_CELL as i32, backend::MAX_CELL as i32) as usize;
                     if to != cell {
@@ -230,7 +248,7 @@ pub fn play(app: &mut App, args: &[String]) -> Result<()> {
 }
 
 /// `--window --screenshot FILE [--seed N] [--days D] [--size WxH] [--cell PX]
-/// [--plan] [--saga | --sagas] [--reel] [--export DIR] [--adventure [--fight | --travel]]`: watch a seeded fort for a few days, draw it
+/// [--tile PX] [--plan] [--saga | --sagas] [--reel] [--export DIR] [--adventure [--fight | --travel]]`: watch a seeded fort for a few days, draw it
 /// the way the window would, save a PNG and print how long a frame took to draw.
 /// `--plan` shows the main level with the plan over it, `--saga` the fort's
 /// latest saga on its card, `--sagas` the Sagas screen (a great siege is told
@@ -333,13 +351,17 @@ pub fn screenshot(args: &[String]) -> Result<()> {
         println!("{}", e.summary());
     }
     let mut terminal = Terminal::new(TileBackend::new(w, h, cell, Box::new(move |c, s| fonts.raster(c, s))))?;
-    terminal.draw(|f| ui::draw(f, &mut app))?;
+    // (`--tile PX`: the adventure map's tiles that big; the cell size or less draws it as text.)
+    if let Some(t) = opt(args, "--tile").and_then(|s| s.parse().ok()) {
+        terminal.backend_mut().tile = t;
+    }
+    draw(&mut terminal, &mut app)?;
     // A whole screen drawn from nothing, a few times over, glyphs cached...
     let n = 10;
     let t = Instant::now();
     for _ in 0..n {
         terminal.clear()?;
-        terminal.draw(|f| ui::draw(f, &mut app))?;
+        draw(&mut terminal, &mut app)?;
     }
     let full = t.elapsed().as_secs_f64() * 1000.0 / n as f64;
     // ...and frames as play goes on, where only what changed is painted.
@@ -350,7 +372,7 @@ pub fn screenshot(args: &[String]) -> Result<()> {
         } else {
             app.game.step();
         }
-        terminal.draw(|f| ui::draw(f, &mut app))?;
+        draw(&mut terminal, &mut app)?;
     }
     let frame = t.elapsed().as_secs_f64() * 1000.0 / n as f64;
     let b = terminal.backend();

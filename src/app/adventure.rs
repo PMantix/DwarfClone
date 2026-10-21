@@ -1122,6 +1122,22 @@ mod tests {
     }
 
     #[test]
+    fn the_view_follows_the_hero() {
+        let mut app = field_app(21);
+        // At 130 x 40 the map's inside is 90 x 30 from (1, 1): the hero is
+        // drawn at its middle wherever they walk, the site scrolling by.
+        let at_middle = |app: &mut App| screen(app, 130, 40).lines().nth(16).and_then(|l| l.chars().nth(46)) == Some('☺');
+        assert!(at_middle(&mut app));
+        let before = hero(&app).pos;
+        for _ in 0..3 {
+            app.on_key(key(KeyCode::Right));
+            app.on_key(key(KeyCode::Down));
+        }
+        assert_ne!(hero(&app).pos, before, "the hero walked");
+        assert!(at_middle(&mut app));
+    }
+
+    #[test]
     fn keys_move_the_hero() {
         let mut app = field_app(21);
         let dirs = [

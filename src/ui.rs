@@ -31,7 +31,7 @@ mod sound;
 pub(crate) mod overseer;
 mod overlays;
 mod looks;
-mod adventure;
+pub(crate) mod adventure;
 mod adv_create;
 mod adv_travel;
 pub(crate) use looks::tile_look;

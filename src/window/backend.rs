@@ -4,6 +4,7 @@
 
 use super::glyphs::GlyphCache;
 use super::tiles::Mask;
+use crate::ui::adventure::{BigMap, BIG_MAP, HOLE};
 use ratatui::backend::{Backend, WindowSize};
 use ratatui::buffer::Cell;
 use ratatui::layout::{Rect, Size};
@@ -13,6 +14,14 @@ use std::io;
 /// Cell sizes, in pixels, the zoom keys step between.
 pub const MIN_CELL: usize = 8;
 pub const MAX_CELL: usize = 32;
+/// The largest the adventure map's tiles can be zoomed to.
+pub const MAX_TILE: usize = 96;
+
+/// The adventure map's tiles for a window of `cell`-pixel text: two thirds
+/// as big again, an even number of pixels.
+pub fn default_tile(cell: usize) -> usize {
+    (cell * 5 / 3 / 2 * 2).min(MAX_TILE)
+}
 
 pub struct TileBackend {
     /// The picture, 0x00RRGGBB a pixel, `width` pixels a row.
@@ -27,6 +36,13 @@ pub struct TileBackend {
     /// Something was painted since the picture was last shown.
     pub dirty: bool,
     cursor: (u16, u16),
+    /// The size the adventure map's tiles are wanted, in pixels.
+    pub tile: usize,
+    /// The adventure map as last painted big, and its glyphs.
+    big: Option<BigMap>,
+    big_cache: GlyphCache,
+    /// The cells that are holes for the big map to show through, row by row.
+    holes: Vec<bool>,
 }
 
 impl TileBackend {
@@ -41,7 +57,17 @@ impl TileBackend {
             font,
             dirty: true,
             cursor: (0, 0),
+            tile: default_tile(cell.clamp(MIN_CELL, MAX_CELL)),
+            big: None,
+            big_cache: GlyphCache::new(MAX_TILE),
+            holes: Vec::new(),
         }
+    }
+
+    /// Whether the adventure map was drawn big last frame (so the zoom
+    /// keys zoom its tiles rather than the text).
+    pub fn showing_big(&self) -> bool {
+        self.big.is_some()
     }
 
     pub fn cell(&self) -> usize {
@@ -71,6 +97,20 @@ impl TileBackend {
         if px + s > self.width || py + s > self.height {
             return;
         }
+        self.blit(px, py, s, [px, py, px + s, py + s], cell, false);
+    }
+
+    /// Paint `cell` as a square `s` pixels across with its top left at
+    /// (`px`, `py`), only the pixels inside `clip` (x0, y0, x1, y1); `big`
+    /// takes its glyph from the big map's cache.
+    fn blit(&mut self, px: usize, py: usize, s: usize, clip: [usize; 4], cell: &Cell, big: bool) {
+        let x0 = clip[0].max(px);
+        let y0 = clip[1].max(py);
+        let x1 = clip[2].min(px + s).min(self.width);
+        let y1 = clip[3].min(py + s).min(self.height);
+        if x0 >= x1 || y0 >= y1 {
+            return;
+        }
         let m = cell.modifier;
         let mut fg = rgb(cell.fg, true, m.contains(Modifier::BOLD));
         let mut bg = rgb(cell.bg, false, false);
@@ -86,17 +126,17 @@ impl TileBackend {
         let ch = cell.symbol().chars().next().unwrap_or(' ');
         let w = self.width;
         if ch == ' ' || fg == bg {
-            for row in 0..s {
-                let at = (py + row) * w + px;
-                self.pixels[at..at + s].fill(bg);
+            for y in y0..y1 {
+                self.pixels[y * w + x0..y * w + x1].fill(bg);
             }
         } else {
             let font = &self.font;
-            let mask = self.cache.get(ch, &**font);
-            for row in 0..s {
-                let at = (py + row) * w + px;
-                let out = &mut self.pixels[at..at + s];
-                for (o, &a) in out.iter_mut().zip(&mask[row * s..row * s + s]) {
+            let cache = if big { &mut self.big_cache } else { &mut self.cache };
+            let mask = cache.get(ch, &**font);
+            for y in y0..y1 {
+                let row = (y - py) * s;
+                let out = &mut self.pixels[y * w + x0..y * w + x1];
+                for (o, &a) in out.iter_mut().zip(&mask[row + x0 - px..row + x1 - px]) {
                     *o = match a {
                         0 => bg,
                         255 => fg,
@@ -105,11 +145,65 @@ impl TileBackend {
                 }
             }
         }
-        if m.contains(Modifier::UNDERLINED) {
-            let at = (py + s - 1 - s / 16) * w + px;
-            self.pixels[at..at + s].fill(fg);
+        let under = py + s - 1 - s / 16;
+        if m.contains(Modifier::UNDERLINED) && under >= y0 && under < y1 {
+            self.pixels[under * w + x0..under * w + x1].fill(fg);
         }
         self.dirty = true;
+    }
+
+    /// Where the big map's tiles go, in pixels: the top left of the first
+    /// and the size of one, the grid centred over the map's cells.
+    fn big_origin(&self, b: &BigMap) -> (usize, usize, usize) {
+        let s = self.cell();
+        let t = b.tile as usize;
+        let (aw, ah) = (b.area.width as usize * s, b.area.height as usize * s);
+        let gx = b.area.x as usize * s + aw.saturating_sub(b.cols as usize * t) / 2;
+        let gy = b.area.y as usize * s + ah.saturating_sub(b.rows as usize * t) / 2;
+        (gx, gy, t)
+    }
+
+    /// Paint the hole at cell (x, y): black, and the big tiles it shows.
+    fn paint_hole(&mut self, b: &BigMap, x: u16, y: u16) {
+        let s = self.cell();
+        let (px, py) = (x as usize * s, y as usize * s);
+        if px + s > self.width || py + s > self.height {
+            return;
+        }
+        let clip = [px, py, px + s, py + s];
+        self.blit(px, py, s, clip, &Cell::default(), false);
+        let (gx, gy, t) = self.big_origin(b);
+        if t == 0 {
+            return;
+        }
+        // (The tiles the cell overlaps, along one axis.)
+        let span = |p: usize, g: usize, n: u16| -> std::ops::Range<usize> {
+            let lo = p.saturating_sub(g) / t;
+            let hi = ((p + s).saturating_sub(g) + t - 1) / t;
+            lo.min(n as usize)..hi.min(n as usize)
+        };
+        for j in span(py, gy, b.rows) {
+            for i in span(px, gx, b.cols) {
+                let c = &b.cells[j * b.cols as usize + i];
+                self.blit(gx + i * t, gy + j * t, t, clip, c, true);
+            }
+        }
+    }
+
+    /// Paint big tile `i` wherever a hole shows it.
+    fn paint_tile(&mut self, b: &BigMap, i: usize) {
+        let s = self.cell();
+        let (gx, gy, t) = self.big_origin(b);
+        let (px, py) = (gx + i % b.cols as usize * t, gy + i / b.cols as usize * t);
+        let cols = self.grid().0 as usize;
+        for cy in py / s..(py + t).div_ceil(s) {
+            for cx in px / s..((px + t).div_ceil(s)).min(cols) {
+                if self.holes.get(cy * cols + cx) == Some(&true) {
+                    let clip = [cx * s, cy * s, cx * s + s, cy * s + s];
+                    self.blit(px, py, t, clip, &b.cells[i], true);
+                }
+            }
+        }
     }
 }
 
@@ -197,9 +291,52 @@ impl Backend for TileBackend {
     where
         I: Iterator<Item = (u16, u16, &'a Cell)>,
     {
-        for (x, y, cell) in content {
-            self.paint(x, y, cell);
+        // The adventure map drawn big this frame, if it was: its tiles show
+        // through the cells left as holes, and only there, so whatever is
+        // drawn over the map stays on top.
+        let big = BIG_MAP.with(|b| b.borrow_mut().take());
+        let old = self.big.take();
+        let (cols, rows) = self.grid();
+        let n = cols as usize * rows as usize;
+        if self.holes.len() != n {
+            self.holes = vec![false; n];
         }
+        let mut opened = Vec::new();
+        for (x, y, cell) in content {
+            let hole = big.is_some() && cell.symbol().starts_with(HOLE);
+            if let Some(h) = self.holes.get_mut(y as usize * cols as usize + x as usize) {
+                *h = hole;
+            }
+            if hole {
+                opened.push((x, y));
+            } else {
+                self.paint(x, y, cell);
+            }
+        }
+        let Some(b) = big else { return Ok(()) };
+        self.big_cache.resize(b.tile as usize);
+        match old.filter(|o| (o.area, o.cols, o.rows, o.tile) == (b.area, b.cols, b.rows, b.tile)) {
+            // The same map: the tiles that changed, and the new holes.
+            Some(o) => {
+                for i in 0..b.cells.len() {
+                    if b.cells[i] != o.cells[i] {
+                        self.paint_tile(&b, i);
+                    }
+                }
+                for (x, y) in opened {
+                    self.paint_hole(&b, x, y);
+                }
+            }
+            // A new map, or zoomed: every hole.
+            None => {
+                for i in 0..n {
+                    if self.holes[i] {
+                        self.paint_hole(&b, (i % cols as usize) as u16, (i / cols as usize) as u16);
+                    }
+                }
+            }
+        }
+        self.big = Some(b);
         Ok(())
     }
 
@@ -223,6 +360,8 @@ impl Backend for TileBackend {
     /// Clear to black, first fitting the buffer to the space there is now.
     fn clear(&mut self) -> io::Result<()> {
         let (w, h) = self.avail;
+        self.big = None;
+        self.holes.clear();
         if (w, h) != (self.width, self.height) {
             self.pixels = vec![0; w * h];
             (self.width, self.height) = (w, h);
@@ -326,5 +465,41 @@ mod tests {
         assert_eq!((b.width, b.height, b.pixels.len()), (330, 100, 33000));
         b.set_cell(99);
         assert_eq!(b.cell(), MAX_CELL);
+    }
+
+    #[test]
+    fn the_big_map_shows_through_its_holes_and_under_what_is_drawn_over_it() {
+        use crate::ui::adventure::{BigMap, BIG_MAP, HOLE};
+        // A 4 x 4 cell map of 16 px cells, holding 2 x 2 tiles of 32 px.
+        let mut term = Terminal::new(backend(4, 4)).unwrap();
+        let paint = |red: u8, over: bool| {
+            move |f: &mut ratatui::Frame| {
+                let buf = f.buffer_mut();
+                for y in 0..4 {
+                    for x in 0..4 {
+                        buf.get_mut(x, y).set_char(HOLE);
+                    }
+                }
+                if over {
+                    buf.get_mut(3, 3).set_char(' ').set_bg(Color::Rgb(0, 0, 200));
+                }
+                let mut cells = vec![Cell::default(); 4];
+                cells[3].set_char(' ').set_bg(Color::Rgb(red, 0, 0));
+                BIG_MAP.with(|b| *b.borrow_mut() = Some(BigMap { area: Rect::new(0, 0, 4, 4), cols: 2, rows: 2, tile: 32, cells }));
+            }
+        };
+        term.draw(paint(200, false)).unwrap();
+        let px = |b: &TileBackend, x: usize, y: usize| b.pixels[y * b.width + x];
+        assert_eq!(px(term.backend(), 40, 40), pack(200, 0, 0), "the bottom right tile covers four cells");
+        assert_eq!(px(term.backend(), 60, 60), pack(200, 0, 0));
+        assert_eq!(px(term.backend(), 10, 10), 0);
+        // Only the tile changed: it's repainted though no cell changed.
+        term.draw(paint(100, false)).unwrap();
+        assert_eq!(px(term.backend(), 40, 40), pack(100, 0, 0));
+        // Something drawn over the map stays on top of it.
+        term.draw(paint(150, true)).unwrap();
+        assert_eq!(px(term.backend(), 60, 60), pack(0, 0, 200));
+        assert_eq!(px(term.backend(), 40, 40), pack(150, 0, 0));
+        assert!(term.backend().showing_big());
     }
 }
