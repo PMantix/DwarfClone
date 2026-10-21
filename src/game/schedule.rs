@@ -47,6 +47,8 @@ impl Game {
         if tick % 100 == 40 { self.culture_tick(); }
         // O09: dwarves crossing an old battlefield (battlefields.rs).
         if tick % 100 == 85 { self.battlefield_tick(); }
+        // O12: a dreamer at a table over the plans, and plans gathering dust (inspire.rs).
+        if tick % 100 == 90 { self.inspire_tick(); }
     }
 
     /// After the dwarves and creatures have moved: wildlife, the day's
@@ -115,6 +117,8 @@ impl Game {
         self.lairs_season(season);
         // Myth and magic, seasonal:
         self.magic_season();
+        // O12: a dwarf struck by a vision of a great work (inspire.rs).
+        self.inspire_season();
         // A made people's traders in winter (kin.rs).
         self.kin_caravan(season);
     }

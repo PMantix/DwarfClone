@@ -454,6 +454,8 @@ impl Game {
         o.ambitions.push((tick, pick));
         self.msg(pick.announce(), (150, 210, 255));
         Self::note_as(o, tick, NoteKind::Ambition, format!("Set its heart on: {}.", pick.name()));
+        // O12: a dwarf's waiting plans, taken up or set aside (inspire.rs).
+        self.weigh_plans(o, pick);
         // What some ambitions want dug.
         let has = |o: &Overseer, k: RoomUse| o.rooms.iter().filter(|r| r.kind == k).count();
         match pick {
