@@ -1160,7 +1160,7 @@ pub(crate) mod tests {
                 let foe = v.placed.iter().filter(|(_, k)| k.starts_with('@')).filter_map(|(id, _)| v.g.creatures.get(id)).filter(|c| c.alive).min_by_key(|c| (c.pos.x - me.x).abs().max((c.pos.y - me.y).abs()) + 10 * (c.pos.z - me.z).abs()).map(|c| (c.id, c.pos));
                 let Some((id, fp)) = foe else { break };
                 let act = if fp.z == me.z && (fp.x - me.x).abs() <= 1 && (fp.y - me.y).abs() <= 1 {
-                    Action::Attack { target: Target::Creature(id), part: None }
+                    Action::Attack { target: Target::Creature(id), aim: None }
                 } else {
                     Action::Wait(10)
                 };

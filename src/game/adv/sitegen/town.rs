@@ -461,7 +461,7 @@ pub(crate) mod tests {
         let spot = g.spot_near(fp, 1);
         g.dwarves[h].pos = spot;
         g.dwarves[h].pos = if adjacent(spot, fp) && spot != fp { spot } else { fp.offset(1, 0, 0) };
-        g.act(h, Action::Attack { target: super::super::super::turn::Target::Creature(f), part: None });
+        g.act(h, Action::Attack { target: super::super::super::turn::Target::Creature(f), aim: None });
         for _ in 0..5 {
             g.act(h, Action::Wait(10));
         }

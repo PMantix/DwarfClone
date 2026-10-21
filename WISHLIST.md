@@ -756,8 +756,8 @@ Goal: the same world and simulation, seen from other seats.
   8's fallen forts (ruins to explore).
 - **Steps:** [x] make a character (race, skills, gear) and start at a site (A1, this commit) · [x] travel the
   world map; enter sites as local maps (towns, ruins, lairs, caves) (sites built on entry from the legends, with site memory: A4 3769753; the road with its travel log, night, weather, encounters, camps and wounds that bleed on the way: A3 31a02ad) · [ ] talk: hear news and
-  rumours, take jobs, hire companions · [ ] fight with the same body and wounds as fortress
-  mode; loot; rest and heal · [ ] fame and infamy in the legends; visit or reclaim your old
+  rumours, take jobs, hire companions · [x] fight with the same body and wounds as fortress
+  mode; loot; rest and heal (aimed blows and called shots at the eyes and teeth, crossbow bolts seen to fly, binding wounds, the dead's gear taken, the fight's blood drawn on the adventure map: A6, this commit) · [ ] fame and infamy in the legends; visit or reclaim your old
   forts (visit: a fallen fort entered from its own save, its killer moved in, its saga, journal
   and walls to read, and looting written back to the save after a backup: A5 df2b3d8) · [ ] death ends it, and the world remembers
 - **Done when:** a character can leave a town, find a ruin from a fallen fort, fight what lives
