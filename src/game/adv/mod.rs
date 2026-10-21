@@ -208,6 +208,16 @@ pub struct Fame {
     pub by_civ: BTreeMap<u32, i32>,
     #[serde(default)]
     pub deeds: Vec<Deed>,
+    /// The hero's own saga so far (A10: `SagaKind::Wander`, dated in words
+    /// since the hero's ticks run on many clocks).
+    #[serde(default)]
+    pub saga: Option<crate::game::sagas::WorldSaga>,
+    /// How the run ended, as the world keeps it (A10; A19 records it).
+    #[serde(default)]
+    pub end: Option<fame::Ending>,
+    /// What `notice` has already counted (A10).
+    #[serde(default)]
+    pub seen: fame::Seen,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

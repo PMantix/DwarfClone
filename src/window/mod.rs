@@ -283,6 +283,10 @@ pub fn screenshot(args: &[String]) -> Result<()> {
     if adventure && args.iter().any(|a| a == "--travel") {
         app.adventure_journey();
     }
+    // (`--dead`: the hero's end page, A10.)
+    if adventure && args.iter().any(|a| a == "--dead") {
+        app.adventure_death();
+    }
     for _ in 0..if adventure { 0 } else { days * crate::game::DAY } {
         app.game.step();
     }

@@ -64,9 +64,17 @@ pub(super) fn draw(f: &mut Frame, app: &App) {
     if s.view == View::Create {
         return super::adv_create::draw(f, area, s);
     }
+    // The end, and the saga so far (A10).
+    if matches!(s.view, View::Dead | View::Saga) {
+        return super::adv_end::draw(f, area, s);
+    }
     // Between sites: the world map and the road (A3).
     let Some(v) = s.adv.visit.as_ref() else {
-        return super::adv_travel::draw(f, area, s);
+        super::adv_travel::draw(f, area, s);
+        if let Some(w) = &s.page {
+            draw_writing(f, area, w);
+        }
+        return;
     };
     let side = if area.width >= 80 + SIDE_W { SIDE_W } else { 0 };
     let fold: u16 = if side == 0 { 2 } else { 0 };
