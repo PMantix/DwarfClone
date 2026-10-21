@@ -288,8 +288,13 @@ mod tests {
         for n in ["Ashmaw", "Gloomwing", "Cinderjaw"] {
             dragon(&mut g, n);
         }
-        let age = g.ages_new_year().expect("a new age");
+        // The turn of the year calls it, and the chronicle tells it.
+        g.lore_new_year();
+        let age = g.lore.age.clone().expect("a new age");
         assert_eq!(age.name, "the Age of Dragons");
+        g.write_chronicle_for_test();
+        let c = g.chronicles.last().expect("a chronicle");
+        assert!(c.lines.iter().any(|l| l.contains("began to speak of the Age of Dragons")), "{:?}", c.lines);
         assert_eq!(current_age(&g.overworld).as_deref(), Some("the Age of Dragons"));
         assert!(g.overworld.events.last().unwrap().text.contains("the Age of Dragons began"));
         // Called once: the next year it simply goes on.
