@@ -119,7 +119,7 @@ fn draw_map(f: &mut Frame, area: Rect, a: &Adventure) {
         taken.insert((p.0 + 1, p.1));
         taken.insert((p.0.saturating_sub(1), p.1));
     }
-    for (x, y, name, col) in places(ow, a.at) {
+    for (x, y, name, col) in with_known(a, places(ow, a.at)) {
         let Some((px, py)) = screen(x, y) else { continue };
         let text = format!(" {} ", name);
         let n = text.chars().count() as u16;
@@ -182,6 +182,19 @@ fn places(ow: &Overworld, at: (i32, i32)) -> Vec<(i32, i32, String, Color)> {
     }
     v.sort_by_key(|p| p.0);
     v.into_iter().take(12).map(|(_, x, y, n, c)| (x, y, n, c)).collect()
+}
+
+/// The places heard of in talk (A7) first, marked `!` in gold wherever
+/// they are, then the rest near the hero.
+fn with_known(a: &Adventure, near: Vec<(i32, i32, String, Color)>) -> Vec<(i32, i32, String, Color)> {
+    let mut v: Vec<(i32, i32, String, Color)> = a.known_places().into_iter().map(|(_, (x, y), n)| (x, y, format!("!{}", n), GOLD)).collect();
+    v.sort_by_key(|p| cheb((p.0, p.1), a.at));
+    for p in near {
+        if !v.iter().any(|k| (k.0, k.1) == (p.0, p.1)) {
+            v.push(p);
+        }
+    }
+    v
 }
 
 fn first_word(s: &str) -> &str {
@@ -290,6 +303,17 @@ fn draw_side(f: &mut Frame, r: Rect, s: &AdvScreen) {
     }
     let (dw, dc) = danger(a.encounter_chance(a.at));
     v.push(Line::from(vec![Span::styled("The land is ", Style::default().fg(MUTED)), Span::styled(dw, Style::default().fg(dc))]));
+    // Places heard of in talk (A7), nearest first.
+    let mut known = a.known_places();
+    known.sort_by_key(|k| cheb(k.1, a.at));
+    if !known.is_empty() {
+        v.push(Line::default());
+        v.push(header("Heard of"));
+        for (_, at, name) in known.iter().take(4) {
+            let way = crate::game::adv::travel::way_to(a.at, *at);
+            v.push(Line::from(vec![Span::styled("! ", Style::default().fg(GOLD)), Span::styled(cap(name), Style::default().fg(TEXT)), Span::styled(format!(", {} {}", crate::game::adv::talk::days_words(cheb(*at, a.at)), way), Style::default().fg(MUTED))]));
+        }
+    }
     v.push(Line::default());
     v.push(header("Body"));
     v.extend(body_block(d, 10));

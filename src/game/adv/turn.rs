@@ -238,7 +238,7 @@ impl Game {
             }
             Action::Fire { target: Target::Creature(cid), aim } => self.hero_shoot(hero, cid, aim),
             Action::Bind => self.bind(hero),
-            Action::Talk(_) => Outcome::Refused("Talk comes later (A7).".into()),
+            Action::Talk(id) => self.talk_act(hero, id),
         }
     }
 

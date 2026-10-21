@@ -25,6 +25,7 @@ impl Game {
         self.count("m2.gate_stage", stage);
         // P22 O04: where the pit stands at the end (how far, or why not).
         self.pit_stats();
+        // P25 O12-a: dreams (`m2.inspired`), plans drawn, adopted, finished and ignored are counted as they happen (inspire.rs).
         // P10 O10-a: ore mined (`m2.ore_mined`) is counted as each tile is dug (veins.rs: dug_by).
     }
 }

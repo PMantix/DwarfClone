@@ -48,6 +48,10 @@ pub struct AdvScreen {
     /// bolts are seen though the act ran in an instant. (No moment: held
     /// at that tick, for a picture.)
     pub replay: Option<(u64, Option<std::time::Instant>)>,
+    /// The conversation open in `View::Talk` (A7).
+    pub chat: Option<adv::talk::Chat>,
+    /// The end has been written into the world file (A19).
+    pub recorded: bool,
 }
 
 /// What a letter list in the local view is for.
@@ -98,7 +102,7 @@ impl AdvScreen {
         let turn_from = adv.now();
         // (A save made with something met on the road: it waits still.)
         let meet = adv.meet.take();
-        AdvScreen { adv, view, flash: None, maker, pick: None, sneak: false, rest_until: None, help: false, turn_from, page: None, meet, replay: None }
+        AdvScreen { adv, view, flash: None, maker, pick: None, sneak: false, rest_until: None, help: false, turn_from, page: None, meet, replay: None, chat: None, recorded: false }
     }
 }
 
@@ -110,7 +114,9 @@ impl App {
         let dir = self.save_dir.clone();
         self.run_job("Making the world", move |report| {
             let mut ow = Overworld::generate_with(seed, report);
-            // The forts that fell in this world before (A5).
+            // What every game in this world has added to it (A19), and the
+            // forts that fell in it before (A5).
+            crate::worldfile::refresh(&dir, &mut ow);
             adv::sitegen::fallen::scan(&dir, &mut ow);
             Ok(JobDone::Visited(Box::new(adv::create::unmade_in(ow, seed))))
         });
@@ -134,6 +140,7 @@ impl App {
         let dir = self.save_dir.clone();
         self.game = crate::game::Game::placeholder(Overworld::empty());
         self.run_job("Setting out", move |_| {
+            crate::worldfile::refresh(&dir, &mut ow);
             adv::sitegen::fallen::scan(&dir, &mut ow);
             Ok(JobDone::Visited(Box::new(adv::quick_start(ow, seed))))
         });
@@ -310,6 +317,14 @@ impl App {
         }
         s.adv.notice();
         if s.adv.over.is_some() {
+            // The world hears how it ended (A19), once.
+            if !s.recorded {
+                s.recorded = true;
+                let wanderer = s.adv.fame.end.as_ref().filter(|e| !e.died).map(|e| (e.dwarf.clone(), e.place.clone()));
+                if let Err(e) = crate::worldfile::record_with(&self.save_dir, s.adv.ow(), wanderer) {
+                    s.flash = Some(e);
+                }
+            }
             s.view = View::Dead;
             s.pick = None;
             s.rest_until = None;
@@ -345,6 +360,10 @@ impl App {
             Ok(m) => {
                 if !autosave {
                     s.flash = Some(format!("Saved as {}: {}.", m.file, m.date));
+                    // The world hears of the hero's deeds so far (A19).
+                    if let Err(e) = crate::worldfile::record(&dir, s.adv.ow()) {
+                        s.flash = Some(e);
+                    }
                 }
                 true
             }
@@ -505,8 +524,6 @@ const SNEAK_EXTRA: u32 = 3;
 pub const REPLAY_MS: u64 = 30;
 /// Acts longer than this aren't played back (a rest, a long wait).
 const REPLAY_MAX: u64 = 80;
-/// How near someone must stand to be talked to.
-const TALK_REACH: i32 = 3;
 /// The menu's rows.
 pub const MENU: [&str; 4] = ["Back to the adventure", "Save", "Save and quit to the title", "Quit without saving"];
 
@@ -677,6 +694,10 @@ impl App {
             s.flash = Some(why.into());
             return;
         }
+        // One person near: no need to ask whom.
+        if kind == Pick::Talk && ids.len() == 1 {
+            return self.adv_talk_open(ids[0]);
+        }
         s.pick = Some((kind, ids));
     }
 
@@ -716,7 +737,7 @@ impl App {
             }
             Pick::AimPart(target) => Action::Attack { target, aim: Some(AIMS[id as usize]) },
             Pick::FirePart(target) => Action::Fire { target, aim: Some(AIMS[id as usize]) },
-            Pick::Talk => Action::Talk(id),
+            Pick::Talk => return self.adv_talk_open(id),
         };
         self.adv_act(act);
     }
@@ -912,16 +933,7 @@ pub fn pick_choices(g: &Game, hero: usize, kind: Pick) -> Vec<u32> {
         }
         Pick::AimPart(_) | Pick::FirePart(_) => aim_list(),
         Pick::Fire => g.marks(hero),
-        Pick::Talk => {
-            let mut v: Vec<(i32, u32)> = g
-                .dwarves
-                .iter()
-                .filter(|o| o.id != me && o.alive && !o.ghost && o.pos.z == p.z && (o.pos.x - p.x).abs().max((o.pos.y - p.y).abs()) <= TALK_REACH)
-                .map(|o| ((o.pos.x - p.x).pow(2) + (o.pos.y - p.y).pow(2), o.id))
-                .collect();
-            v.sort();
-            v.into_iter().map(|(_, id)| id).collect()
-        }
+        Pick::Talk => g.talk_choices(hero),
     }
 }
 
@@ -1160,8 +1172,12 @@ impl App {
             KeyCode::Char('a') => {
                 let Some(mut s) = self.adv.take() else { return };
                 let seed = s.adv.seed.wrapping_mul(31).wrapping_add(s.adv.fame.deeds.len() as u64 + 7);
-                let ow = s.adv.take_world();
-                self.run_job("Another hero", move |_| Ok(JobDone::Visited(Box::new(adv::create::unmade_in(ow, seed)))));
+                let mut ow = s.adv.take_world();
+                let dir = self.save_dir.clone();
+                self.run_job("Another hero", move |_| {
+                    crate::worldfile::refresh(&dir, &mut ow);
+                    Ok(JobDone::Visited(Box::new(adv::create::unmade_in(ow, seed))))
+                });
             }
             _ => {}
         }
@@ -1209,13 +1225,150 @@ impl App {
 }
 
 impl App {
-    /// A conversation (A7).
-    fn key_talk(&mut self, k: KeyEvent) {
-        if k.code == KeyCode::Esc {
-            if let Some(s) = self.adv.as_mut() {
-                s.view = View::Local;
+    /// The load menu's world (A19): its world map, to found a new fort in
+    /// a world whose legends hold every game played in it.
+    pub fn open_world_file(&mut self, file: &str) {
+        match saves::read_world(&self.save_dir, file) {
+            Ok(r) => {
+                if r.seed != 0 {
+                    self.seed = r.seed;
+                }
+                let (x, y) = r.overworld.default_site();
+                self.flash = Some(format!("The world of {}. Pick a site and embark.", r.overworld.name));
+                self.game = Game::placeholder(r.overworld);
+                self.mode = Mode::WorldMap { x, y };
             }
+            Err(e) => self.flash = Some(e),
         }
+    }
+}
+
+impl App {
+    /// The window's `--adventure --talk` picture (A7): the hero, famous for
+    /// a beast slain, a fort fallen two days off, asks one of the folk for
+    /// rumours.
+    pub fn adventure_talk(&mut self) {
+        let Some(s) = self.adv.as_mut() else { return };
+        let year = s.adv.year();
+        let at = s.adv.at;
+        let ow = s.adv.ow_mut();
+        let fx = if at.0 + 3 < ow.w { at.0 + 3 } else { at.0 - 3 };
+        ow.forts.push(crate::overworld::FortMark {
+            name: "Lashedsteel".into(),
+            site: (fx, (at.1 + 1).min(ow.h - 1)),
+            civ: None,
+            founded: year - 9,
+            fell: Some(year - 4),
+            killer: Some("goblin".into()),
+            artifacts: vec!["Thunderhewn, an iron axe".into()],
+            save_file: "lashedsteel.json".into(),
+            peak_pop: 41,
+            journal: Vec::new(),
+            occupant: None,
+            robbed: Vec::new(),
+        });
+        let beast = s.adv.ow().figures.iter().find(|f| f.alive() && f.civ.is_none()).map(|f| format!("slew {} the {}, of the old legends", f.name, f.kind));
+        s.adv.deed(&beast.unwrap_or_else(|| "slew Ashmaw the dragon".into()), 3);
+        let Some(v) = s.adv.visit.as_mut() else { return };
+        let h = v.hero;
+        let p = v.g.dwarves[h].pos;
+        let near = v.g.creatures.values().filter(|c| c.alive && c.visitor == adv::sitegen::town::FOLK && c.pos.z == p.z).min_by_key(|c| ((c.pos.x - p.x).pow(2) + (c.pos.y - p.y).pow(2), c.id)).map(|c| c.id);
+        let Some(id) = near else { return };
+        // They come over to the hero (to a free spot beside them).
+        let spot = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)]
+            .iter()
+            .map(|&(dx, dy)| p.offset(dx, dy, 0))
+            .find(|&q| v.g.world.in_bounds(q) && v.g.world.walkable(q) && !v.g.creatures.values().any(|c| c.alive && c.pos == q));
+        let Some(q) = spot else { return };
+        if let Some(c) = v.g.creatures.get_mut(&id) {
+            c.pos = q;
+            c.path.clear();
+        }
+        self.adv_talk_open(id);
+        for k in ['b'] {
+            self.key_talk(KeyEvent::new(KeyCode::Char(k), crossterm::event::KeyModifiers::NONE));
+        }
+    }
+
+    /// Open a conversation with `id`: the first moment of talk passes
+    /// (refused, with why, if they're hostile or gone), then the greeting.
+    pub(crate) fn adv_talk_open(&mut self, id: u32) {
+        let Some(s) = self.adv.as_mut() else { return };
+        let Some(p) = s.adv.person(id) else { return };
+        if !p.hostile {
+            self.adv_act(Action::Talk(id));
+        }
+        let Some(s) = self.adv.as_mut() else { return };
+        if s.view == View::Dead || s.adv.visit.is_none() {
+            return;
+        }
+        // (Refused: they walked off. The flash says so.)
+        if !p.hostile && s.flash.is_some() {
+            return;
+        }
+        s.chat = Some(s.adv.greet(&p));
+        s.view = View::Talk { who: id, sel: 0 };
+    }
+
+    /// A conversation (A7): a topic by letter, or by arrows and Enter;
+    /// Esc (or Farewell) ends it.
+    fn key_talk(&mut self, k: KeyEvent) {
+        let Some(s) = self.adv.as_mut() else { return };
+        let View::Talk { who, sel } = s.view else { return };
+        let Some(chat) = s.chat.as_ref() else {
+            s.view = View::Local;
+            return;
+        };
+        let topics = s.adv.topics(chat);
+        let n = topics.len();
+        let pick = match k.code {
+            KeyCode::Esc => {
+                s.chat = None;
+                s.view = View::Local;
+                return;
+            }
+            KeyCode::Up | KeyCode::Char('8') => {
+                s.view = View::Talk { who, sel: (sel + n - 1) % n };
+                return;
+            }
+            KeyCode::Down | KeyCode::Char('2') => {
+                s.view = View::Talk { who, sel: (sel + 1) % n };
+                return;
+            }
+            KeyCode::Enter => sel,
+            KeyCode::Char(c) if c.is_ascii_lowercase() && ((c as u8 - b'a') as usize) < n => (c as u8 - b'a') as usize,
+            _ => return,
+        };
+        let topic = topics[pick.min(n - 1)];
+        if topic == adv::talk::Topic::Farewell {
+            let mut chat = s.chat.take().unwrap();
+            if !chat.closed {
+                s.adv.ask(&mut chat, topic);
+                let bye = chat.lines.last().map(|l| l.1.clone()).unwrap_or_default();
+                s.adv.say(&format!("{}: \"{}\"", chat.who.first(), bye), (200, 200, 170));
+            }
+            s.view = View::Local;
+            return;
+        }
+        // Each question takes a moment; they may walk off, or the world
+        // may interrupt.
+        self.adv_act(Action::Talk(who));
+        let Some(s) = self.adv.as_mut() else { return };
+        if s.view == View::Dead {
+            return;
+        }
+        let Some(mut chat) = s.chat.take() else { return };
+        match s.flash.take() {
+            Some(why) => {
+                chat.lines.push((adv::talk::Said::Hero, topic.ask().to_string()));
+                chat.lines.push((adv::talk::Said::Aside, why));
+                chat.closed = true;
+            }
+            None => s.adv.ask(&mut chat, topic),
+        }
+        let n = s.adv.topics(&chat).len();
+        s.chat = Some(chat);
+        s.view = View::Talk { who, sel: pick.min(n - 1) };
     }
 }
 
@@ -1740,6 +1893,11 @@ mod tests {
         app.adv.as_mut().unwrap().meet = None;
         app.adv.as_mut().unwrap().adv.knobs.set.insert("travel.encounters".into(), 0.0);
         app.on_key(key(KeyCode::Right));
+        // (A dawn's autosave on the way, a second after F5's save and its
+        // world file, would be the newer: F9 is for the hand save here.)
+        for m in crate::saves::list(&dir).into_iter().filter(|m| m.autosave) {
+            crate::saves::delete(&dir, &m).unwrap();
+        }
         app.on_key(key(KeyCode::F(9)));
         settle(&mut app);
         let s = app.adv.as_ref().unwrap();
@@ -1768,6 +1926,92 @@ mod tests {
         let s = app.adv.as_ref().unwrap();
         assert_eq!(s.view, View::Local);
         assert_eq!((hero(&app).pos, foes(game(&app))), (pos, n), "just where they were, foes and all");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn k_talks_to_the_folk_of_a_town() {
+        static WORLD: std::sync::OnceLock<Overworld> = std::sync::OnceLock::new();
+        let ow = WORLD.get_or_init(|| Overworld::generate(5)).clone();
+        let mut app = App::new(41);
+        app.save_dir = scratch();
+        app.adventure_ready(Box::new(adv::quick_start(ow, 41)));
+        app.adventure_talk();
+        let s = app.adv.as_ref().unwrap();
+        assert!(matches!(s.view, View::Talk { .. }), "{:?} {:?}", s.view, s.flash);
+        let chat = s.chat.as_ref().unwrap();
+        assert!(chat.lines.iter().any(|(w, l)| *w == adv::talk::Said::Them && l.contains("You")), "known by fame: {:?}", chat.lines);
+        assert!(chat.asked.contains(&adv::talk::Topic::Rumours), "{:?}", chat.lines);
+        assert!(screen(&mut app, 140, 45).contains("Conversation"));
+        // Farewell (the last topic) ends it, and they say goodbye in the log.
+        let n = { let s = app.adv.as_ref().unwrap(); s.adv.topics(s.chat.as_ref().unwrap()).len() };
+        app.on_key(key(KeyCode::Char((b'a' + n as u8 - 1) as char)));
+        assert_eq!(app.adv.as_ref().unwrap().view, View::Local);
+        // `k` again: a list of whom, or straight into talk with the one near.
+        app.on_key(key(KeyCode::Char('k')));
+        let s = app.adv.as_ref().unwrap();
+        assert!(matches!(s.view, View::Talk { .. }) || s.pick.as_ref().map_or(false, |p| p.0 == Pick::Talk), "{:?} {:?}", s.view, s.flash);
+    }
+
+    /// A19's Done-when: a hero dies in a world. Later a brand-new fort is
+    /// embarked in that world from the title (the load menu's world list,
+    /// not the death page's `n`), and its legends name the hero.
+    #[test]
+    fn a_fort_from_the_title_hears_of_the_hero() {
+        let mut app = field_app(21);
+        let dir = app.save_dir.clone();
+        let name = hero(&app).name.clone();
+        // A deed, then a wound that bleeds them out.
+        app.adv.as_mut().unwrap().adv.deed("drove the last of the cave-wolves from the old hills", 4);
+        app.adv_notice();
+        let h = app.adv.as_ref().unwrap().adv.visit.as_ref().unwrap().hero;
+        let g = game_mut(&mut app);
+        g.dwarves[h].body.wound(Part::LeftArm, 30, true);
+        g.dwarves[h].body.blood = 0;
+        let _ = g.act(h, Action::Wait(20));
+        app.adv_notice();
+        let s = app.adv.as_ref().unwrap();
+        assert_eq!(s.view, View::Dead);
+        let end = s.adv.fame.end.clone().expect("the death is recorded");
+        assert!(end.died && s.recorded);
+        // Back to the title, with nothing of that world in hand.
+        app.on_key(key(KeyCode::Esc));
+        assert!(app.adv.is_none());
+        app.game = Game::placeholder(Overworld::empty());
+        let worlds = saves::list_worlds(&dir);
+        assert_eq!(worlds.len(), 1, "the world file");
+        // The title's Continue is for games, not worlds.
+        assert!(app.saves().into_iter().find(|m| m.kind != saves::SaveKind::World).is_none());
+        // Load game: the world is listed; Enter opens its map.
+        while app.mode != (Mode::Title { sel: crate::app::TITLE_LOAD }) {
+            app.on_key(key(KeyCode::Up));
+        }
+        app.on_key(key(KeyCode::Enter));
+        let at = app.saves().iter().position(|m| m.kind == saves::SaveKind::World).expect("listed");
+        for _ in 0..at {
+            app.on_key(key(KeyCode::Down));
+        }
+        let menu = screen(&mut app, 120, 30);
+        assert!(menu.contains('≈'), "marked as a world");
+        app.on_key(key(KeyCode::Enter));
+        assert!(matches!(app.mode, Mode::WorldMap { .. }), "{:?}", app.mode);
+        // Embark (the card, then Play now).
+        app.on_key(key(KeyCode::Enter));
+        assert!(matches!(app.mode, Mode::Embark { .. }), "{:?} {:?}", app.mode, app.flash);
+        app.on_key(key(KeyCode::Enter));
+        settle(&mut app);
+        assert_eq!(app.mode, Mode::Help, "a new fort");
+        let ow = &app.game.overworld;
+        assert!(!app.game.dwarves.is_empty());
+        // Its legends tell of the hero: their death, their figure, their bones.
+        let i = ow.events.iter().position(|e| e.text == end.legend).expect("the hero's death in the legends");
+        assert!(ow.is_known(i), "and the fort knows it");
+        let f = ow.figures.iter().find(|f| f.name == name).expect("the hero's figure");
+        assert!(f.died.is_some());
+        assert!(ow.remains.iter().any(|r| r.figure == f.id));
+        if let Some(saga) = &end.saga {
+            assert!(ow.sagas.iter().any(|x| x.title == saga.title), "the hero's saga");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

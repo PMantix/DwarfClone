@@ -366,6 +366,12 @@ impl Adventure {
         self.knobs.set.get(name).copied().unwrap_or(default)
     }
 
+    /// What the hero can stand against, for sizing those who hold a place
+    /// (A16): their fighting level, and one more for each companion.
+    pub fn might(&self) -> u32 {
+        self.hero.dwarf.fight_level() + self.company.len() as u32
+    }
+
     /// The hour of the day, 0-23.
     pub fn hour(&self) -> u32 {
         clock::hour(self.now())

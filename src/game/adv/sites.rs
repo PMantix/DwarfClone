@@ -52,7 +52,7 @@ impl Adventure {
         let built = sitegen::build(self, key, seed);
         self.ow.year = year;
         let (world, arrive) = built?;
-        let ctx = sitegen::Ctx { key, seed, race: self.hero.race, civ: self.hero.civ, memo: self.memos.get(&key).cloned().unwrap_or_default(), now: self.clock };
+        let ctx = sitegen::Ctx { key, seed, race: self.hero.race, civ: self.hero.civ, memo: self.memos.get(&key).cloned().unwrap_or_default(), now: self.clock, might: self.might(), knobs: self.knobs.clone() };
         let ow = std::mem::replace(&mut self.ow, Overworld::empty());
         let cell = match key {
             SiteKey::Wild(x, y) => (x, y),

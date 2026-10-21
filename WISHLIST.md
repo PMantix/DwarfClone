@@ -386,7 +386,7 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O12 Inspired engineers (M)
 - **Why:** Great works should come from named dwarves with ideas, giving the overseer ambitions it didn't plan.
-- **Steps:** [ ] Blueprints ([CRF-03](ideas/economy.md)) · [x] Automatons ([CRF-28](ideas/economy.md); guards, haulers and gatekeepers a mechanic builds, wound and oiled or they run down, seize up or go haywire, this commit) · [x] Luxury trinkets ([CRF-35](ideas/economy.md); music boxes, clockwork birds, orreries: titled nobles demand them, one in a room adds to its value and cheers its owner, this commit)
+- **Steps:** [x] Blueprints ([CRF-03](ideas/economy.md), 217bc71, 90b40f6) · [x] Automatons ([CRF-28](ideas/economy.md); guards, haulers and gatekeepers a mechanic builds, wound and oiled or they run down, seize up or go haywire, this commit) · [x] Luxury trinkets ([CRF-35](ideas/economy.md); music boxes, clockwork birds, orreries: titled nobles demand them, one in a room adds to its value and cheers its owner, this commit)
 - **Done when:** A dwarf's inspiration becomes an overseer ambition and a finished work bearing their name.
 
 ### Milestone 3: the fort as a society (v0.5)
@@ -756,15 +756,16 @@ Goal: the same world and simulation, seen from other seats.
   8's fallen forts (ruins to explore).
 - **Steps:** [x] make a character (race, skills, gear) and start at a site (A1, this commit) · [x] travel the
   world map; enter sites as local maps (towns, ruins, lairs, caves) (sites built on entry from the legends, with site memory: A4 3769753; the road with its travel log, night, weather, encounters, camps and wounds that bleed on the way: A3 31a02ad; saved and loaded whole, the road's encounters and a fallen fort's halls too (Esc menu, F5/F9, autosaves going in and out of sites and at each dawn on the road): A11 a90bc86) · [ ] talk: hear news and
-  rumours, take jobs, hire companions · [x] fight with the same body and wounds as fortress
+  rumours (`k`: greeted by fame, news, rumours of fallen forts, lairs, ruins and bones marked `!` on the travel map, the old tales as each people tells them this year, directions: A7 dfb75b6, this commit), take jobs, hire companions · [x] fight with the same body and wounds as fortress
   mode; loot; rest and heal (aimed blows and called shots at the eyes and teeth, crossbow bolts seen to fly, binding wounds, the dead's gear taken, the fight's blood drawn on the adventure map: A6, this commit) · [x] fame and infamy in the legends (deeds counted after every act: beasts of legend slain, names won, ruins dared, treasure taken and brought home; townsfolk murdered for infamy; each a chapter of the hero's Wander saga, the great ones legends: A10, this commit); visit or reclaim your old
   forts (visit: a fallen fort entered from its own save, its killer moved in, its saga, journal
-  and walls to read, and looting written back to the save after a backup: A5 df2b3d8) · [x] death ends it, and the world remembers (the end page leads with the hero's saga; the hero a figure of the legends, their bones and gear left where they fell for the next hero to find; `n` a fort in this world, `a` another hero; `S` then `R` retires a hero in a friendly town: A10, this commit)
+  and walls to read, and looting written back to the save after a backup: A5 df2b3d8) · [x] death ends it, and the world remembers (the end page leads with the hero's saga; the hero a figure of the legends, their bones and gear left where they fell for the next hero to find; `n` a fort in this world, `a` another hero; `S` then `R` retires a hero in a friendly town: A10, this commit; and every later fort or adventure in that world hears of it, through the shared world file `saves/<World>.world.json`, merged by every game that saves or ends in the world and listed with `≈` in Load game to found a new fort there: A19, this commit)
 - **Done when:** a character can leave a town, find a ruin from a fallen fort, fight what lives
   there, and come back with its treasure recorded in the legends. (Tested with real travel both ways and real fights, a scripted walker in place of A18's bot; the first
   three heroes die on the road or in the ruin before one comes home:
   `a_hero_walks_home_with_the_treasure_of_a_fallen_fort`.)
 - **Measured by:** the adventure bot and its batch (A18, 759fecc): `--adventure-trial --runs N` plays heroes to a fallen fort, a lair and a ruin in turn and reports how they ended, where and to what, with days, kills, loot and fame; `--adventure-trial --compare A B`.
+- **Tuned (A16, the site):** ruins held by a band sized to their past and the hero's might, about one in three near empty (`ruin.band` 2, `ruin.quiet` 0.3, `ruin.max` 6); a fallen fort's army keeps a band of `fallen.band` 3; warriors set out with a helm; the bot aims for the head (`bot.head` 3) and binds before the road. 20 heroes, seed 9000: home 2/20 -> 4/20; ruin-only 9/20, fort-only 4/20 (open: the fort's dead fall on the long road and the walk home).
 
 ### Later
 
