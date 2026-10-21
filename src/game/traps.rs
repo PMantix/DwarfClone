@@ -22,6 +22,12 @@ const STONE_DROPS: u64 = 3;
 /// Ticks a tripped creature lies on the floor.
 const TRIPPED: u32 = 30;
 
+/// TRAP_TRACE set: the trap hall's doings, on stderr.
+fn tracing() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("TRAP_TRACE").is_ok())
+}
+
 impl Game {
     /// Every tick: armed traps go off on whatever creature stands on them.
     /// Dwarves know where their traps are and never set them off.
@@ -44,10 +50,50 @@ impl Game {
                 .map(|c| c.id);
             if let Some(cid) = victim {
                 if self.jammed(tid) {
+                    if tracing() {
+                        eprintln!("  T{} {:?} at {:?} jammed", self.tick, kind, pos);
+                    }
                     continue;
+                }
+                if tracing() {
+                    eprintln!("  T{} {:?} {} springs on {}", self.tick, kind, tid, cid);
                 }
                 self.spring_trap(tid, cid);
             }
+        }
+        self.hall_entries();
+    }
+
+    /// Measure (`m2.hall_entered`): each besieger that sets foot in the
+    /// trap hall, counted once, against `m2.trap_kills`. The ids seen are
+    /// kept per thread, for the fort being played on it (not saved).
+    fn hall_entries(&mut self) {
+        thread_local! {
+            static SEEN: std::cell::RefCell<(u64, std::collections::HashSet<u32>)> = Default::default();
+        }
+        let Some(base) = self.overseer.as_ref().filter(|o| o.gate_stage >= 1).and_then(|o| o.base) else { return };
+        let fresh: Vec<u32> = self
+            .creatures
+            .values()
+            .filter(|c| c.alive && c.siege && c.pos.z == base.z && (8..=11).contains(&(c.pos.x - base.x)) && (0..=1).contains(&(c.pos.y - base.y)))
+            .map(|c| c.id)
+            .collect();
+        if self.tick % 5 == 0 && tracing() {
+            self.trace_hall(base);
+        }
+        if fresh.is_empty() {
+            return;
+        }
+        let fort = super::stories::hash(&self.fortress_name, base.x as u64 * 1000 + base.y as u64);
+        let n = SEEN.with(|s| {
+            let mut s = s.borrow_mut();
+            if s.0 != fort {
+                *s = (fort, Default::default());
+            }
+            fresh.into_iter().filter(|id| s.1.insert(*id)).count()
+        });
+        if n > 0 {
+            self.count("m2.hall_entered", n as u32);
         }
     }
 
@@ -224,6 +270,10 @@ impl Game {
         }
         // Bolts make thinner spikes than a spear's head.
         let base = if load.0 == ItemKind::Bolt { 7.0 } else { 9.0 };
+        if tracing() {
+            let on = self.creatures.values().filter(|c| c.alive && c.pos == pos).count();
+            eprintln!("  T{} spikes {} fire ({:?} {:?}) on {}", tick, sid, load.0, load.1, on);
+        }
         let att = super::combat::Fighter {
             name: "the spikes".into(),
             skill: 8 + quality as u32,
@@ -277,6 +327,28 @@ impl Game {
         if let Some(s) = self.annals.sieges.iter_mut().rev().find(|s| s.ended.is_none()) {
             s.trapped += 1;
         }
+    }
+
+    /// TRAP_TRACE: the besiegers near the gate, and the hall's traps.
+    fn trace_hall(&self, base: Pos) {
+        let near: Vec<String> = self
+            .creatures
+            .values()
+            .filter(|c| c.alive && c.siege && c.pos.z == base.z && (-3..=20).contains(&(c.pos.x - base.x)) && (-3..=4).contains(&(c.pos.y - base.y)))
+            .map(|c| format!("{}@{},{} mv{}", c.id, c.pos.x - base.x, c.pos.y - base.y, c.move_cd))
+            .collect();
+        if near.is_empty() {
+            return;
+        }
+        let traps: Vec<String> = self
+            .buildings
+            .values()
+            .filter(|b| b.pos.z == base.z && (1..=16).contains(&(b.pos.x - base.x)) && (0..=1).contains(&(b.pos.y - base.y)))
+            .map(|b| format!("{:?}{},{}{}{} L{} cd{} {:?}", b.kind, b.pos.x - base.x, b.pos.y - base.y, if b.built { "" } else { "(unbuilt)" }, if b.raised { "(up)" } else { "" }, b.links.len(), b.trap_cd.saturating_sub(self.tick), b.load.map(|l| (l.0, l.1))))
+            .collect();
+        let bodies = self.items.values().filter(|it| it.pos.z == base.z && (4..=14).contains(&(it.pos.x - base.x)) && (0..=1).contains(&(it.pos.y - base.y)) && matches!(it.kind, ItemKind::Corpse | ItemKind::Carcass)).count();
+        let total = self.creatures.values().filter(|c| c.alive && c.siege).count();
+        eprintln!("T{} [{} of {}] {} | bodies {} | {}", self.tick, near.len(), total, near.join(" "), bodies, traps.join(" "));
     }
 
     /// A spent cage or stone trap needs its last part delivered again.

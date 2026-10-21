@@ -385,6 +385,9 @@ impl Game {
             }
         }
         self.count("m2.hall_tolls", 1);
+        if n >= 3 {
+            self.count("m2.hall_tolls3", 1);
+        }
         self.msg_at(&text, (240, 170, 110), at, super::logkind::LogKind::Siege);
         self.record(super::memory::MemoryKind::SiegeEnd, &[], at, text.clone(), if broke { 6 } else { 4 });
         if n >= 3 || broke {
