@@ -1234,16 +1234,15 @@ impl App {
         let p = v.g.dwarves[h].pos;
         let near = v.g.creatures.values().filter(|c| c.alive && c.visitor == adv::sitegen::town::FOLK && c.pos.z == p.z).min_by_key(|c| ((c.pos.x - p.x).pow(2) + (c.pos.y - p.y).pow(2), c.id)).map(|c| c.id);
         let Some(id) = near else { return };
-        // Walk up to them.
-        for _ in 0..60 {
-            let Some(s) = self.adv.as_mut() else { return };
-            let Some(v) = s.adv.visit.as_mut() else { return };
-            if v.g.talk_choices(h).contains(&id) {
-                break;
-            }
-            let Some(cp) = v.g.creatures.get(&id).map(|c| c.pos) else { return };
-            let d = v.g.dwarves[h].pos;
-            self.adv_act(Action::Move((cp.x - d.x).signum(), (cp.y - d.y).signum()));
+        // They come over to the hero (to a free spot beside them).
+        let spot = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)]
+            .iter()
+            .map(|&(dx, dy)| p.offset(dx, dy, 0))
+            .find(|&q| v.g.world.in_bounds(q) && v.g.world.walkable(q) && !v.g.creatures.values().any(|c| c.alive && c.pos == q));
+        let Some(q) = spot else { return };
+        if let Some(c) = v.g.creatures.get_mut(&id) {
+            c.pos = q;
+            c.path.clear();
         }
         self.adv_talk_open(id);
         for k in ['b'] {
@@ -1263,13 +1262,11 @@ impl App {
         if s.view == View::Dead || s.adv.visit.is_none() {
             return;
         }
-        let refused = s.flash.take();
-        let mut chat = s.adv.greet(&p);
-        if let Some(why) = refused.filter(|_| !p.hostile && !chat.closed) {
-            chat.lines.push((adv::talk::Said::Aside, why));
-            chat.closed = true;
+        // (Refused: they walked off. The flash says so.)
+        if !p.hostile && s.flash.is_some() {
+            return;
         }
-        s.chat = Some(chat);
+        s.chat = Some(s.adv.greet(&p));
         s.view = View::Talk { who: id, sel: 0 };
     }
 
@@ -1899,7 +1896,7 @@ mod tests {
         assert!(matches!(s.view, View::Talk { .. }), "{:?} {:?}", s.view, s.flash);
         let chat = s.chat.as_ref().unwrap();
         assert!(chat.lines.iter().any(|(w, l)| *w == adv::talk::Said::Them && l.contains("You")), "known by fame: {:?}", chat.lines);
-        assert!(chat.asked.contains(&adv::talk::Topic::Rumours));
+        assert!(chat.asked.contains(&adv::talk::Topic::Rumours), "{:?}", chat.lines);
         assert!(screen(&mut app, 140, 45).contains("Conversation"));
         // Farewell (the last topic) ends it, and they say goodbye in the log.
         let n = { let s = app.adv.as_ref().unwrap(); s.adv.topics(s.chat.as_ref().unwrap()).len() };

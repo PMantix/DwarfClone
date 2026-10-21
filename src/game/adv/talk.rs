@@ -61,6 +61,17 @@ pub struct Rumour {
     pub weight: i32,
 }
 
+/// A rumour before its words are chosen: its kind (forts, lairs, ruins,
+/// bones, sagas, raids, the hero's own deeds), what fills the words, and
+/// the way there.
+struct Draft {
+    kind: usize,
+    args: Vec<(&'static str, String)>,
+    tail: String,
+    about: Option<About>,
+    weight: i32,
+}
+
 /// How a speaker carries themselves (hashed from their name).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Temper {
@@ -642,9 +653,9 @@ impl Adventure {
         let ow = self.ow();
         let r = self.reach(p);
         let year = self.year();
-        let mut v: Vec<Rumour> = Vec::new();
-        // How many of each kind told so far (forts, lairs, ruins, bones, sagas).
-        let mut told = [0usize; 5];
+        // Drafts: the words are chosen once the five are, so one speaker
+        // telling of two ruins doesn't say the same of both.
+        let mut v: Vec<Draft> = Vec::new();
         let near = |d: i32| 100 * (r + 1) / (d + 2);
         let way = |to: (i32, i32)| format!(" {} {}.", cap(&days_words(cheb(to, at))), way_to(at, to));
         // A people talks most of what it cares for: dwarves of forts, elves
@@ -675,9 +686,8 @@ impl Adventure {
                 (_, Some(k)) => format!(", the last of them slain by {}", a_an(k)),
                 _ => String::new(),
             };
-            let mut text = fill(voice_n(p, 30, &FORT, { told[0] += 1; told[0] - 1 }), &[("place", &f.name), ("when", &when_words(year, fell)), ("killer", &killer), ("treasure", &treasure)]);
-            text.push_str(&way(f.site));
-            v.push(Rumour { text: cap(&text), about: Some(About::Fort(i)), weight: near(d) * (2 + left.len() as i32).min(5) * likes(0) });
+            let args = vec![("place", f.name.clone()), ("when", when_words(year, fell)), ("killer", killer), ("treasure", treasure)];
+            v.push(Draft { kind: 0, args, tail: way(f.site), about: Some(About::Fort(i)), weight: near(d) * (2 + left.len() as i32).min(5) * likes(0) });
         }
         for fid in ow.beasts_near(at.0, at.1, r) {
             let b = &ow.figures[fid as usize];
@@ -685,18 +695,14 @@ impl Adventure {
             let d = cheb((lair.x, lair.y), at);
             let beast = format!("{} the {}", b.name, b.kind);
             let place = format!("{}, in {}", lair.name, land_name(ow, lair.x, lair.y));
-            let mut text = fill(voice_n(p, 50, &LAIR, { told[1] += 1; told[1] - 1 }), &[("beast", &beast), ("place", &place)]);
-            text.push_str(&way((lair.x, lair.y)));
-            v.push(Rumour { text, about: Some(About::Figure(fid)), weight: near(d) * (3 + b.kills.min(4) as i32) * likes(1) / 2 });
+            v.push(Draft { kind: 1, args: vec![("beast", beast), ("place", place)], tail: way((lair.x, lair.y)), about: Some(About::Figure(fid)), weight: near(d) * (3 + b.kills.min(4) as i32) * likes(1) / 2 });
         }
         for s in ow.sites.iter().filter(|s| s.ruined && s.kind != SiteKind::Lair) {
             let d = cheb((s.x, s.y), at);
             if d > r || ow.fort_at(s.x, s.y).is_some() {
                 continue;
             }
-            let mut text = fill(voice_n(p, 70, &RUIN, { told[2] += 1; told[2] - 1 }), &[("place", &s.name), ("kind", s.kind.name())]);
-            text.push_str(&way((s.x, s.y)));
-            v.push(Rumour { text, about: Some(About::Site(s.id)), weight: near(d) * 2 * likes(2) });
+            v.push(Draft { kind: 2, args: vec![("place", s.name.clone()), ("kind", s.kind.name().to_string())], tail: way((s.x, s.y)), about: Some(About::Site(s.id)), weight: near(d) * 2 * likes(2) });
         }
         for (i, b) in ow.remains.iter().enumerate() {
             let d = cheb((b.x, b.y), at);
@@ -704,13 +710,11 @@ impl Adventure {
                 continue;
             }
             let land = land_name(ow, b.x, b.y);
-            let mut text = fill(voice_n(p, 90, &BONES, { told[3] += 1; told[3] - 1 }), &[("name", &b.name), ("land", &land), ("when", &when_words(year, b.year))]);
-            text.push_str(&way((b.x, b.y)));
-            v.push(Rumour { text, about: Some(About::Remains(i)), weight: near(d) * (1 + b.gear.len().min(4) as i32) * likes(3) });
+            let args = vec![("name", b.name.clone()), ("land", land), ("when", when_words(year, b.year))];
+            v.push(Draft { kind: 3, args, tail: way((b.x, b.y)), about: Some(About::Remains(i)), weight: near(d) * (1 + b.gear.len().min(4) as i32) * likes(3) });
         }
         for s in ow.sagas.iter().rev().take(6) {
-            let text = fill(voice_n(p, 110, &SAGA, { told[4] += 1; told[4] - 1 }), &[("title", &s.title)]);
-            v.push(Rumour { text, about: None, weight: 40 * likes(4) });
+            v.push(Draft { kind: 4, args: vec![("title", s.title.clone())], tail: String::new(), about: None, weight: 40 * likes(4) });
         }
         if p.race == Race::Goblin {
             let raid = ow
@@ -721,21 +725,29 @@ impl Adventure {
                 .min_by_key(|s| (cheb((s.x, s.y), at), s.id));
             if let Some(s) = raid {
                 let d = cheb((s.x, s.y), at);
-                let mut text = fill(stories::pick(p.h(130), 130, &RAID), &[("place", &s.name)]);
-                text.push_str(&way((s.x, s.y)));
-                v.push(Rumour { text, about: Some(About::Site(s.id)), weight: near(d) * 4 });
+                v.push(Draft { kind: 5, args: vec![("place", s.name.clone())], tail: way((s.x, s.y)), about: Some(About::Site(s.id)), weight: near(d) * 4 });
             }
         }
         if self.fame.renown > self.knob("talk.renown_heard", 10.0) as i32 {
             if let Some(deed) = self.known_for() {
-                let text = fill(voice(p, 140, &OWN), &[("name", &self.hero_dwarf().called()), ("deed", &deed)]);
-                v.push(Rumour { text, about: None, weight: 1000 });
+                v.push(Draft { kind: 6, args: vec![("name", self.hero_dwarf().called()), ("deed", deed)], tail: String::new(), about: None, weight: 1000 });
             }
         }
-        v.sort_by(|a, b| b.weight.cmp(&a.weight).then(a.text.cmp(&b.text)));
+        v.sort_by(|a, b| b.weight.cmp(&a.weight).then(a.args.cmp(&b.args)));
         let n = if self.stance_of(p) == Stance::Wary { 2 } else { 5 };
         v.truncate(n);
-        v
+        let mut told = [0usize; 7];
+        v.into_iter()
+            .map(|d| {
+                let t = match d.kind {
+                    5 => RAID[(p.h(130) as usize + told[5]) % RAID.len()],
+                    k => voice_n(p, 30 + 20 * k as u64, [&FORT, &LAIR, &RUIN, &BONES, &SAGA, &OWN, &OWN][k], told[k]),
+                };
+                told[d.kind] += 1;
+                let args: Vec<(&str, &str)> = d.args.iter().map(|(k, v)| (*k, v.as_str())).collect();
+                Rumour { text: cap(&format!("{}{}", fill(t, &args), d.tail)), about: d.about, weight: d.weight }
+            })
+            .collect()
     }
 
     /// News of the world: the latest events near the speaker, or of their
