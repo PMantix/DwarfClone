@@ -228,11 +228,15 @@ pub struct BleedParams {
     pub clot_still: i32,
     /// Clotting while walking or fighting.
     pub clot_moving: i32,
+    /// An opened artery nobody has pressed or bound clots no lower than
+    /// this (spilled guts, half this): it bleeds on until it's seen to.
+    /// 0 lets it clot as any wound.
+    pub artery_floor: i32,
 }
 
 impl Default for BleedParams {
     fn default() -> Self {
-        BleedParams { cut: 3, gash: 6, mangle: 12, sever: 45, vital_pct: 150, clot_still: 6, clot_moving: 2 }
+        BleedParams { cut: 3, gash: 6, mangle: 12, sever: 45, vital_pct: 150, clot_still: 6, clot_moving: 2, artery_floor: 0 }
     }
 }
 
@@ -276,8 +280,9 @@ impl Body {
     /// bones, a cracked skull that knocks one out, fainting from the pain.
     /// They're applied to the body (extra bleeding, the count out cold) and
     /// returned for the telling. `artery` is the bleed an opened artery
-    /// adds (in tenths per body tick).
-    pub fn harm_from(&mut self, part: Part, w: Wound, dmg: i32, edged: bool, h: u64, artery: i32) -> Vec<Hurt> {
+    /// adds, and `guts` the bleed of a belly torn open (in tenths per body tick).
+    #[allow(clippy::too_many_arguments)]
+    pub fn harm_from(&mut self, part: Part, w: Wound, dmg: i32, edged: bool, h: u64, artery: i32, guts: i32) -> Vec<Hurt> {
         let mut v = Vec::new();
         let i = part.idx();
         let hard = w == Wound::Gash || w == Wound::Mangle || w == Wound::Bruise && dmg * 2 >= self.max[i];
@@ -321,7 +326,7 @@ impl Body {
             Part::LowerBody => {
                 if edged && (heavy && roll(1) < 35 || roll(1) < 4) && !self.harm.guts {
                     self.harm.guts = true;
-                    self.bleeds[i] += artery / 3;
+                    self.bleeds[i] += guts;
                     v.push(Hurt::Guts);
                 }
                 if roll(2) < if edged { 12 } else { 30 } {
@@ -592,7 +597,19 @@ impl Body {
             // Still, even a small wound closes by at least a tenth each tick.
             let n = if moving { c / 100 } else { (c / 100).max(1) };
             self.clot_frac[i] = c % 100;
-            self.bleeds[i] = (self.bleeds[i] - n).max(0);
+            // An open artery left alone keeps spurting, and a belly torn
+            // open keeps seeping (slower): neither stops till it's seen to.
+            let open = if self.pressed[i] || self.bandaged[i] {
+                0
+            } else if self.harm.artery[i] {
+                p.artery_floor
+            } else if self.harm.guts && i == Part::LowerBody.idx() {
+                p.artery_floor / 2
+            } else {
+                0
+            };
+            let floor = open.min(self.bleeds[i]);
+            self.bleeds[i] = (self.bleeds[i] - n).max(floor);
             if self.bleeds[i] == 0 {
                 self.clot_frac[i] = 0;
                 self.pressed[i] = false;
@@ -846,5 +863,47 @@ mod tests {
         assert_eq!(b.blood, 95, "an old save's bleeding should flow at its old rate");
         assert_eq!(b.bleeding, (b.bleed_rate() + 9) / 10);
         assert_eq!(b.worst_bleed(), Some(Part::UpperBody));
+    }
+
+    #[test]
+    fn an_open_artery_left_alone_bleeds_on_till_seen_to() {
+        let p = BleedParams { artery_floor: 4, ..BleedParams::default() };
+        // A gash to the arm that opened an artery: left alone it never
+        // stops, and kills; held closed, it clots and the artery shuts.
+        let opened = |press: bool| {
+            let mut b = Body::new(1.0);
+            b.wound_with(Part::LeftArm, 8, true, &p);
+            b.harm.artery[Part::LeftArm.idx()] = true;
+            b.bleeds[Part::LeftArm.idx()] += 8;
+            if press {
+                b.press(Part::LeftArm);
+            }
+            for _ in 0..1000 {
+                b.tick_with(&p, false);
+            }
+            b
+        };
+        let left = opened(false);
+        assert!(left.dead, "an untended artery should bleed one out");
+        let held = opened(true);
+        assert!(!held.dead && held.bleed_rate() == 0 && !held.harm.artery[Part::LeftArm.idx()], "a held artery should clot shut");
+        // Spilled guts seep slower, but just as surely.
+        let mut b = Body::new(1.0);
+        b.harm.guts = true;
+        b.bleeds[Part::LowerBody.idx()] = 6;
+        let mut t = 0;
+        while !b.dead && t < 2000 {
+            b.tick_with(&p, false);
+            t += 1;
+        }
+        assert!(b.dead && t > 300, "guts should be a slow death, not a fast one ({} body ticks)", t);
+        // With the floor off (gore.harm=0), an artery clots as any wound.
+        let mut b = Body::new(1.0);
+        b.harm.artery[Part::LeftArm.idx()] = true;
+        b.bleeds[Part::LeftArm.idx()] = 8;
+        for _ in 0..300 {
+            b.tick_with(&BleedParams::default(), false);
+        }
+        assert!(!b.dead && b.bleed_rate() == 0);
     }
 }

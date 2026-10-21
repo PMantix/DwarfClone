@@ -1344,6 +1344,24 @@ pub fn wall_look(s: &Stain, ch: char, fg: (u8, u8, u8)) -> (char, (u8, u8, u8), 
 }
 
 impl Game {
+    /// A dwarf died: count it against the gore hurts they had on them
+    /// (an open artery or belly when they bled out, senseless when struck
+    /// down), so a batch shows which of them kill.
+    pub(super) fn count_gore_death(&mut self, d: &Dwarf, cause: &str) {
+        let h = &d.body.harm;
+        let bled = cause == "bled to death";
+        let struck = cause == "struck down";
+        if (bled || struck) && h.artery.iter().any(|&a| a) {
+            self.count(if bled { "gore.died.artery" } else { "gore.died.artery_struck" }, 1);
+        }
+        if (bled || struck) && h.guts {
+            self.count(if bled { "gore.died.guts" } else { "gore.died.guts_struck" }, 1);
+        }
+        if struck && h.out > 0 {
+            self.count("gore.died.dazed", 1);
+        }
+    }
+
     /// A dwarf who lost something for good to a blow (an eye, teeth,
     /// fingers, an ear, the nose) remembers it: in the medical history, in
     /// their thoughts, and in the fort's memory for the worst of it.
@@ -1604,7 +1622,7 @@ mod tests {
                 (Part::UpperBody, Wound::Mangle, false),
             ] {
                 let mut b = Body::new(1.0);
-                for hurt in b.harm_from(part, w, 12, edged, h, 14) {
+                for hurt in b.harm_from(part, w, 12, edged, h, 14, 4) {
                     seen.insert(format!("{:?}", hurt).split('(').next().unwrap().to_string());
                 }
             }
@@ -1617,7 +1635,7 @@ mod tests {
         let find = |part: Part, w: Wound, edged: bool, want: &dyn Fn(&Hurt) -> bool| {
             (0..4000u64).map(|h| mix(Pos::new(h as i32, 1, 0), h)).find_map(|h| {
                 let mut b = Body::new(1.0);
-                let hs = b.harm_from(part, w, 12, edged, h, 14);
+                let hs = b.harm_from(part, w, 12, edged, h, 14, 4);
                 hs.iter().any(|x| want(x)).then_some(b)
             })
         };

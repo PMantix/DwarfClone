@@ -255,7 +255,9 @@ mod tests {
         // early fort may have set up a workshop there).
         let (mp, _) = *spots.iter().find(|s| s.1 == Feature::Monument).unwrap();
         let heart = box_iter(mp, mp.offset(2, 2, 0)).collect::<Vec<_>>();
-        if heart.iter().all(|&p| g.world.t(p).dug) && super::super::architect::taste(o).grand > 0 {
+        // (Not if it was already begun elsewhere, the heart being taken.)
+        let elsewhere = g.buildings.values().any(|b| b.kind == BuildingKind::Monument && b.pos != mp);
+        if heart.iter().all(|&p| g.world.t(p).dug) && super::super::architect::taste(o).grand > 0 && !elsewhere {
             // (Cleared, as the rough early work is once established.)
             let in_way: Vec<u32> = heart.iter().map(|&p| g.world.t(p).building).filter(|&id| id != 0 && g.buildings.get(&id).map_or(false, |b| b.kind != BuildingKind::Monument)).collect();
             for id in in_way {
