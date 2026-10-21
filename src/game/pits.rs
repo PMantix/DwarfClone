@@ -78,6 +78,9 @@ pub struct Pits {
     pub pond: bool,
     #[serde(default)]
     pub filled: bool,
+    /// How deep the gatehouse's pit is cut (0: `PIT_DEPTH`, from old saves).
+    #[serde(default)]
+    pub depth: i32,
 }
 
 /// A count in words ("Four goblins fell").
@@ -94,7 +97,12 @@ fn cap(s: &str) -> String {
 impl Game {
     /// Whether the bridge at `p` stands over a pit: nothing under its deck.
     pub fn over_pit(&self, p: Pos) -> bool {
-        self.world.kind(p.down()) == Some(TileKind::Open)
+        match self.world.kind(p.down()) {
+            Some(TileKind::Open) => true,
+            // (A shallow pit, a level deep: its dug floor right under the deck.)
+            Some(TileKind::Floor) => self.pits.depth == 1 && self.pits.decks.contains(&p) && self.world.t(p.down()).dug,
+            _ => false,
+        }
     }
 
     /// The name the pit takes, the trap hall's belly (from hashes).
@@ -115,7 +123,9 @@ impl Game {
         let id = self.world.t(q).building;
         let raised = self.buildings.get(&id).filter(|b| b.kind == BuildingKind::Bridge)?.raised;
         let mut bottom = q;
-        for k in 1..=PIT_DEPTH {
+        // (The gatehouse's pit may be a shallow one: pit_depth_at.)
+        let depth = if self.pits.depth > 0 && self.pits.decks.contains(&q) { self.pits.depth } else { PIT_DEPTH };
+        for k in 1..=depth {
             let r = q.offset(0, 0, -k);
             if !self.world.get(r).map_or(false, |t| t.kind == TileKind::Wall && t.mat.diggable() && t.water == 0) {
                 break;
@@ -149,23 +159,36 @@ impl Game {
     /// bridge on, and under it and all round, two levels down, is dry rock,
     /// so the pit opens into no cave and lets nothing out.
     fn pit_ground(&self, base: Pos) -> bool {
+        self.pit_depth_at(base).is_some()
+    }
+
+    /// How deep a pit the rock past the trap hall takes: two levels where it
+    /// is sound all round that deep, else one where the first level is (and
+    /// nothing wet lies under it). None: hollow or wet.
+    fn pit_depth_at(&self, base: Pos) -> Option<i32> {
         let w = &self.world;
-        for dz in 1..=PIT_DEPTH {
-            for dx in PIT[0] - 1..=PIT[1] + 1 {
-                for dy in -1..=2 {
-                    let r = base.offset(dx, dy, -dz);
-                    if !w.get(r).map_or(false, |t| t.kind == TileKind::Wall && t.mat.diggable() && t.water == 0 && !t.aquifer) {
-                        return false;
-                    }
-                }
-            }
-        }
+        let sound = |depth: i32| {
+            (1..=depth).all(|dz| {
+                (PIT[0] - 1..=PIT[1] + 1).all(|dx| {
+                    (-1..=2).all(|dy| w.get(base.offset(dx, dy, -dz)).map_or(false, |t| t.kind == TileKind::Wall && t.mat.diggable() && t.water == 0 && !t.aquifer))
+                })
+            })
+        };
+        let dry_under = PIT.iter().all(|&dx| (0..2).all(|dy| w.get(base.offset(dx, dy, -2)).map_or(true, |t| t.water == 0 && !t.aquifer)));
+        let depth = if sound(PIT_DEPTH) {
+            PIT_DEPTH
+        } else if self.knob("pit.shallow", 1.0) > 0.0 && sound(1) && dry_under {
+            1
+        } else {
+            return None;
+        };
         // (Nothing on the floor but traps, which can be taken up.)
         let free = |p: Pos| self.building_at(p).map_or(true, |k| k.is_trap() || k == BuildingKind::Bridge);
-        PIT.iter().all(|&dx| (0..2).all(|dy| {
+        let floor = PIT.iter().all(|&dx| (0..2).all(|dy| {
             let p = base.offset(dx, dy, 0);
             w.get(p).map_or(false, |t| t.kind == TileKind::Floor && t.water == 0) && free(p)
-        }))
+        }));
+        floor.then_some(depth)
     }
 
     /// Daily (from `ov_defences`): begin the pit bridge when it is due, and
@@ -177,7 +200,26 @@ impl Game {
             if !self.pit_due(o) || o.did("nopit") {
                 return;
             }
+            self.count("m2.pit_due_days", 1);
             if !self.pit_ground(base) {
+                // (Why, for the batch: a tile dug out, a cave or water, other rock.)
+                let mut why = "m2.pit_rock_other";
+                for dz in 1..=PIT_DEPTH {
+                    for dx in PIT[0] - 1..=PIT[1] + 1 {
+                        for dy in -1..=2 {
+                            if let Some(t) = self.world.get(base.offset(dx, dy, -dz)) {
+                                if t.water > 0 || t.aquifer {
+                                    why = "m2.pit_rock_wet";
+                                } else if t.kind != TileKind::Wall && t.dug {
+                                    why = "m2.pit_rock_dug";
+                                } else if t.kind != TileKind::Wall {
+                                    why = "m2.pit_rock_cave";
+                                }
+                            }
+                        }
+                    }
+                }
+                self.count(why, 1);
                 o.done.push("nopit".into());
                 Self::note_as(o, self.tick, NoteKind::Gate, "Sounded the rock past the trap hall for a pit: it is hollow or wet down there. No pit.".into());
                 return;
@@ -186,16 +228,22 @@ impl Game {
             // link; and a log or blocks for each deck.
             let need = self.knob("gate.pit_mechs", 9.0) as usize;
             if self.stock_of(ItemKind::Mechanism) < need {
+                self.count("m2.pit_wait_mechs", 1);
                 let until = self.tick + SEASON;
                 o.boosts.retain(|b| b.0 != crate::buildings::Recipe::Mechanism);
                 o.boosts.push((crate::buildings::Recipe::Mechanism, need as u32 + 2, until));
                 return;
             }
             if self.stock_of(ItemKind::Log) + self.stock_of(ItemKind::Block) < 4 || self.alert {
+                self.count(if self.alert { "m2.pit_wait_alert" } else { "m2.pit_wait_wood" }, 1);
                 return;
             }
             o.gate_stage = 2;
             o.done.push("pit".into());
+            self.pits.depth = self.pit_depth_at(base).unwrap_or(PIT_DEPTH);
+            if self.pits.depth < PIT_DEPTH {
+                self.count("m2.pit_shallow", 1);
+            }
             self.pits.decks = PIT.iter().flat_map(|&dx| (0..2).map(move |dy| base.offset(dx, dy, 0))).collect();
             let name = self.pit_name_for(base);
             self.pits.name = Some(name.to_string());
@@ -206,7 +254,7 @@ impl Game {
                 o,
                 self.tick,
                 NoteKind::Gate,
-                format!("Began a drawbridge past {}, and a pit two levels deep to dig under it, on its own lever. They will call the pit {}.", hall, name),
+                format!("Began a drawbridge past {}, and a pit {} deep to dig under it, on its own lever. They will call the pit {}.", hall, if self.pits.depth >= 2 { "two levels" } else { "a level" }, name),
             );
         }
         if o.gate_stage < 2 || self.pits.decks.is_empty() {
@@ -278,6 +326,23 @@ impl Game {
         }
     }
 
+    /// At the end of a trial (`m2_stats`): how far the pit got, or why not.
+    pub(super) fn pit_stats(&mut self) {
+        let Some(o) = self.overseer.as_ref() else { return };
+        let (nopit, due, stage) = (o.did("nopit"), self.pit_due(o), o.gate_stage);
+        if nopit {
+            self.count("m2.pit_nopit", 1);
+        }
+        if stage == 1 && !nopit && !due {
+            self.count("m2.pit_notdue", 1);
+        }
+        if stage >= 2 && !nopit {
+            let dug = !self.pits.decks.is_empty() && self.pits.decks.iter().all(|&p| self.over_pit(p));
+            self.count("m2.pit_dug", dug as u32);
+            self.count("m2.pit_ready", self.pit_lever().is_some() as u32);
+        }
+    }
+
     /// The pit's lever, built and linked to every half of its bridge.
     pub(super) fn pit_lever(&self) -> Option<u32> {
         let lp = self.pits.lever?;
@@ -312,6 +377,9 @@ impl Game {
             on_deck >= min || (on_deck >= 1 && gate_side == 0)
         };
         let want = if !raised && ours { false } else { want };
+        if on_deck > 0 && !raised {
+            self.count("m2.pit_foe_on_deck", 1);
+        }
         let lp = self.buildings[&lever].pos;
         if want == raised {
             self.buildings.get_mut(&lever).unwrap().pull = false;
@@ -640,6 +708,25 @@ mod tests {
         assert!(!g.world.passable(p, Mover::Dwarf));
         g.pull_lever(lever);
         assert!(g.world.walkable(p), "lowered again, the deck is back");
+    }
+
+    /// Over hollow rock two levels down, the gatehouse's pit is cut a level
+    /// deep: the deck stands over its dug floor, the miners don't channel it
+    /// again, and raised, the bridge drops a goblin one level.
+    #[test]
+    fn a_shallow_pit_still_drops_them() {
+        let mut g = Game::new(51);
+        let (p, _, lever) = bridge(&mut g);
+        g.pits.decks = vec![p];
+        g.pits.depth = 1;
+        assert_eq!(g.channel_under_bridge(p), Some(p.down()));
+        assert_eq!(g.world.kind(p.down()), Some(TileKind::Floor));
+        assert!(g.over_pit(p), "a shallow pit's deck isn't over it");
+        assert!(g.world.walkable(p));
+        let gob = g.spawn_creature(crate::creature::Species::Goblin, p, u64::MAX);
+        g.pull_lever(lever);
+        assert!(!g.world.walkable(p));
+        assert_eq!(g.creatures.get(&gob).map(|c| c.pos), Some(p.down()), "the goblin didn't fall a level");
     }
 
     /// O04 1b: raising the bridge over the pit drops whoever is on it:

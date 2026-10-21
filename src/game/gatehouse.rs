@@ -447,7 +447,10 @@ impl Game {
     /// the bridge behind it (O04 step 2): a bold or warlike one, not a
     /// cautious one, once the hall's spikes stand on a linked plate.
     pub(super) fn lets_them_in(&self, o: &Overseer) -> bool {
-        if o.gate_stage == 0 || o.has(Trait::Cautious) || !(o.has(Trait::Bold) || o.style == Style::Warlord) || self.knob("gate.let_in", 1.0) <= 0.0 {
+        // (Any overseer whose pit bridge is ready lets them come on to it:
+        // a pit is dug to be used. pits.rs.)
+        let pit = self.pit_lever().is_some() && self.knob("gate.pit_lure", 1.0) > 0.0;
+        if o.gate_stage == 0 || (o.has(Trait::Cautious) && !pit) || !(o.has(Trait::Bold) || o.style == Style::Warlord || pit) || self.knob("gate.let_in", 1.0) <= 0.0 {
             return false;
         }
         let Some(base) = o.base else { return false };
@@ -532,7 +535,12 @@ impl Game {
     /// corridor, and round the foot of the stair), which nothing may be cut
     /// from: it would open a way round the doors and the bridge.
     pub(super) fn gatehouse(base: Pos, p: Pos) -> bool {
-        p.z == base.z && (-2..=16).contains(&(p.x - base.x)) && (-2..=3).contains(&(p.y - base.y))
+        // (And the rock under the pit bridge, kept whole for the pit: pits.rs.)
+        let pit = |p: Pos| {
+            use super::pits::{PIT, PIT_DEPTH};
+            p.z < base.z && p.z >= base.z - PIT_DEPTH && (PIT[0] - 1..=PIT[1] + 1).contains(&(p.x - base.x)) && (-1..=2).contains(&(p.y - base.y))
+        };
+        (p.z == base.z && (-2..=16).contains(&(p.x - base.x)) && (-2..=3).contains(&(p.y - base.y))) || pit(p)
     }
 }
 
