@@ -1095,7 +1095,6 @@ mod tests {
     /// the target and the way is the bot's, A18: here the script walks
     /// straight at it.)
     #[test]
-    #[ignore = "open: on the 20 seeds no scripted hero yet survives the road and the ruin both (A16 tunes the danger)"]
     fn a_hero_walks_home_with_the_treasure_of_a_fallen_fort() {
         use super::super::sitegen::fallen::tests::{fallen_fort, tmp, PRIZE};
         let base = tmp("a10-g03");

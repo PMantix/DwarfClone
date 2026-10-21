@@ -761,7 +761,8 @@ Goal: the same world and simulation, seen from other seats.
   forts (visit: a fallen fort entered from its own save, its killer moved in, its saga, journal
   and walls to read, and looting written back to the save after a backup: A5 df2b3d8) · [x] death ends it, and the world remembers (the end page leads with the hero's saga; the hero a figure of the legends, their bones and gear left where they fell for the next hero to find; `n` a fort in this world, `a` another hero; `S` then `R` retires a hero in a friendly town: A10, this commit)
 - **Done when:** a character can leave a town, find a ruin from a fallen fort, fight what lives
-  there, and come back with its treasure recorded in the legends. (Tested with real travel both ways, a scripted walker in place of A18's bot:
+  there, and come back with its treasure recorded in the legends. (Tested with real travel both ways and real fights, a scripted walker in place of A18's bot; most
+  seeds die on the road or in the ruin, one in four comes home:
   `a_hero_walks_home_with_the_treasure_of_a_fallen_fort`.)
 
 ### Later
