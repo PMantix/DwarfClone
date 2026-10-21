@@ -530,6 +530,7 @@ fn in_site(a: &mut Adventure, r: &mut Run) -> bool {
     let flee = a.knob("bot.flee", 0.33);
     let bind_at = a.knob("bot.bind", 0.5);
     let loot_n = a.knob("bot.loot", 3.0) as usize;
+    let head = a.knob("bot.head", 3.0);
     let entry = a.visit.as_ref().map_or(Pos::new(0, 0, 0), |v| v.g.dwarves[v.hero].pos);
     let mut fleeing = false;
     let mut chase: (u32, u32) = (0, 0);
@@ -542,7 +543,7 @@ fn in_site(a: &mut Adventure, r: &mut Run) -> bool {
             return false;
         }
         let d = &v.g.dwarves[h];
-        let (me, blood, bleeding, healed) = (d.pos, d.body.blood as f64 / d.body.max_blood.max(1) as f64, d.body.bleed_rate() > 0, d.body.healed());
+        let (me, blood, bleeding, healed) = (d.pos, d.body.blood as f64 / d.body.max_blood.max(1) as f64, (0..7).any(|i| d.body.bleeds[i] > 0 && !d.body.bandaged[i]), d.body.healed());
         let foes = foes(&v.g, h, &v.placed, &r.ignored);
         // In reach: finish one before the next (the most hurt of them).
         let hurt = |id: u32| v.g.creatures.get(&id).map_or(0, |c| c.body.blood * 100 / c.body.max_blood.max(1));
@@ -552,7 +553,12 @@ fn in_site(a: &mut Adventure, r: &mut Run) -> bool {
             note(r, a, "Badly hurt, the hero runs for it.");
         }
         let g = &a.visit.as_ref().unwrap().g;
-        let act = if fleeing || (at_goal && r.looted) || (!at_goal && foes.is_empty() && (healed || rests >= 6)) {
+        // Bleeding and none in reach: bind it first, before the road (a
+        // hero who walks off bleeding dies in the wilds), or mid-fight when
+        // it runs too fast (A16).
+        let act = if bleeding && close.is_none() && (foes.is_empty() || !fleeing && blood < bind_at) {
+            Action::Bind
+        } else if fleeing || (at_goal && r.looted) || (!at_goal && foes.is_empty() && (healed || rests >= 6)) {
             match way_out(g, h, entry) {
                 Some(act) => act,
                 None => {
@@ -560,10 +566,8 @@ fn in_site(a: &mut Adventure, r: &mut Run) -> bool {
                     return true;
                 }
             }
-        } else if bleeding && close.is_none() && (blood < bind_at || foes.is_empty()) {
-            Action::Bind
         } else if let Some((cid, _)) = close {
-            Action::Attack { target: Target::Creature(cid), aim: Some(aim(g, h, cid)) }
+            Action::Attack { target: Target::Creature(cid), aim: Some(aim(g, h, cid, head)) }
         } else if let Some(&(cid, p)) = foes.first() {
             if chase.0 != cid {
                 chase = (cid, 0);
@@ -602,9 +606,14 @@ fn in_site(a: &mut Adventure, r: &mut Run) -> bool {
             }
         };
         let v = a.visit.as_mut().unwrap();
+        let before = v.g.tick;
         let out = v.g.act(h, act.clone());
-        // `BOT_TRACE=1`: every act and how it went, for tuning by eye.
+        // `BOT_TRACE=1`: every act and how it went, for tuning by eye, with
+        // what the log told meanwhile (the blows).
         if std::env::var("BOT_TRACE").is_ok() {
+            for e in v.g.log.iter().filter(|e| e.tick > before) {
+                eprintln!("      | {}", e.text);
+            }
             let d = &v.g.dwarves[h];
             eprintln!("t{} {:?} -> {:?} blood {}/{} foes {} held {:?}", v.g.tick, act, out, d.body.blood, d.body.max_blood, foes.len(), d.held.and_then(|i| v.g.items.get(&i)).map(|i| i.name()));
         }
@@ -683,11 +692,13 @@ fn foes(g: &Game, h: usize, placed: &[(u32, String)], ignored: &BTreeSet<u32>) -
 
 /// Where to strike: the mark with the best hope, the odds weighed by what
 /// a hit there is worth (the head kills, the body is broad, the weapon arm
-/// disarms). A skilled hero goes for the head; a green one for the body.
-fn aim(g: &Game, h: usize, cid: u32) -> Aim {
+/// disarms). The head is worth `head` (`bot.head`, 3: a third of the body's
+/// blows end a fight there, and a hard one leaves the foe senseless), so a
+/// hero goes for it unless the odds are long; the body is for the clumsy.
+fn aim(g: &Game, h: usize, cid: u32, head: f64) -> Aim {
     let lost = g.creatures.get(&cid).map(|c| c.body.lost).unwrap_or_default();
     let worth = |a: Aim| match a {
-        Aim::Part(Part::Head) => 2.0,
+        Aim::Part(Part::Head) => head,
         Aim::Eyes => 1.3,
         Aim::Teeth => 0.8,
         Aim::Part(Part::UpperBody) => 1.4,

@@ -142,7 +142,7 @@ fn enter_save(adv: &mut Adventure, i: u32, mark: &FortMark, dir: &Path, from: Op
     g.weather = adv.weather;
     g.spotlights.clear();
     let seed = super::super::sites::site_seed(adv.seed, key);
-    let band = adv.knob("fallen.band", 4.0).max(1.0) as usize;
+    let band = adv.knob("fallen.band", 3.0).max(1.0) as usize;
     let elapsed = g.tick - last;
     let occupant = if first { ruin_prepare(&mut g, mark, elapsed, seed, band) } else { mark.occupant.clone().unwrap_or(Occupant::Empty) };
     // The journal as the overseer left it, and what lives here now.
@@ -309,6 +309,17 @@ pub fn ruin_prepare(g: &mut Game, mark: &FortMark, elapsed: u64, seed: u64, band
     // The killers that never left stay, and hunt whoever comes.
     let mut stayed: Vec<u32> = g.creatures.values().filter(|c| holds(c)).map(|c| c.id).collect();
     stayed.sort();
+    // Most of an army goes home with the plunder: a band of `fallen.band`
+    // keeps the halls (A16). A beast of legend stays whole.
+    if !stayed.iter().any(|id| g.creatures[id].figure.is_some()) && stayed.len() > band {
+        for id in stayed.split_off(band) {
+            if let Some(mut c) = g.creatures.remove(&id) {
+                for it in c.weapon.take().into_iter().chain(c.armor.drain(..)).chain(c.loot.take()) {
+                    g.items.remove(&it);
+                }
+            }
+        }
+    }
     for id in &stayed {
         if let Some(c) = g.creatures.get_mut(id) {
             c.leave_tick = u64::MAX / 2;

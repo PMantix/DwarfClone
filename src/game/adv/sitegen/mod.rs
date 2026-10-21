@@ -47,6 +47,18 @@ pub struct Ctx {
     pub memo: SiteMemo,
     /// World time now.
     pub now: u64,
+    /// What the hero can stand against: their fighting level, and one more
+    /// for each companion (A16). Those who hold a place grow with it.
+    pub might: u32,
+    /// The adventure's knobs, for the generators (`Ctx::knob`).
+    pub knobs: crate::game::Knobs,
+}
+
+impl Ctx {
+    /// A tunable number: `default` unless the adventure set it.
+    pub fn knob(&self, name: &'static str, default: f64) -> f64 {
+        self.knobs.set.get(name).copied().unwrap_or(default)
+    }
 }
 
 /// What a generator made: what it placed (for the site's memory), where
