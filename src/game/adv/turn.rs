@@ -8,10 +8,10 @@
 //! listed doesn't run: no migrants, sieges, jobs, needs, overseer, or the
 //! fall test (`sagas_tick`), which would end a fort that never was.
 
-use super::super::combat::{adjacent, cap, near};
+use super::super::combat::{cap, near};
 use super::super::*;
 use super::clock;
-use crate::body::Part;
+use super::fight::Aim;
 
 /// What the hero does.
 #[derive(Clone, Debug, PartialEq)]
@@ -22,10 +22,10 @@ pub enum Action {
     Climb(i32),
     /// Stand a while, so many ticks.
     Wait(u32),
-    /// A blow, aimed at a part if given (A6).
-    Attack { target: Target, part: Option<Part> },
-    /// Shoot (A6).
-    Fire { target: Target },
+    /// A blow, aimed if given where (A6).
+    Attack { target: Target, aim: Option<Aim> },
+    /// Shoot a bolt from the crossbow in hand, aimed if given where (A6).
+    Fire { target: Target, aim: Option<Aim> },
     /// Pick up items here.
     Get(Vec<u32>),
     Drop(Vec<u32>),
@@ -134,7 +134,7 @@ impl Game {
                 let from = self.dwarves[hero].pos;
                 let to = from.offset(dx, dy, 0);
                 if let Some(cid) = self.foe_at(to) {
-                    return self.act(hero, Action::Attack { target: Target::Creature(cid), part: None });
+                    return self.act(hero, Action::Attack { target: Target::Creature(cid), aim: None });
                 }
                 if !self.world.in_bounds(to) {
                     return Outcome::Refused("The edge of the land: travel on from here (T).".into());
@@ -159,21 +159,8 @@ impl Game {
                 self.adv_run(hero, MOVE_DELAY + limp, false)
             }
             Action::Wait(n) => self.adv_run(hero, n.max(1), n > 10),
-            Action::Attack { target: Target::Creature(cid), part: _ } => {
-                let p = self.dwarves[hero].pos;
-                let Some(c) = self.creatures.get(&cid).filter(|c| c.alive) else {
-                    return Outcome::Refused("There is nobody there.".into());
-                };
-                if !adjacent(c.pos, p) {
-                    return Outcome::Refused(format!("The {} is out of reach.", c.species.info().name));
-                }
-                let mut d = std::mem::take(&mut self.dwarves[hero]);
-                self.dwarf_attack(&mut d, cid);
-                let cost = d.attack_cd.max(1);
-                self.dwarves[hero] = d;
-                self.adv_run(hero, cost, false)
-            }
-            Action::Attack { target: Target::Dwarf(_), .. } => Outcome::Refused("You can't bring yourself to (A6).".into()),
+            Action::Attack { target: Target::Creature(cid), aim } => self.hero_blow(hero, cid, aim),
+            Action::Attack { target: Target::Dwarf(_), .. } | Action::Fire { target: Target::Dwarf(_), .. } => Outcome::Refused("You can't bring yourself to strike them.".into()),
             Action::Get(ids) => {
                 let (p, me) = (self.dwarves[hero].pos, self.dwarves[hero].id);
                 let mut got = 0;
@@ -249,15 +236,15 @@ impl Game {
                 }
                 self.adv_run(hero, REST_TICKS, true)
             }
-            Action::Fire { .. } => Outcome::Refused("Shooting comes later (A6).".into()),
-            Action::Bind => Outcome::Refused("Binding wounds comes later (A6).".into()),
+            Action::Fire { target: Target::Creature(cid), aim } => self.hero_shoot(hero, cid, aim),
+            Action::Bind => self.bind(hero),
             Action::Talk(_) => Outcome::Refused("Talk comes later (A7).".into()),
         }
     }
 
     /// Run the world `ticks` ticks for the hero's act; a long act stops on an
     /// alarm (a rest also stops once the body is whole).
-    fn adv_run(&mut self, hero: usize, ticks: u32, long: bool) -> Outcome {
+    pub(super) fn adv_run(&mut self, hero: usize, ticks: u32, long: bool) -> Outcome {
         let start = self.tick;
         let hp0: i32 = self.dwarves[hero].body.hp.iter().sum();
         for n in 1..=ticks {

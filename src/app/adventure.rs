@@ -9,6 +9,7 @@
 
 use super::{App, Mode, TITLE_ADVENTURE};
 use crate::body::{Part, PARTS};
+use crate::game::adv::fight::AIMS;
 use crate::game::adv::turn::{Action, Outcome, Target};
 use crate::game::adv::{self, Adventure, View};
 use crate::game::{Game, DAY};
@@ -41,6 +42,11 @@ pub struct AdvScreen {
     pub page: Option<adv::sitegen::fallen::Writing>,
     /// Something met on the road, waiting on fight or flight (A3).
     pub meet: Option<adv::travel::Encounter>,
+    /// The last act played back on the map (A6): from this tick, since
+    /// this moment, a tick every `REPLAY_MS`, so its blows, sprays and
+    /// bolts are seen though the act ran in an instant. (No moment: held
+    /// at that tick, for a picture.)
+    pub replay: Option<(u64, Option<std::time::Instant>)>,
 }
 
 /// What a letter list in the local view is for.
@@ -52,8 +58,12 @@ pub enum Pick {
     Remove,
     /// A foe in reach to aim at (`A`)...
     Aim,
-    /// ...then the part of them (the list holds part indices).
+    /// ...then where (the list holds indices into `fight::AIMS`).
     AimPart(Target),
+    /// A foe in sight and range to shoot (`f`)...
+    Fire,
+    /// ...then where.
+    FirePart(Target),
     Talk,
 }
 
@@ -65,7 +75,8 @@ impl Pick {
             Pick::Wear => "Wear or wield what?",
             Pick::Remove => "Take off what?",
             Pick::Aim => "Attack whom?",
-            Pick::AimPart(_) => "Aim where?",
+            Pick::AimPart(_) | Pick::FirePart(_) => "Aim where?",
+            Pick::Fire => "Shoot at whom?",
             Pick::Talk => "Talk to whom?",
         }
     }
@@ -84,7 +95,7 @@ impl AdvScreen {
             View::Travel
         };
         let turn_from = adv.now();
-        AdvScreen { adv, view, flash: None, maker, pick: None, sneak: false, rest_until: None, help: false, turn_from, page: None, meet: None }
+        AdvScreen { adv, view, flash: None, maker, pick: None, sneak: false, rest_until: None, help: false, turn_from, page: None, meet: None, replay: None }
     }
 }
 
@@ -162,7 +173,7 @@ impl App {
     }
 
     /// The window's `--adventure --fight` picture: a goblin raider comes at
-    /// the hero, who closes and trades blows until one of them is hurt, and
+    /// the hero, who closes and trades aimed blows until both are hurt, and
     /// an iron helm lies on the ground.
     pub fn adventure_skirmish(&mut self) {
         let Some(s) = self.adv.as_mut() else { return };
@@ -181,7 +192,16 @@ impl App {
                 break;
             }
             let (dx, dy) = ((fp.x - d.pos.x).signum(), (fp.y - d.pos.y).signum());
-            self.adv_act(Action::Move(dx, dy));
+            // In reach, the hero aims (A6): at the teeth, the eyes, then the head.
+            let close = (fp.x - d.pos.x).abs() <= 1 && (fp.y - d.pos.y).abs() <= 1 && fp.z == d.pos.z;
+            let aim = [adv::fight::Aim::Teeth, adv::fight::Aim::Eyes, adv::fight::Aim::Part(Part::Head)][(v.g.tick % 3) as usize];
+            self.adv_act(if close { Action::Attack { target: Target::Creature(gob), aim: Some(aim) } } else { Action::Move(dx, dy) });
+        }
+        // (The picture holds the last blow as it lands.)
+        if let Some(s) = self.adv.as_mut() {
+            if let Some((from, _)) = s.replay {
+                s.replay = Some((from + 2, None));
+            }
         }
     }
 
@@ -343,6 +363,10 @@ impl App {
 const REST_SLICE: u64 = 600;
 /// What a sneaking step costs on top of the step.
 const SNEAK_EXTRA: u32 = 3;
+/// A tick of a replayed act lasts this long on screen.
+pub const REPLAY_MS: u64 = 30;
+/// Acts longer than this aren't played back (a rest, a long wait).
+const REPLAY_MAX: u64 = 80;
 /// How near someone must stand to be talked to.
 const TALK_REACH: i32 = 3;
 /// The menu's rows (A11 adds saving).
@@ -436,6 +460,8 @@ impl App {
                 KeyCode::Char('w') => return self.adv_open_pick(Pick::Wear),
                 KeyCode::Char('r') => return self.adv_open_pick(Pick::Remove),
                 KeyCode::Char('A') => return self.adv_open_pick(Pick::Aim),
+                KeyCode::Char('f') => return self.adv_open_pick(Pick::Fire),
+                KeyCode::Char('b') => Action::Bind,
                 KeyCode::Char('k') => return self.adv_open_pick(Pick::Talk),
                 KeyCode::Char('R') => {
                     match adv::sitegen::fallen::read_here(g, h) {
@@ -460,15 +486,16 @@ impl App {
         s.turn_from = v.g.tick;
         let step = matches!(act, Action::Move(..) | Action::Climb(_));
         let was = v.g.dwarves[h].pos;
-        let mut before = Bodies::take(&v.g, h);
+        let mut before = Bodies::take(&v.g, h, adv::fight::creature_of_act(&act));
         before.swung = match &act {
             Action::Move(dx, dy) => {
                 let to = was.offset(*dx, *dy, 0);
                 v.g.creatures.values().find(|c| c.alive && c.pos == to).map(|c| c.id)
             }
-            Action::Attack { target: Target::Creature(id), .. } => Some(*id),
+            Action::Attack { target: Target::Creature(id), .. } | Action::Fire { target: Target::Creature(id), .. } => Some(*id),
             _ => None,
         };
+        before.shot = matches!(act, Action::Fire { .. });
         let mut out = v.g.act(h, act);
         // Sneaking: each step taken slowly, as long again.
         if s.sneak && step && v.g.dwarves[h].pos != was && matches!(out, Outcome::Done { .. }) {
@@ -476,6 +503,10 @@ impl App {
         }
         before.tell(&mut v.g, h, s.turn_from);
         v.g.reveal_seen(h);
+        // Played back on the map, if it was short enough to watch (a shot
+        // from when its bolt was loosed).
+        let lead = v.g.drills.flights.iter().filter(|f| f.at >= s.turn_from).map(|f| f.lands() - f.at).max().unwrap_or(0);
+        s.replay = (v.g.tick - s.turn_from <= REPLAY_MAX).then(|| (s.turn_from.saturating_sub(lead), Some(std::time::Instant::now())));
         match out {
             Outcome::Done { .. } => {}
             Outcome::Interrupted { why, .. } | Outcome::Refused(why) => s.flash = Some(why),
@@ -491,13 +522,18 @@ impl App {
         let Some(s) = self.adv.as_mut() else { return };
         let Some(v) = s.adv.visit.as_ref() else { return };
         let ids = pick_choices(&v.g, v.hero, kind);
-        if ids.is_empty() {
+        let unready = kind == Pick::Fire && fire_ready(&v.g, v.hero).is_err();
+        if ids.is_empty() || unready {
             let why = match kind {
                 Pick::Get => "There is nothing here to pick up.",
                 Pick::Drop => "You carry nothing.",
                 Pick::Wear => "You have nothing more to wear or wield.",
                 Pick::Remove => "You wear and hold nothing.",
                 Pick::Aim | Pick::AimPart(_) => "There is no one in reach to attack.",
+                Pick::Fire | Pick::FirePart(_) => match fire_ready(&v.g, v.hero) {
+                    Err(why) => why,
+                    Ok(()) => "There is no one in sight and in range to shoot.",
+                },
                 Pick::Talk => "There is no one near enough to talk to.",
             };
             s.flash = Some(why.into());
@@ -510,6 +546,14 @@ impl App {
     fn adv_key_pick(&mut self, k: KeyEvent) {
         let Some(s) = self.adv.as_mut() else { return };
         let Some((kind, ids)) = s.pick.take() else { return };
+        // `*` takes everything lying here but the bodies: the dead's gear.
+        if kind == Pick::Get && k.code == KeyCode::Char('*') {
+            let all = s.adv.visit.as_ref().map_or(Vec::new(), |v| adv::fight::loot_at(&v.g, v.g.dwarves[v.hero].pos));
+            if !all.is_empty() {
+                self.adv_act(Action::Get(all));
+            }
+            return;
+        }
         let i = match k.code {
             KeyCode::Char(c) if c.is_ascii_lowercase() => (c as u8 - b'a') as usize,
             KeyCode::Enter => 0,
@@ -525,10 +569,15 @@ impl App {
             Pick::Wear => Action::Wear(id),
             Pick::Remove => Action::Remove(id),
             Pick::Aim => {
-                s.pick = Some((Pick::AimPart(Target::Creature(id)), (0..PARTS.len() as u32).collect()));
+                s.pick = Some((Pick::AimPart(Target::Creature(id)), aim_list()));
                 return;
             }
-            Pick::AimPart(target) => Action::Attack { target, part: Some(PARTS[id as usize]) },
+            Pick::Fire => {
+                s.pick = Some((Pick::FirePart(Target::Creature(id)), aim_list()));
+                return;
+            }
+            Pick::AimPart(target) => Action::Attack { target, aim: Some(AIMS[id as usize]) },
+            Pick::FirePart(target) => Action::Fire { target, aim: Some(AIMS[id as usize]) },
             Pick::Talk => Action::Talk(id),
         };
         self.adv_act(act);
@@ -613,18 +662,20 @@ struct Bodies {
     near: Vec<(u32, String, crate::body::Body, bool)>,
     /// Whom the hero struck at (a blow that did nothing missed).
     swung: Option<u32>,
+    /// And it was a bolt.
+    shot: bool,
 }
 
 impl Bodies {
-    fn take(g: &Game, h: usize) -> Bodies {
+    fn take(g: &Game, h: usize, aimed_at: Option<u32>) -> Bodies {
         let d = &g.dwarves[h];
         let near = g
             .creatures
             .values()
-            .filter(|c| c.alive && c.pos.z == d.pos.z && (c.pos.x - d.pos.x).abs() <= 3 && (c.pos.y - d.pos.y).abs() <= 3)
+            .filter(|c| c.alive && (Some(c.id) == aimed_at || c.pos.z == d.pos.z && (c.pos.x - d.pos.x).abs() <= 3 && (c.pos.y - d.pos.y).abs() <= 3))
             .map(|c| (c.id, c.label.clone().unwrap_or_else(|| format!("the {}", c.species.info().name)), c.body.clone(), c.alive))
             .collect();
-        Bodies { hero: d.body.clone(), near, swung: None }
+        Bodies { hero: d.body.clone(), near, swung: None, shot: false }
     }
 
     /// The act's blows, as lines in the log: the hero's in gold, the foe's
@@ -640,10 +691,11 @@ impl Bodies {
             let by_me = c.body.hp != b0.hp || c.body.lost != b0.lost;
             if by_me {
                 for (part, how) in hurt {
-                    lines.push((format!("You strike {} in the {}: {}.", name, part, how), (240, 210, 120)));
+                    let you = if self.shot { "Your bolt strikes" } else { "You strike" };
+                    lines.push((format!("{} {} in the {}: {}.", you, name, part, how), (240, 210, 120)));
                 }
             } else if self.swung == Some(*id) {
-                lines.push((format!("Your blow misses {}.", name), (170, 160, 130)));
+                lines.push((format!("Your {} misses {}.", if self.shot { "bolt" } else { "blow" }, name), (170, 160, 130)));
             }
             if !c.alive {
                 lines.push((format!("{} falls dead!", cap_first(name)), (255, 90, 70)));
@@ -696,11 +748,7 @@ pub fn pick_choices(g: &Game, hero: usize, kind: Pick) -> Vec<u32> {
     mine.sort();
     let worn = |id: &u32| d.held == Some(*id) || d.armor.contains(id) || d.clothes.contains(id);
     match kind {
-        Pick::Get => {
-            let mut v: Vec<u32> = g.items.values().filter(|it| it.pos == p && it.carried_by.is_none() && it.container.is_none()).map(|it| it.id).collect();
-            v.sort();
-            v
-        }
+        Pick::Get => adv::fight::lying_at(g, p),
         Pick::Drop => mine,
         Pick::Wear => mine.into_iter().filter(|id| !worn(id)).collect(),
         Pick::Remove => mine.into_iter().filter(|id| worn(id)).collect(),
@@ -714,7 +762,8 @@ pub fn pick_choices(g: &Game, hero: usize, kind: Pick) -> Vec<u32> {
             v.sort();
             v.into_iter().map(|(_, id)| id).collect()
         }
-        Pick::AimPart(_) => (0..PARTS.len() as u32).collect(),
+        Pick::AimPart(_) | Pick::FirePart(_) => aim_list(),
+        Pick::Fire => g.marks(hero),
         Pick::Talk => {
             let mut v: Vec<(i32, u32)> = g
                 .dwarves
@@ -728,14 +777,23 @@ pub fn pick_choices(g: &Game, hero: usize, kind: Pick) -> Vec<u32> {
     }
 }
 
-/// The chance-to-hit penalty for aiming at a part, in percent (A6 makes it
-/// real in `strike_at`): a small target is harder to hit.
-pub fn aim_penalty(p: Part) -> i32 {
-    match p {
-        Part::Head => 20,
-        Part::LeftArm | Part::RightArm => 10,
-        Part::LeftLeg | Part::RightLeg => 5,
-        _ => 0,
+/// The marks offered when aiming, as indices into `fight::AIMS`.
+fn aim_list() -> Vec<u32> {
+    (0..AIMS.len() as u32).collect()
+}
+
+/// Whether the hero can shoot at all: a crossbow in a working hand, and bolts.
+pub fn fire_ready(g: &Game, hero: usize) -> Result<(), &'static str> {
+    let d = &g.dwarves[hero];
+    let bow = d.held.and_then(|id| g.items.get(&id)).map_or(false, |it| it.kind == crate::items::ItemKind::Crossbow);
+    if !bow {
+        Err("You hold no crossbow (wield one with w).")
+    } else if !d.body.can_hold() {
+        Err("Your arm is too badly hurt to span the crossbow.")
+    } else if g.bolts(hero).is_empty() {
+        Err("You have no bolts left.")
+    } else {
+        Ok(())
     }
 }
 
@@ -1219,6 +1277,64 @@ mod tests {
         // Talk: nobody near.
         app.on_key(ch('k'));
         assert!(app.adv.as_ref().unwrap().flash.as_deref().unwrap_or("").contains("no one"));
+    }
+
+    #[test]
+    fn fire_bind_and_loot_by_keys() {
+        use crate::items::ItemKind;
+        use crate::material::Mat;
+        let mut app = field_app(29);
+        let ch = |c: char| key(KeyCode::Char(c));
+        game_mut(&mut app).creatures.clear();
+        let h = app.adv.as_ref().unwrap().adv.visit.as_ref().unwrap().hero;
+        let p = hero(&app).pos;
+        let give = |app: &mut App, k: ItemKind| {
+            let g = game_mut(app);
+            let id = g.spawn_item(k, Mat::Iron, p);
+            g.items.get_mut(&id).unwrap().carried_by = Some(adv::HERO_ID);
+            id
+        };
+        // No crossbow: f says so, and nothing is chosen.
+        app.on_key(ch('f'));
+        assert!(app.adv.as_ref().unwrap().pick.is_none());
+        assert!(app.adv.as_ref().unwrap().flash.as_deref().unwrap_or("").contains("crossbow"));
+        // A crossbow, bolts and a goblin off in the field: f a, then the aim list with its odds.
+        let bow = give(&mut app, ItemKind::Crossbow);
+        game_mut(&mut app).dwarves[h].held = Some(bow);
+        for _ in 0..3 {
+            give(&mut app, ItemKind::Bolt);
+        }
+        let gob = game_mut(&mut app).raider_for(h);
+        game_mut(&mut app).creatures.get_mut(&gob).unwrap().pos = p.offset(5, 0, 0);
+        app.on_key(ch('f'));
+        assert_eq!(app.adv.as_ref().unwrap().pick, Some((Pick::Fire, vec![gob])));
+        app.on_key(ch('a'));
+        assert!(matches!(app.adv.as_ref().unwrap().pick, Some((Pick::FirePart(_), _))));
+        let text = screen(&mut app, 130, 40);
+        assert!(text.contains("eyes") && text.contains("teeth") && text.contains('%'), "the called shots and their odds:\n{}", text);
+        let t0 = game(&app).tick;
+        app.on_key(ch('d'));
+        assert!(game(&app).tick > t0, "the shot took time");
+        assert_eq!(game(&app).bolts(h).len(), 2, "a bolt loosed");
+        let s = app.adv.as_ref().unwrap();
+        assert!(matches!(s.replay, Some((from, Some(_))) if from < t0), "played back from the bolt's loosing");
+        // Bleeding: b binds (the shirt torn up if there's no cloth).
+        game_mut(&mut app).creatures.clear();
+        game_mut(&mut app).dwarves[h].body.wound(Part::LeftArm, 9, true);
+        app.on_key(ch('b'));
+        assert_eq!(hero(&app).body.bleed_rate(), 0, "bound: {:?}", app.adv.as_ref().unwrap().flash);
+        // The dead's gear: g lists the body first, * takes all but the body.
+        let here = hero(&app).pos;
+        for k in [ItemKind::Corpse, ItemKind::Spear, ItemKind::Helm] {
+            game_mut(&mut app).spawn_item(k, Mat::Iron, here);
+        }
+        app.on_key(ch('g'));
+        let ids = app.adv.as_ref().unwrap().pick.as_ref().unwrap().1.clone();
+        assert_eq!(game(&app).items[&ids[0]].kind, ItemKind::Corpse);
+        assert!(screen(&mut app, 130, 40).contains("take all"));
+        app.on_key(ch('*'));
+        let mine = |app: &App, k: ItemKind| game(app).items.values().any(|it| it.kind == k && it.carried_by == Some(adv::HERO_ID));
+        assert!(mine(&app, ItemKind::Spear) && mine(&app, ItemKind::Helm) && !mine(&app, ItemKind::Corpse));
     }
 
     #[test]

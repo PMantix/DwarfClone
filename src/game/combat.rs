@@ -6,6 +6,7 @@ use crate::creature::{Creature, Species};
 use crate::items::Slot;
 use crate::world::{DOOR_LOCKED, DOOR_NONE};
 use super::melee::a_or_name;
+use super::adv::fight::Aim;
 
 pub(super) struct Fighter {
     pub name: String,
@@ -209,13 +210,21 @@ impl Game {
     /// limb (or a head), a blunt one breaks bones and knocks out teeth, a
     /// big beast's sends the one struck sprawling.
     pub(super) fn strike(&mut self, att: &Fighter, def: &Fighter, body: &mut Body) -> Blow {
+        self.strike_at(att, def, body, None)
+    }
+
+    /// A blow aimed (adventurer mode, A6): at a part, harder to hit the
+    /// smaller it is, or a called shot at the eyes or the teeth
+    /// (`adv::fight`). `None` is the fort's blow, which goes where it may.
+    pub(super) fn strike_at(&mut self, att: &Fighter, def: &Fighter, body: &mut Body, aim: Option<Aim>) -> Blow {
         let mut b = Blow::default();
         // An opening: one who lies senseless can't dodge or block, and the
         // blow goes where it ends things (openings.rs).
         let downed = body.unconscious();
         // Senseless on their feet: they can't dodge or block.
         let dazed = !downed && body.harm.out > 0;
-        let chance = (0.55 + 0.05 * (att.skill as f64 - def.skill as f64)).clamp(0.15, 0.95);
+        let aimed = aim.filter(|a| !body.lost[a.part().idx()]);
+        let chance = super::adv::fight::hit_chance(att, def, aimed);
         let chance = if dazed { chance.max(0.85) } else { chance };
         if !self.rng.chance(if downed { self.knob("opening.hit", 0.95) } else { chance }) {
             b.report = Some(self.miss_words(att, def));
@@ -225,7 +234,11 @@ impl Game {
             b.msg = Some(format!("{} blocks {}'s attack with a shield.", cap(&def.name), att.name));
             return b;
         }
-        let part = if downed { self.opening_part() } else { body.pick_part(&mut self.rng) };
+        let part = match aimed {
+            Some(a) => a.part(),
+            None if downed => self.opening_part(),
+            None => body.pick_part(&mut self.rng),
+        };
         let roll = 0.6 + self.rng.f64() as f32 * 0.8;
         let mut armor = match part {
             Part::Head => def.helm,
@@ -310,6 +323,9 @@ impl Game {
             if fx <= 0.0 {
                 body.harm.out = out;
             }
+        }
+        if let Some(a) = aimed {
+            self.called_shot(a, att, def, w, body, &mut b);
         }
         if b.teeth > 0 {
             b.hurts.insert(0, crate::body::Hurt::Teeth(b.teeth));
@@ -420,6 +436,11 @@ impl Game {
     // ------------------------------------------------------------------
 
     pub(super) fn dwarf_attack(&mut self, d: &mut Dwarf, cid: u32) {
+        self.dwarf_attack_at(d, cid, None)
+    }
+
+    /// A dwarf's blow, aimed if `aim` says where (an adventurer's, A6).
+    pub(super) fn dwarf_attack_at(&mut self, d: &mut Dwarf, cid: u32, aim: Option<Aim>) {
         let Some(c) = self.creatures.get(&cid) else { return };
         if !c.alive {
             return;
@@ -429,7 +450,7 @@ impl Game {
         let mut body = c.body.clone();
         let (hp0, siege): (i32, bool) = (body.hp.iter().sum(), c.siege);
         let (cpos, species, owner, seen) = (c.pos, c.species, super::gore::owner_of_creature(c), a_or_name(c));
-        let blow = self.strike(&att, &def, &mut body);
+        let blow = self.strike_at(&att, &def, &mut body, aim);
         self.struck_horror(cid, d, &mut body, hp0);
         if siege {
             let hurt = body.hp.iter().sum::<i32>() < hp0;

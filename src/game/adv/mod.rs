@@ -16,6 +16,7 @@ pub mod bot;
 pub mod company;
 pub mod create;
 pub mod fame;
+pub mod fight;
 pub mod items;
 pub mod nemesis;
 pub mod peoples;

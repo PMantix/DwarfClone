@@ -10,7 +10,8 @@
 use super::health::{history_lines, part_lines};
 use super::looks::{foliage, tile_look};
 use super::{backdrop, cursor_info_terrain, dim, header, item_line, key_line, look_lines, plain, popup, rgb, wrap_words, BLACK, KEY, MUTED, TEXT};
-use crate::app::adventure::{aim_penalty, pick_choices, AdvScreen, Pick, MENU};
+use crate::app::adventure::{pick_choices, AdvScreen, Pick, MENU, REPLAY_MS};
+use crate::game::adv::fight::{Aim, AIMS};
 use crate::app::App;
 use crate::body::{Body, Part, PARTS};
 use crate::dwarf::{skill_rank, Dwarf, LABORS};
@@ -55,7 +56,14 @@ pub(super) fn draw(f: &mut Frame, app: &App) {
         View::Look(p) => Some(p),
         _ => None,
     };
-    draw_local(f, map, &s.adv, &sight, look);
+    // The last act played back: its blows, sprays and bolts at the tick
+    // being shown (the map itself is as it is now).
+    let show = match s.replay {
+        Some((from, Some(t0))) => (from + t0.elapsed().as_millis() as u64 / REPLAY_MS).min(v.g.tick),
+        Some((from, None)) => from,
+        None => v.g.tick,
+    };
+    draw_local(f, map, &s.adv, &sight, look, show);
     draw_log(f, Rect::new(area.x, area.y + map_h + fold, left_w, log_h), s);
     if side > 0 {
         let r = Rect::new(area.x + left_w, area.y, side, area.height);
@@ -101,7 +109,7 @@ fn draw_writing(f: &mut Frame, map: Rect, w: &crate::game::adv::sitegen::fallen:
 /// The site round the hero (or the look cursor) on the hero's level: what
 /// is in sight in full colour, what is remembered dim and empty of
 /// creatures, and the rest dark.
-fn draw_local(f: &mut Frame, area: Rect, a: &Adventure, sight: &Sight, look: Option<Pos>) {
+fn draw_local(f: &mut Frame, area: Rect, a: &Adventure, sight: &Sight, look: Option<Pos>, show: u64) {
     let Some(v) = a.visit.as_ref() else { return };
     let g = &v.g;
     let hero = &g.dwarves[v.hero];
@@ -130,8 +138,30 @@ fn draw_local(f: &mut Frame, area: Rect, a: &Adventure, sight: &Sight, look: Opt
     let light = if sky { 0.5 + 0.5 * clock::light(g.tick, true) as f32 / 255.0 } else { 0.85 };
     let year_frac = (g.tick % crate::game::YEAR) as f32 / crate::game::YEAR as f32;
     let cold = g.biome.cold();
+    // Blows flashing, blood and severed parts flying (gore.rs), and bolts
+    // in flight (drills.rs), at the tick shown; what is still in the air
+    // isn't drawn where it lands.
+    let mut fx: std::collections::HashMap<(i32, i32), (char, (u8, u8, u8), Option<(u8, u8, u8)>)> = Default::default();
+    let mut flying = std::collections::HashSet::new();
+    for e in g.gore.fx.iter().filter(|e| e.from.z == z) {
+        if let Some(q) = e.pos_at(show) {
+            fx.insert((q.x, q.y), (e.glyph, e.rgb, e.bg));
+        }
+        if let Some(id) = e.item.filter(|_| show < e.at + e.len) {
+            flying.insert(id);
+        }
+    }
+    for b in g.drills.flights.iter().filter(|b| b.from.z == z) {
+        if let Some(q) = b.at_tick(show) {
+            fx.insert((q.x, q.y), (b.glyph(), (225, 205, 150), None));
+        }
+    }
+    let tup = |c: Color| match c {
+        Color::Rgb(r, g, b) => (r, g, b),
+        _ => (128, 128, 128),
+    };
     let mut items: std::collections::HashMap<(i32, i32), (char, Color)> = Default::default();
-    for it in g.items.values().filter(|it| it.carried_by.is_none() && it.container.is_none() && it.pos.z == z) {
+    for it in g.items.values().filter(|it| it.carried_by.is_none() && it.container.is_none() && it.pos.z == z && !flying.contains(&it.id)) {
         items.entry((it.pos.x, it.pos.y)).or_insert_with(|| it.glyph());
     }
     let mut beasts: std::collections::HashMap<(i32, i32), (char, Color, bool)> = Default::default();
@@ -182,16 +212,16 @@ fn draw_local(f: &mut Frame, area: Rect, a: &Adventure, sight: &Sight, look: Opt
                     ch = '·';
                 }
             }
+            // Blood dashed up a wall, in streaks through the stone.
+            if let Some(st) = g.wall_stain(p) {
+                let (c, f2, b2) = crate::game::gore::wall_look(st, ch, tup(fg));
+                (ch, fg, bg) = (c, rgb(f2), rgb(b2));
+            }
             if !t.kind.solid() {
-                // Blood on the ground: a stain, a pool where it's thick.
+                // Blood on the ground: drops, a pool where it's thick, footprints.
                 if let Some(st) = g.gore.stains.get(&p) {
-                    let (sr, sg, sb) = st.rgb();
-                    bg = Color::Rgb(sr, sg, sb);
-                    if matches!(ch, '.' | ',' | '`' | '\'' | '·' | '"' | ';') {
-                        let bright = |c: u8| (c as u16 * 3 / 2 + 40).min(255) as u8;
-                        fg = Color::Rgb(bright(sr), bright(sg), bright(sb));
-                        ch = if st.amt >= crate::game::gore::POOL { '≈' } else if st.amt >= 2 { '·' } else { ch };
-                    }
+                    let (c, f2, b2) = crate::game::gore::floor_look(st, ch, tup(fg), tup(bg));
+                    (ch, fg, bg) = (c, rgb(f2), rgb(b2));
                 }
                 let k = g.smoke_at(p) as u32;
                 if k > 0 && seen {
@@ -255,6 +285,16 @@ fn draw_local(f: &mut Frame, area: Rect, a: &Adventure, sight: &Sight, look: Opt
                     race
                 };
                 bg = if hero.body.bleeding > 0 { Color::Rgb(90, 0, 0) } else { Color::Rgb(30, 30, 45) };
+            }
+            if let Some(&(gc, gcol, gbg)) = fx.get(&(x, y)).filter(|_| seen) {
+                // (The hero stays in sight under a blow: it shows round them.)
+                if p != me {
+                    ch = gc;
+                    fg = rgb(gcol);
+                }
+                if let Some(c) = gbg {
+                    bg = rgb(c);
+                }
             }
             if look == Some(p) {
                 bg = Color::Rgb(220, 200, 0);
@@ -426,6 +466,11 @@ fn draw_side(f: &mut Frame, r: Rect, s: &AdvScreen, sight: &Sight) {
     }
     if shown == 0 {
         v.push(plain("Empty-handed".into(), MUTED));
+    }
+    // A crossbow in hand: the bolts left to shoot.
+    if d.held.and_then(|id| g.items.get(&id)).map_or(false, |it| it.kind == crate::items::ItemKind::Crossbow) {
+        let n = g.bolts(vis.hero).len();
+        v.push(plain(format!("{} bolt{} in the quiver{}", n, if n == 1 { "" } else { "s" }, if n > 0 { " (f)" } else { "" }), if n > 0 { TEXT } else { WARN }));
     }
     if mine.len() > shown {
         v.push(plain(format!("{} more in the pack (i)", mine.len() - shown), MUTED));
@@ -673,7 +718,7 @@ fn draw_pick(f: &mut Frame, area: Rect, g: &Game, hero: usize, kind: Pick, ids: 
                 };
                 item_line(it, how, false)
             }
-            Pick::Aim => {
+            Pick::Aim | Pick::Fire => {
                 let Some(c) = g.creatures.get(&id) else { continue };
                 let info = c.species.info();
                 let hurt = if c.body.badly_hurt() { ", badly hurt" } else { "" };
@@ -683,16 +728,27 @@ fn draw_pick(f: &mut Frame, area: Rect, g: &Game, hero: usize, kind: Pick, ids: 
                     Span::styled(format!("{}{}", if c.hostile() { "  hostile" } else { "  peaceful" }, hurt), Style::default().fg(if c.hostile() { RED } else { MUTED })),
                 ])
             }
-            Pick::AimPart(target) => {
-                let part = PARTS[id as usize];
-                let status = match target {
-                    crate::game::adv::turn::Target::Creature(cid) => g.creatures.get(&cid).map_or("", |c| c.body.part_status(part)),
-                    crate::game::adv::turn::Target::Dwarf(did) => g.dwarves.iter().find(|d| d.id == did).map_or("", |d| d.body.part_status(part)),
+            Pick::AimPart(target) | Pick::FirePart(target) => {
+                let aim = AIMS[id as usize];
+                let part = aim.part();
+                let cid = match target {
+                    crate::game::adv::turn::Target::Creature(c) => Some(c),
+                    crate::game::adv::turn::Target::Dwarf(_) => None,
                 };
-                let pen = aim_penalty(part);
+                let body = cid.and_then(|c| g.creatures.get(&c)).map(|c| &c.body);
+                let gone = body.map_or(false, |b| b.lost[part.idx()]);
+                let status = match aim {
+                    _ if gone => "gone",
+                    Aim::Eyes => body.map_or("", |b| ["", "one put out", "both put out"][b.harm.eyes.min(2) as usize]),
+                    Aim::Teeth => body.map_or("", |b| if b.harm.teeth > 0 { "some knocked out" } else { "" }),
+                    _ => body.map_or("", |b| b.part_status(part)),
+                };
+                let odds = cid.map_or(0, |c| g.hit_odds(hero, c, Some(aim), matches!(kind, Pick::FirePart(_))));
+                let col = if gone { MUTED } else if odds >= 50 { Color::Rgb(150, 220, 140) } else if odds >= 30 { Color::Rgb(235, 200, 80) } else { WARN };
                 Line::from(vec![
-                    Span::styled(format!("{:<12}", part.name()), Style::default().fg(TEXT)),
-                    Span::styled(if pen > 0 { format!("{:>4}% to hit  ", -pen) } else { "  full chance  ".to_string() }, Style::default().fg(MUTED)),
+                    Span::styled(format!("{:<11}", aim.name()), Style::default().fg(if gone { MUTED } else { TEXT })),
+                    Span::styled(if gone { "   -  ".to_string() } else { format!("{:>3}%  ", odds) }, Style::default().fg(col)),
+                    Span::styled(format!("{:<24}", aim.hope()), Style::default().fg(MUTED)),
                     Span::styled(if status == "fine" { String::new() } else { status.to_string() }, Style::default().fg(Color::Rgb(235, 200, 80))),
                 ])
             }
@@ -706,8 +762,12 @@ fn draw_pick(f: &mut Frame, area: Rect, g: &Game, hero: usize, kind: Pick, ids: 
     }
     v.push(Line::default());
     v.push(plain(" a-z choose · Esc cancel".into(), MUTED));
+    if kind == Pick::Get {
+        v.insert(v.len() - 1, plain(" * take all but the bodies".into(), MUTED));
+    }
+    let w = if matches!(kind, Pick::AimPart(_) | Pick::FirePart(_)) { 72 } else { 54 };
     let h = v.len() as u16 + 2;
-    popup(f, area, 54, h, &format!(" {} ", kind.title()), v);
+    popup(f, area, w, h, &format!(" {} ", kind.title()), v);
 }
 
 /// The menu (A11 adds saving).
@@ -730,10 +790,12 @@ fn draw_help(f: &mut Frame, area: Rect) {
         ("arrows", "move; into a foe to strike it"),
         (". 5", "wait a moment"),
         ("< >", "up or down a stair or ramp"),
-        ("A", "attack: choose a foe in reach, then where to aim"),
+        ("A", "attack: a foe in reach, then where: head, eyes, teeth, arm, leg..."),
+        ("f", "fire the crossbow: a foe in sight, then where"),
+        ("b", "bind your bleeding wounds (cloth from the pack, or your shirt)"),
         ("l", "look: a cursor over the map"),
         ("k", "talk to someone near"),
-        ("g d", "get what lies here · drop something"),
+        ("g d", "get what lies here (* all the dead's gear) · drop something"),
         ("i", "inventory"),
         ("R", "read a book here, or the engraved walls around"),
         ("w r", "wear or wield · take off or put away"),
