@@ -31,7 +31,7 @@ impl Game {
         if tick % 150 == 7 && self.overseer.is_some() { self.oversee(); }
         if tick % 10 == 3 && self.overseer.is_some() { self.oversee_alert(); }
         self.prof_add(1, t);
-        if tick % 300 == 290 { self.prune_designations(); }
+        if tick % 300 == 290 { self.prune_designations(); self.prune_priorities(); }
         if tick % 25 == 13 { self.miasma_tick(); }
         if tick % 100 == 60 { self.expedition_tick(); self.duels_tick(); self.mysteries_tick(); }
         if tick % DAY == DAY / 2 + 7 { self.drama_daily(); self.pets_daily(); self.milestones_daily(); self.monument_daily(); self.trophies_daily(); }

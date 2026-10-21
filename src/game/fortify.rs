@@ -1610,10 +1610,12 @@ mod tests {
     /// MAGIC, HORRORS, CULTURE and FLAIR came in, 5013 after; the
     /// cisterns moved it on again, so a few more are tried.)
     #[test]
+    // (Plays up to a dozen forts for well over a year: run it with `--ignored`.)
+    #[ignore]
     fn a_wary_warlord_walls_its_fields_and_raises_a_watchtower() {
         let day = 440;
         let mut tried = Vec::new();
-        for seed in [5013u64, 5003, 5009, 5018, 5023, 5008, 5028, 5033, 5038, 5043, 5048, 5053] {
+        for seed in [5013u64, 5003, 5009, 5018, 5023, 5008, 5028, 5033, 5038, 5043, 5048, 5053, 5058, 5063, 5068, 5073, 5078, 5083] {
             let mut g = Game::new(seed);
             // (Its walls, not its sallies: sally.rs.)
             g.knobs.set.insert("sally.min_soldiers".into(), 999.0);

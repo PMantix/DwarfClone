@@ -124,7 +124,9 @@ mod tests {
             g.step();
         }
         // (Nobles and those holding a post aren't levied.)
-        assert!(soldiers(&g) >= (standing * 2).max(5), "only {} under arms against ten ({} usually)", soldiers(&g), standing);
+        // (As many as can be spared: those holding a post or a title stay.)
+        let free = g.dwarves.iter().filter(|d| d.alive && !d.is_child() && !d.insane && d.noble.is_none() && g.position_of(d.id).is_none()).count();
+        assert!(soldiers(&g) >= (standing * 2).max(5).min(free), "only {} under arms against ten ({} usually, {} free)", soldiers(&g), standing, free);
         assert!(soldiers(&g) <= adults - 3, "nobody left at home");
         // The army thinks better of it.
         g.incoming = None;

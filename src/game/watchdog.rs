@@ -133,8 +133,9 @@ impl Game {
             }
             r.stage = 2;
         }
-        self.designate(s, base, Desig::StairUD);
-        self.designate(base.offset(1, 0, 0), base.offset(14, 1, 0), Desig::Dig);
+        // The new way in is urgent: miners drop minor work for it (priority.rs).
+        self.designate_prio(s, base, Desig::StairUD, 2);
+        self.designate_prio(base.offset(1, 0, 0), base.offset(14, 1, 0), Desig::Dig, 2);
         o.top = Some(s);
         o.base = Some(base);
         o.slots = 0;

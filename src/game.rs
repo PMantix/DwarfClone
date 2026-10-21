@@ -134,6 +134,9 @@ pub mod damp;
 mod picks;
 mod boulders;
 pub mod supply;
+pub mod ledger;
+pub mod masters;
+pub mod priority;
 pub mod inspire;
 mod gatehouse;
 mod fit;
@@ -574,6 +577,9 @@ pub struct Game {
     /// Records of production (`supply.rs`, O08).
     #[serde(default)]
     pub ledger: supply::Ledger,
+    /// Priorities of designations (O08, priority.rs).
+    #[serde(default, skip_serializing_if = "priority::Priorities::is_empty")]
+    pub prio: priority::Priorities,
     /// Dwarves' ideas for great works (`inspire.rs`, O12).
     #[serde(default)]
     pub inspirations: inspire::Inspirations,
@@ -736,6 +742,7 @@ impl Game {
             damp: Default::default(),
             rubble: Default::default(),
             ledger: Default::default(),
+            prio: Default::default(),
             inspirations: Default::default(),
             ov_fell: None,
             zone_over: HashMap::new(),
@@ -1029,6 +1036,7 @@ impl Game {
                 n += 1;
             }
         }
+        self.prio_designated(lo, hi);
         n
     }
 
@@ -1709,6 +1717,8 @@ impl Game {
             self.msg(&format!("{} is throwing a tantrum!", name), (255, 90, 90));
         }
 
+        // An urgent job pulls a dwarf off a minor one (priority.rs).
+        self.urgent_pull(d);
         // Pressing needs interrupt ordinary work; desperate thirst
         // interrupts a meal or a nap too.
         if !d.task.is_need() && d.task != Task::Idle {
@@ -2344,13 +2354,18 @@ impl Game {
     }
 
     fn find_craft(&mut self, d: &mut Dwarf) -> bool {
-        let shops: Vec<u32> = self
+        let mut shops: Vec<u32> = self
             .buildings
             .values()
             .filter(|b| b.built && b.worker.is_none() && !b.orders.is_empty() && b.retry_tick <= self.tick)
             .filter(|b| d.has(b.orders[0].recipe.labor()) && (b.workers.is_empty() || b.workers.contains(&d.id)))
+            .filter(|b| self.skilled_enough(b, d, b.orders[0].recipe.labor()))
             .map(|b| b.id)
             .collect();
+        // The most urgent work orders first (priority.rs).
+        if self.work_orders.iter().any(|o| o.prio != priority::NORMAL) {
+            shops.sort_by_key(|id| self.shop_prio(&self.buildings[id]));
+        }
         for bid in shops {
             let (recipe, mat) = (self.buildings[&bid].orders[0].recipe, self.buildings[&bid].orders[0].mat);
             let site = self.buildings[&bid].center();
@@ -2457,15 +2472,22 @@ impl Game {
                 false
             });
         }
-        let found = if found.is_some() { found } else { path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| {
-            for q in self.work_targets(p) {
-                if open.contains(&q) && self.desig_valid(q, self.world.t(q).desig) {
-                    target = Some(q);
-                    return true;
-                }
+        // Then by priority, the nearest of the most urgent first (one
+        // search while none are set: priority.rs).
+        for tier in self.prio_tiers(&open) {
+            if found.is_some() {
+                break;
             }
-            false
-        }) };
+            found = path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, |p| {
+                for q in self.work_targets(p) {
+                    if open.contains(&q) && self.prio_of(q) == tier && self.desig_valid(q, self.world.t(q).desig) {
+                        target = Some(q);
+                        return true;
+                    }
+                }
+                false
+            });
+        }
         if let (Some((stand, path)), Some(target)) = (found, target) {
             // Damp or warm stone stops a miner short (damp.rs).
             if !chop && self.damp_stop(d, target) {
@@ -2743,6 +2765,7 @@ impl Game {
                             let gem = was.kind == TileKind::Wall && was.mat.is_gem();
                             self.complete_dig(target);
                             self.dug_by(d, target, was);
+                            self.ledger_mined(d.id, &was);
                             // Someone under the rubble, or the ceiling down on the miner (disasters.rs).
                             self.rubble_dug(d, target);
                             self.caught_by_fall(d);
@@ -2909,7 +2932,9 @@ impl Game {
                 let level = d.skill(recipe.labor());
                 if Self::labor(d, recipe.work(), level) {
                     let used: Vec<Item> = items.iter().filter_map(|id| self.items.remove(id)).collect();
-                    d.gain_xp(recipe.labor(), 30);
+                    // Beside the workshop's master, an apprentice learns faster and works better (masters.rs).
+                    let level = self.guided_level(d, bld, recipe.labor(), level);
+                    d.gain_xp(recipe.labor(), self.apprentice_xp(d, bld, 30));
                     d.satisfy(dwarf::NeedKind::Craft, 350);
                     d.task = Task::Idle;
                     let mut made: Vec<String> = Vec::new();
@@ -2926,6 +2951,7 @@ impl Game {
                         made_ids.push(id);
                     }
                     self.crafts_made(d, recipe, &used, &made_ids);
+                    self.ledger_made(d.id, &made_ids);
                     made = made_ids.iter().filter_map(|id| self.items.get(id)).map(|it| it.name()).collect();
                     self.culture_crafted(d, &made_ids);
                     if d.likes_mat == used.first().map_or(Mat::Air, |it| it.mat) {

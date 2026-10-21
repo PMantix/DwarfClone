@@ -40,6 +40,8 @@ impl Game {
         self.ov_reign(o);
         // O01: the deaths and sieges since, as its traits take them.
         self.ov_reflect(o);
+        // O08: workshop masters, weekly (masters.rs).
+        self.ov_masters(o);
         // O07: its journal, written up.
         self.ov_journal(o);
         // O09: a memorial on an old battlefield (battlefields.rs).
