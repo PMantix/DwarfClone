@@ -386,7 +386,7 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O12 Inspired engineers (M)
 - **Why:** Great works should come from named dwarves with ideas, giving the overseer ambitions it didn't plan.
-- **Steps:** [ ] Blueprints ([CRF-03](ideas/economy.md)) · [x] Automatons ([CRF-28](ideas/economy.md); guards, haulers and gatekeepers a mechanic builds, wound and oiled or they run down, seize up or go haywire, this commit) · [x] Luxury trinkets ([CRF-35](ideas/economy.md); music boxes, clockwork birds, orreries: titled nobles demand them, one in a room adds to its value and cheers its owner, this commit)
+- **Steps:** [x] Blueprints ([CRF-03](ideas/economy.md), 217bc71, 90b40f6) · [x] Automatons ([CRF-28](ideas/economy.md); guards, haulers and gatekeepers a mechanic builds, wound and oiled or they run down, seize up or go haywire, this commit) · [x] Luxury trinkets ([CRF-35](ideas/economy.md); music boxes, clockwork birds, orreries: titled nobles demand them, one in a room adds to its value and cheers its owner, this commit)
 - **Done when:** A dwarf's inspiration becomes an overseer ambition and a finished work bearing their name.
 
 ### Milestone 3: the fort as a society (v0.5)
