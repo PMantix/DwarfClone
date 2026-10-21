@@ -119,6 +119,9 @@ pub mod familytree;
 pub mod sounds;
 pub mod drills;
 pub mod sagas;
+// O09: ages named by the world, legends that drift, forgotten lore.
+pub mod ages;
+pub mod tales;
 // Milestone 2 (the overseer as a character), wave 0: stores the wave-1
 // packages fill in.
 pub mod memory;
@@ -623,6 +626,9 @@ pub struct Game {
     /// Squads at drill in the barracks: who spars with whom, and what to draw (`drills.rs`).
     #[serde(default)]
     pub drills: drills::Drills,
+    /// What the year did to the world's lore, for the chronicle (`tales.rs`).
+    #[serde(default)]
+    pub lore: tales::Lore,
 }
 
 impl Game {
@@ -674,6 +680,8 @@ impl Game {
         g.place_necromancer();
         g.make_lairs(seed);
         g.place_remains();
+        // O09: what the fortress knows of history, and what it has forgotten (tales.rs).
+        g.forget_lore();
         report("Strike the earth!", 1.0);
         g
     }
@@ -813,6 +821,7 @@ impl Game {
             culture: Default::default(),
             sounds: Vec::new(),
             drills: drills::Drills::default(),
+            lore: Default::default(),
         }
     }
 

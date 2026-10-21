@@ -96,6 +96,8 @@ impl Game {
         let s = SEASONS[season as usize];
         self.msg(&format!("{} has arrived.", s), (200, 200, 255));
         self.autosave_request = true;
+        // O09: a new age and the old tales retold, before the chronicle tells them (tales.rs).
+        if season == 0 { self.lore_new_year(); }
         if season == 0 { self.write_chronicle(); self.new_year(); }
         self.seasonal_ice(season);
         if season == 1 || season == 2 { self.migrants(); }

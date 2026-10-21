@@ -122,10 +122,12 @@ impl Game {
         }
         let fort = self.fortress_name.clone();
         let ours: Vec<String> = self.overworld.events.iter().filter(|e| e.text.contains(&fort)).map(|e| e.text.clone()).collect();
+        let mut old = None;
         let event = if !ours.is_empty() && self.rng.chance(0.7) {
             self.rng.pick(&ours).clone()
         } else if !self.overworld.events.is_empty() {
             let i = self.rng.range(0, self.overworld.events.len() as i32) as usize;
+            old = Some(i);
             self.overworld.events[i].text.clone()
         } else {
             return;
@@ -163,6 +165,11 @@ impl Game {
             }
             d.satisfy(NeedKind::Party, 300);
         }
+        // O09: an old song the fortress had forgotten, or one made up (tales.rs).
+        if let Some(i) = old {
+            self.lore_sung(i);
+        }
+        self.bard_invents(c);
     }
 
     /// The warrior asks to stay, and is welcomed: a seasoned fighter joins.
