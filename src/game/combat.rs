@@ -224,6 +224,9 @@ impl Game {
         let downed = body.unconscious();
         // Senseless on their feet: they can't dodge or block.
         let dazed = !downed && body.harm.out > 0;
+        if dazed {
+            self.count("gore.dazed_blows", 1);
+        }
         let aimed = aim.filter(|a| !body.lost[a.part().idx()]);
         let chance = super::adv::fight::hit_chance(att, def, aimed);
         let chance = if dazed { chance.max(0.85) } else { chance };

@@ -1344,6 +1344,24 @@ pub fn wall_look(s: &Stain, ch: char, fg: (u8, u8, u8)) -> (char, (u8, u8, u8), 
 }
 
 impl Game {
+    /// A dwarf died: count it against the gore hurts they had on them
+    /// (an open artery or belly when they bled out, senseless when struck
+    /// down), so a batch shows which of them kill.
+    pub(super) fn count_gore_death(&mut self, d: &Dwarf, cause: &str) {
+        let h = &d.body.harm;
+        let bled = cause == "bled to death";
+        let struck = cause == "struck down";
+        if bled && h.artery.iter().any(|&a| a) {
+            self.count("gore.died.artery", 1);
+        }
+        if (bled || struck) && h.guts {
+            self.count(if bled { "gore.died.guts" } else { "gore.died.guts_struck" }, 1);
+        }
+        if struck && h.out > 0 {
+            self.count("gore.died.dazed", 1);
+        }
+    }
+
     /// A dwarf who lost something for good to a blow (an eye, teeth,
     /// fingers, an ear, the nose) remembers it: in the medical history, in
     /// their thoughts, and in the fort's memory for the worst of it.

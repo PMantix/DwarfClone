@@ -176,6 +176,7 @@ impl Game {
     /// A dwarf has died: write down how.
     pub(super) fn note_death(&mut self, d: &Dwarf, text: &str) {
         let cause = cause_of(text);
+        self.count_gore_death(d, &cause);
         let killer = match cause.as_str() {
             "struck down" | "bled to death" => self.annals.wounded_by.iter().find(|w| w.0 == d.id && self.tick < w.2 + DAY * 10).map(|w| w.1.clone()),
             _ => None,
