@@ -80,6 +80,7 @@ pub mod readiness;
 mod cistern;
 mod levy;
 mod sally;
+mod determinism;
 mod rescue;
 mod hospital;
 mod watchdog;
