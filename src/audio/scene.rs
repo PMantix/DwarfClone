@@ -205,6 +205,30 @@ pub struct Watch {
     beasts: HashSet<u32>,
     /// The newest announcement already heard.
     log_tick: u64,
+    /// The newest bolt loosed already heard.
+    flight_tick: u64,
+    /// Bolts in the air: when and where each strikes.
+    landing: Vec<(u64, Pos)>,
+}
+
+/// Most fight noises played in one frame: a battle is a few telling
+/// sounds, never a din.
+pub const MAX_FIGHT_CUES: usize = 3;
+
+/// The effect for a noise of the game, and how much it matters (lower
+/// first, when there are too many to play).
+pub fn fight_cue(s: Sound) -> (SfxKind, u8) {
+    match s {
+        Sound::Death => (SfxKind::Rattle, 0),
+        Sound::Cry(p) => (SfxKind::Cry(p), 1),
+        Sound::Crunch(skull) => (SfxKind::Crunch(skull), 2),
+        Sound::Teeth => (SfxKind::Skitter, 3),
+        Sound::Retch => (SfxKind::Retch, 4),
+        Sound::Wet => (SfxKind::Wet, 5),
+        Sound::Fall => (SfxKind::Fall, 6),
+        Sound::Blow => (SfxKind::Thud, 7),
+        Sound::Parry => (SfxKind::Clash, 8),
+    }
 }
 
 /// Creatures whose coming is worth a roar.
@@ -237,6 +261,7 @@ impl Watch {
             self.beasts = g.creatures.values().filter(|c| beastly(c.species)).map(|c| c.id).collect();
             self.doors = doors(g).collect();
             self.log_tick = g.log.last().map_or(0, |e| e.tick);
+            self.flight_tick = g.drills.flights.iter().map(|f| f.at).max().unwrap_or(0);
             return;
         }
         // Lightning close by: a thunderclap.
@@ -247,17 +272,18 @@ impl Watch {
             }
         }
         self.log_tick = self.log_tick.max(g.log.last().map_or(0, |e| e.tick));
-        // Blows struck in sight.
-        let mut fights = 0;
+        // Blows struck in sight, and what they did: the most telling few.
+        let mut heard: Vec<(u8, Cue)> = Vec::new();
         for &(p, s) in &g.sounds {
-            if fights >= 2 {
-                break;
-            }
-            if let Some((gain, pan)) = place(cam, p, half) {
-                out.push(Cue { kind: if s == Sound::Blow { SfxKind::Thud } else { SfxKind::Clash }, gain, pan });
-                fights += 1;
+            let Some((gain, pan)) = place(cam, p, half) else { continue };
+            let (kind, rank) = fight_cue(s);
+            if !heard.iter().any(|(_, c)| std::mem::discriminant(&c.kind) == std::mem::discriminant(&kind)) {
+                heard.push((rank, Cue { kind, gain, pan }));
             }
         }
+        heard.sort_by_key(|h| h.0);
+        out.extend(heard.into_iter().take(MAX_FIGHT_CUES).map(|h| h.1));
+        self.bolts(g, cam, half, out);
         // The alarm.
         if (g.alert && !self.alert) || (g.civ_alert && !self.civ_alert) {
             out.push(Cue { kind: SfxKind::Bell, gain: 0.8, pan: 0.0 });
@@ -298,6 +324,38 @@ impl Watch {
                     out.push(Cue { kind: SfxKind::Roar, gain: gain.max(0.35), pan });
                 }
             }
+        }
+    }
+
+    /// Bolts loosed in sight whistle; one striking home thunks.
+    fn bolts(&mut self, g: &Game, cam: Pos, half: (i32, i32), out: &mut Vec<Cue>) {
+        let mut whistled = false;
+        let newest = self.flight_tick;
+        for f in g.drills.flights.iter().filter(|f| f.at > newest) {
+            self.flight_tick = self.flight_tick.max(f.at);
+            let mid = Pos::new((f.from.x + f.to.x) / 2, (f.from.y + f.to.y) / 2, f.from.z);
+            if let Some((gain, pan)) = place(cam, mid, half) {
+                if !whistled {
+                    out.push(Cue { kind: SfxKind::Whistle, gain: gain * 0.8, pan });
+                    whistled = true;
+                }
+                if self.landing.len() < 16 {
+                    self.landing.push((f.lands(), f.to));
+                }
+            }
+        }
+        let now = g.tick;
+        let mut thunk = None;
+        self.landing.retain(|&(t, p)| {
+            // Struck (or long gone: a game loaded, the clock wound back).
+            let due = now >= t || t > now + 200;
+            if due && now >= t && thunk.is_none() {
+                thunk = place(cam, p, half);
+            }
+            !due
+        });
+        if let Some((gain, pan)) = thunk {
+            out.push(Cue { kind: SfxKind::Thunk, gain, pan });
         }
     }
 
@@ -493,6 +551,62 @@ mod tests {
         assert_eq!(out.iter().filter(|c| matches!(c.kind, SfxKind::Thud | SfxKind::Clash)).count(), 2, "{:?}", out);
         assert!(spotlight_cues("An artifact", (255, 215, 60)).contains(&SfxKind::Chime));
         assert!(spotlight_cues("Siege!", (255, 70, 70)).contains(&SfxKind::Stinger(Tone::War)));
+    }
+
+    #[test]
+    fn a_battle_is_a_few_telling_sounds_not_a_din() {
+        let mut g = Game::new(12);
+        let cam = g.embark;
+        let mut w = Watch::default();
+        let mut out = Vec::new();
+        w.look(&g, cam, (30, 15), true, &mut out);
+        // A great melee: every kind of noise, many times over.
+        for i in 0..32 {
+            let s = [Sound::Blow, Sound::Parry, Sound::Wet, Sound::Crunch(false), Sound::Cry(120), Sound::Fall, Sound::Teeth, Sound::Death, Sound::Retch][i % 9];
+            g.sounds.push((Pos::new(cam.x + (i as i32 % 5), cam.y, cam.z), s));
+        }
+        out.clear();
+        w.look(&g, cam, (30, 15), true, &mut out);
+        assert_eq!(out.len(), MAX_FIGHT_CUES, "{:?}", out);
+        // The deaths and cries come first.
+        assert_eq!(out[0].kind, SfxKind::Rattle);
+        assert!(matches!(out[1].kind, SfxKind::Cry(_)));
+        // Through the audio's limits, a second of it is a handful of sounds.
+        let mut a = super::super::Audio::listening();
+        let mut played = 0;
+        for _ in 0..60 {
+            for c in &out {
+                played += a.play(c.kind, c.gain, c.pan) as usize;
+            }
+            a.advance(1.0 / 60.0);
+        }
+        assert!(played <= super::super::MAX_PER_SECOND, "{} effects in a second", played);
+        // Far off, nothing.
+        let mut far = Watch::default();
+        far.look(&g, cam, (30, 15), true, &mut out);
+        out.clear();
+        far.look(&g, Pos::new(cam.x, cam.y, cam.z + 5), (30, 15), true, &mut out);
+        assert!(out.is_empty(), "{:?}", out);
+    }
+
+    #[test]
+    fn a_bolt_whistles_and_thunks_home() {
+        let mut g = Game::new(13);
+        let cam = g.embark;
+        let mut w = Watch::default();
+        let mut out = Vec::new();
+        w.look(&g, cam, (30, 15), true, &mut out);
+        g.drills.flights.push(crate::game::drills::Flight { from: cam.offset(-6, 0, 0), to: cam.offset(2, 0, 0), at: g.tick + 1 });
+        w.look(&g, cam, (30, 15), true, &mut out);
+        assert!(out.iter().any(|c| c.kind == SfxKind::Whistle), "{:?}", out);
+        assert!(!out.iter().any(|c| c.kind == SfxKind::Thunk), "not yet home");
+        out.clear();
+        g.tick += 20;
+        w.look(&g, cam, (30, 15), true, &mut out);
+        assert!(out.iter().any(|c| c.kind == SfxKind::Thunk), "{:?}", out);
+        out.clear();
+        w.look(&g, cam, (30, 15), true, &mut out);
+        assert!(!out.iter().any(|c| matches!(c.kind, SfxKind::Thunk | SfxKind::Whistle)), "once");
     }
 
     #[test]

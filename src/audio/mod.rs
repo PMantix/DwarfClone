@@ -11,11 +11,13 @@
 
 pub mod dsp;
 pub mod engine;
+pub mod gorefx;
 pub mod music;
 #[cfg(all(feature = "audio", not(test)))]
 mod output;
 pub mod scene;
 pub mod voices;
+pub mod wilds;
 #[cfg(test)]
 pub mod wav;
 
@@ -36,17 +38,39 @@ pub struct Scene {
     pub fire: f32,
     pub magma: f32,
     pub water: f32,
+    /// A beast's slow breathing (a lair).
+    pub breath: f32,
+    /// Wind whistling through gaps in broken walls (a ruin).
+    pub gaps: f32,
+    /// Old timbers creaking now and then (a ruin).
+    pub creaks: f32,
+    /// Voices of a town, far off.
+    pub voices: f32,
+    /// Hammers at work somewhere in a town.
+    pub hammer: f32,
+    pub frogs: f32,
+    pub owls: f32,
     pub mood: Mood,
     /// 0 spring .. 3 winter.
     pub season: u8,
+    /// How the travelling music is coloured: 0 by day, 1 by night, 2 in
+    /// foul weather (only `Mood::Travel` reads it).
+    pub tint: u8,
 }
 
 impl Scene {
     /// Close enough to `o` that sending it again would change nothing heard.
     fn near(&self, o: &Scene) -> bool {
-        let a = [self.wind, self.rain, self.thunder, self.birds, self.insects, self.drips, self.hum, self.fire, self.magma, self.water];
-        let b = [o.wind, o.rain, o.thunder, o.birds, o.insects, o.drips, o.hum, o.fire, o.magma, o.water];
-        self.mood == o.mood && self.season == o.season && a.iter().zip(b.iter()).all(|(x, y)| (x - y).abs() < 0.03)
+        let (a, b) = (self.levels(), o.levels());
+        self.mood == o.mood && self.season == o.season && self.tint == o.tint && a.iter().zip(b.iter()).all(|(x, y)| (x - y).abs() < 0.03)
+    }
+
+    /// Every layer's level, in the mixer's order.
+    pub fn levels(&self) -> [f32; 17] {
+        [
+            self.wind, self.rain, self.thunder, self.birds, self.insects, self.drips, self.hum, self.fire, self.magma, self.water, self.breath, self.gaps, self.creaks, self.voices, self.hammer, self.frogs,
+            self.owls,
+        ]
     }
 }
 
@@ -82,6 +106,25 @@ pub enum SfxKind {
     Click,
     Thunder,
     Stinger(Tone),
+    /// A blade going into flesh.
+    Wet,
+    /// A bone breaking (`true`: a skull).
+    Crunch(bool),
+    /// A cry of pain at a limb lost, on a pitch (`gorefx::cry_hz`).
+    Cry(u8),
+    /// A body hitting the floor.
+    Fall,
+    /// A tooth skittering across stone.
+    Skitter,
+    /// A bolt striking home.
+    Thunk,
+    /// An arrow or a bolt flying past.
+    Whistle,
+    /// The death rattle (and the body falling after).
+    Rattle,
+    Retch,
+    /// Footsteps on the road.
+    Steps,
 }
 
 impl SfxKind {
@@ -101,6 +144,16 @@ impl SfxKind {
             SfxKind::Click => 0.05,
             SfxKind::Thunder => 5.0,
             SfxKind::Stinger(_) => 2.5,
+            SfxKind::Wet => 0.2,
+            SfxKind::Crunch(_) => 0.35,
+            SfxKind::Cry(_) => 1.2,
+            SfxKind::Fall => 0.5,
+            SfxKind::Skitter => 0.8,
+            SfxKind::Thunk => 0.25,
+            SfxKind::Whistle => 0.3,
+            SfxKind::Rattle => 2.0,
+            SfxKind::Retch => 4.0,
+            SfxKind::Steps => 0.9,
         }
     }
 
@@ -119,6 +172,16 @@ impl SfxKind {
             SfxKind::Click => 10,
             SfxKind::Thunder => 11,
             SfxKind::Stinger(_) => 12,
+            SfxKind::Wet => 13,
+            SfxKind::Crunch(_) => 14,
+            SfxKind::Cry(_) => 15,
+            SfxKind::Fall => 16,
+            SfxKind::Skitter => 17,
+            SfxKind::Thunk => 18,
+            SfxKind::Whistle => 19,
+            SfxKind::Rattle => 20,
+            SfxKind::Retch => 21,
+            SfxKind::Steps => 22,
         }
     }
 }
@@ -225,9 +288,12 @@ impl Settings {
 /// Keeps effects sparse: a least gap per kind, and a few a second at most.
 #[derive(Clone, Debug, Default)]
 pub struct Limiter {
-    last: [Option<f64>; 13],
+    last: [Option<f64>; SLOTS],
     recent: Vec<f64>,
 }
+
+/// Kinds of effect, for the limiter.
+const SLOTS: usize = 23;
 
 /// Most effects (menu clicks aside) in any one second.
 pub const MAX_PER_SECOND: usize = 5;
@@ -265,6 +331,8 @@ pub struct Audio {
     last_scene_at: f64,
     /// What the app has seen of the game, to notice what's new.
     pub watch: scene::Watch,
+    /// What the adventure's ears remember.
+    pub ears: wilds::Ears,
     /// Tests: act as if a device were listening (nothing is opened).
     pretend: bool,
 }
@@ -282,6 +350,7 @@ impl Audio {
             last_scene: None,
             last_scene_at: -1.0,
             watch: scene::Watch::default(),
+            ears: wilds::Ears::default(),
             pretend: false,
         }
     }
@@ -392,15 +461,59 @@ pub fn check() {
         std::thread::sleep(std::time::Duration::from_secs(3));
         dev.send(Msg::Sfx(Sfx { kind: SfxKind::Bell, gain: 1.0, pan: 0.0 }));
         std::thread::sleep(std::time::Duration::from_secs(5));
+        // A fight's sounds, one after another.
+        println!("A fight: a blade, a bone, a cry, a tooth, a bolt, an arrow, retching, a death.");
+        dev.send(Msg::Scene(Scene { mood: Mood::Skirmish, ..Scene::default() }));
+        for k in CHECK_FIGHT {
+            dev.send(Msg::Sfx(Sfx { kind: k, gain: 1.0, pan: 0.0 }));
+            std::thread::sleep(std::time::Duration::from_millis(if matches!(k, SfxKind::Retch | SfxKind::Rattle) { 1800 } else { 900 }));
+        }
+        // An adventurer's places, a few seconds each.
+        for (name, sc) in check_places() {
+            println!("{}", name);
+            dev.send(Msg::Scene(sc));
+            std::thread::sleep(std::time::Duration::from_secs(4));
+        }
+        dev.send(Msg::Sfx(Sfx { kind: SfxKind::Steps, gain: 1.0, pan: 0.0 }));
+        std::thread::sleep(std::time::Duration::from_secs(2));
         let frames = dev.frames.load(std::sync::atomic::Ordering::Relaxed);
         if dev.live() && frames > 0 {
-            println!("Played {} frames of sound in 8 seconds.", frames);
+            println!("Played {} frames of sound.", frames);
         } else {
             println!("The device didn't play (no output, or it failed to open): the game runs silently.");
         }
     }
     #[cfg(not(all(feature = "audio", not(test))))]
     println!("This build has no sound (built without the `audio` feature).");
+}
+
+/// The fight's sounds, in the order the sound check plays them.
+#[cfg_attr(test, allow(dead_code))]
+pub const CHECK_FIGHT: [SfxKind; 11] = [
+    SfxKind::Wet,
+    SfxKind::Crunch(false),
+    SfxKind::Crunch(true),
+    SfxKind::Cry(120),
+    SfxKind::Cry(185),
+    SfxKind::Skitter,
+    SfxKind::Whistle,
+    SfxKind::Thunk,
+    SfxKind::Fall,
+    SfxKind::Retch,
+    SfxKind::Rattle,
+];
+
+/// An adventurer's places, for the sound check and the samples.
+pub fn check_places() -> Vec<(&'static str, Scene)> {
+    vec![
+        ("A lair: breathing in the dark, dripping.", Scene { breath: 0.8, drips: 0.6, hum: 0.25, ..Scene::default() }),
+        ("A ruin: wind through the gaps, old timbers.", Scene { gaps: 0.8, creaks: 0.8, wind: 0.3, drips: 0.2, mood: Mood::Mourning, ..Scene::default() }),
+        ("A town by day: voices, hammers.", Scene { voices: 0.7, hammer: 0.7, birds: 0.3, wind: 0.2, mood: Mood::Calm, ..Scene::default() }),
+        ("A forest at night: an owl, crickets.", Scene { owls: 1.0, insects: 0.6, wind: 0.25, ..Scene::default() }),
+        ("A swamp at dusk: frogs.", Scene { frogs: 1.0, insects: 0.8, wind: 0.1, ..Scene::default() }),
+        ("The road by day.", Scene { wind: 0.4, birds: 0.7, mood: Mood::Travel, season: 1, ..Scene::default() }),
+        ("The road in a storm.", Scene { wind: 1.0, rain: 1.0, thunder: 1.0, mood: Mood::Travel, tint: 2, ..Scene::default() }),
+    ]
 }
 
 #[cfg(test)]
@@ -449,9 +562,25 @@ mod tests {
         SfxKind::Stinger(Tone::Grief),
     ];
 
+    /// The sounds of the fight and the road.
+    pub const NEW_SFX: [SfxKind; 12] = [
+        SfxKind::Wet,
+        SfxKind::Crunch(false),
+        SfxKind::Crunch(true),
+        SfxKind::Cry(10),
+        SfxKind::Cry(240),
+        SfxKind::Fall,
+        SfxKind::Skitter,
+        SfxKind::Thunk,
+        SfxKind::Whistle,
+        SfxKind::Rattle,
+        SfxKind::Retch,
+        SfxKind::Steps,
+    ];
+
     #[test]
     fn every_effect_sounds_and_stays_in_range() {
-        for k in ALL_SFX {
+        for k in ALL_SFX.into_iter().chain(NEW_SFX) {
             let mut e = engine();
             e.handle(Msg::Sfx(Sfx { kind: k, gain: 1.0, pan: 0.3 }));
             let buf = render(&mut e, 4.0);
@@ -472,12 +601,12 @@ mod tests {
         let sr = 48000.0;
         let mut e = Engine::new(sr, 1);
         e.handle(Msg::Mix(Settings::default().mix()));
-        e.handle(Msg::Scene(Scene { wind: 1.0, rain: 1.0, thunder: 1.0, fire: 1.0, water: 1.0, magma: 1.0, hum: 1.0, drips: 1.0, birds: 1.0, insects: 1.0, mood: Mood::War, season: 2 }));
+        e.handle(Msg::Scene(Scene { wind: 1.0, rain: 1.0, thunder: 1.0, fire: 1.0, water: 1.0, magma: 1.0, hum: 1.0, drips: 1.0, birds: 1.0, insects: 1.0, breath: 1.0, gaps: 1.0, creaks: 1.0, voices: 1.0, hammer: 1.0, frogs: 1.0, owls: 1.0, mood: Mood::War, season: 2, tint: 0 }));
         let mut buf = vec![0.0; 480 * 2];
         let t = std::time::Instant::now();
         for i in 0..1000 {
             if i % 20 == 0 {
-                for k in ALL_SFX {
+                for k in ALL_SFX.into_iter().chain(NEW_SFX) {
                     e.handle(Msg::Sfx(Sfx { kind: k, gain: 1.0, pan: 0.0 }));
                 }
             }
@@ -507,7 +636,7 @@ mod tests {
 
     #[test]
     fn every_ambience_layer_sounds() {
-        let layers: [(&str, fn(&mut Scene)); 10] = [
+        let layers: [(&str, fn(&mut Scene)); 17] = [
             ("wind", |s| s.wind = 1.0),
             ("rain", |s| s.rain = 1.0),
             ("thunder", |s| s.thunder = 1.0),
@@ -518,6 +647,13 @@ mod tests {
             ("fire", |s| s.fire = 1.0),
             ("magma", |s| s.magma = 1.0),
             ("water", |s| s.water = 1.0),
+            ("breath", |s| s.breath = 1.0),
+            ("gaps", |s| s.gaps = 1.0),
+            ("creaks", |s| s.creaks = 1.0),
+            ("voices", |s| s.voices = 1.0),
+            ("hammer", |s| s.hammer = 1.0),
+            ("frogs", |s| s.frogs = 1.0),
+            ("owls", |s| s.owls = 1.0),
         ];
         for (name, set) in layers {
             let mut e = engine();
@@ -525,7 +661,7 @@ mod tests {
             set(&mut s);
             e.handle(Msg::Scene(s));
             // Scattered layers (thunder, birds) may wait a while.
-            let buf = render(&mut e, if name == "thunder" { 90.0 } else { 12.0 });
+            let buf = render(&mut e, if matches!(name, "thunder" | "owls") { 90.0 } else { 12.0 });
             check(name, &buf);
         }
         // Nothing at all: silence.
@@ -544,6 +680,29 @@ mod tests {
             check(&format!("{:?}", m), &buf);
             assert_eq!(e.piece().map(|p| p.mood), Some(m));
         }
+    }
+
+    /// A big battle stays cheap and bounded: every fight sound at once,
+    /// over and over, through the busiest ambience, for ten seconds.
+    #[test]
+    fn a_battle_mixes_cheaply_and_never_clips() {
+        let mut e = Engine::new(SR, 4);
+        e.handle(Msg::Mix(Settings { master: 100, sfx: 100, ..Settings::default() }.mix()));
+        e.handle(Msg::Scene(Scene { wind: 1.0, rain: 1.0, voices: 1.0, hammer: 1.0, breath: 1.0, gaps: 1.0, mood: Mood::Skirmish, ..Scene::default() }));
+        let mut buf = vec![0.0; 441 * 2];
+        let mut most = 0;
+        for i in 0..500 {
+            if i % 3 == 0 {
+                for k in NEW_SFX {
+                    e.handle(Msg::Sfx(Sfx { kind: k, gain: 1.0, pan: 0.0 }));
+                }
+            }
+            e.render(&mut buf, 2);
+            most = most.max(e.voice_count());
+            assert!(buf.iter().all(|x| x.is_finite() && x.abs() <= 1.0));
+        }
+        // The buses cap the voices; what's scheduled ahead is capped too.
+        assert!(most <= 32 + 24 + 16 + 64, "{} voices at once", most);
     }
 
     #[test]
@@ -642,11 +801,11 @@ mod tests {
 
     /// Render a few samples to listen to:
     /// `cargo test --release render_audio_samples -- --ignored`
-    /// writes WAV files into target/audio-samples.
+    /// writes WAV files into target/audio-samples (or `SAMPLES_DIR`).
     #[test]
     #[ignore]
     fn render_audio_samples() {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("audio-samples");
+        let dir = std::env::var_os("SAMPLES_DIR").map(PathBuf::from).unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("audio-samples"));
         std::fs::create_dir_all(&dir).unwrap();
         let sr = 44100.0;
         let out = |name: &str, setup: &dyn Fn(&mut Engine), secs: f32| {
@@ -676,6 +835,16 @@ mod tests {
             let name = format!("sfx-{:?}", k).to_lowercase().replace(['(', ')'], "-").trim_end_matches('-').to_string();
             out(&name, &move |e: &mut Engine| e.handle(Msg::Sfx(Sfx { kind: k, gain: 1.0, pan: 0.0 })), 4.0);
         }
+        for k in NEW_SFX {
+            let name = format!("sfx-{:?}", k).to_lowercase().replace(['(', ')'], "-").trim_end_matches('-').to_string();
+            out(&name, &move |e: &mut Engine| e.handle(Msg::Sfx(Sfx { kind: k, gain: 1.0, pan: 0.0 })), 4.0);
+        }
+        for (i, (_, sc)) in check_places().into_iter().enumerate() {
+            let name = ["adv-lair", "adv-ruin", "adv-town-day", "adv-forest-night", "adv-swamp-dusk", "adv-road-day", "adv-road-storm"][i];
+            out(name, &scene(sc), 30.0);
+        }
+        out("music-road-night", &scene(Scene { mood: Mood::Travel, tint: 1, wind: 0.3, owls: 0.6, ..Scene::default() }), 60.0);
+        out("music-skirmish", &scene(Scene { mood: Mood::Skirmish, ..Scene::default() }), 40.0);
         // A minute in a busy fort: digging and forging over the calm music.
         out(
             "mix-busy-fort",

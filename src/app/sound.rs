@@ -3,7 +3,7 @@
 //! just happened near it; `M` mutes; the sound screen sets the volumes.
 
 use super::{App, Mode, DESIG_KEYS};
-use crate::audio::{scene, Mood, Scene, SfxKind};
+use crate::audio::{scene, wilds, Mood, Scene, SfxKind};
 use crate::buildings::BuildingKind;
 use crate::game::ConstructKind;
 use crate::geom::Pos;
@@ -66,6 +66,9 @@ impl App {
             self.audio_spot = None;
             return;
         }
+        if matches!(self.sound_mode(), Mode::Adventure) && self.adv.is_some() {
+            return self.adv_sound_frame();
+        }
         let fort = self.sound_in_fortress();
         let cam = self.sound_camera();
         if self.sound_frames % SCENE_EVERY == 1 {
@@ -95,6 +98,39 @@ impl App {
             }
         }
         self.audio_spot = shown;
+    }
+
+    /// An adventure's sound: the place or the road round the hero, its
+    /// music, footsteps on the road, and the fight's noises near them.
+    fn adv_sound_frame(&mut self) {
+        let half = if self.map_rect.width > 0 { (self.map_rect.width as i32 / 2, self.map_rect.height as i32 / 2) } else { (30, 15) };
+        let scene_now = self.sound_frames % SCENE_EVERY == 1;
+        let Some(s) = self.adv.as_mut() else { return };
+        let a = &mut s.adv;
+        // A new place: nothing already there is news.
+        let tag = wilds::place_tag(a);
+        if self.audio.ears.place != Some(tag) {
+            self.audio.ears.place = Some(tag);
+            self.audio.watch = scene::Watch::default();
+        }
+        if scene_now {
+            let mut sc = wilds::ambience(a);
+            sc.mood = wilds::mood(a, &s.view, s.meet.is_some());
+            self.audio.set_scene(sc);
+        }
+        if wilds::stepped(&mut self.audio.ears, a) {
+            self.audio.play(SfxKind::Steps, 0.8, 0.0);
+        }
+        let mut cues = Vec::new();
+        if let Some(v) = a.visit.as_mut() {
+            if let Some(cam) = v.g.dwarves.get(v.hero).map(|d| d.pos) {
+                self.audio.watch.look(&v.g, cam, half, true, &mut cues);
+            }
+            v.g.sounds.clear();
+        }
+        for c in cues {
+            self.audio.play(c.kind, c.gain, c.pan);
+        }
     }
 
     /// In this screen `M` already means something (a letter in a list).

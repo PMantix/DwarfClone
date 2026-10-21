@@ -29,11 +29,15 @@ pub enum Mood {
     Mourning,
     /// The arena.
     Battle,
+    /// An adventurer on the road: a lone string walking, sparse.
+    Travel,
+    /// An adventurer's fight: foes near.
+    Skirmish,
 }
 
 impl Mood {
     #[cfg(test)]
-    pub const ALL: [Mood; 7] = [Mood::Title, Mood::WorldGen, Mood::Calm, Mood::Festive, Mood::War, Mood::Mourning, Mood::Battle];
+    pub const ALL: [Mood; 9] = [Mood::Title, Mood::WorldGen, Mood::Calm, Mood::Festive, Mood::War, Mood::Mourning, Mood::Battle, Mood::Travel, Mood::Skirmish];
 
     /// Seconds of silence after a piece (lo, hi).
     pub fn gap(self) -> (f32, f32) {
@@ -46,12 +50,14 @@ impl Mood {
             Mood::War => (4.0, 10.0),
             Mood::Mourning => (50.0, 120.0),
             Mood::Battle => (2.0, 4.0),
+            Mood::Travel => (30.0, 80.0),
+            Mood::Skirmish => (2.0, 5.0),
         }
     }
 
     /// Changing to this mood cuts the piece playing short.
     pub fn urgent(self) -> bool {
-        matches!(self, Mood::War | Mood::Festive | Mood::Battle | Mood::Mourning | Mood::Title | Mood::WorldGen)
+        matches!(self, Mood::War | Mood::Festive | Mood::Battle | Mood::Mourning | Mood::Title | Mood::WorldGen | Mood::Skirmish)
     }
 }
 
@@ -152,9 +158,11 @@ impl Piece {
     }
 }
 
-/// Key, mode and tempo for a mood in a season (0 spring .. 3 winter).
+/// Key, mode and tempo for a mood in a season (0 spring .. 3 winter; for
+/// the road, `season / 4` is the tint: 1 night, 2 foul weather).
 fn colour(mood: Mood, season: u8, n: &mut Noise) -> (Scale, u8, f32) {
     let s = season % 4;
+    let tint = season / 4;
     match mood {
         Mood::Calm => match s {
             // D dorian, a walking spring.
@@ -172,6 +180,13 @@ fn colour(mood: Mood, season: u8, n: &mut Noise) -> (Scale, u8, f32) {
         Mood::Title => (Scale::Dorian, 50, 68.0),
         Mood::WorldGen => (Scale::Aeolian, 45, n.range(48.0, 54.0)),
         Mood::Battle => (Scale::Phrygian, 40, n.range(92.0, 100.0)),
+        // The road: dorian by day, aeolian by night, phrygian in a storm.
+        Mood::Travel => match tint {
+            0 => (Scale::Dorian, [50, 55, 52, 50][s as usize], n.range(76.0, 84.0)),
+            1 => (Scale::Aeolian, 45, n.range(58.0, 64.0)),
+            _ => (Scale::Phrygian, 52, n.range(62.0, 68.0)),
+        },
+        Mood::Skirmish => (if n.chance(0.5) { Scale::Phrygian } else { Scale::Aeolian }, [45, 43, 45, 40][s as usize], n.range(84.0, 92.0)),
         Mood::Silent => (Scale::Dorian, 50, 60.0),
     }
 }
@@ -244,6 +259,8 @@ pub fn compose(mood: Mood, season: u8, seed: u32) -> Piece {
         Mood::Mourning => lament(&mut w),
         Mood::WorldGen => making(&mut w),
         Mood::Battle => battle(&mut w),
+        Mood::Travel => road(&mut w, season / 4),
+        Mood::Skirmish => skirmish(&mut w),
         Mood::Silent => 0.0,
     };
     let mut notes = w.notes;
@@ -432,6 +449,63 @@ fn battle(w: &mut Writer) -> f32 {
     beats
 }
 
+const ROAD_CELLS: &[&[f32]] = &[&[1.0, 1.0, 1.0], &[2.0, 1.0], &[1.0, 2.0], &[3.0], &[1.5, 0.5, 1.0]];
+
+/// The road: one string walking in 3/4, phrases far apart, a low string
+/// on the downbeats like a stride; a horn by night, a bell in foul weather.
+fn road(w: &mut Writer, tint: u8) -> f32 {
+    let bar = 3.0;
+    let phrases = 2 + w.n.pick(2) as u32;
+    let mut t = 0.0;
+    let mut deg = 0;
+    for _ in 0..phrases {
+        let night = tint == 1;
+        let (inst, oct, vel) = if night && w.n.chance(0.5) { (Inst::Horn, 0, 0.65) } else { (Inst::Pluck, 1, 0.75) };
+        deg = w.phrase(t, 4, bar, ROAD_CELLS, deg, -1, 8, oct, inst, vel, if night { 0.3 } else { 0.18 });
+        for b in 0..4 {
+            if b % 2 == 0 || tint == 0 {
+                w.add(t + b as f32 * bar, 1.5, if b == 2 { 4 } else { 0 }, 0, Inst::Pluck, 0.4);
+            }
+        }
+        if tint == 2 && w.n.chance(0.6) {
+            w.add(t + 9.0, 3.0, 1, 2, Inst::Bell, 0.35);
+        }
+        // Long rests: the road between.
+        t += 4.0 * bar + bar * (2 + w.n.pick(3)) as f32;
+    }
+    w.add(0.0, t - 2.0, 0, -1, Inst::Drone, 0.45);
+    t
+}
+
+/// A fight on the road: a frame drum driving, a war drum every other bar,
+/// short low horn calls over a drone. 4/4, tighter than the war drums.
+fn skirmish(w: &mut Writer) -> f32 {
+    let bars = 12;
+    for b in 0..bars {
+        let s = b as f32 * 4.0;
+        for (k, v) in [(0.0, 0.9), (1.5, 0.55), (2.0, 0.7), (3.5, 0.5)] {
+            w.notes.push(Note { beat: s + k, len: 0.5, midi: 0, inst: Inst::FrameDrum, vel: v });
+        }
+        if b % 2 == 0 {
+            w.notes.push(Note { beat: s, len: 1.0, midi: 0, inst: Inst::WarDrum, vel: 0.8 });
+        }
+        w.notes.push(Note { beat: s + 1.0, len: 0.5, midi: 0, inst: Inst::Rim, vel: 0.4 });
+        w.notes.push(Note { beat: s + 3.0, len: 0.5, midi: 0, inst: Inst::Rim, vel: 0.4 });
+    }
+    // Horn calls in some bars, silence in the rest.
+    let mut b = 1;
+    while b < bars - 1 {
+        let s = b as f32 * 4.0;
+        let d = [0, 1, 4, -3][w.n.pick(4)];
+        w.add(s, 1.0, d, 1, Inst::LowHorn, 0.8);
+        w.add(s + 1.5, 1.5, if d == 1 { 0 } else { d }, 1, Inst::LowHorn, 0.65);
+        b += 2 + w.n.pick(2);
+    }
+    let beats = bars as f32 * 4.0;
+    w.add(0.0, beats - 1.0, 0, 0, Inst::Drone, 0.5);
+    beats
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -475,7 +549,7 @@ mod tests {
     #[test]
     fn phrases_have_rests() {
         for (m, s, seed) in moods() {
-            if matches!(m, Mood::Battle | Mood::Festive) {
+            if matches!(m, Mood::Battle | Mood::Festive | Mood::Skirmish) {
                 continue;
             }
             let p = compose(m, s, seed);
@@ -508,6 +582,26 @@ mod tests {
             assert!(calm.bpm < 80.0);
             let lament = compose(Mood::Mourning, s, 7);
             assert!(lament.bpm < 55.0 && lament.line(Inst::LowHorn).count() > 4);
+        }
+    }
+
+    #[test]
+    fn the_road_is_sparse_and_the_night_slower() {
+        for seed in 1..6 {
+            let day = compose(Mood::Travel, 1, seed);
+            let night = compose(Mood::Travel, 1 + 4, seed);
+            let storm = compose(Mood::Travel, 1 + 8, seed);
+            assert_eq!(day.scale, Scale::Dorian);
+            assert_eq!(night.scale, Scale::Aeolian);
+            assert_eq!(storm.scale, Scale::Phrygian);
+            assert!(night.bpm < day.bpm);
+            assert_eq!(day.line(Inst::WarDrum).count() + day.line(Inst::FrameDrum).count(), 0, "no drums on the road");
+            // Sparse: fewer notes a beat than the calm.
+            let per_beat = |p: &Piece| p.notes.len() as f32 / p.beats;
+            assert!(per_beat(&day) < 1.2, "{} notes a beat", per_beat(&day));
+            let fight = compose(Mood::Skirmish, 1, seed);
+            assert!(fight.line(Inst::FrameDrum).count() >= 24 && fight.line(Inst::LowHorn).count() > 0);
+            assert!(fight.bpm > 80.0 && Mood::Skirmish.urgent() && !Mood::Travel.urgent());
         }
     }
 
