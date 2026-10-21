@@ -276,8 +276,9 @@ impl Body {
     /// bones, a cracked skull that knocks one out, fainting from the pain.
     /// They're applied to the body (extra bleeding, the count out cold) and
     /// returned for the telling. `artery` is the bleed an opened artery
-    /// adds (in tenths per body tick).
-    pub fn harm_from(&mut self, part: Part, w: Wound, dmg: i32, edged: bool, h: u64, artery: i32) -> Vec<Hurt> {
+    /// adds, and `guts` the bleed of a belly torn open (in tenths per body tick).
+    #[allow(clippy::too_many_arguments)]
+    pub fn harm_from(&mut self, part: Part, w: Wound, dmg: i32, edged: bool, h: u64, artery: i32, guts: i32) -> Vec<Hurt> {
         let mut v = Vec::new();
         let i = part.idx();
         let hard = w == Wound::Gash || w == Wound::Mangle || w == Wound::Bruise && dmg * 2 >= self.max[i];
@@ -321,7 +322,7 @@ impl Body {
             Part::LowerBody => {
                 if edged && (heavy && roll(1) < 35 || roll(1) < 4) && !self.harm.guts {
                     self.harm.guts = true;
-                    self.bleeds[i] += artery / 3;
+                    self.bleeds[i] += guts;
                     v.push(Hurt::Guts);
                 }
                 if roll(2) < if edged { 12 } else { 30 } {

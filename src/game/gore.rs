@@ -1351,8 +1351,8 @@ impl Game {
         let h = &d.body.harm;
         let bled = cause == "bled to death";
         let struck = cause == "struck down";
-        if bled && h.artery.iter().any(|&a| a) {
-            self.count("gore.died.artery", 1);
+        if (bled || struck) && h.artery.iter().any(|&a| a) {
+            self.count(if bled { "gore.died.artery" } else { "gore.died.artery_struck" }, 1);
         }
         if (bled || struck) && h.guts {
             self.count(if bled { "gore.died.guts" } else { "gore.died.guts_struck" }, 1);
@@ -1622,7 +1622,7 @@ mod tests {
                 (Part::UpperBody, Wound::Mangle, false),
             ] {
                 let mut b = Body::new(1.0);
-                for hurt in b.harm_from(part, w, 12, edged, h, 14) {
+                for hurt in b.harm_from(part, w, 12, edged, h, 14, 4) {
                     seen.insert(format!("{:?}", hurt).split('(').next().unwrap().to_string());
                 }
             }
@@ -1635,7 +1635,7 @@ mod tests {
         let find = |part: Part, w: Wound, edged: bool, want: &dyn Fn(&Hurt) -> bool| {
             (0..4000u64).map(|h| mix(Pos::new(h as i32, 1, 0), h)).find_map(|h| {
                 let mut b = Body::new(1.0);
-                let hs = b.harm_from(part, w, 12, edged, h, 14);
+                let hs = b.harm_from(part, w, 12, edged, h, 14, 4);
                 hs.iter().any(|x| want(x)).then_some(b)
             })
         };

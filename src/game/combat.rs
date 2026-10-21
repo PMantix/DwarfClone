@@ -322,10 +322,15 @@ impl Game {
         if !body.dead {
             let fx = self.knob("gore.harm", 0.0);
             let artery = (self.knob("gore.artery", 10.0) * fx) as i32;
+            let guts = (self.knob("gore.guts", 10.0 / 3.0) * fx) as i32;
             let out = body.harm.out;
-            b.hurts = body.harm_from(part, w, dmg, att.edged, h, artery);
+            b.hurts = body.harm_from(part, w, dmg, att.edged, h, artery, guts);
             if fx <= 0.0 {
                 body.harm.out = out;
+            } else if body.harm.out > out {
+                // `gore.daze` scales how long a blow leaves one senseless.
+                let daze = (body.harm.out as f64 * self.knob("gore.daze", 1.0)).round() as i32;
+                body.harm.out = out.max(daze);
             }
         }
         if let Some(a) = aimed {
