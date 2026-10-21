@@ -43,6 +43,9 @@ pub enum SaveKind {
     Fort,
     /// An adventure (`<Hero>.adv.json`, G03).
     Adventure,
+    /// A world's shared memory (`<World>.world.json`, A19): opened from the
+    /// load menu, it goes to the world map to found a new fort there.
+    World,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -138,6 +141,47 @@ pub fn write_adventure(dir: &Path, adv: &Adventure, autosave: bool, report: Repo
     std::fs::write(meta_path(dir, &meta.file), m).map_err(|e| format!("Save failed: {}", e))?;
     report("Saved", 1.0);
     Ok(meta)
+}
+
+/// The world file's name for a world called `world` (A19).
+pub fn world_file(world: &str) -> String {
+    format!("{}.world.json", slot(world, false))
+}
+
+/// Write a world's shared memory as `file` (tmp, then rename), with a meta
+/// so the load menu lists it with the saves.
+pub fn write_world(dir: &Path, file: &str, rec: &crate::worldfile::WorldRecord) -> Result<SaveMeta, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("Can't create {}: {}", dir.display(), e))?;
+    let data = serde_json::to_string(rec).map_err(|e| format!("World not saved: {}", e))?;
+    let tmp = dir.join(format!("{}.tmp", file));
+    std::fs::write(&tmp, data).map_err(|e| format!("World not saved: {}", e))?;
+    std::fs::rename(&tmp, dir.join(file)).map_err(|e| format!("World not saved: {}", e))?;
+    let ow = &rec.overworld;
+    let meta = SaveMeta {
+        fortress: ow.name.clone(),
+        date: crate::worldfile::summary(ow),
+        dwarves: ow.forts.len(),
+        world: ow.name.clone(),
+        saved_unix: now_unix(),
+        autosave: false,
+        file: file.to_string(),
+        kind: SaveKind::World,
+    };
+    let m = serde_json::to_string_pretty(&meta).map_err(|e| e.to_string())?;
+    let tmp = dir.join(format!("{}.meta.tmp", file));
+    std::fs::write(&tmp, m).map_err(|e| format!("World not saved: {}", e))?;
+    std::fs::rename(&tmp, meta_path(dir, file)).map_err(|e| format!("World not saved: {}", e))?;
+    Ok(meta)
+}
+
+pub fn read_world(dir: &Path, file: &str) -> Result<crate::worldfile::WorldRecord, String> {
+    let data = std::fs::read_to_string(dir.join(file)).map_err(|e| format!("Load failed: {}", e))?;
+    serde_json::from_str(&data).map_err(|e| format!("Load failed (an older world?): {}", e))
+}
+
+/// The worlds with a shared memory in the folder, newest first.
+pub fn list_worlds(dir: &Path) -> Vec<SaveMeta> {
+    list(dir).into_iter().filter(|m| m.kind == SaveKind::World).collect()
 }
 
 /// "640 KB", "12.5 MB".
