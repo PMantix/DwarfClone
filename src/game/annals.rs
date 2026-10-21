@@ -83,6 +83,9 @@ pub struct SiegeNote {
     /// later is the trap hall's (traps.rs: `hall_death`); emptied at its end.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub trap_hurt: Vec<u32>,
+    /// Foes shot down from the towers (O04 step 3, `defences.rs`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub towered: u32,
 }
 
 fn is_zero(n: &u32) -> bool {

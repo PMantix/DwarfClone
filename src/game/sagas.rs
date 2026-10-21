@@ -441,9 +441,17 @@ impl Game {
         if held {
             self.saga_add(i, Beat::Escalation, "The bridge was raised, and they broke on the walls.".to_string());
         }
+        // Broken on the gatehouse's defences (defences.rs): the saga's turn.
+        let defence = Self::broke_on_name(&s);
+        if let Some(d) = &defence {
+            self.sagas.list[i].weight += 2;
+            self.saga_add(i, Beat::Turn, format!("They came on into {}, and there they broke.", d));
+        }
         let text = format!("The {} {}: {} of them slain, {}.{}", s.foe, how, s.foes_slain, lost, called);
         let closing = if fell {
             format!("The walls of {} did not hold.", fort)
+        } else if let Some(d) = &defence {
+            format!("{} held, and the songs of it are sung still.", super::defences::capital(d))
         } else if s.dwarves_lost >= 3 {
             format!("{} held, and buried its dead beneath the hall.", fort)
         } else {

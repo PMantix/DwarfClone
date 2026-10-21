@@ -97,6 +97,11 @@ impl Game {
         self.world.kind(p.down()) == Some(TileKind::Open)
     }
 
+    /// The name the pit takes, the trap hall's belly (from hashes).
+    pub(super) fn pit_name_for(&self, base: Pos) -> &'static str {
+        PIT_NAMES[(super::names::hash(&[super::stories::hash(&self.fortress_name, 0), base.x as u64, base.y as u64, 77]) % PIT_NAMES.len() as u64) as usize]
+    }
+
     /// The pit's name, or what to call it.
     pub(super) fn pit_name(&self) -> String {
         self.pits.name.clone().unwrap_or_else(|| "the pit".into())
@@ -192,9 +197,10 @@ impl Game {
             o.gate_stage = 2;
             o.done.push("pit".into());
             self.pits.decks = PIT.iter().flat_map(|&dx| (0..2).map(move |dy| base.offset(dx, dy, 0))).collect();
-            let name = PIT_NAMES[(super::names::hash(&[super::stories::hash(&self.fortress_name, 0), base.x as u64, base.y as u64, 77]) % PIT_NAMES.len() as u64) as usize];
+            let name = self.pit_name_for(base);
             self.pits.name = Some(name.to_string());
-            self.name_place(super::places::PlaceKind::Gate, base.offset(PIT[0], 0, 0), base.offset(PIT[1], 1, 0), name.to_string(), "the pit under the bridge".into(), 1, false);
+            // (Named through `deed_at`, so the legends and the chronicle tell it: defences.rs.)
+            self.name_defence(o, super::defences::Defence::Pit);
             let hall = self.trap_hall_name().unwrap_or_else(|| "the trap hall".into());
             Self::note_as(
                 o,
@@ -784,7 +790,7 @@ mod fort_tests {
         }
         let o = g.overseer.as_ref().unwrap();
         let base = o.base.unwrap();
-        assert_eq!(o.gate_stage, 2, "seed {}: no pit begun", seed);
+        assert!(o.gate_stage >= 2, "seed {}: no pit begun", seed);
         let name = g.pits.name.clone().unwrap();
         assert!(o.notes.iter().any(|n| n.1.contains(&name)), "seed {}: the overseer never named the pit", seed);
         assert!(ready(&g), "seed {}: the pit bridge isn't ready after 16 days (decks {:?}, over pit {:?}, lever {:?})", seed, g.pits.decks, g.pits.decks.iter().map(|&p| g.over_pit(p)).collect::<Vec<_>>(), g.pits.lever);

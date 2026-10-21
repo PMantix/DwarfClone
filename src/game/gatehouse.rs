@@ -261,6 +261,13 @@ impl Game {
         // pit bridge past it (pits.rs).
         self.ov_trap_hall(o);
         self.ov_pit(o);
+        // ...and towers at the gate (defences.rs).
+        self.ov_gate_towers(o);
+    }
+
+    /// The name the trap hall takes, as for a beast's mouth (from hashes).
+    pub(super) fn hall_name_for(&self, base: Pos) -> &'static str {
+        HALL_NAMES[(super::names::hash(&[super::stories::hash(&self.fortress_name, 0), base.x as u64, base.y as u64, base.z as u64]) % HALL_NAMES.len() as u64) as usize]
     }
 
     /// Whether the trap hall is due (O04 step 2): a warlike or cautious
@@ -299,8 +306,9 @@ impl Game {
             }
             o.gate_stage = 1;
             o.done.push("traphall".into());
-            let name = HALL_NAMES[(super::names::hash(&[super::stories::hash(&self.fortress_name, 0), base.x as u64, base.y as u64, base.z as u64]) % HALL_NAMES.len() as u64) as usize];
-            self.name_place(super::places::PlaceKind::Gate, base.offset(8, 0, 0), base.offset(11, 1, 0), name.to_string(), "where the gate's traps wait".into(), 1, false);
+            let name = self.hall_name_for(base);
+            // (Named through `deed_at`, so the legends and the chronicle tell it: defences.rs.)
+            self.name_defence(o, super::defences::Defence::Hall);
             Self::note_as(
                 o,
                 self.tick,

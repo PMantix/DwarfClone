@@ -151,6 +151,9 @@ const ADJ: [&str; 20] = [
 const VICTORY: [&str; 4] = ["the Battle of {P}", "the Stand at {P}", "the Breaking at {P}", "the Defence of {P}"];
 const BLOODY: [&str; 3] = ["the Bitter Battle of {P}", "the Red {S} at {P}", "the Dear-Bought Battle of {P}"];
 const MASSACRE: [&str; 5] = ["the Night of Red {W}", "the Slaughter at {P}", "the {S} of Weeping", "the Red {S}", "the Sorrow at {P}"];
+/// A siege that broke on the gatehouse's defences is named for the one
+/// it broke on (`defences.rs`): {D} is its name, "the Maw".
+const DEFENCE: [&str; 5] = ["the Siege of {D}", "the Fall at {D}", "the Breaking at {D}", "the Battle of {D}", "the Slaughter in {D}"];
 const BEASTLY: [&str; 3] = ["the {K} {S}", "the Night of the {Ks}", "the Coming of the {Ks}"];
 const HUNT: [&str; 3] = ["the Great {K} Hunt", "the {K} {S}", "the Hunt at {P}"];
 const LEGEND_HUNT: [&str; 2] = ["the Hunt of {N}", "the Slaying of {N}"];
@@ -672,7 +675,11 @@ impl Game {
             (EpisodeKind::Battle, &VICTORY)
         };
         let t = pick(h, 3, pool);
-        let name = self.unique(self.fill(t, h, &place, "", "", ""));
+        let broke = if massacre { None } else { Self::broke_on_name(&s) };
+        let name = match &broke {
+            Some(d) => self.unique(pick(h, 7, &DEFENCE).replace("{D}", d)),
+            None => self.unique(self.fill(t, h, &place, "", "", "")),
+        };
         let fort = self.fortress_name.clone();
         let mut summary = format!("{} {} under {} came against {}", s.size, s.foe, s.leader, fort);
         summary.push_str(&match s.outcome.as_str() {
@@ -682,6 +689,9 @@ impl Game {
         });
         if s.foes_slain > 0 {
             summary.push_str(&format!("; {} of them were slain", s.foes_slain));
+        }
+        if let Some(d) = &broke {
+            summary.push_str(&format!(", and they broke upon {}", d));
         }
         summary.push_str(&match dead.len() {
             0 if s.dwarves_lost == 0 => ", and not one dwarf fell.".to_string(),

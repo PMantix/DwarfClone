@@ -104,6 +104,8 @@ impl Game {
         // M2 O04: the trap hall's toll (before the naming: it may be where it broke).
         self.trap_hall_toll(i);
         self.pit_toll(i);
+        // M2 O04 step 3: half the army taken by the defences, and it broke on them (defences.rs).
+        self.defences_held(i);
         // Stories: the fight gets a name.
         self.name_siege(i);
         // ...and the hall or the gate where it broke a name (naming.rs).

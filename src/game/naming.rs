@@ -15,6 +15,7 @@
 //! hashes, never the game's random numbers.
 
 use super::chronicle::YearLog;
+use super::defences::Defence;
 use super::overseer::{Overseer, RoomUse};
 use super::places::PlaceKind;
 use super::stories::{first_name, hash};
@@ -130,6 +131,16 @@ impl Game {
     /// hall there may take a name from it. A deed outside any hall names
     /// nothing, except a siege held at the gate.
     pub(super) fn deed_at(&mut self, at: Pos, kind: DeedKind, who: &[u32]) {
+        // One of the gatehouse's defences (the trap hall, the pit, the gate
+        // towers: `defences.rs`) takes its name or keeps the deed.
+        if let Some(mut o) = self.overseer.take() {
+            if let Some(d) = self.defence_at(&o, at) {
+                self.deed_at_defence(&mut o, at, d, kind, who);
+                self.overseer = Some(o);
+                return;
+            }
+            self.overseer = Some(o);
+        }
         let Some(hall) = self.hall_at(self.overseer.as_ref(), at) else {
             if kind == DeedKind::SiegeHeld {
                 self.name_gate(at, who);
@@ -240,7 +251,41 @@ impl Game {
         // The first of the names no other place carries.
         let Some(name) = names.into_iter().find(|nm| !self.stories.places.iter().any(|pl| pl.name == *nm && !(pl.at == hall.a && pl.b == Some(hall.b)))) else { return };
         let mid = Pos::new((hall.a.x + hall.b.x) / 2, (hall.a.y + hall.b.y) / 2, hall.a.z);
-        self.proclaim(PlaceKind::Hall, hall.a, hall.b, mid, name, why, weight, &who, kind == DeedKind::Work, o);
+        self.proclaim(PlaceKind::Hall, hall.a, hall.b, mid, name, why, weight, &who, kind == DeedKind::Work, None, o);
+    }
+
+    /// `deed_at` at one of the gatehouse's defences (`o`: the overseer,
+    /// taken out of the game). Finished, it takes its name ("the trap hall
+    /// is named the Maw"); a siege broken there stays in its story ("the
+    /// Maw, where the goblins under Snodub broke against Ustuth"), told
+    /// once. Other deeds there name nothing.
+    pub(super) fn deed_at_defence(&mut self, o: &mut Overseer, _at: Pos, d: Defence, kind: DeedKind, who: &[u32]) {
+        let Some((a, b, mid)) = self.defence_box(o, d) else { return };
+        let fort = self.fortress_name.clone();
+        match kind {
+            DeedKind::Work => {
+                let name = self.defence_name_for(o, d);
+                let why = match d {
+                    Defence::Hall => "where the gate's traps wait".to_string(),
+                    Defence::Pit => format!("the pit under the bridge past {}", self.defence_name(o, Defence::Hall)),
+                    Defence::Towers => format!("the towers over the gate of {}", fort),
+                };
+                self.proclaim(PlaceKind::Gate, a, b, mid, name, why, 2, who, true, Some(d.plain()), Some(o));
+            }
+            DeedKind::SiegeHeld => {
+                let Some(s) = self.annals.sieges.iter().rposition(|s| s.ended.is_none()).or(self.annals.sieges.len().checked_sub(1)).map(|i| self.annals.sieges[i].clone()) else { return };
+                let name = self.defence_name(o, d);
+                let why = format!("where the {} under {} broke against {}", s.foe, s.leader, fort);
+                if self.place_at(mid).map_or(false, |pl| pl.deed == why) {
+                    return;
+                }
+                self.name_place(PlaceKind::Gate, a, b, name.clone(), why.clone(), 5, false);
+                let line = format!("{} held, {}.", cap(&name), why);
+                self.year_log.named.push(line.clone());
+                self.record(super::memory::MemoryKind::Named, who, Some(mid), line, 5);
+            }
+            _ => {}
+        }
     }
 
     /// The first siege to break at the gate names it.
@@ -256,14 +301,14 @@ impl Game {
         let name = forms[(h % 3) as usize].clone();
         let why = format!("where the {} under {} broke against {}", s.foe, s.leader, self.fortress_name);
         let (a, b) = (gate.offset(-2, -2, 0), gate.offset(2, 2, 0));
-        self.proclaim(PlaceKind::Gate, a, b, gate, name, why, 4, who, false, None);
+        self.proclaim(PlaceKind::Gate, a, b, gate, name, why, 4, who, false, None, None);
     }
 
     /// Name (or rename) the place and, if the name took, tell the fort:
     /// the announcement, the overseer's notes, the legends, the year's
     /// chronicle and the fort's memory; a great renaming stops the game.
     #[allow(clippy::too_many_arguments)]
-    fn proclaim(&mut self, kind: PlaceKind, a: Pos, b: Pos, mid: Pos, name: String, why: String, weight: u8, who: &[u32], finished: bool, o: Option<&mut Overseer>) {
+    fn proclaim(&mut self, kind: PlaceKind, a: Pos, b: Pos, mid: Pos, name: String, why: String, weight: u8, who: &[u32], finished: bool, plain: Option<&str>, o: Option<&mut Overseer>) {
         let old = self.stories.places.iter().find(|pl| pl.b.map_or(false, |pb| (pl.at, pb) == (a, b))).map(|pl| pl.name.clone());
         if old.as_deref() == Some(name.as_str()) {
             return;
@@ -273,7 +318,7 @@ impl Game {
             return;
         }
         // What it was called until now.
-        let was = old.or_else(|| self.place_name(mid).filter(|t| t.starts_with("the "))).unwrap_or_else(|| match kind {
+        let was = old.or_else(|| plain.map(|p| p.to_string())).or_else(|| self.place_name(mid).filter(|t| t.starts_with("the "))).unwrap_or_else(|| match kind {
             PlaceKind::Gate => "the gate".to_string(),
             _ => "the hall".to_string(),
         });

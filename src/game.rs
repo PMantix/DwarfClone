@@ -150,6 +150,7 @@ pub mod crafts;
 mod halls;
 pub mod pits;
 mod ponds;
+pub mod defences;
 // Adventurer mode (G03): one hero against the world (game/adv/).
 pub mod adv;
 pub mod clock;

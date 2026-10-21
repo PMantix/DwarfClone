@@ -279,9 +279,13 @@ impl Game {
     /// finished, and rich enough or attacked already. Warlords, the
     /// cautious, an overseer set on fortifying or one a siege taught to wall
     /// the yard start sooner.
-    fn curtain_due(&self, o: &Overseer) -> bool {
+    pub(super) fn curtain_due(&self, o: &Overseer) -> bool {
         if o.style == Style::Reckless || !o.did("linked") {
             return false;
+        }
+        // The gatehouse has grown to its towers (defences.rs: stage 3).
+        if o.gate_stage >= 3 {
+            return true;
         }
         let keen = o.style == Style::Warlord
             || o.has(Trait::Cautious)
