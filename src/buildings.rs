@@ -356,7 +356,7 @@ impl BuildingKind {
         use Recipe::*;
         match self {
             BuildingKind::Carpenter => &[WoodBed, WoodTable, WoodChair, WoodDoor, Barrel, Bin, WoodCage, WoodCrossbow, Bolts, Splint, Crutch, WoodCoffin, Bucket, WoodCabinet, WoodChest],
-            BuildingKind::Mechanic => &[Mechanism],
+            BuildingKind::Mechanic => &[Mechanism, MusicBox, ClockBird, Orrery, ClockGuard, ClockHauler, ClockGate],
             BuildingKind::Mason => &[Blocks, StoneTable, StoneChair, StoneDoor, StoneCoffin, Slab, Statue],
             BuildingKind::Still => &[Brew],
             BuildingKind::Kitchen => &[Cook],
@@ -494,6 +494,8 @@ pub enum Input {
     CutGem,
     /// A piece of furniture not yet set with gems.
     Furniture,
+    /// A mechanism, as a part of clockwork (O12).
+    Mechanism,
 }
 
 impl Input {
@@ -524,6 +526,7 @@ impl Input {
                 it.decor.is_none()
                     && matches!(it.kind, ItemKind::Table | ItemKind::Chair | ItemKind::Door | ItemKind::Cabinet | ItemKind::Chest | ItemKind::Statue | ItemKind::Craft)
             }
+            Input::Mechanism => it.kind == ItemKind::Mechanism,
         }
     }
 
@@ -551,6 +554,7 @@ impl Input {
             Input::Grain => "grain (hollowgrain or goldoat)",
             Input::CutGem => "cut gem",
             Input::Furniture => "furniture or a figurine",
+            Input::Mechanism => "mechanism",
         }
     }
 }
@@ -615,6 +619,16 @@ pub enum Recipe {
     Instrument,
     /// Set a cut gem into furniture or a figurine (`crafts.rs`).
     Encrust,
+    // O12, clockwork (`game/clockwork.rs`): luxuries, then automatons, then
+    // the upkeep a mechanic gives them (queued for an automaton, never from
+    // the menu).
+    MusicBox,
+    ClockBird,
+    Orrery,
+    ClockGuard,
+    ClockHauler,
+    ClockGate,
+    Tune,
 }
 
 impl Recipe {
@@ -677,6 +691,13 @@ impl Recipe {
             Statue => "Carve a statue",
             Instrument => "Make a musical instrument",
             Encrust => "Set a gem into furniture",
+            MusicBox => "Make a music box",
+            ClockBird => "Make a clockwork bird",
+            Orrery => "Make an orrery",
+            ClockGuard => "Build a clockwork guard",
+            ClockHauler => "Build a clockwork hauler",
+            ClockGate => "Build a clockwork gatekeeper",
+            Tune => "Wind and oil an automaton",
         }
     }
 
@@ -730,6 +751,13 @@ impl Recipe {
             Statue => 'a',
             Instrument => 'i',
             Encrust => 'e',
+            MusicBox => 'b',
+            ClockBird => 'w',
+            Orrery => 'o',
+            ClockGuard => 'g',
+            ClockHauler => 'h',
+            ClockGate => 'k',
+            Tune => 't',
         }
     }
 
@@ -760,6 +788,7 @@ impl Recipe {
             Statue => Labor::Masonry,
             Instrument => Labor::Crafting,
             Encrust => Labor::Crafting,
+            MusicBox | ClockBird | Orrery | ClockGuard | ClockHauler | ClockGate | Tune => Labor::Mechanics,
         }
     }
 
@@ -791,6 +820,13 @@ impl Recipe {
             MakeSoap => &[Input::Ash, Input::Tallow],
             Mill => &[Input::Grain],
             Encrust => &[Input::CutGem, Input::Furniture],
+            MusicBox => &[Input::Log, Input::Mechanism],
+            ClockBird => &[Input::Bar, Input::Mechanism],
+            Orrery => &[Input::Bar, Input::Mechanism, Input::Mechanism, Input::CutGem],
+            ClockGuard => &[Input::Bar, Input::Bar, Input::Mechanism, Input::Mechanism, Input::Mechanism, Input::Mechanism],
+            ClockHauler => &[Input::Bar, Input::Mechanism, Input::Mechanism, Input::Mechanism],
+            ClockGate => &[Input::Bar, Input::Bar, Input::Bar, Input::Mechanism, Input::Mechanism, Input::Mechanism, Input::Mechanism],
+            Tune => &[Input::Mechanism],
         }
     }
 
@@ -895,6 +931,13 @@ impl Recipe {
             // The piece comes back as it was, set with the gem (its quality
             // and decoration are kept in `crafts.rs`).
             Encrust => inputs.get(1).map_or_else(|| vec![(ItemKind::Cabinet, Mat::Wood, None)], |f| vec![(f.kind, f.mat, f.label.clone())]),
+            MusicBox => vec![(ItemKind::Trinket, m, Some("music box".into()))],
+            ClockBird => vec![(ItemKind::Trinket, m, Some("clockwork bird".into()))],
+            Orrery => vec![(ItemKind::Trinket, m, Some("orrery".into()))],
+            // The frame comes off the bench and walks (`game/clockwork.rs`).
+            ClockGuard | ClockHauler | ClockGate => vec![(ItemKind::Trinket, m, Some(crate::game::clockwork::FRAME.into()))],
+            // Nothing is made: an automaton is wound.
+            Tune => Vec::new(),
             MakeSoap => {
                 let fat = inputs.get(1).and_then(|i| i.label.clone());
                 vec![(ItemKind::Soap, Mat::Flesh, fat.clone()), (ItemKind::Soap, Mat::Flesh, fat)]
@@ -914,6 +957,10 @@ impl Recipe {
             ForgePick | ForgeAxe | ForgeSword | ForgeSpear | ForgeHammer | ForgeHelm | ForgeShield | ForgeCrossbow => 200,
             ForgeBolts => 180,
             CutGem | Statue | Encrust => 180,
+            MusicBox | ClockBird => 300,
+            Orrery => 450,
+            ClockGuard | ClockHauler | ClockGate => 600,
+            Tune => 120,
             _ => 150,
         }
     }
