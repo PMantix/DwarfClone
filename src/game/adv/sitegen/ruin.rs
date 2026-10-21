@@ -119,17 +119,20 @@ pub fn make(g: &mut Game, ctx: &Ctx, site: &Site, broken: bool) -> Made {
             loot(g, &mut made, ItemKind::BodyPart, Mat::Bone, p, 0, Some(format!("the bones of {}, who died at {}{}", name, site.name, when)));
         }
     }
-    // Who lives here now.
+    // Who lives here now: as many as the place's past and the hero who
+    // comes call for (`tenants`), and some ruins hold next to nobody.
+    let years = fall.as_ref().map_or(20, |f| (g.overworld.year - f.1).max(0));
+    let k = tenants(ctx, site, years);
     let (sp, k, label): (Species, i32, Option<&str>) = if !broken {
         (soldier(race), rng.range(6, 11), None)
     } else if site.kind == SiteKind::Lair || g.evil {
-        (Species::Undead, rng.range(3, 7), None)
+        (Species::Undead, k, None)
     } else if site.kind == SiteKind::DarkFortress {
-        (Species::Goblin, rng.range(3, 7), None)
+        (Species::Goblin, k, None)
     } else if g.overworld.sites.iter().any(|s| s.id != site.id && !s.ruined && s.civ.is_some() && (s.x - site.x).abs().max((s.y - site.y).abs()) <= 3) {
-        (Species::Human, rng.range(3, 6), Some("bandit"))
+        (Species::Human, k, Some("bandit"))
     } else {
-        (g.fauna().1, rng.range(2, 5), None)
+        (g.fauna().1, k, None)
     };
     let den = hall.get(hall.len() / 2).copied().unwrap_or(center);
     for i in 0..k {
@@ -137,10 +140,29 @@ pub fn make(g: &mut Game, ctx: &Ctx, site: &Site, broken: bool) -> Made {
         let label = label.map(|l| format!("{}, {}", hashed_name(ctx.seed, 500 + i as u64, Race::Human), l));
         let id = occupant(g, &mut made, sp, p, label, true);
         if sp.person() {
-            arm(g, id, if i % 2 == 0 { ItemKind::Spear } else { ItemKind::Sword }, Mat::Iron);
+            // The band's leader has iron; the rest make do with copper,
+            // in a ruin (a living fortress arms them all).
+            let m = if i == 0 || !broken { Mat::Iron } else { Mat::Copper };
+            arm(g, id, if i % 2 == 0 { ItemKind::Spear } else { ItemKind::Sword }, m);
         }
     }
     made
+}
+
+/// How many hold a ruin (A16). About one in three (`ruin.quiet`) holds
+/// next to nobody, its treasure there for the taking. The rest hold a band
+/// of `ruin.band`, more in a big place long fallen (whoever moved in has
+/// had years to gather), fewer in a small one or one fallen lately; and
+/// one more for each two the hero's might stands above a green warrior's.
+fn tenants(ctx: &Ctx, site: &Site, years: i32) -> i32 {
+    let h = crate::game::names::hash(&[ctx.seed, site.id as u64, 0x7E4A]);
+    if ((h % 100) as f64) < ctx.knob("ruin.quiet", 0.3) * 100.0 {
+        return ((h >> 8) % 2) as i32;
+    }
+    let size = (0.75 + site.pop as f64 / 200.0).min(1.5);
+    let settled = 0.75 + (years as f64 / 40.0).min(1.0) * 0.5;
+    let n = (ctx.knob("ruin.band", 2.0) * size * settled).round() as i32 + (ctx.might as i32 - 2).max(0) / 2;
+    n.clamp(1, ctx.knob("ruin.max", 6.0) as i32)
 }
 
 #[cfg(test)]

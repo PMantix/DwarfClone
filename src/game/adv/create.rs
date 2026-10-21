@@ -127,7 +127,7 @@ pub fn peoples(ow: &Overworld) -> Vec<Race> {
 
 /// What a calling carries, as the hero's people make it: (kind, material,
 /// label, how it is borne) and coins. An elf's metal becomes wood; a dwarf
-/// warrior takes an axe and mail, a human a spear or sword, a goblin an
+/// warrior takes an axe, mail and a helm, a human a spear or sword, a goblin an
 /// iron spear.
 pub fn kit(race: Race, calling: Calling, pick: u64) -> (Vec<(ItemKind, Mat, Option<&'static str>, Bear)>, u32) {
     use Bear::*;
@@ -147,6 +147,8 @@ pub fn kit(race: Race, calling: Calling, pick: u64) -> (Vec<(ItemKind, Mat, Opti
             (weapon, if race == Race::Dwarf { Mat::Copper } else { metal }, None, Held),
             (K::Breastplate, if race == Race::Dwarf { Mat::Copper } else { Mat::Leather }, None, Worn),
             (K::Shield, Mat::Wood, None, Worn),
+            // A cap: a bare head is where a fight ends (A16).
+            (K::Helm, if race == Race::Elf { Mat::Leather } else { metal }, None, Worn),
         ],
         Calling::Hunter => vec![
             (K::Crossbow, Mat::Wood, None, Held),

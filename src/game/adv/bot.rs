@@ -602,9 +602,14 @@ fn in_site(a: &mut Adventure, r: &mut Run) -> bool {
             }
         };
         let v = a.visit.as_mut().unwrap();
+        let before = v.g.tick;
         let out = v.g.act(h, act.clone());
-        // `BOT_TRACE=1`: every act and how it went, for tuning by eye.
+        // `BOT_TRACE=1`: every act and how it went, for tuning by eye, with
+        // what the log told meanwhile (the blows).
         if std::env::var("BOT_TRACE").is_ok() {
+            for e in v.g.log.iter().filter(|e| e.tick > before) {
+                eprintln!("      | {}", e.text);
+            }
             let d = &v.g.dwarves[h];
             eprintln!("t{} {:?} -> {:?} blood {}/{} foes {} held {:?}", v.g.tick, act, out, d.body.blood, d.body.max_blood, foes.len(), d.held.and_then(|i| v.g.items.get(&i)).map(|i| i.name()));
         }
