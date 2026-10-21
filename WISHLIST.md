@@ -765,6 +765,7 @@ Goal: the same world and simulation, seen from other seats.
   three heroes die on the road or in the ruin before one comes home:
   `a_hero_walks_home_with_the_treasure_of_a_fallen_fort`.)
 - **Measured by:** the adventure bot and its batch (A18, 759fecc): `--adventure-trial --runs N` plays heroes to a fallen fort, a lair and a ruin in turn and reports how they ended, where and to what, with days, kills, loot and fame; `--adventure-trial --compare A B`.
+- **Tuned (A16, the site):** ruins held by a band sized to their past and the hero's might, about one in three near empty (`ruin.band` 2, `ruin.quiet` 0.3, `ruin.max` 6); a fallen fort's army keeps a band of `fallen.band` 3; warriors set out with a helm; the bot aims for the head (`bot.head` 3) and binds before the road. 20 heroes, seed 9000: home 2/20 -> 4/20; ruin-only 9/20, fort-only 4/20 (open: the fort's dead fall on the long road and the walk home).
 
 ### Later
 

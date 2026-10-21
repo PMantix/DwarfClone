@@ -182,12 +182,31 @@ mod tests {
         let walls = g.world.tiles.iter().filter(|t| t.built_from.is_some() && t.kind == TileKind::Wall).count();
         assert!(walls > 10, "{} walls stand", walls);
         assert!(g.items.values().filter(|it| it.carried_by.is_none() && it.kind != ItemKind::Boulder && it.kind != ItemKind::Ash).count() >= 4, "loot and bones");
-        let tenants: Vec<_> = g.creatures.values().filter(|c| c.alive && c.siege && c.target == Some(HERO_ID)).collect();
-        assert!(tenants.len() >= 2, "someone lives here, and hunts the hero");
+        // Someone lives here and hunts the hero, or this is one of the
+        // quiet ruins (A16), and the next hero finds them.
+        let hunters = |g: &Game| g.creatures.values().filter(|c| c.alive && c.siege && c.target == Some(HERO_ID)).count();
+        assert!(hunters(g) >= 2 || (10..16).any(|k| hunters(&visit(s.id, Race::Dwarf, None, k).visit.unwrap().g) >= 2), "someone lives here, and hunts the hero");
         // It tells its past.
         let (title, story) = lore::story(&g.overworld, v.key, Stance::Hostile, &g.fortress_name);
         assert!(title.contains(&s.name), "{}", title);
         assert!(!story.is_empty());
         assert!(g.log.iter().any(|e| e.text.contains(&s.name)), "the arrival tells it");
+    }
+
+    #[test]
+    fn a_ruin_holds_a_band_by_its_past_and_the_hero() {
+        let ow = super::super::town::tests::world();
+        let s = ow.sites.iter().find(|s| s.ruined && s.kind != SiteKind::Lair).expect("a ruin in world 5").clone();
+        let ctx = |seed: u64, might: u32| Ctx { key: super::super::super::SiteKey::Site(s.id), seed, race: Race::Dwarf, civ: None, memo: Default::default(), now: 0, might, knobs: Default::default() };
+        let green: Vec<i32> = (0..60).map(|k| tenants(&ctx(k, 2), &s, 30)).collect();
+        assert!(green.iter().any(|&n| n <= 1), "some ruins hold next to nobody");
+        assert!(green.iter().all(|&n| (0..=6).contains(&n)), "{:?}", green);
+        // A seasoned hero (or one with companions) meets more.
+        let seasoned: i32 = (0..60).map(|k| tenants(&ctx(k, 6), &s, 30)).sum();
+        assert!(seasoned > green.iter().sum::<i32>());
+        // A ruin long fallen has had time to fill.
+        let old: i32 = (0..60).map(|k| tenants(&ctx(k, 2), &s, 200)).sum();
+        let fresh: i32 = (0..60).map(|k| tenants(&ctx(k, 2), &s, 0)).sum();
+        assert!(old >= fresh);
     }
 }

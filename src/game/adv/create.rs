@@ -514,7 +514,8 @@ mod tests {
                     assert!(h.dwarf.fight_level() >= 2, "a warrior is adequate at arms");
                     assert!(kinds.contains(&ItemKind::Shield));
                     assert!(h.dwarf.held.is_some());
-                    assert_eq!(h.dwarf.armor.len(), 2);
+                    assert_eq!(h.dwarf.armor.len(), 3);
+                    assert!(kinds.contains(&ItemKind::Helm), "a warrior sets out with a helm");
                 }
                 Calling::Hunter => {
                     assert!(kinds.contains(&ItemKind::Crossbow) && kinds.iter().filter(|k| **k == ItemKind::Bolt).count() == 2);
