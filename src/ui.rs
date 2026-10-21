@@ -36,6 +36,7 @@ pub(crate) mod adventure;
 mod adv_create;
 mod adv_travel;
 mod adv_end;
+mod adv_talk;
 pub(crate) use looks::tile_look;
 use looks::foliage;
 

@@ -114,6 +114,7 @@ pub(super) fn draw(f: &mut Frame, app: &App) {
         View::Inventory { sel } => draw_inventory(f, area, s, sel),
         View::Status => draw_status(f, area, &s.adv),
         View::Menu { sel } => draw_menu(f, area, sel),
+        View::Talk { sel, .. } => super::adv_talk::draw(f, area, s, sel),
         _ => {}
     }
     if let Some((kind, ids)) = &s.pick {
@@ -812,10 +813,21 @@ fn draw_pick(f: &mut Frame, area: Rect, g: &Game, hero: usize, kind: Pick, ids: 
                     Span::styled(if status == "fine" { String::new() } else { status.to_string() }, Style::default().fg(Color::Rgb(235, 200, 80))),
                 ])
             }
-            Pick::Talk => {
-                let Some(o) = g.dwarves.iter().find(|d| d.id == id) else { continue };
-                Line::from(vec![Span::styled("☺ ", Style::default().fg(rgb(o.color))), Span::styled(o.name.clone(), Style::default().fg(TEXT))])
-            }
+            Pick::Talk => match (g.dwarves.iter().find(|d| d.id == id), g.creatures.get(&id)) {
+                (Some(o), _) => Line::from(vec![Span::styled("☺ ", Style::default().fg(rgb(o.color))), Span::styled(o.name.clone(), Style::default().fg(TEXT))]),
+                (None, Some(c)) => {
+                    let info = c.species.info();
+                    let mut l = Line::from(vec![
+                        Span::styled(format!("{} ", info.glyph), Style::default().fg(rgb(info.color))),
+                        Span::styled(c.label.clone().unwrap_or_else(|| cap(info.name)), Style::default().fg(TEXT)),
+                    ]);
+                    if c.hostile() || c.siege {
+                        l.spans.push(Span::styled("  hostile", Style::default().fg(RED)));
+                    }
+                    l
+                }
+                _ => continue,
+            },
         };
         l.spans.insert(0, key);
         v.push(l);

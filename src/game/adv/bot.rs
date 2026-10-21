@@ -371,6 +371,9 @@ fn play(ow: Overworld, seed: u64, goal: Goal, opts: &BotOpts, dir: &Path) -> Adv
     };
     let tname = super::sites::site_name(a.ow(), target);
     let (hname, race, calling) = (a.hero_dwarf().name.clone(), create::race_noun(a.hero.race), a.hero.calling.name());
+    if let Some(heard) = a.hear_at_home() {
+        note(&mut r, &a, &heard);
+    }
     note(&mut r, &a, &format!("{} the {} {} sets out for {} ({} cells).", hname, race, calling, tname, dist));
     let fate = journey(&mut a, &mut r, opts);
     finish(a, r, seed, fate, tname, dist, opts)
