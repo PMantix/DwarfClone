@@ -117,7 +117,7 @@ impl Game {
             clot_moving: k("bleed.clot_moving", d.clot_moving),
             // Only while the gore hurts are on (`gore.harm`): otherwise an
             // artery is told but bleeds as the wound does.
-            artery_floor: if self.knob("gore.harm", 0.0) > 0.0 { k("gore.artery_floor", 0) } else { 0 },
+            artery_floor: if self.knob("gore.harm", 1.0) > 0.0 { k("gore.artery_floor", 4) } else { 0 },
         };
         self.bleed_params.set(Some(p));
         p

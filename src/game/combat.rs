@@ -318,18 +318,20 @@ impl Game {
         let h = self.gore_roll(dmg as u64 ^ (part.idx() as u64) << 8);
         // `gore.harm` scales what they do in the fight (an artery's and the
         // guts' bleeding, being dazed); the losses are kept and told either way.
-        // Off by default until it's tuned: the 10-fort batch lost forts with it on.
+        // Tuned on a 20-fort batch to cost no more forts than leaving it off:
+        // arteries spurt and then bleed on till tended (`gore.artery_floor`),
+        // guts seep slowly, dazes are short.
         if !body.dead {
-            let fx = self.knob("gore.harm", 0.0);
+            let fx = self.knob("gore.harm", 1.0);
             let artery = (self.knob("gore.artery", 10.0) * fx) as i32;
-            let guts = (self.knob("gore.guts", 10.0 / 3.0) * fx) as i32;
+            let guts = (self.knob("gore.guts", 2.0) * fx) as i32;
             let out = body.harm.out;
             b.hurts = body.harm_from(part, w, dmg, att.edged, h, artery, guts);
             if fx <= 0.0 {
                 body.harm.out = out;
             } else if body.harm.out > out {
                 // `gore.daze` scales how long a blow leaves one senseless.
-                let daze = (body.harm.out as f64 * self.knob("gore.daze", 1.0)).round() as i32;
+                let daze = (body.harm.out as f64 * self.knob("gore.daze", 0.75)).round() as i32;
                 body.harm.out = out.max(daze);
             }
         }
