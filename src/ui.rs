@@ -4381,9 +4381,12 @@ fn draw_load_menu(f: &mut Frame, app: &App, sel: usize, confirm: bool) {
         let tag = if m.autosave { " (autosave)" } else { "" };
         // (An adventurer's save, marked with `@`: their date says where they are.)
         let hero = m.kind == saves::SaveKind::Adventure;
-        let who = if !hero { format!(" {:>3} dwarves ", m.dwarves) } else if m.dwarves > 0 { "  adventurer ".into() } else { "  dead       ".into() };
+        // (A world's shared memory, marked with `≈`: Enter founds a new fort in it, A19.)
+        let world = m.kind == saves::SaveKind::World;
+        let who = if world { "  world      ".into() } else if !hero { format!(" {:>3} dwarves ", m.dwarves) } else if m.dwarves > 0 { "  adventurer ".into() } else { "  dead       ".into() };
+        let mark = if hero { "@ " } else if world { "≈ " } else { "" };
         v.push(Line::from(vec![
-            Span::styled(format!(" {:<18}", format!("{}{}{}", if hero { "@ " } else { "" }, m.fortress, tag)), st.add_modifier(Modifier::BOLD)),
+            Span::styled(format!(" {:<18}", format!("{}{}{}", mark, m.fortress, tag)), st.add_modifier(Modifier::BOLD)),
             Span::styled(format!(" {:<34}", m.date), st),
             Span::styled(who, st),
             Span::styled(format!(" {:<12}", saves::ago(m.saved_unix)), st),

@@ -26,6 +26,7 @@ mod ui;
 #[cfg(feature = "window")]
 mod window;
 mod world;
+mod worldfile;
 mod worldgen;
 
 use anyhow::Result;
