@@ -145,6 +145,8 @@ pub mod lastwords;
 pub mod sound_reports;
 pub mod crafts;
 mod halls;
+pub mod pits;
+mod ponds;
 // Adventurer mode (G03): one hero against the world (game/adv/).
 pub mod adv;
 pub mod clock;
@@ -583,6 +585,9 @@ pub struct Game {
     /// Dwarves' ideas for great works (`inspire.rs`, O12).
     #[serde(default)]
     pub inspirations: inspire::Inspirations,
+    /// The pit bridge and what has fallen into it (O04, pits.rs).
+    #[serde(default)]
+    pub pits: pits::Pits,
     /// The overseer's dwarf has just died: (id, cause), for `reign.rs` (O07).
     #[serde(default)]
     pub ov_fell: Option<(u32, String)>,
@@ -744,6 +749,7 @@ impl Game {
             ledger: Default::default(),
             prio: Default::default(),
             inspirations: Default::default(),
+            pits: Default::default(),
             ov_fell: None,
             zone_over: HashMap::new(),
             beasts_seen: Vec::new(),
@@ -1944,7 +1950,7 @@ impl Game {
             Task::Harvest { pos } | Task::Gather { pos } | Task::Clean { pos } => {
                 self.claimed.remove(&pos);
             }
-            Task::Eat { item } | Task::DrinkItem { item } | Task::Equip { item } => self.unclaim(item),
+            Task::Eat { item } | Task::DrinkItem { item } | Task::Equip { item } | Task::Pond { bucket: item } => self.unclaim(item),
             Task::Dine { item, seat } => {
                 self.unclaim(item);
                 if let Some(b) = self.buildings.get_mut(&seat) {
@@ -2978,6 +2984,7 @@ impl Game {
             }
             Task::Gather { pos } => self.do_gather(d, pos),
             Task::Clean { pos } => self.do_clean(d, pos),
+            Task::Pond { bucket } => self.do_pond(d, bucket),
             Task::Fish { stand } => self.do_fish(d, stand),
             Task::Plant { pos, .. } | Task::Harvest { pos } => {
                 let harvest = matches!(d.task, Task::Harvest { .. });
@@ -3196,6 +3203,10 @@ impl Game {
                     self.world.t_mut(up).kind = TileKind::Open;
                     self.drop_items_at(up);
                 }
+            }
+            // Under a drawbridge: a pit beneath its deck (pits.rs).
+            Desig::Channel if self.building_at(q) == Some(BuildingKind::Bridge) => {
+                drop_at = self.channel_under_bridge(q).unwrap_or(q);
             }
             Desig::Channel => {
                 self.world.t_mut(q).kind = TileKind::Open;

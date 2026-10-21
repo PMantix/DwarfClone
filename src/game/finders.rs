@@ -29,7 +29,7 @@ pub(super) const FINDERS: &[(&str, Finder)] = &[
     ("farm", |g, d| d.has(Labor::Farming) && (g.find_farm(d) || !g.outdoors_banned() && g.find_gather(d))),
     ("fish", |g, d| d.has(Labor::Fishing) && !g.outdoors_banned() && g.find_fishing(d)),
     // Specialists don't haul; the depot and the dump come before the stockpiles.
-    ("haul", |g, d| d.has(Labor::Hauling) && !d.specialist && (g.find_depot_haul(d) || g.find_dump_haul(d) || g.find_haul(d) || g.find_clean(d))),
+    ("haul", |g, d| d.has(Labor::Hauling) && !d.specialist && (g.find_depot_haul(d) || g.find_dump_haul(d) || g.find_haul(d) || g.find_clean(d) || g.find_pond(d))),
 ];
 
 /// The finders from here on are routine work: one that found nothing for a

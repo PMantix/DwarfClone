@@ -257,8 +257,10 @@ impl Game {
                 Self::note_as(o, self.tick, NoteKind::Gate, format!("Set {} cage traps in the entrance corridor.", n));
             }
         }
-        // The gatehouse grows: the trap hall behind the cages.
+        // The gatehouse grows: the trap hall behind the cages, then the
+        // pit bridge past it (pits.rs).
         self.ov_trap_hall(o);
+        self.ov_pit(o);
     }
 
     /// Whether the trap hall is due (O04 step 2): a warlike or cautious

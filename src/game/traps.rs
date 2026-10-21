@@ -13,7 +13,7 @@ use crate::geom::{Pos, DIRS8};
 use crate::items::ItemKind;
 use crate::material::Mat;
 use crate::path;
-use crate::world::{Mover, BRIDGE_RAISED, DOOR_LOCKED, DOOR_NONE, DOOR_OPEN, FLOODGATE_SHUT};
+use crate::world::{Mover, TileKind, BRIDGE_RAISED, DOOR_LOCKED, DOOR_NONE, DOOR_OPEN, FLOODGATE_SHUT};
 
 /// `Building.timer` on a trap jammed with bodies.
 const JAMMED: u64 = 1;
@@ -62,6 +62,10 @@ impl Game {
             }
         }
         self.hall_entries();
+        // Deep water drowns (the pond in the pit: pits.rs).
+        if self.tick % 10 == 0 {
+            self.drown_tick();
+        }
     }
 
     /// Measure (`m2.hall_entered`): each besieger that sets foot in the
@@ -533,7 +537,10 @@ impl Game {
         l.worker = None;
         l.raised = !l.raised;
         let links = l.links.clone();
+        // Decks raised from under whoever stood on them (pits.rs).
+        let mut dropped = Vec::new();
         for t in links {
+            let over_pit = self.buildings.get(&t).map_or(false, |b| b.kind == BuildingKind::Bridge && self.over_pit(b.pos));
             let Some(b) = self.buildings.get_mut(&t) else { continue };
             let pos = b.pos;
             match b.kind {
@@ -547,7 +554,14 @@ impl Game {
                     b.raised = !b.raised;
                     let raised = b.raised;
                     self.world.t_mut(pos).door = if raised { BRIDGE_RAISED } else { DOOR_NONE };
-                    if raised {
+                    if over_pit {
+                        // Over a pit, the deck is the floor: raised, it's
+                        // gone, and whatever was on it falls.
+                        self.world.t_mut(pos).kind = if raised { TileKind::Open } else { TileKind::Floor };
+                        if raised {
+                            dropped.push(pos);
+                        }
+                    } else if raised {
                         self.clear_tile(pos);
                     }
                     self.dig_version += 1;
@@ -568,6 +582,9 @@ impl Game {
             }
         }
         self.msg("A lever has been pulled.", (220, 200, 120));
+        if !dropped.is_empty() {
+            self.drop_through(&dropped);
+        }
     }
 
     /// Whoever stands on a rising bridge is thrown off to one side.

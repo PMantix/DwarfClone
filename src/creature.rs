@@ -747,6 +747,13 @@ pub struct Creature {
     /// is back in the lair's numbers once gone (`game::lairs`).
     #[serde(default)]
     pub lost_home: bool,
+    /// Ticks spent under deep water (a pond, `game::pits`): it drowns.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub drown: u32,
+}
+
+fn is_zero(v: &u32) -> bool {
+    *v == 0
 }
 
 fn yes() -> bool {
@@ -798,6 +805,7 @@ impl Creature {
             wary_until: 0,
             foe: None,
             fears_fire: false,
+            drown: 0,
             lair: None,
             lost_home: false,
         }
