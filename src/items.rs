@@ -79,6 +79,9 @@ pub enum ItemKind {
     /// A trophy of war: the skull of a slain beast or general, labelled
     /// "skull of Ushat the dragon" (`crafts.rs`).
     Trophy,
+    /// A luxury of clockwork, labelled with what it is: "music box",
+    /// "clockwork bird", "orrery" (O12, `game/clockwork.rs`).
+    Trinket,
 }
 
 /// Items that fit in a barrel or a bin, ten to a container.
@@ -92,7 +95,7 @@ pub enum Slot {
 }
 
 impl ItemKind {
-    pub const ALL: [ItemKind; 57] = [
+    pub const ALL: [ItemKind; 58] = [
         ItemKind::Boulder,
         ItemKind::Log,
         ItemKind::Block,
@@ -150,6 +153,7 @@ impl ItemKind {
         ItemKind::Instrument,
         ItemKind::Product,
         ItemKind::Trophy,
+        ItemKind::Trinket,
     ];
 
     /// Plural name for lists ("logs", "metal bars").
@@ -212,6 +216,7 @@ impl ItemKind {
             ItemKind::Instrument => "musical instruments",
             ItemKind::Product => "animal products",
             ItemKind::Trophy => "trophies",
+            ItemKind::Trinket => "trinkets",
         }
     }
 
@@ -228,7 +233,7 @@ impl ItemKind {
         use ItemKind::*;
         match self {
             Plant | Drink | Seed | Meat | Meal | Tallow | Fish | Flour => Some(Barrel),
-            Bar | Charcoal | Craft | Instrument | Gem | Bone | Leather | Block | Cloth | Shirt | Trousers | Shoes | Ash | Soap | Product => Some(Bin),
+            Bar | Charcoal | Craft | Instrument | Gem | Bone | Leather | Block | Cloth | Shirt | Trousers | Shoes | Ash | Soap | Product | Trinket => Some(Bin),
             k if k.is_equipment() => Some(Bin),
             _ => None,
         }
@@ -251,6 +256,7 @@ impl ItemKind {
             Bed | Table | Chair | Door | Cabinet | Chest => 10,
             Statue => 30,
             Trophy => 50,
+            Trinket => 40,
             Product => 4,
             Bar => 10,
             Craft => 20,
@@ -393,7 +399,7 @@ impl StockFilter {
             StockFilter::Goods => {
                 matches!(
                     k,
-                    Craft | Instrument | Gem | Bone | Leather | Mechanism | Thread | Splint | Crutch | Cloth | Shirt | Trousers | Shoes | Ash | Tallow | Product | Soap
+                    Craft | Instrument | Gem | Bone | Leather | Mechanism | Thread | Splint | Crutch | Cloth | Shirt | Trousers | Shoes | Ash | Tallow | Product | Soap | Trinket
                 )
             }
             StockFilter::Refuse => matches!(k, Corpse | Carcass | Hide | BodyPart),
@@ -564,6 +570,7 @@ impl Item {
             Statue => format!("{} statue", m.adj()),
             Trophy => self.label.clone().unwrap_or_else(|| "trophy".into()),
             Instrument => format!("{} {}", m.adj(), self.label.as_deref().unwrap_or("instrument")),
+            Trinket => format!("{} {}", m.adj(), self.label.as_deref().unwrap_or("trinket")),
             Bucket if self.label.as_deref() == Some("water") => format!("{} bucket of water", m.adj()),
             Bucket => format!("{} bucket", m.adj()),
             Cage => match self.label.as_deref() {
@@ -587,6 +594,8 @@ impl Item {
         let v = self.kind.base_value() * self.mat.value() * quality_mult(self.quality);
         // Set with gems: half as much again.
         let v = if self.decor.is_some() { v * 3 / 2 } else { v };
+        // An orrery is the finest of the clockwork luxuries.
+        let v = if self.kind == ItemKind::Trinket && self.label.as_deref() == Some("orrery") { v * 2 } else { v };
         if self.wear >= WORN {
             v / 2
         } else {
@@ -651,6 +660,11 @@ impl Item {
             Instrument => '♫',
             Product => '♦',
             Trophy => 'Ψ',
+            Trinket => match self.label.as_deref() {
+                Some("clockwork bird") => 'v',
+                Some("orrery") => 'ø',
+                _ => '♪',
+            },
         };
         let col = match self.kind {
             Drink => Color::Rgb(230, 170, 60),
