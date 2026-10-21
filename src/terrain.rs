@@ -452,7 +452,10 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                         _ => Mat::Hematite,
                     };
                 } else if rng.chance(0.0015 * params.minerals) {
-                    world.t_mut(p).mat = Mat::Amethyst;
+                    // Each gem in its own host rock (O10, DIG-33).
+                    if let Some(g) = t.mat.host_gem() {
+                        world.t_mut(p).mat = g;
+                    }
                 }
             }
         }
@@ -852,7 +855,8 @@ pub fn generate_shaped(seed: u64, params: &EmbarkParams, origin: (i32, i32), bas
                             t.kind = if z == gz - 1 { TileKind::Floor } else { TileKind::Open };
                             t.mat = if z == gz - 1 { Mat::Marble } else { Mat::Air };
                         } else if r <= 1.6 && t.kind == TileKind::Wall {
-                            t.mat = Mat::Amethyst;
+                            // Lined with the gem of its rock (amethyst in rock that grows none).
+                            t.mat = t.mat.host_gem().unwrap_or(if t.mat.is_gem() { t.mat } else { Mat::Amethyst });
                         }
                     }
                 }
@@ -1137,6 +1141,28 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn each_gem_lies_in_its_own_rock() {
+        let mut kinds = std::collections::BTreeSet::new();
+        for biome in [Biome::Mountain, Biome::Forest, Biome::Desert] {
+            let w = make(0, biome);
+            let host_of = |g: Mat| [Mat::Granite, Mat::Basalt, Mat::Limestone, Mat::Sandstone, Mat::Marble].into_iter().find(|r| r.host_gem() == Some(g));
+            let gems = count(&w, |t, _| t.mat.is_gem());
+            let at_home = count(&w, |t, p| {
+                t.mat.is_gem()
+                    && [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)]
+                        .iter()
+                        .any(|&(dx, dy, dz)| w.get(p.offset(dx, dy, dz)).map_or(false, |n| Some(n.mat) == host_of(t.mat) || n.mat == t.mat))
+            });
+            assert!(gems > 0, "no gems at all in the {:?}", biome);
+            assert!(at_home * 10 >= gems * 9, "{:?}: only {} of {} gems lie in their own rock", biome, at_home, gems);
+            for t in w.tiles.iter().filter(|t| t.mat.is_gem()) {
+                kinds.insert(t.mat);
+            }
+        }
+        assert!(kinds.len() >= 3, "only {:?}", kinds);
+    }
+
+    #[test]
     fn each_feature_shapes_the_land() {
         let plain = make(0, Biome::Forest);
         let surface_water = |w: &World| count(w, |t, p| t.water > 0 && p.z >= w.surface_z(p.x, p.y) && !t.frozen);
@@ -1158,7 +1184,7 @@ pub(crate) mod tests {
         let z = under.caverns[0].1 + 2;
         assert!(count(&under, |t, p| t.water == 7 && t.kind == TileKind::Open && p.z == z) > 50);
         let grotto = make(feat::GROTTO, Biome::Forest);
-        assert!(count(&grotto, |t, _| t.mat == Mat::Amethyst) > count(&plain, |t, _| t.mat == Mat::Amethyst) + 20);
+        assert!(count(&grotto, |t, _| t.mat.is_gem()) > count(&plain, |t, _| t.mat.is_gem()) + 20);
         let coast = make(feat::COAST, Biome::Ocean);
         assert!(surface_water(&coast) > 1000, "the sea ({})", surface_water(&coast));
         let oasis = make(feat::OASIS, Biome::Desert);

@@ -180,17 +180,13 @@ impl Game {
         if !hurt.is_empty() {
             out.push(hurt.join(" "));
         }
-        // The end.
+        // The end: the death scene (familytree.rs) and where they lie.
         if !d.alive {
-            let note = self.annals.deaths.iter().rev().find(|n| n.name == d.name);
-            let when = d.died.map_or(String::new(), |t| format!(" in {}", season_of(self, t)));
-            let how = note.map_or("died".to_string(), |n| match (&n.killer, n.cause.as_str()) {
-                (Some(k), "struck down") => format!("was struck down by a {}", k),
-                (Some(k), "bled to death") => format!("bled to death from {} wounds", k),
-                (_, c) => c.to_string(),
-            });
-            let siege = note.and_then(|n| n.siege).and_then(|i| self.annals.sieges.get(i)).map_or(String::new(), |s| format!(", in the siege of the {}", s.foe));
-            out.push(format!("{} {}{}{}.", me, how, when, siege));
+            let mut end = self.death_scene(d);
+            if let Some(rest) = self.resting_place(d) {
+                end.push_str(&format!(" {} {}.", cap(they), rest));
+            }
+            out.push(end);
         } else if out.len() <= 2 && d.thoughts.is_empty() {
             out.push(format!("{} story is still being written.", cap(if they == "she" { "her" } else if they == "he" { "his" } else { "their" })));
         }
@@ -225,6 +221,10 @@ impl Game {
             }
         }
         s.push('.');
+        // Who they left (familytree.rs).
+        if let Some(l) = self.left_behind(d) {
+            s.push_str(&format!(" {}", l));
+        }
         s
     }
 
@@ -253,15 +253,25 @@ impl Game {
         }
     }
 
-    /// For the year's chronicle: a line for each notable dwarf who died in
-    /// it (a hero, a parent, a spouse, a killer of foes), at most four.
+    /// For the year's chronicle: the death scene of each notable dwarf who
+    /// died in it (a hero, a noble, a soldier, a parent, a spouse, a killer
+    /// of foes, or one who spoke last words), at most four.
     pub(super) fn death_scenes(&self, year_start: u64) -> Vec<String> {
         self.dwarves
             .iter()
             .filter(|d| !d.alive && d.died.map_or(false, |t| t >= year_start && t <= self.tick))
-            .filter(|d| d.epithet.is_some() || d.spouse.is_some() || d.kills > 0 || d.deed.is_some())
+            .filter(|d| {
+                d.epithet.is_some()
+                    || d.spouse.is_some()
+                    || d.kills > 0
+                    || d.deed.is_some()
+                    || d.noble.is_some()
+                    || d.soldier
+                    || self.dwarves.iter().any(|o| o.family_of(d.id))
+                    || self.annals.deaths.iter().rev().find(|n| n.name == d.name).map_or(false, |n| n.last_words.is_some())
+            })
             .take(4)
-            .map(|d| format!("We remember {}", self.eulogy(d)))
+            .map(|d| self.death_scene(d))
             .collect()
     }
 }

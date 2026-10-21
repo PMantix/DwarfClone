@@ -589,7 +589,7 @@ impl Game {
     }
 
     /// Make sure someone does `labor` (`n` dwarves, the idlest first).
-    fn hands_for(&mut self, labor: Labor, n: usize) -> bool {
+    pub(super) fn hands_for(&mut self, labor: Labor, n: usize) -> bool {
         let have = self.dwarves.iter().filter(|d| d.alive && !d.insane && !d.is_child() && d.has(labor)).count();
         if have >= n {
             return false;

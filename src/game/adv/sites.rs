@@ -27,6 +27,13 @@ impl Adventure {
         if self.visit.is_some() {
             self.leave();
         }
+        // A fallen fort is its own save (A5); one whose save is gone is
+        // made as a plain ruin below.
+        if let SiteKey::Fort(i) = key {
+            if let Some(entered) = sitegen::fallen::enter(self, i, from) {
+                return entered;
+            }
+        }
         let seed = site_seed(self.seed, key);
         // The land is as it was when the adventure began (an embark's
         // aquifer rolls on the world's year, which the adventure moves on).
@@ -78,6 +85,8 @@ impl Adventure {
             sitegen::remember(&v.g, &v.placed, memo);
             turned_guards(&v.g)
         };
+        // What the hero took from a fallen fort, and slew there (A5).
+        let spoils = sitegen::fallen::spoils(&v);
         // Companions first (they come after the hero in `dwarves`).
         let mut company = std::mem::take(&mut self.company);
         for c in company.iter_mut().rev() {
@@ -88,12 +97,18 @@ impl Adventure {
         self.company = company;
         let hero = v.g.dwarves.iter().position(|d| d.id == super::HERO_ID).unwrap_or(v.hero);
         carry_out(&mut v.g, hero, &mut self.hero);
-        self.clock = v.g.tick;
+        self.clock = sitegen::fallen::world_clock(&v, self.start_year);
         self.weather = v.g.weather;
         self.ow = std::mem::replace(&mut v.g.overworld, Overworld::empty());
         let year = self.start_year + (self.clock / crate::game::YEAR) as i32;
         self.ow.year = self.ow.year.max(year);
         self.memos.entry(v.key).or_default().visited_tick = self.clock;
+        // A fort the hero took from remembers it in its own save.
+        if let Some(sp) = spoils {
+            if let Err(e) = sitegen::fallen::write_back(self, &mut v, &sp) {
+                self.say(&e, (255, 120, 90));
+            }
+        }
         // Blood shed among folk who had welcomed the hero is remembered.
         if infamy > 0 {
             if let SiteKey::Site(id) = v.key {
@@ -183,7 +198,7 @@ pub fn site_name(ow: &Overworld, key: SiteKey) -> String {
 
 /// Where one walking in from direction (dx, dy) comes onto the map: the
 /// edge on that side, level with the arrival point.
-fn edge_spot(w: &World, arrive: Pos, dx: i32, dy: i32) -> Pos {
+pub(super) fn edge_spot(w: &World, arrive: Pos, dx: i32, dy: i32) -> Pos {
     let x = if dx < 0 { 0 } else if dx > 0 { w.w - 1 } else { arrive.x };
     let y = if dy < 0 { 0 } else if dy > 0 { w.h - 1 } else { arrive.y };
     let p = Pos::new(x, y, w.surface_z(x, y));

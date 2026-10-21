@@ -17,8 +17,10 @@ use std::collections::{HashMap, HashSet};
 
 mod arena;
 mod health;
-mod highlights;
+pub mod highlights;
+pub mod export;
 mod life;
+mod family;
 mod units;
 mod ledger;
 pub mod saga;
@@ -31,6 +33,7 @@ mod overlays;
 mod looks;
 mod adventure;
 mod adv_create;
+mod adv_travel;
 pub(crate) use looks::tile_look;
 use looks::foliage;
 
@@ -1260,6 +1263,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
                 v.push(key_line("l", "Ledger: who made what", false));
                 v.push(key_line("a", "Auto conditions", false));
                 v.push(key_line("x", "Delete order", false));
+                v.push(key_line("w", if g.damp.dig_wet_ok { "Dig through damp stone: yes" } else { "Dig through damp stone: no" }, false));
                 v.push(plain("Esc: back".into(), MUTED));
             }
         }
