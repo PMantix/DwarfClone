@@ -17,7 +17,8 @@ use std::collections::{HashMap, HashSet};
 
 mod arena;
 mod health;
-mod highlights;
+pub mod highlights;
+pub mod export;
 mod life;
 mod family;
 mod units;
