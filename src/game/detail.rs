@@ -89,7 +89,8 @@ impl Game {
             return 0;
         }
         let i = if self.rng.chance(0.4) { n - 1 - self.rng.range(0, n.min(30) as i32) as usize } else { self.rng.range(0, n as i32) as usize };
-        i as u32 + 1
+        // Only what the fortress still remembers (tales.rs).
+        self.known_scene(i as u32 + 1)
     }
 
     /// What's carved at `p`, for tile info: (quality, year, text).

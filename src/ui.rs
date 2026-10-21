@@ -23,6 +23,7 @@ mod life;
 mod family;
 mod units;
 mod ledger;
+mod lore;
 pub mod saga;
 mod moodstrip;
 mod ambient;
@@ -2783,11 +2784,12 @@ fn legends_lines(ow: &Overworld, tab: usize) -> Vec<Line<'static>> {
     }
 }
 
-fn draw_legends(f: &mut Frame, area: Rect, ow: &Overworld, tab: usize, scroll: usize, seen: &[u16]) {
+fn draw_legends(f: &mut Frame, area: Rect, ow: &Overworld, tab: usize, scroll: usize, seen: &[u16], from_world: bool) {
     let w = area.width.saturating_sub(6).min(120);
     let h = area.height.saturating_sub(4);
     let r = Rect::new(area.x + (area.width - w) / 2, area.y + 2, w, h);
-    let lines = if tab == 6 { bestiary_lines(ow, seen) } else { legends_lines(ow, tab) };
+    // History: by ages, with retellings and forgotten gaps (O09, ui/lore.rs).
+    let lines = if tab == 6 { bestiary_lines(ow, seen) } else if tab == 0 { lore::history_lines(ow, from_world) } else { legends_lines(ow, tab) };
     // The gods' myths run long: wrap them to the window.
     let lines = if tab == 5 { wrap_lines(lines, w.saturating_sub(2) as usize) } else { lines };
     let visible = h.saturating_sub(4) as usize;
@@ -2810,7 +2812,7 @@ fn draw_legends(f: &mut Frame, area: Rect, ow: &Overworld, tab: usize, scroll: u
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(KEY))
-                    .title(Span::styled(format!(" Legends of {} ", ow.name), Style::default().fg(KEY)))
+                    .title(Span::styled(lore::legends_title(ow), Style::default().fg(KEY)))
                     .title_bottom(Span::styled(" Tab/1-6 switch · ↑↓ PgUp/PgDn scroll · Esc back ", Style::default().fg(MUTED))),
             ),
         r,
@@ -2940,7 +2942,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if let Mode::Legends { tab, scroll, from_world: true } = app.mode {
         let (x, y) = app.game.site;
         draw_world(f, app, x, y);
-        draw_legends(f, area, &app.game.overworld, tab, scroll, &app.game.beasts_seen);
+        draw_legends(f, area, &app.game.overworld, tab, scroll, &app.game.beasts_seen, true);
         return;
     }
     let rows = Layout::default()
@@ -3097,7 +3099,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     };
     match app.mode {
         Mode::GameOver => draw_game_over(f, full, &app.game),
-        Mode::Legends { tab, scroll, .. } => draw_legends(f, area, &app.game.overworld, tab, scroll, &app.game.beasts_seen),
+        Mode::Legends { tab, scroll, from_world } => draw_legends(f, area, &app.game.overworld, tab, scroll, &app.game.beasts_seen, from_world),
         Mode::Trade { side, sel } => draw_trade(f, area, app, side, sel),
         Mode::Status { tab, scroll } => draw_status(f, area, &app.game, tab, scroll),
         Mode::Labors { row, col, detail } => draw_labors(f, area, app, row, col, detail),

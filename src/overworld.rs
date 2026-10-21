@@ -457,6 +457,16 @@ impl Figure {
 pub struct Event {
     pub year: i32,
     pub text: String,
+    /// The tale as our people tell it now, when it has grown in the
+    /// telling (`game/tales.rs`); the text above stays the truth.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub told: Option<String>,
+    /// How often it has grown in the telling.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub fame: u8,
+    /// Made up by a visiting bard: it never happened.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub bard: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -516,6 +526,14 @@ pub struct Overworld {
     /// Where dead adventurers lie, with their gear (G03).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub remains: Vec<Remains>,
+    /// The named ages of the world, oldest first (`game/ages.rs`; empty in
+    /// old saves and fresh worlds: then they are read from the history).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ages: Vec<crate::game::ages::Age>,
+    /// Which events the fortress still knows, by index into `events`
+    /// (`game/tales.rs`); empty, or past its end, means known.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub known: Vec<bool>,
 }
 
 /// How a clash ended for the place attacked.
@@ -692,6 +710,8 @@ impl WorldGen {
             sagas: Vec::new(),
             forts: Vec::new(),
             remains: Vec::new(),
+            ages: Vec::new(),
+            known: Vec::new(),
         };
         WorldGen { params, ow, rng, land: None, row: 0, stage: GenStage::Terrain, rivers: Vec::new(), trace: None }
     }
@@ -1458,7 +1478,16 @@ impl Overworld {
     }
 
     pub fn log(&mut self, year: i32, text: String) {
-        self.events.push(Event { year, text });
+        self.events.push(Event { year, text, told: None, fame: 0, bard: false });
+        // What happens now is known; keep `known` in step with the events.
+        if !self.known.is_empty() {
+            self.known.resize(self.events.len(), true);
+        }
+    }
+
+    /// Whether the fortress still knows event `i` (`game/tales.rs`).
+    pub fn is_known(&self, i: usize) -> bool {
+        self.known.get(i).copied().unwrap_or(true)
     }
 
     fn free_spot_near(&self, rng: &mut Rng, x: i32, y: i32, r: i32, race: Race) -> Option<(i32, i32)> {
@@ -1581,6 +1610,8 @@ impl Overworld {
             sagas: Vec::new(),
             forts: Vec::new(),
             remains: Vec::new(),
+            ages: Vec::new(),
+            known: Vec::new(),
         }
     }
 

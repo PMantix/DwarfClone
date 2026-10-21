@@ -210,6 +210,8 @@ impl Game {
         lines.extend(self.lines_ledger());
         // O04: what fell into the pit.
         lines.extend(self.lines_pit());
+        // O09: the age, tales grown and faded, lore found (tales.rs).
+        lines.extend(self.lines_lore());
         lines
     }
 }
