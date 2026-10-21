@@ -65,7 +65,10 @@ impl Game {
         let beast = self.creatures.values().any(|c| c.legendary() && near(c));
         // An overseer that lets them into the trap hall leaves the doors
         // open to them until the bridge goes up behind them.
-        let let_in = self.lets_them_in(o);
+        // (Not an army too big to take on in the hall: then the bridge
+        // goes up as for any other overseer.)
+        let army_size = self.creatures.values().filter(|c| c.alive && c.siege && !c.legendary() && c.hostile()).count();
+        let let_in = self.lets_them_in(o) && army_size as f64 <= self.knob("gate.let_in_max", 12.0);
         let up = self.gate_bridges(base).iter().any(|id| self.buildings.get(id).map_or(false, |b| b.raised));
         let close = close && (beast || !(let_in && !up));
         let gate: Vec<u32> = self
@@ -133,6 +136,15 @@ impl Game {
                     self.pull_lever(lever);
                 } else if raised != want && !self.buildings[&lever].pull {
                     self.request_pull(lever);
+                }
+                // A pull no longer wanted (or asked of the other lever) is
+                // called off, or it would throw the bridge back.
+                for l in [self.gate_lever(base), self.inner_lever(base)].into_iter().flatten() {
+                    if l != lever || raised == want {
+                        if let Some(b) = self.buildings.get_mut(&l) {
+                            b.pull = false;
+                        }
+                    }
                 }
                 if want && !raised {
                     o.raised_at = self.tick;

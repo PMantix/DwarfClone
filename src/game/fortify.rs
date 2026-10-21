@@ -1608,12 +1608,13 @@ mod tests {
     /// lives that long. Few do by day 440, and which ones shifts whenever
     /// the year's events do: of seeds 5000-5023, 5003 and 5009 did before
     /// MAGIC, HORRORS, CULTURE and FLAIR came in, 5013 after; the
-    /// cisterns moved it on again, so a few more are tried.)
+    /// cisterns moved it on again, and the trap hall that kills (O04) once
+    /// more, so a few more are tried.)
     #[test]
     fn a_wary_warlord_walls_its_fields_and_raises_a_watchtower() {
         let day = 440;
         let mut tried = Vec::new();
-        for seed in [5013u64, 5003, 5009, 5018, 5023, 5008, 5028, 5033, 5038, 5043, 5048, 5053] {
+        for seed in [5013u64, 5003, 5009, 5018, 5023, 5008, 5028, 5033, 5038, 5043, 5048, 5053, 5058, 5063, 5068, 5073, 5078] {
             let mut g = Game::new(seed);
             // (Its walls, not its sallies: sally.rs.)
             g.knobs.set.insert("sally.min_soldiers".into(), 999.0);

@@ -365,11 +365,10 @@ impl Game {
 
     /// A besieger has died (`note_foe_slain`): it counts toward the siege's
     /// toll in the trap hall (`SiegeNote.trapped`) if a trap wounded it, or
-    /// if it fell in the hall itself, under the soldiers holding its far
-    /// end.
+    /// if it fell in the hall itself (x+8..11), wherever the blow came from.
     pub(super) fn hall_death(&mut self, c: &crate::creature::Creature) {
         let in_hall = self.overseer.as_ref().filter(|o| o.gate_stage >= 1).and_then(|o| o.base).map_or(false, |b| {
-            c.pos.z == b.z && (8..=13).contains(&(c.pos.x - b.x)) && (0..=1).contains(&(c.pos.y - b.y))
+            c.pos.z == b.z && (8..=11).contains(&(c.pos.x - b.x)) && (0..=1).contains(&(c.pos.y - b.y))
         });
         let Some(s) = self.annals.sieges.iter_mut().rev().find(|s| s.ended.is_none()) else { return };
         let hurt = match s.trap_hurt.iter().position(|&id| id == c.id) {
@@ -382,6 +381,9 @@ impl Game {
         if hurt || in_hall {
             s.trapped += 1;
             self.count("m2.trap_kills", 1);
+            if !hurt {
+                self.count("m2.hall_floor_kills", 1);
+            }
         }
     }
 
@@ -505,7 +507,14 @@ impl Game {
             Travel::Moving => {}
             Travel::Failed => self.release_task(d),
             Travel::Arrived => {
-                if Self::labor(d, 25, d.skill(Labor::Mechanics)) {
+                // (Thrown already by someone standing by it, or no longer
+                // wanted: then leave it be, or it goes back the other way.)
+                if !self.buildings.get(&bld).map_or(false, |b| b.pull) {
+                    if let Some(b) = self.buildings.get_mut(&bld).filter(|b| b.worker == Some(d.id)) {
+                        b.worker = None;
+                    }
+                    d.task = Task::Idle;
+                } else if Self::labor(d, 25, d.skill(Labor::Mechanics)) {
                     d.task = Task::Idle;
                     self.pull_lever(bld);
                 }
