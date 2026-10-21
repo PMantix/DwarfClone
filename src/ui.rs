@@ -4385,9 +4385,12 @@ fn draw_load_menu(f: &mut Frame, app: &App, sel: usize, confirm: bool) {
         let tag = if m.autosave { " (autosave)" } else { "" };
         // (An adventurer's save, marked with `@`: their date says where they are.)
         let hero = m.kind == saves::SaveKind::Adventure;
-        let who = if !hero { format!(" {:>3} dwarves ", m.dwarves) } else if m.dwarves > 0 { "  adventurer ".into() } else { "  dead       ".into() };
+        // (A world's shared memory, marked with `≈`: Enter founds a new fort in it, A19.)
+        let world = m.kind == saves::SaveKind::World;
+        let who = if world { "  world      ".into() } else if !hero { format!(" {:>3} dwarves ", m.dwarves) } else if m.dwarves > 0 { "  adventurer ".into() } else { "  dead       ".into() };
+        let mark = if hero { "@ " } else if world { "≈ " } else { "" };
         v.push(Line::from(vec![
-            Span::styled(format!(" {:<18}", format!("{}{}{}", if hero { "@ " } else { "" }, m.fortress, tag)), st.add_modifier(Modifier::BOLD)),
+            Span::styled(format!(" {:<18}", format!("{}{}{}", mark, m.fortress, tag)), st.add_modifier(Modifier::BOLD)),
             Span::styled(format!(" {:<34}", m.date), st),
             Span::styled(who, st),
             Span::styled(format!(" {:<12}", saves::ago(m.saved_unix)), st),
@@ -4667,6 +4670,9 @@ fn draw_brain(f: &mut Frame, area: Rect, g: &Game, sel: usize) {
     });
     v.push(plain(format!(" Now: {}", now), Color::Rgb(255, 215, 60)));
     v.push(plain(format!(" {}", o.intent(g)), TEXT));
+    if let Some(p) = g.adopted_plans() {
+        v.push(plain(format!(" Building {}", p), Color::Rgb(190, 160, 255)));
+    }
     v.push(Line::default());
     v.push(Line::from(Span::styled(format!(" {}", chosen.name()), Style::default().fg(Color::Rgb(150, 210, 255)).add_modifier(Modifier::BOLD))));
     v.push(plain(format!(" {}", chosen.announce().split(": ").nth(1).unwrap_or(chosen.announce())), MUTED));
@@ -6131,7 +6137,9 @@ mod tests {
         wait(&mut app, "Saving");
         assert_eq!(app.mode, Mode::Normal);
         assert_eq!(app.game.fortress_name, name, "game not handed back after saving");
-        assert_eq!(app.saves().len(), 1);
+        // (The fort and its world's shared file, A19.)
+        assert_eq!(app.saves().iter().filter(|m| m.kind != saves::SaveKind::World).count(), 1);
+        assert_eq!(saves::list_worlds(&app.save_dir).len(), 1);
 
         // Save and return to the title, then continue.
         app.on_key(key(KeyCode::Char('Q')));

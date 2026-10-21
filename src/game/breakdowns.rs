@@ -503,7 +503,8 @@ impl Game {
         }
         let beside = |q: Pos| at.keys().any(|p| adjacent(*p, q));
         let Some((stand, path)) = path::search(&self.world, d.pos, SEARCH_LIMIT, Mover::Dwarf, beside) else { return false };
-        let Some((_, &patient)) = at.iter().find(|(p, _)| adjacent(**p, stand)) else { return false };
+        // (The lowest place of those beside it: a hash map's order is not the same twice.)
+        let Some((_, patient)) = at.iter().filter(|(p, _)| adjacent(**p, stand)).map(|(p, id)| (*p, *id)).min() else { return false };
         d.task = Task::Coax { patient };
         Self::set_path(d, path);
         true

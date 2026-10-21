@@ -50,6 +50,8 @@ pub struct AdvScreen {
     pub replay: Option<(u64, Option<std::time::Instant>)>,
     /// The conversation open in `View::Talk` (A7).
     pub chat: Option<adv::talk::Chat>,
+    /// The end has been written into the world file (A19).
+    pub recorded: bool,
 }
 
 /// What a letter list in the local view is for.
@@ -100,7 +102,7 @@ impl AdvScreen {
         let turn_from = adv.now();
         // (A save made with something met on the road: it waits still.)
         let meet = adv.meet.take();
-        AdvScreen { adv, view, flash: None, maker, pick: None, sneak: false, rest_until: None, help: false, turn_from, page: None, meet, replay: None, chat: None }
+        AdvScreen { adv, view, flash: None, maker, pick: None, sneak: false, rest_until: None, help: false, turn_from, page: None, meet, replay: None, chat: None, recorded: false }
     }
 }
 
@@ -112,7 +114,9 @@ impl App {
         let dir = self.save_dir.clone();
         self.run_job("Making the world", move |report| {
             let mut ow = Overworld::generate_with(seed, report);
-            // The forts that fell in this world before (A5).
+            // What every game in this world has added to it (A19), and the
+            // forts that fell in it before (A5).
+            crate::worldfile::refresh(&dir, &mut ow);
             adv::sitegen::fallen::scan(&dir, &mut ow);
             Ok(JobDone::Visited(Box::new(adv::create::unmade_in(ow, seed))))
         });
@@ -136,6 +140,7 @@ impl App {
         let dir = self.save_dir.clone();
         self.game = crate::game::Game::placeholder(Overworld::empty());
         self.run_job("Setting out", move |_| {
+            crate::worldfile::refresh(&dir, &mut ow);
             adv::sitegen::fallen::scan(&dir, &mut ow);
             Ok(JobDone::Visited(Box::new(adv::quick_start(ow, seed))))
         });
@@ -312,6 +317,14 @@ impl App {
         }
         s.adv.notice();
         if s.adv.over.is_some() {
+            // The world hears how it ended (A19), once.
+            if !s.recorded {
+                s.recorded = true;
+                let wanderer = s.adv.fame.end.as_ref().filter(|e| !e.died).map(|e| (e.dwarf.clone(), e.place.clone()));
+                if let Err(e) = crate::worldfile::record_with(&self.save_dir, s.adv.ow(), wanderer) {
+                    s.flash = Some(e);
+                }
+            }
             s.view = View::Dead;
             s.pick = None;
             s.rest_until = None;
@@ -347,6 +360,10 @@ impl App {
             Ok(m) => {
                 if !autosave {
                     s.flash = Some(format!("Saved as {}: {}.", m.file, m.date));
+                    // The world hears of the hero's deeds so far (A19).
+                    if let Err(e) = crate::worldfile::record(&dir, s.adv.ow()) {
+                        s.flash = Some(e);
+                    }
                 }
                 true
             }
@@ -1155,8 +1172,12 @@ impl App {
             KeyCode::Char('a') => {
                 let Some(mut s) = self.adv.take() else { return };
                 let seed = s.adv.seed.wrapping_mul(31).wrapping_add(s.adv.fame.deeds.len() as u64 + 7);
-                let ow = s.adv.take_world();
-                self.run_job("Another hero", move |_| Ok(JobDone::Visited(Box::new(adv::create::unmade_in(ow, seed)))));
+                let mut ow = s.adv.take_world();
+                let dir = self.save_dir.clone();
+                self.run_job("Another hero", move |_| {
+                    crate::worldfile::refresh(&dir, &mut ow);
+                    Ok(JobDone::Visited(Box::new(adv::create::unmade_in(ow, seed))))
+                });
             }
             _ => {}
         }
@@ -1200,6 +1221,25 @@ impl App {
             return;
         }
         s.view = if s.adv.visit.is_some() { View::Local } else { View::Travel };
+    }
+}
+
+impl App {
+    /// The load menu's world (A19): its world map, to found a new fort in
+    /// a world whose legends hold every game played in it.
+    pub fn open_world_file(&mut self, file: &str) {
+        match saves::read_world(&self.save_dir, file) {
+            Ok(r) => {
+                if r.seed != 0 {
+                    self.seed = r.seed;
+                }
+                let (x, y) = r.overworld.default_site();
+                self.flash = Some(format!("The world of {}. Pick a site and embark.", r.overworld.name));
+                self.game = Game::placeholder(r.overworld);
+                self.mode = Mode::WorldMap { x, y };
+            }
+            Err(e) => self.flash = Some(e),
+        }
     }
 }
 
@@ -1853,6 +1893,11 @@ mod tests {
         app.adv.as_mut().unwrap().meet = None;
         app.adv.as_mut().unwrap().adv.knobs.set.insert("travel.encounters".into(), 0.0);
         app.on_key(key(KeyCode::Right));
+        // (A dawn's autosave on the way, a second after F5's save and its
+        // world file, would be the newer: F9 is for the hand save here.)
+        for m in crate::saves::list(&dir).into_iter().filter(|m| m.autosave) {
+            crate::saves::delete(&dir, &m).unwrap();
+        }
         app.on_key(key(KeyCode::F(9)));
         settle(&mut app);
         let s = app.adv.as_ref().unwrap();
@@ -1906,5 +1951,67 @@ mod tests {
         app.on_key(key(KeyCode::Char('k')));
         let s = app.adv.as_ref().unwrap();
         assert!(matches!(s.view, View::Talk { .. }) || s.pick.as_ref().map_or(false, |p| p.0 == Pick::Talk), "{:?} {:?}", s.view, s.flash);
+    }
+
+    /// A19's Done-when: a hero dies in a world. Later a brand-new fort is
+    /// embarked in that world from the title (the load menu's world list,
+    /// not the death page's `n`), and its legends name the hero.
+    #[test]
+    fn a_fort_from_the_title_hears_of_the_hero() {
+        let mut app = field_app(21);
+        let dir = app.save_dir.clone();
+        let name = hero(&app).name.clone();
+        // A deed, then a wound that bleeds them out.
+        app.adv.as_mut().unwrap().adv.deed("drove the last of the cave-wolves from the old hills", 4);
+        app.adv_notice();
+        let h = app.adv.as_ref().unwrap().adv.visit.as_ref().unwrap().hero;
+        let g = game_mut(&mut app);
+        g.dwarves[h].body.wound(Part::LeftArm, 30, true);
+        g.dwarves[h].body.blood = 0;
+        let _ = g.act(h, Action::Wait(20));
+        app.adv_notice();
+        let s = app.adv.as_ref().unwrap();
+        assert_eq!(s.view, View::Dead);
+        let end = s.adv.fame.end.clone().expect("the death is recorded");
+        assert!(end.died && s.recorded);
+        // Back to the title, with nothing of that world in hand.
+        app.on_key(key(KeyCode::Esc));
+        assert!(app.adv.is_none());
+        app.game = Game::placeholder(Overworld::empty());
+        let worlds = saves::list_worlds(&dir);
+        assert_eq!(worlds.len(), 1, "the world file");
+        // The title's Continue is for games, not worlds.
+        assert!(app.saves().into_iter().find(|m| m.kind != saves::SaveKind::World).is_none());
+        // Load game: the world is listed; Enter opens its map.
+        while app.mode != (Mode::Title { sel: crate::app::TITLE_LOAD }) {
+            app.on_key(key(KeyCode::Up));
+        }
+        app.on_key(key(KeyCode::Enter));
+        let at = app.saves().iter().position(|m| m.kind == saves::SaveKind::World).expect("listed");
+        for _ in 0..at {
+            app.on_key(key(KeyCode::Down));
+        }
+        let menu = screen(&mut app, 120, 30);
+        assert!(menu.contains('≈'), "marked as a world");
+        app.on_key(key(KeyCode::Enter));
+        assert!(matches!(app.mode, Mode::WorldMap { .. }), "{:?}", app.mode);
+        // Embark (the card, then Play now).
+        app.on_key(key(KeyCode::Enter));
+        assert!(matches!(app.mode, Mode::Embark { .. }), "{:?} {:?}", app.mode, app.flash);
+        app.on_key(key(KeyCode::Enter));
+        settle(&mut app);
+        assert_eq!(app.mode, Mode::Help, "a new fort");
+        let ow = &app.game.overworld;
+        assert!(!app.game.dwarves.is_empty());
+        // Its legends tell of the hero: their death, their figure, their bones.
+        let i = ow.events.iter().position(|e| e.text == end.legend).expect("the hero's death in the legends");
+        assert!(ow.is_known(i), "and the fort knows it");
+        let f = ow.figures.iter().find(|f| f.name == name).expect("the hero's figure");
+        assert!(f.died.is_some());
+        assert!(ow.remains.iter().any(|r| r.figure == f.id));
+        if let Some(saga) = &end.saga {
+            assert!(ow.sagas.iter().any(|x| x.title == saga.title), "the hero's saga");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

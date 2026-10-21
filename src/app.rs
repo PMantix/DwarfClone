@@ -760,7 +760,8 @@ impl App {
     }
 
     fn start_embark(&mut self, x: i32, y: i32, loadout: Loadout) {
-        let ow = self.game.overworld.clone();
+        let mut ow = self.game.overworld.clone();
+        crate::worldfile::refresh(&self.save_dir, &mut ow); // A19: what the world file knows.
         let seed = self.seed;
         let size = self.embark_size;
         self.run_job("Embarking", move |report| Ok(JobDone::Embarked(Game::embark_prepared(seed, ow, x, y, size, &loadout, report))));
@@ -811,7 +812,10 @@ impl App {
         self.run_job(title, move |report| {
             // Hand the game back even if writing failed, so nothing is lost.
             match saves::write(&dir, &game, autosave, report) {
-                Ok(meta) => Ok(JobDone::Saved(game, meta, after)),
+                Ok(meta) => {
+                    crate::worldfile::fort_saved(&dir, &game, autosave); // A19: the world hears.
+                    Ok(JobDone::Saved(game, meta, after))
+                }
                 Err(e) => {
                     let meta = SaveMeta {
                         fortress: game.fortress_name.clone(),
@@ -831,6 +835,9 @@ impl App {
 
     pub fn start_load(&mut self, file: String) {
         let dir = self.save_dir.clone();
+        if file.ends_with(".world.json") {
+            return self.open_world_file(&file);
+        }
         if file.ends_with(".adv.json") {
             return self.run_job("Loading", move |report| saves::read_adventure(&dir, &file, report).map(|a| JobDone::AdvLoaded(Box::new(a))));
         }
@@ -913,7 +920,7 @@ impl App {
             KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => self.quit = true,
             KeyCode::Enter => match sel {
                 TITLE_NEW => self.open_world_setup(),
-                TITLE_CONTINUE => match self.saves().into_iter().next() {
+                TITLE_CONTINUE => match self.saves().into_iter().find(|m| m.kind != saves::SaveKind::World) {
                     Some(m) => self.start_load(m.file),
                     None => self.flash = Some("No saved games yet.".into()),
                 },
