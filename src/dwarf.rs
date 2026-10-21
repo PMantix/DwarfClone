@@ -230,6 +230,8 @@ pub enum Task {
     Coax { patient: u32 },
     /// Scrub the blood off a floor in the fort (gore.rs).
     Clean { pos: Pos },
+    /// Carry water from the well to the pond in the pit (ponds.rs).
+    Pond { bucket: u32 },
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

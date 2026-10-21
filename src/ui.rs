@@ -634,6 +634,7 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
         Task::Harvest { .. } => "Harvesting".into(),
         Task::Gather { .. } => "Gathering plants".into(),
         Task::Clean { .. } => "Cleaning up blood".into(),
+        Task::Pond { .. } => "Filling the pond".into(),
         Task::Fish { .. } => "Fishing".into(),
         Task::Eat { .. } => "Eating".into(),
         Task::DrinkItem { .. } | Task::DrinkWater { .. } => "Drinking".into(),
