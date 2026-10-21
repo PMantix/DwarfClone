@@ -342,7 +342,7 @@ impl Game {
         if b.blood > 0 {
             self.spatter(at, from, who, b.blood);
         }
-        self.blow_sound(b.blood > 0 || b.notable, b.msg.is_some(), at);
+        self.blow_sounds(b, at, who);
         if !b.hurts.is_empty() || b.severed.is_some() {
             self.hurt_mess(b, from, at, owner, seen, who);
         }

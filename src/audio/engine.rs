@@ -4,6 +4,7 @@
 //! buffer; nothing in here blocks or touches the game.
 
 use super::dsp::*;
+use super::gorefx::*;
 use super::music::{compose, Inst, Mood, Piece};
 use super::voices::*;
 use super::{Mix, Msg, Scene, Sfx, SfxKind, Tone};
@@ -62,6 +63,16 @@ struct Beds {
     magma_w: Wander,
     water: [(Svf, Wander); 3],
     water_hp: Svf,
+    breath_lp: Svf,
+    breath_lfo: Osc,
+    breath_rate: f32,
+    breath_w: Wander,
+    gaps: [(Svf, Wander); 2],
+    gap_gust: Wander,
+    voices: [(Svf, Wander, f32); 5],
+    voices_lp: OnePole,
+    voices_w: Wander,
+    babble: Wander,
 }
 
 impl Beds {
@@ -89,6 +100,16 @@ impl Beds {
                 (Svf::new(sr, 1500.0, 5.0), Wander::new(sr, 0.11, seed ^ 7)),
             ],
             water_hp: Svf::new(sr, 3000.0, 0.7),
+            breath_lp: Svf::new(sr, 260.0, 1.2),
+            breath_lfo: Osc::new(sr),
+            breath_rate: 0.16,
+            breath_w: Wander::new(sr, 6.0, seed ^ 8),
+            gaps: [(Svf::new(sr, 900.0, 14.0), Wander::new(sr, 1.8, seed ^ 9)), (Svf::new(sr, 1300.0, 14.0), Wander::new(sr, 2.3, seed ^ 10))],
+            gap_gust: Wander::new(sr, 2.5, seed ^ 11),
+            voices: std::array::from_fn(|i| (Svf::new(sr, 600.0, 5.0), Wander::new(sr, 0.18 + 0.04 * i as f32, seed ^ (20 + i as u32)), [480.0, 650.0, 820.0, 1100.0, 1500.0][i])),
+            voices_lp: OnePole::new(sr, 1400.0),
+            voices_w: Wander::new(sr, 2.0, seed ^ 12),
+            babble: Wander::new(sr, 0.12, seed ^ 13),
         }
     }
 
@@ -137,11 +158,41 @@ impl Beds {
             l += (s * 0.11 + hiss * 0.6) * lv[WATER];
             r += (s * 0.1 + hiss * 0.6) * lv[WATER];
         }
+        if lv[BREATH] > 0.0005 {
+            // In and out, slow; the out-breath the louder, with a rasp.
+            let ph = self.breath_lfo.sine(self.breath_rate * (0.85 + 0.3 * self.breath_w.next()));
+            let swell = ph.max(0.0).powf(1.5) + 0.5 * (-ph).max(0.0).powf(2.0);
+            let b = self.breath_lp.bp(self.brown2.next() * 0.7 + x * 0.25) * swell * 0.9 * lv[BREATH];
+            l += b;
+            r += b * 0.85;
+        }
+        if lv[GAPS] > 0.0005 {
+            let g = (0.2 + 0.8 * self.gap_gust.next()).powi(2);
+            let mut v = [0.0f32; 2];
+            for (i, (f, w)) in self.gaps.iter_mut().enumerate() {
+                f.set(650.0 + 500.0 * i as f32 + 700.0 * w.next(), 16.0);
+                v[i] = f.bp(x);
+            }
+            l += v[0] * 0.2 * g * lv[GAPS];
+            r += v[1] * 0.2 * g * lv[GAPS];
+        }
+        if lv[VOICES] > 0.0005 {
+            let mut s = 0.0;
+            for (f, w, base) in self.voices.iter_mut() {
+                f.set(*base * (0.75 + 0.5 * w.next()), 5.0);
+                s += f.bp(x);
+            }
+            // Talk comes and goes in bursts, far off.
+            let talk = 0.35 + 0.65 * self.voices_w.next() * (0.5 + self.babble.next());
+            let v = self.voices_lp.lp(s) * 0.12 * talk * lv[VOICES];
+            l += v;
+            r += v * 0.9;
+        }
         (l, r)
     }
 }
 
-const LAYERS: usize = 10;
+const LAYERS: usize = 17;
 const WIND: usize = 0;
 const RAIN: usize = 1;
 const THUNDER: usize = 2;
@@ -152,10 +203,16 @@ const HUM: usize = 6;
 const FIRE: usize = 7;
 const MAGMA: usize = 8;
 const WATER: usize = 9;
+const BREATH: usize = 10;
+const GAPS: usize = 11;
+const CREAKS: usize = 12;
+const VOICES: usize = 13;
+const HAMMER: usize = 14;
+const FROGS: usize = 15;
+const OWLS: usize = 16;
 
 fn scene_levels(s: &Scene) -> [f32; LAYERS] {
-    let c = |v: f32| v.clamp(0.0, 1.0);
-    [c(s.wind), c(s.rain), c(s.thunder), c(s.birds), c(s.insects), c(s.drips), c(s.hum), c(s.fire), c(s.magma), c(s.water)]
+    s.levels().map(|v| if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 })
 }
 
 /// The piece playing, or the silence before the next.
@@ -167,6 +224,7 @@ struct Player {
     wait_until: u64,
     mood: Mood,
     season: u8,
+    tint: u8,
     count: u32,
 }
 
@@ -198,7 +256,7 @@ impl Engine {
             levels: [Smooth::new(sr, 2.0, 0.0); LAYERS],
             gains: [Smooth::new(sr, 0.25, 0.0); 4],
             mix: Mix::default(),
-            player: Player { piece: None, start: 0, next: 0, wait_until: 0, mood: Mood::Silent, season: 0, count: 0 },
+            player: Player { piece: None, start: 0, next: 0, wait_until: 0, mood: Mood::Silent, season: 0, tint: 0, count: 0 },
             seed,
         }
     }
@@ -229,6 +287,7 @@ impl Engine {
             sm.target = v;
         }
         self.player.season = s.season;
+        self.player.tint = s.tint;
         if s.mood != self.player.mood {
             let old = self.player.mood;
             self.player.mood = s.mood;
@@ -337,6 +396,36 @@ impl Engine {
             SfxKind::Click => self.push(now, Bus::Sfx, Box::new(click(sr, seed)), 0.12 * g, s.pan, 0.0),
             SfxKind::Thunder => self.push(now, Bus::Ambience, Box::new(Thunder::new(sr, 0.8, seed)), 0.6 * g, s.pan, 0.3),
             SfxKind::Stinger(tone) => self.stinger(tone, g),
+            SfxKind::Wet => self.push(now, Bus::Sfx, Box::new(Squelch::new(sr, seed)), 0.26 * g, s.pan, 0.1),
+            SfxKind::Crunch(skull) => self.push(now, Bus::Sfx, Box::new(Crunch::new(sr, skull, seed)), 0.28 * g, s.pan, 0.12),
+            SfxKind::Cry(pitch) => self.push(now, Bus::Sfx, Box::new(Cry::new(sr, cry_hz(pitch), seed)), 0.13 * g, s.pan, 0.35),
+            SfxKind::Fall => self.push(now, Bus::Sfx, Box::new(Fall::new(sr, seed)), 0.3 * g, s.pan, 0.15),
+            SfxKind::Skitter => self.push(now, Bus::Sfx, Box::new(Skitter::new(sr, seed)), 0.34 * g, s.pan, 0.2),
+            SfxKind::Thunk => self.push(now, Bus::Sfx, Box::new(thunk(sr, seed)), 0.26 * g, s.pan, 0.12),
+            SfxKind::Whistle => self.push(now, Bus::Sfx, Box::new(Whistle::new(sr, seed)), 0.12 * g, s.pan, 0.15),
+            SfxKind::Rattle => {
+                self.push(now, Bus::Sfx, Box::new(Rattle::new(sr, seed)), 0.16 * g, s.pan, 0.3);
+                // And the body goes down as the breath goes out.
+                let (at, seed) = (now + self.secs(0.55), self.seed());
+                self.push(at, Bus::Sfx, Box::new(Fall::new(sr, seed)), 0.28 * g, s.pan, 0.15);
+            }
+            SfxKind::Retch => {
+                let hz = self.rng.range(95.0, 140.0);
+                for (k, t) in [0.0f32, 0.5, 1.05].iter().enumerate() {
+                    let (at, seed) = (now + self.secs(*t), self.seed());
+                    self.push(at, Bus::Sfx, Box::new(Heave::new(sr, hz * (1.0 + 0.08 * k as f32), seed)), 0.14 * g, s.pan, 0.2);
+                }
+                let (at, seed) = (now + self.secs(1.3), self.seed());
+                self.push(at, Bus::Sfx, Box::new(splash(sr, seed)), 0.12 * g, s.pan, 0.15);
+            }
+            SfxKind::Steps => {
+                // A few strides, left and right, fading on.
+                for k in 0..4 {
+                    let (at, seed) = (now + self.secs(0.42 * k as f32), self.seed());
+                    let side = if k % 2 == 0 { -0.15 } else { 0.15 };
+                    self.push(at, Bus::Sfx, Box::new(footfall(sr, seed)), 0.22 * g * (1.0 - 0.15 * k as f32), s.pan + side, 0.05);
+                }
+            }
         }
     }
 
@@ -414,6 +503,29 @@ impl Engine {
             let (seed, hz, decay, pan) = (self.seed(), self.rng.range(1200.0, 5000.0), self.rng.range(0.003, 0.014), self.rng.range(-0.5, 0.5));
             self.push(self.now, Bus::Ambience, Box::new(Burst::new(sr, hz, 0.9, decay, seed)), 0.2 * lv[FIRE], pan, 0.05);
         }
+        if fire(0.12 * lv[CREAKS], &mut self.rng) {
+            let (seed, pan) = (self.seed(), self.rng.range(-0.7, 0.7));
+            self.push(self.now, Bus::Ambience, Box::new(Creak::new(sr, seed)), 0.12 * lv[CREAKS].sqrt(), pan, 0.4);
+        }
+        if fire(0.25 * lv[HAMMER], &mut self.rng) {
+            // Far off: a smith's few strokes, or a mallet.
+            let (seed, pan) = (self.seed(), self.rng.range(-0.8, 0.8));
+            let smith = self.rng.chance(0.5);
+            let strokes = 1 + self.rng.pick(3);
+            for k in 0..strokes {
+                let at = self.now + self.secs(0.55 * k as f32);
+                let v: Box<dyn Voice> = if smith { Box::new(anvil(sr, seed.wrapping_add(k as u32))) } else { Box::new(knock(sr, seed.wrapping_add(k as u32))) };
+                self.push(at, Bus::Ambience, v, 0.07 * lv[HAMMER].sqrt(), pan, 0.5);
+            }
+        }
+        if fire(0.9 * lv[FROGS], &mut self.rng) {
+            let (seed, pan) = (self.seed(), self.rng.range(-0.9, 0.9));
+            self.push(self.now, Bus::Ambience, Box::new(Croak::new(sr, seed)), 0.09 * lv[FROGS].sqrt(), pan, 0.2);
+        }
+        if fire(0.06 * lv[OWLS], &mut self.rng) {
+            let (seed, pan) = (self.seed(), self.rng.range(-0.8, 0.8));
+            self.push(self.now, Bus::Ambience, Box::new(Hoot::new(sr, seed)), 0.1 * lv[OWLS].sqrt(), pan, 0.5);
+        }
         if fire(0.7 * lv[MAGMA], &mut self.rng) {
             let (hz, pan) = (self.rng.range(60.0, 120.0), self.rng.range(-0.6, 0.6));
             self.push(self.now, Bus::Ambience, Box::new(Blop::new(sr, hz)), 0.3 * lv[MAGMA], pan, 0.3);
@@ -431,7 +543,7 @@ impl Engine {
             let p = &mut self.player;
             let seed = if p.mood == Mood::Title && p.count == 0 { 1 } else { self.seed ^ p.count.wrapping_mul(7919) ^ fresh };
             p.count += 1;
-            p.piece = Some(compose(p.mood, p.season, seed));
+            p.piece = Some(compose(p.mood, p.season % 4 + 4 * p.tint.min(2), seed));
             p.start = self.now;
             p.next = 0;
         }
