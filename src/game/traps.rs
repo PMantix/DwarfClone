@@ -532,11 +532,28 @@ impl Game {
 
     /// The lever is thrown: linked doors lock or unlock, bridges rise or fall.
     pub fn pull_lever(&mut self, bld: u32) {
+        // (The pit bridge never rises with one of ours on it: pits.rs.)
+        let decks_up = || self.pits.decks.iter().any(|&p| self.buildings.get(&self.world.t(p).building).map_or(false, |b| b.kind == BuildingKind::Bridge && b.raised));
+        if self.pit_lever() == Some(bld) && !decks_up() && self.knob("pit.safe", 1.0) > 0.0 && self.pits.decks.iter().any(|&p| self.dwarves.iter().any(|d| d.alive && d.pos == p)) {
+            if let Some(l) = self.buildings.get_mut(&bld) {
+                l.pull = false;
+                l.worker = None;
+            }
+            return;
+        }
+        // The pit's lever raises every deck or lowers every deck: a half
+        // rebuilt while the rest stood raised would otherwise be thrown the
+        // other way at each pull, dropping whoever crossed it (pits.rs).
+        let pit_target = (self.pit_lever() == Some(bld) && self.knob("pit.safe", 1.0) > 0.0)
+            .then(|| !self.pits.decks.iter().any(|&p| self.buildings.get(&self.world.t(p).building).map_or(false, |b| b.kind == BuildingKind::Bridge && b.raised)));
         let Some(l) = self.buildings.get_mut(&bld) else { return };
         l.pull = false;
         l.worker = None;
-        l.raised = !l.raised;
-        let links = l.links.clone();
+        l.raised = pit_target.unwrap_or(!l.raised);
+        let mut links = l.links.clone();
+        if let Some(target) = pit_target {
+            links.retain(|t| self.buildings.get(t).map_or(true, |b| b.kind != BuildingKind::Bridge || b.raised != target));
+        }
         // Decks raised from under whoever stood on them (pits.rs).
         let mut dropped = Vec::new();
         for t in links {

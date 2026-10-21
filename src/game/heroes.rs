@@ -14,6 +14,7 @@ impl Game {
     /// `d` struck the blow that killed `c`.
     pub(super) fn credit_kill(&mut self, d: &mut Dwarf, c: &Creature) {
         d.kills += 1;
+        self.tower_kill(d, c);
         self.story_kill(d, c);
         self.weapon_blooded(d, c);
         let what = c.title();
