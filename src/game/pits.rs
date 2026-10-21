@@ -414,7 +414,9 @@ impl Game {
             return;
         }
         let decks = self.pits.decks.clone();
-        let in_pit = |p: Pos| decks.iter().any(|d| d.x == p.x && d.y == p.y && p.z < d.z && p.z >= d.z - PIT_DEPTH - 1);
+        // (Only the pit's own floor: a hall further down under it isn't the pit.)
+        let depth = if self.pits.depth > 0 { self.pits.depth } else { PIT_DEPTH };
+        let in_pit = |p: Pos| decks.iter().any(|d| d.x == p.x && d.y == p.y && p.z < d.z && p.z >= d.z - depth);
         let out: Option<Pos> = decks
             .iter()
             .flat_map(|d| crate::geom::DIRS4.iter().map(move |&(dx, dy)| d.offset(dx, dy, 0)))
