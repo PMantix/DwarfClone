@@ -126,6 +126,10 @@ pub struct Inspiration {
     /// Given up: the dreamer died, or lost heart.
     #[serde(default)]
     pub abandoned: bool,
+    /// With no rock for a new room, an old hall is being re-cut to the
+    /// plans instead (since when).
+    #[serde(default)]
+    pub remade: Option<u64>,
 }
 
 impl Inspiration {
@@ -212,6 +216,7 @@ impl Game {
             name: None,
             sulked: false,
             abandoned: false,
+            remade: None,
         });
         self.count("m2.inspired", 1);
         self.msg_at(&format!("{} is struck by a vision: {}! They look for a table to draw the plans.", name, work.dream()), (190, 160, 255), at, super::logkind::LogKind::Other);
@@ -403,6 +408,23 @@ impl Game {
             // No rock for it (or the room was given up): set aside, to be
             // taken up another time.
             let blocked = o.blocked.iter().any(|&(k, t)| k == RoomUse::Grand && t >= since);
+            // No rock for a new room: the fort's finest hall is re-cut to the plans.
+            let hall = o
+                .rooms
+                .iter()
+                .filter(|r| r.stage == 1 && matches!(r.kind, RoomUse::Grand | RoomUse::Dining | RoomUse::Meeting | RoomUse::Temple | RoomUse::Tavern) && !claimed.contains(&r.a))
+                .max_by_key(|r| (r.tiles.len(), r.a.x, r.a.y))
+                .cloned();
+            if let Some(h) = hall.filter(|_| blocked && ins.room.is_none()) {
+                let x = &mut self.inspirations.list[i];
+                x.room = Some(h.a);
+                x.remade = Some(tick);
+                x.work = x.work.as_cut(h.shape);
+                self.designate(h.a.offset(-1, -1, 0), h.b.offset(1, 1, 0), Desig::Smooth);
+                let who = self.dreamer(ins.dwarf).map(|d| d.called()).unwrap_or_default();
+                Self::note_as(o, tick, NoteKind::Ambition, format!("Found no rock for a new hall: had the {} re-cut to {}'s plans instead.", super::overseer::room_name(h.kind), who));
+                return;
+            }
             if ins.room.is_some() || blocked {
                 let x = &mut self.inspirations.list[i];
                 x.room = None;
@@ -423,7 +445,13 @@ impl Game {
             }
             return;
         };
-        if r.stage == 1 {
+        // (A hall re-cut to the plans is done once its walls are smooth.)
+        let recut = ins.remade.map_or(true, |since| {
+            let tiles: Vec<Pos> = if r.tiles.is_empty() { box_iter(r.a, r.b).collect() } else { r.tiles.clone() };
+            let smooth = tiles.iter().filter(|&&p| self.world.t(p).smooth > 0).count();
+            smooth * 4 >= tiles.len() * 3 || tick > since + DAY * 30
+        });
+        if r.stage == 1 && recut {
             self.finish_work(o, i, &r);
         }
     }

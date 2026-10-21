@@ -147,10 +147,10 @@ mod tests {
     fn same_story_after_refactor() {
         let t = run_trial(5003, Style::Steady, 1, &Knobs::default());
         let deaths: Vec<(u64, &str, &str)> = t.deaths.iter().map(|d| (d.tick, d.name.as_str(), d.cause.as_str())).collect();
-        assert_eq!(deaths, vec![(303707, "Vigdor Stonecrown", "struck down")]);
+        assert_eq!(deaths, vec![(303681, "Sorli Aleshaper", "struck down"), (303820, "Dorna Stonebeard", "struck down")]);
         let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
-        assert_eq!(sieges, vec![(203295, "goblins", 3, "withdrew"), (303495, "goblins", 8, "withdrew")]);
-        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (16, 32186, 29));
+        assert_eq!(sieges, vec![(203295, "goblins", 3, "withdrew"), (303395, "goblins", 8, "routed")]);
+        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (15, 31854, 33));
         assert_eq!(t.ambitions, ["Delve", "Muster", "Revel", "Provision", "Muster", "Revel", "Muster", "Revel", "Provision", "Delve", "Muster", "Fortify", "Architect", "Fortify", "Prosper", "Provision", "Delve"]);
     }
 
