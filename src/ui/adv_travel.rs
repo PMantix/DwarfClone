@@ -411,7 +411,8 @@ fn draw_help(f: &mut Frame, area: Rect) {
         ("Enter >", "go into the place here, or the wild land"),
         ("Z", "make camp until dawn (heals; the night may bring foes)"),
         ("s", "keep to cover: slower, fewer encounters, easier to slip away"),
-        ("Esc", "menu"),
+        ("F5 F9", "save · back to the last save (autosaved at each dawn)"),
+        ("Esc", "menu: save, save and quit"),
         ("", ""),
         ("T", "(in a place) take the road, from its edge or the open wild"),
     ];

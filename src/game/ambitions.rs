@@ -743,7 +743,8 @@ impl Game {
             let worth = match d.goal {
                 Goal::Beast(_) => 3,
                 Goal::Raid => 2,
-                Goal::Ruin => 1,
+                // O09: more than half of history forgotten makes ruins worth more (tales.rs).
+                Goal::Ruin => 1 + self.ruin_lore_worth(o),
             };
             (worth, -d.dist)
         });

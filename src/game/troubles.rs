@@ -78,6 +78,7 @@ impl Lack {
             Input::Thread => Lack::Thread,
             Input::Cloth => Lack::Cloth,
             Input::Hide | Input::Leather => Lack::Leather,
+            Input::Mechanism => Lack::Mechanism,
             _ => return None,
         })
     }

@@ -60,8 +60,12 @@ pub struct Adventure {
     /// The site the hero is in, its `Game` whole.
     #[serde(default)]
     pub visit: Option<Box<Visit>>,
+    /// Something met on the road and not yet fought or fled, held here
+    /// only while saved (the screen holds it in play: A11).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meet: Option<travel::Encounter>,
     /// What the hero changed in each site (a fort's save is its own memory).
-    #[serde(default)]
+    #[serde(default, with = "crate::saves::keyed")]
     pub memos: BTreeMap<SiteKey, SiteMemo>,
     #[serde(default)]
     pub fame: Fame,
@@ -208,6 +212,16 @@ pub struct Fame {
     pub by_civ: BTreeMap<u32, i32>,
     #[serde(default)]
     pub deeds: Vec<Deed>,
+    /// The hero's own saga so far (A10: `SagaKind::Wander`, dated in words
+    /// since the hero's ticks run on many clocks).
+    #[serde(default)]
+    pub saga: Option<crate::game::sagas::WorldSaga>,
+    /// How the run ended, as the world keeps it (A10; A19 records it).
+    #[serde(default)]
+    pub end: Option<fame::Ending>,
+    /// What `notice` has already counted (A10).
+    #[serde(default)]
+    pub seen: fame::Seen,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -303,6 +317,7 @@ impl Adventure {
             hero,
             company: Vec::new(),
             visit: None,
+            meet: None,
             memos: BTreeMap::new(),
             fame: Fame::default(),
             quests: Vec::new(),

@@ -64,9 +64,17 @@ pub(super) fn draw(f: &mut Frame, app: &App) {
     if s.view == View::Create {
         return super::adv_create::draw(f, area, s);
     }
+    // The end, and the saga so far (A10).
+    if matches!(s.view, View::Dead | View::Saga) {
+        return super::adv_end::draw(f, area, s);
+    }
     // Between sites: the world map and the road (A3).
     let Some(v) = s.adv.visit.as_ref() else {
-        return super::adv_travel::draw(f, area, s);
+        super::adv_travel::draw(f, area, s);
+        if let Some(w) = &s.page {
+            draw_writing(f, area, w);
+        }
+        return;
     };
     let side = if area.width >= 80 + SIDE_W { SIDE_W } else { 0 };
     let fold: u16 = if side == 0 { 2 } else { 0 };
@@ -822,7 +830,7 @@ fn draw_pick(f: &mut Frame, area: Rect, g: &Game, hero: usize, kind: Pick, ids: 
     popup(f, area, w, h, &format!(" {} ", kind.title()), v);
 }
 
-/// The menu (A11 adds saving).
+/// The menu: back, save, save and quit, quit.
 pub(super) fn draw_menu(f: &mut Frame, area: Rect, sel: usize) {
     let mut v: Vec<Line<'static>> = Vec::new();
     for (i, m) in MENU.iter().enumerate() {
@@ -854,7 +862,8 @@ fn draw_help(f: &mut Frame, area: Rect) {
         ("z", "status: body, wounds, skills, fame"),
         ("Z", "rest until healed or disturbed"),
         ("s", "sneak (slower, quieter)"),
-        ("Esc", "menu"),
+        ("F5 F9", "save · back to the last save"),
+        ("Esc", "menu: save, save and quit"),
     ];
     let mut v: Vec<Line<'static>> = rows.iter().map(|(k, d)| key_line(k, d, false)).collect();
     v.push(Line::default());

@@ -119,6 +119,9 @@ pub mod familytree;
 pub mod sounds;
 pub mod drills;
 pub mod sagas;
+// O09: ages named by the world, legends that drift, forgotten lore.
+pub mod ages;
+pub mod tales;
 // Milestone 2 (the overseer as a character), wave 0: stores the wave-1
 // packages fill in.
 pub mod memory;
@@ -138,6 +141,7 @@ pub mod ledger;
 pub mod masters;
 pub mod priority;
 pub mod inspire;
+pub mod clockwork;
 mod gatehouse;
 mod fit;
 mod m2;
@@ -145,6 +149,8 @@ pub mod lastwords;
 pub mod sound_reports;
 pub mod crafts;
 mod halls;
+pub mod pits;
+mod ponds;
 // Adventurer mode (G03): one hero against the world (game/adv/).
 pub mod adv;
 pub mod clock;
@@ -583,6 +589,9 @@ pub struct Game {
     /// Dwarves' ideas for great works (`inspire.rs`, O12).
     #[serde(default)]
     pub inspirations: inspire::Inspirations,
+    /// The pit bridge and what has fallen into it (O04, pits.rs).
+    #[serde(default)]
+    pub pits: pits::Pits,
     /// The overseer's dwarf has just died: (id, cause), for `reign.rs` (O07).
     #[serde(default)]
     pub ov_fell: Option<(u32, String)>,
@@ -623,6 +632,9 @@ pub struct Game {
     /// Squads at drill in the barracks: who spars with whom, and what to draw (`drills.rs`).
     #[serde(default)]
     pub drills: drills::Drills,
+    /// What the year did to the world's lore, for the chronicle (`tales.rs`).
+    #[serde(default)]
+    pub lore: tales::Lore,
 }
 
 impl Game {
@@ -674,6 +686,8 @@ impl Game {
         g.place_necromancer();
         g.make_lairs(seed);
         g.place_remains();
+        // O09: what the fortress knows of history, and what it has forgotten (tales.rs).
+        g.forget_lore();
         report("Strike the earth!", 1.0);
         g
     }
@@ -744,6 +758,7 @@ impl Game {
             ledger: Default::default(),
             prio: Default::default(),
             inspirations: Default::default(),
+            pits: Default::default(),
             ov_fell: None,
             zone_over: HashMap::new(),
             beasts_seen: Vec::new(),
@@ -813,6 +828,7 @@ impl Game {
             culture: Default::default(),
             sounds: Vec::new(),
             drills: drills::Drills::default(),
+            lore: Default::default(),
         }
     }
 
@@ -1944,7 +1960,7 @@ impl Game {
             Task::Harvest { pos } | Task::Gather { pos } | Task::Clean { pos } => {
                 self.claimed.remove(&pos);
             }
-            Task::Eat { item } | Task::DrinkItem { item } | Task::Equip { item } => self.unclaim(item),
+            Task::Eat { item } | Task::DrinkItem { item } | Task::Equip { item } | Task::Pond { bucket: item } => self.unclaim(item),
             Task::Dine { item, seat } => {
                 self.unclaim(item);
                 if let Some(b) = self.buildings.get_mut(&seat) {
@@ -2951,6 +2967,7 @@ impl Game {
                         made_ids.push(id);
                     }
                     self.crafts_made(d, recipe, &used, &made_ids);
+                    self.clockwork_made(d, recipe, &used, &made_ids);
                     self.ledger_made(d.id, &made_ids);
                     made = made_ids.iter().filter_map(|id| self.items.get(id)).map(|it| it.name()).collect();
                     self.culture_crafted(d, &made_ids);
@@ -2973,11 +2990,15 @@ impl Game {
                         k => format!("{} x{}", made[0], k),
                     };
                     let who = d.name.clone();
-                    self.msg(&format!("{} has made {}.", who, n), (190, 190, 190));
+                    // (An automaton walks off the bench, and a tuning makes nothing: clockwork.rs tells those.)
+                    if !made.is_empty() {
+                        self.msg(&format!("{} has made {}.", who, n), (190, 190, 190));
+                    }
                 }
             }
             Task::Gather { pos } => self.do_gather(d, pos),
             Task::Clean { pos } => self.do_clean(d, pos),
+            Task::Pond { bucket } => self.do_pond(d, bucket),
             Task::Fish { stand } => self.do_fish(d, stand),
             Task::Plant { pos, .. } | Task::Harvest { pos } => {
                 let harvest = matches!(d.task, Task::Harvest { .. });
@@ -3196,6 +3217,10 @@ impl Game {
                     self.world.t_mut(up).kind = TileKind::Open;
                     self.drop_items_at(up);
                 }
+            }
+            // Under a drawbridge: a pit beneath its deck (pits.rs).
+            Desig::Channel if self.building_at(q) == Some(BuildingKind::Bridge) => {
+                drop_at = self.channel_under_bridge(q).unwrap_or(q);
             }
             Desig::Channel => {
                 self.world.t_mut(q).kind = TileKind::Open;

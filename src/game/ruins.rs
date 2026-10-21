@@ -127,6 +127,7 @@ impl Game {
         );
         self.legend(format!("The miners of {} broke into {}, sealed since a forgotten age.", fort, v.name));
         self.year_log.ruin = Some(v.name.clone());
+        self.lore_from_vault();
         self.milestone("vault", &format!("Broke into {}", v.name));
         self.pause_request = true;
         // Treasure, and one thing of legend.

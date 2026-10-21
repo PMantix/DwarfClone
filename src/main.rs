@@ -47,6 +47,11 @@ fn restore_terminal() {
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
+    // (Before `--compare`: the adventure batch compares its own files.)
+    if args.iter().any(|a| a == "--adventure-trial") {
+        game::adv::bot::trial_batch(&args);
+        return Ok(());
+    }
     if let Some(i) = args.iter().position(|a| a == "--compare") {
         // `--compare before.json after.json`: two saved batches side by side.
         let load = |p: Option<&String>| -> Result<Vec<game::Trial>> {
@@ -64,10 +69,6 @@ fn main() -> Result<()> {
     }
     if args.iter().any(|a| a == "--autoplay") {
         autoplay_batch(&args);
-        return Ok(());
-    }
-    if args.iter().any(|a| a == "--adventure-trial") {
-        game::adv::bot::trial_batch(&args);
         return Ok(());
     }
     let seed = std::env::args()

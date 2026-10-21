@@ -283,6 +283,160 @@ pub fn compare(a: &[Trial], b: &[Trial], years: usize) -> String {
     s
 }
 
+/// The adventure batch's report (A18): how the adventurers ended, by goal
+/// and by leg of the journey, what killed them, and the days, kills, loot
+/// and fame of the lot. Given a second batch, the two side by side.
+pub fn adventures(a: &[crate::game::adv::bot::AdvTrial], b: Option<&[crate::game::adv::bot::AdvTrial]>) -> String {
+    use crate::game::adv::bot::{AdvTrial, Fate, Goal, Leg};
+    // Each batch as rows of (label, value); a label of "#…" heads a section.
+    let rows = |t: &[AdvTrial]| -> Vec<(String, String)> {
+        let mut v: Vec<(String, String)> = Vec::new();
+        let mut row = |k: &str, val: String| v.push((k.to_string(), val));
+        let n = t.len();
+        let of = |f: &dyn Fn(&AdvTrial) -> bool| t.iter().filter(|x| f(x)).count();
+        let frac = |k: usize, of: usize| format!("{}/{} {}", k, of, pct(k, of));
+        let mean = |f: &dyn Fn(&AdvTrial) -> f64, among: &[&AdvTrial]| if among.is_empty() { "-".to_string() } else { format!("{:.1}", among.iter().map(|x| f(x)).sum::<f64>() / among.len() as f64) };
+        let all: Vec<&AdvTrial> = t.iter().collect();
+        let dead: Vec<&AdvTrial> = t.iter().filter(|x| x.fate == Fate::Died).collect();
+        row("#How they ended", String::new());
+        row("came home", frac(of(&|x| x.fate == Fate::Home), n));
+        row("died", frac(dead.len(), n));
+        row("lost (days ran out)", frac(of(&|x| x.fate == Fate::Lost), n));
+        row("#By goal: home / reached / cleared", String::new());
+        for g in Goal::ALL {
+            let k = of(&|x| x.goal == g);
+            if k > 0 {
+                let home = of(&|x| x.goal == g && x.fate == Fate::Home);
+                let (reached, cleared) = (of(&|x| x.goal == g && x.reached), of(&|x| x.goal == g && x.cleared));
+                row(&format!("{} ({} runs)", g.name(), k), format!("{} {} / {} / {}", home, pct(home, k), reached, cleared));
+            }
+        }
+        row("#Where the dead fell", String::new());
+        for l in Leg::ALL {
+            let k = dead.iter().filter(|x| x.leg == Some(l)).count();
+            row(l.words(), format!("{} {}", k, pct(k, dead.len())));
+        }
+        // "struck down by a goblin in Copper Gate": the cause without the place.
+        let mut causes: BTreeMap<String, usize> = BTreeMap::new();
+        let mut killers: BTreeMap<String, usize> = BTreeMap::new();
+        for x in &dead {
+            let c = x.cause.as_deref().unwrap_or("died");
+            let c = c.split(" in ").next().unwrap_or(c).split(" by ").next().unwrap_or(c);
+            let c = c.split(" on the road").next().unwrap_or(c);
+            *causes.entry(c.trim().to_string()).or_default() += 1;
+            if let Some(k) = &x.killer {
+                *killers.entry(k.clone()).or_default() += 1;
+            }
+        }
+        row("#Causes of death", String::new());
+        for (c, k) in causes {
+            row(&c, k.to_string());
+        }
+        if !killers.is_empty() {
+            row("#Killed by", String::new());
+            for (c, k) in killers {
+                row(&c, k.to_string());
+            }
+        }
+        row("#Per adventurer", String::new());
+        row("days out", mean(&|x| x.days as f64, &all));
+        row("days, the dead", mean(&|x| x.days as f64, &dead));
+        row("cells walked", mean(&|x| x.cells as f64, &all));
+        row("road fights", mean(&|x| x.fights as f64, &all));
+        row("encounters slipped", mean(&|x| x.evaded as f64, &all));
+        row("kills", mean(&|x| x.kills as f64, &all));
+        row("killed something", frac(of(&|x| x.kills > 0), n));
+        let home: Vec<&AdvTrial> = t.iter().filter(|x| x.fate == Fate::Home).collect();
+        row("brought loot home", frac(home.iter().filter(|x| !x.loot.is_empty()).count(), n));
+        row("loot worth, home", mean(&|x| x.loot_value as f64, &home));
+        row("a relic home", frac(home.iter().filter(|x| x.artifact).count(), n));
+        row("renown", mean(&|x| x.renown as f64, &all));
+        row("deeds", mean(&|x| x.deeds as f64, &all));
+        row("epithets earned", of(&|x| x.epithet.is_some()).to_string());
+        v
+    };
+    let knobs = |t: &[AdvTrial]| {
+        let mut sets: Vec<String> = t.iter().map(|x| x.knobs.iter().map(|(k, v)| format!("{}={}", k, v)).collect::<Vec<_>>().join(" ")).collect();
+        sets.sort();
+        sets.dedup();
+        sets.into_iter().map(|s| if s.is_empty() { "defaults".to_string() } else { s }).collect::<Vec<_>>().join(" | ")
+    };
+    let mut s = String::new();
+    let line = |s: &mut String, k: &str, a: &str, b: Option<&str>| {
+        let _ = match (k.strip_prefix('#'), b) {
+            (Some(h), _) => writeln!(s, "\n  {}:", h),
+            (None, Some(b)) => writeln!(s, "    {:<34} {:>14} {:>14}", k, a, b),
+            (None, None) => writeln!(s, "    {:<34} {:>14}", k, a),
+        };
+    };
+    let ra = rows(a);
+    match b {
+        None => {
+            let _ = writeln!(s, "\n  Adventurers: {} (knobs: {})", a.len(), knobs(a));
+            for (k, v) in &ra {
+                line(&mut s, k, v, None);
+            }
+        }
+        Some(b) => {
+            let rb = rows(b);
+            let _ = writeln!(s, "\n    {:<34} {:>14} {:>14}", "", "before", "after");
+            let _ = writeln!(s, "    knobs before: {}\n    knobs after:  {}", knobs(a), knobs(b));
+            // Every row of either, section by section, the first batch's order first.
+            let sections = |r: &[(String, String)]| {
+                let mut out: Vec<(String, Vec<String>)> = Vec::new();
+                for (k, _) in r {
+                    match k.strip_prefix('#') {
+                        Some(_) => out.push((k.clone(), Vec::new())),
+                        None => {
+                            if let Some(last) = out.last_mut() {
+                                last.1.push(k.clone());
+                            }
+                        }
+                    }
+                }
+                out
+            };
+            let mut merged = sections(&ra);
+            for (h, ks) in sections(&rb) {
+                match merged.iter().position(|m| m.0 == h) {
+                    Some(i) => {
+                        for k in ks {
+                            if !merged[i].1.contains(&k) {
+                                merged[i].1.push(k);
+                            }
+                        }
+                    }
+                    None => merged.push((h, ks)),
+                }
+            }
+            let get = |r: &[(String, String)], h: &str, k: &str| {
+                let from = r.iter().position(|x| x.0 == h).map_or(r.len(), |i| i + 1);
+                r[from..].iter().take_while(|x| !x.0.starts_with('#')).find(|x| x.0 == k).map_or("-".to_string(), |x| x.1.clone())
+            };
+            for (h, ks) in &merged {
+                line(&mut s, h, "", None);
+                for k in ks {
+                    line(&mut s, k, &get(&ra, h, k), Some(&get(&rb, h, k)));
+                }
+            }
+            let changed: Vec<String> = a
+                .iter()
+                .filter_map(|x| {
+                    let y = b.iter().find(|y| y.seed == x.seed)?;
+                    (x.fate != y.fate || x.leg != y.leg).then(|| format!("    seed {} ({}): {:?} {} → {:?} {}", x.seed, x.goal.name(), x.fate, x.leg.map_or("", |l| l.words()), y.fate, y.leg.map_or("", |l| l.words())))
+                })
+                .collect();
+            if !changed.is_empty() {
+                let _ = writeln!(s, "\n  Adventurers whose fate changed:");
+                for c in changed {
+                    let _ = writeln!(s, "{}", c);
+                }
+            }
+        }
+    }
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

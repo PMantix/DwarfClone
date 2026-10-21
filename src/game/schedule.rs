@@ -80,6 +80,8 @@ impl Game {
             self.sagas_daily();
             // O10: the prospector's report, on the first morning (veins.rs).
             self.prospect_daily();
+            // O12: automatons wear and are wound, trinkets find their rooms (clockwork.rs).
+            self.clockwork_daily();
         }
         if tick % SEASON == 0 { self.season_turns(); }
         // Interface flair: the highlight reel films its next frame.
@@ -98,6 +100,8 @@ impl Game {
         let s = SEASONS[season as usize];
         self.msg(&format!("{} has arrived.", s), (200, 200, 255));
         self.autosave_request = true;
+        // O09: a new age and the old tales retold, before the chronicle tells them (tales.rs).
+        if season == 0 { self.lore_new_year(); }
         if season == 0 { self.write_chronicle(); self.new_year(); }
         self.seasonal_ice(season);
         if season == 1 || season == 2 { self.migrants(); }
@@ -147,11 +151,11 @@ mod tests {
     fn same_story_after_refactor() {
         let t = run_trial(5003, Style::Steady, 1, &Knobs::default());
         let deaths: Vec<(u64, &str, &str)> = t.deaths.iter().map(|d| (d.tick, d.name.as_str(), d.cause.as_str())).collect();
-        assert_eq!(deaths, vec![(303681, "Sorli Aleshaper", "struck down"), (303820, "Dorna Stonebeard", "struck down")]);
+        assert_eq!(deaths, vec![(296860, "Vigdor Hammerforge", "struck down")]);
         let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
-        assert_eq!(sieges, vec![(203295, "goblins", 3, "withdrew"), (303395, "goblins", 8, "routed")]);
-        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (15, 31854, 33));
-        assert_eq!(t.ambitions, ["Delve", "Muster", "Revel", "Provision", "Muster", "Revel", "Muster", "Revel", "Provision", "Delve", "Muster", "Fortify", "Architect", "Fortify", "Prosper", "Provision", "Delve"]);
+        assert_eq!(sieges, vec![(203295, "goblins", 3, "withdrew"), (303495, "goblins", 9, "withdrew")]);
+        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (16, 32933, 24));
+        assert_eq!(t.ambitions, ["Delve", "Muster", "Revel", "Provision", "Muster", "Revel", "Muster", "Revel", "Provision", "Delve", "Muster", "Delve", "Venture"]);
     }
 
     /// The survival items' tasks save and load by name, and a dwarf given one

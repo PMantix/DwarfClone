@@ -48,6 +48,8 @@ impl Game {
         self.ov_memorial(o);
         // O12: the plans it took up, cut, named and celebrated (inspire.rs).
         self.ov_inspirations(o);
+        // O12: automatons and trinkets from the mechanic (clockwork.rs).
+        self.ov_clockwork(o);
         let _ = o;
     }
 
@@ -62,6 +64,8 @@ impl Game {
         self.ov_rescue(o);
         self.ov_hunts(o);
         self.ov_towers_alert(o);
+        // O04: the pit bridge's lever, thrown under the enemy (pits.rs).
+        self.ov_pit_alert(o);
         self.ov_shelter_alert(o);
         // G01: war-game a coming siege in the arena.
         self.ov_wargame(o);
@@ -105,6 +109,7 @@ impl Game {
         self.shelter_after_siege(i);
         // M2 O04: the trap hall's toll (before the naming: it may be where it broke).
         self.trap_hall_toll(i);
+        self.pit_toll(i);
         // Stories: the fight gets a name.
         self.name_siege(i);
         // ...and the hall or the gate where it broke a name (naming.rs).

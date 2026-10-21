@@ -48,6 +48,9 @@ pub enum Species {
     Spawn,
     /// An animal of the bestiary (`crate::bestiary::BEASTS`), by its index.
     Beast(u16),
+    /// A clockwork made by a mechanic (O12, `game/clockwork.rs`): a guard,
+    /// a hauler or a gatekeeper of brass and springs.
+    Automaton,
 }
 
 pub struct SpeciesInfo {
@@ -99,7 +102,7 @@ impl Species {
         if let Species::Beast(i) = self {
             return crate::bestiary::beast(i).has(crate::bestiary::TAMEABLE);
         }
-        !self.person() && !matches!(self, Species::Troglodyte | Species::Megabeast | Species::CaveHorror | Species::Skulker | Species::Undead)
+        !self.person() && !matches!(self, Species::Troglodyte | Species::Megabeast | Species::CaveHorror | Species::Skulker | Species::Undead | Species::Automaton)
     }
 
     /// Most young in one birth.
@@ -567,6 +570,22 @@ impl Species {
                 mover: Mover::Goblin,
                 edged: false,
             },
+            // Only ever hostile when it has gone haywire.
+            Species::Automaton => SpeciesInfo {
+                name: "automaton",
+                plural: "automatons",
+                glyph: 'Ä',
+                color: (215, 175, 90),
+                scale: 1.1,
+                damage: 6.0,
+                verb: "hammers",
+                move_delay: 4,
+                attack_delay: 10,
+                aggro: 6,
+                skill: 4,
+                mover: Mover::Dwarf,
+                edged: false,
+            },
             Species::Spawn => SpeciesInfo {
                 name: "spawn",
                 plural: "spawn",
@@ -747,6 +766,73 @@ pub struct Creature {
     /// is back in the lair's numbers once gone (`game::lairs`).
     #[serde(default)]
     pub lost_home: bool,
+    /// Ticks spent under deep water (a pond, `game::pits`): it drowns.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub drown: u32,
+    /// An automaton's springs and gears (O12, `game/clockwork.rs`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clockwork: Option<Box<Clockwork>>,
+}
+
+/// What an automaton was built to do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AutoKind {
+    /// Stands at a post and goes for anything hostile that comes near.
+    Guard,
+    /// Carries loose goods to the stockpiles.
+    Hauler,
+    /// Holds the gate: it never leaves it, and it is built heavy.
+    Gatekeeper,
+}
+
+impl AutoKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            AutoKind::Guard => "clockwork guard",
+            AutoKind::Hauler => "clockwork hauler",
+            AutoKind::Gatekeeper => "clockwork gatekeeper",
+        }
+    }
+}
+
+/// An automaton's state: its post, how much spring it has left, how worn
+/// its gears are, and whether it has gone haywire.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Clockwork {
+    pub kind: AutoKind,
+    /// Where it stands (guards and gatekeepers).
+    #[serde(default)]
+    pub post: Option<Pos>,
+    /// It runs down at this tick unless a mechanic winds it first.
+    pub wound_until: u64,
+    /// 0 (fresh from the workshop) to 100 (falling to pieces).
+    pub wear: u32,
+    /// How well it was made (the item quality scale, 0..5).
+    pub quality: u8,
+    /// The mechanic who made it.
+    #[serde(default)]
+    pub maker: Option<u32>,
+    /// Gone haywire until this tick (0: in its right gears).
+    #[serde(default)]
+    pub haywire_until: u64,
+    /// Seized up: it stands still until it is serviced.
+    #[serde(default)]
+    pub broken: bool,
+    /// A hauler's load, and where it is taking it.
+    #[serde(default)]
+    pub load: Option<u32>,
+    #[serde(default)]
+    pub dest: Option<Pos>,
+    /// Foes it has struck down.
+    #[serde(default)]
+    pub kills: u32,
+    /// The fort has been told it stopped (run down or seized up).
+    #[serde(default)]
+    pub noted: bool,
+}
+
+fn is_zero(v: &u32) -> bool {
+    *v == 0
 }
 
 fn yes() -> bool {
@@ -798,15 +884,17 @@ impl Creature {
             wary_until: 0,
             foe: None,
             fears_fire: false,
+            drown: 0,
             lair: None,
             lost_home: false,
+            clockwork: None,
         }
     }
 
     /// Megabeasts, cave horrors and the walking dead: they hunt to the
     /// death and never break and run.
     pub fn legendary(&self) -> bool {
-        self.figure.is_some() || matches!(self.species, Species::CaveHorror | Species::Undead)
+        self.figure.is_some() || matches!(self.species, Species::CaveHorror | Species::Undead | Species::Automaton)
     }
 
     /// Dangerous and known about: sneaks don't count until they're spotted.

@@ -341,12 +341,12 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
   drawbridge, then towers with fortifications (towers: ad88122, on the surface: a curtain
   wall with gate towers, battlements, a walkway, an arch and a drawbridge; watchtowers whose
   watch sees armies sooner; marksdwarves shoot down from the towers; the trap hall behind the
-  gate's cages, named like a mouth, "the Hall of Teeth", this commit; made to kill, a70e977 and 25411f1: a let-in overseer clears the near row of cages and shuts the army in from a second lever behind the hall, trap-wounded bleed-outs count in its toll, about a third of the goblins that come in die of it) · [x] Warlord and cautious
+  gate's cages, named like a mouth, "the Hall of Teeth", this commit; made to kill, a70e977 and 25411f1: a let-in overseer clears the near row of cages and shuts the army in from a second lever behind the hall, trap-wounded bleed-outs count in its toll, about a third of the goblins that come in die of it; a pit bridge past the hall, this commit: a two-wide drawbridge on its own lever with a pit two levels deep cut under it, raised under the enemy as they crowd onto it, the fall breaking bones, "the Belly" filled from the well as a pond that drowns them) · [x] Warlord and cautious
   overseers build them sooner (the walls and towers, ad88122; the trap hall at once, and a bold
   or warlike overseer lets the army into it before raising the bridge, this commit) · [ ] a siege that breaks on
   the defences goes into the legends (partly: a siege with
   blood spilt is named and goes into the legends, 15be5b2; one that breaks bloodless on the walls doesn't)
-- **From the Bay 12 review:** [x] Pressure plates ([ENG-06](ideas/economy.md), this commit: a foe's weight fires the spikes they're linked to) · [x] Upright spikes ([ENG-04](ideas/economy.md), this commit: fired by a plate or a lever) · [ ] Pits and ponds ([ENG-03](ideas/economy.md)) · [x] Traps jammed with bodies ([ENG-01](ideas/economy.md), this commit: two bodies or cages on a trap jam it; the overseer has them dragged out after a siege) · [ ] Trapdoors and chutes ([ENG-07](ideas/economy.md)) · [ ] Nets and tripwires ([ENG-08](ideas/economy.md); partly: tripwires of thread throw a foe down under the traps behind, this commit, headlong onto the spikes, which the wire springs, a70e977; no nets) · [x] Better traps ([ENG-19](ideas/economy.md), this commit: stone-fall traps drop their stone three times; weapon traps already strike three) · [ ] Moats and wide drawbridges ([ENG-20](ideas/economy.md)) · [ ] Deliberate flooding ([ENG-02](ideas/economy.md))
+- **From the Bay 12 review:** [x] Pressure plates ([ENG-06](ideas/economy.md), this commit: a foe's weight fires the spikes they're linked to) · [x] Upright spikes ([ENG-04](ideas/economy.md), this commit: fired by a plate or a lever) · [x] Pits and ponds ([ENG-03](ideas/economy.md), this commit: a pit under a drawbridge, filled bucket by bucket from the well; what falls in and can't swim drowns) · [x] Traps jammed with bodies ([ENG-01](ideas/economy.md), this commit: two bodies or cages on a trap jam it; the overseer has them dragged out after a siege) · [ ] Trapdoors and chutes ([ENG-07](ideas/economy.md); partly, this commit: channel under any drawbridge and raising it drops whoever stands on it into the pit like a trapdoor; no hatches or chutes) · [ ] Nets and tripwires ([ENG-08](ideas/economy.md); partly: tripwires of thread throw a foe down under the traps behind, this commit, headlong onto the spikes, which the wire springs, a70e977; no nets) · [x] Better traps ([ENG-19](ideas/economy.md), this commit: stone-fall traps drop their stone three times; weapon traps already strike three) · [x] Moats and wide drawbridges ([ENG-20](ideas/economy.md), this commit: the pit bridge, two wide on one lever, over a dug pit that becomes a pond) · [ ] Deliberate flooding ([ENG-02](ideas/economy.md))
 - **Done when:** a Warlord fort has a moat and a trap corridor before its third siege.
 
 #### O05 Spectator mode (M)
@@ -371,7 +371,7 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O09 Legends worth telling (M)
 - **Why:** The fort's history should read like a saga in the overseer's voice: named battles, named places, remembered battlefields.
-- **Steps:** [x] Named episodes and battles ([WLD-01](ideas/world-and-overseer.md), 15be5b2) · [x] Old battlefields remembered ([WLD-12](ideas/world-and-overseer.md); the place is named and later fights there are named after it, 6567979; bones left lying, passers-by remember, anniversary vigils and feasts, ghosts walk the field, the overseer's memorial slab, this commit) · [ ] Ages named by the world ([WLD-13](ideas/world-and-overseer.md)) · [x] Sagas: named story arcs told on illuminated cards (f9d85c0, bde720d, this commit) · [ ] Legends that drift ([WLD-09](ideas/world-and-overseer.md)) · [ ] Forgotten lore ([WLD-18](ideas/world-and-overseer.md))
+- **Steps:** [x] Named episodes and battles ([WLD-01](ideas/world-and-overseer.md), 15be5b2) · [x] Old battlefields remembered ([WLD-12](ideas/world-and-overseer.md); the place is named and later fights there are named after it, 6567979; bones left lying, passers-by remember, anniversary vigils and feasts, ghosts walk the field, the overseer's memorial slab, this commit) · [x] Ages named by the world ([WLD-13](ideas/world-and-overseer.md); this commit: history read into named ages, a new age called at the turn of a year when the world changes, a legend and a chronicle line, the legends header names it) · [x] Sagas: named story arcs told on illuminated cards (f9d85c0, bde720d, this commit) · [x] Legends that drift ([WLD-09](ideas/world-and-overseer.md); this commit: old tales grow, take a hero's name, turn to "They say..." or fade unless carved; each people tells them its own way (`tales::tale_for` for A7); bards make tales up) · [x] Forgotten lore ([WLD-18](ideas/world-and-overseer.md); this commit: at embark all but our people, the country round and living memory is forgotten, gaps in the legends; ruin expeditions, the sealed hall and bards bring it back; the overseer values ruins more when most is lost)
 - **Done when:** A siege goes into the chronicle under a name, and the place it broke is named after it.
 
 #### O10 A miner's craft (M)
@@ -386,7 +386,7 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
 
 #### O12 Inspired engineers (M)
 - **Why:** Great works should come from named dwarves with ideas, giving the overseer ambitions it didn't plan.
-- **Steps:** [ ] Blueprints ([CRF-03](ideas/economy.md)) · [ ] Automatons ([CRF-28](ideas/economy.md)) · [ ] Luxury trinkets ([CRF-35](ideas/economy.md))
+- **Steps:** [ ] Blueprints ([CRF-03](ideas/economy.md)) · [x] Automatons ([CRF-28](ideas/economy.md); guards, haulers and gatekeepers a mechanic builds, wound and oiled or they run down, seize up or go haywire, this commit) · [x] Luxury trinkets ([CRF-35](ideas/economy.md); music boxes, clockwork birds, orreries: titled nobles demand them, one in a room adds to its value and cheers its owner, this commit)
 - **Done when:** A dwarf's inspiration becomes an overseer ambition and a finished work bearing their name.
 
 ### Milestone 3: the fort as a society (v0.5)
@@ -755,14 +755,16 @@ Goal: the same world and simulation, seen from other seats.
 - **Needs:** Milestone 4's living world (the world tick, sites as places, news) and Milestone
   8's fallen forts (ruins to explore).
 - **Steps:** [x] make a character (race, skills, gear) and start at a site (A1, this commit) · [x] travel the
-  world map; enter sites as local maps (towns, ruins, lairs, caves) (sites built on entry from the legends, with site memory: A4 3769753; the road with its travel log, night, weather, encounters, camps and wounds that bleed on the way: A3 31a02ad) · [ ] talk: hear news and
+  world map; enter sites as local maps (towns, ruins, lairs, caves) (sites built on entry from the legends, with site memory: A4 3769753; the road with its travel log, night, weather, encounters, camps and wounds that bleed on the way: A3 31a02ad; saved and loaded whole, the road's encounters and a fallen fort's halls too (Esc menu, F5/F9, autosaves going in and out of sites and at each dawn on the road): A11 a90bc86) · [ ] talk: hear news and
   rumours, take jobs, hire companions · [x] fight with the same body and wounds as fortress
-  mode; loot; rest and heal (aimed blows and called shots at the eyes and teeth, crossbow bolts seen to fly, binding wounds, the dead's gear taken, the fight's blood drawn on the adventure map: A6, this commit) · [ ] fame and infamy in the legends; visit or reclaim your old
+  mode; loot; rest and heal (aimed blows and called shots at the eyes and teeth, crossbow bolts seen to fly, binding wounds, the dead's gear taken, the fight's blood drawn on the adventure map: A6, this commit) · [x] fame and infamy in the legends (deeds counted after every act: beasts of legend slain, names won, ruins dared, treasure taken and brought home; townsfolk murdered for infamy; each a chapter of the hero's Wander saga, the great ones legends: A10, this commit); visit or reclaim your old
   forts (visit: a fallen fort entered from its own save, its killer moved in, its saga, journal
-  and walls to read, and looting written back to the save after a backup: A5 df2b3d8) · [ ] death ends it, and the world remembers
+  and walls to read, and looting written back to the save after a backup: A5 df2b3d8) · [x] death ends it, and the world remembers (the end page leads with the hero's saga; the hero a figure of the legends, their bones and gear left where they fell for the next hero to find; `n` a fort in this world, `a` another hero; `S` then `R` retires a hero in a friendly town: A10, this commit)
 - **Done when:** a character can leave a town, find a ruin from a fallen fort, fight what lives
-  there, and come back with its treasure recorded in the legends. (Tested, with the travel
-  and the bot's walking left to A3 and A18: `a_hero_brings_home_the_treasure_of_a_fallen_fort`.)
+  there, and come back with its treasure recorded in the legends. (Tested with real travel both ways and real fights, a scripted walker in place of A18's bot; the first
+  three heroes die on the road or in the ruin before one comes home:
+  `a_hero_walks_home_with_the_treasure_of_a_fallen_fort`.)
+- **Measured by:** the adventure bot and its batch (A18, 759fecc): `--adventure-trial --runs N` plays heroes to a fallen fort, a lair and a ruin in turn and reports how they ended, where and to what, with days, kills, loot and fame; `--adventure-trial --compare A B`.
 
 ### Later
 

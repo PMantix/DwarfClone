@@ -497,6 +497,7 @@ impl Game {
         let (what, loot): (String, Vec<(ItemKind, Mat)>) = match dest.goal {
             Goal::Ruin => {
                 self.earn_epithet(&mut leader, "Delver", super::heroes::RANK_FEAT + 1, &format!("explored {}", dest.name));
+                self.lore_from_ruin(dest.site);
                 ("explored".into(), vec![(ItemKind::Craft, Mat::Gold), (ItemKind::Gem, Mat::Amethyst), (ItemKind::Bar, Mat::Gold), (ItemKind::Craft, Mat::Marble)])
             }
             Goal::Raid => {

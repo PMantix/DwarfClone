@@ -24,6 +24,7 @@ use crate::items::ItemKind;
 use crate::material::Mat;
 use crate::overworld::{Biome, Overworld, Race, SiteKind};
 use crate::rng::Rng;
+use serde::{Deserialize, Serialize};
 
 /// What a step on the world map came to.
 #[derive(Clone, Debug, PartialEq)]
@@ -36,7 +37,7 @@ pub enum TravelOutcome {
 }
 
 /// Who is met on the road.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EncKind {
     /// The land's own hunters: a pack, or one rare and terrible beast.
     Beasts,
@@ -50,8 +51,8 @@ pub enum EncKind {
     Legend,
 }
 
-/// Something met on the road (A3).
-#[derive(Clone, Debug, PartialEq)]
+/// Something met on the road (A3); saved while it waits on the player (A11).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Encounter {
     pub kind: EncKind,
     /// The announcement ("Wolves! Six of them, coming out of the pines.").

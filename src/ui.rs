@@ -23,6 +23,7 @@ mod life;
 mod family;
 mod units;
 mod ledger;
+mod lore;
 pub mod saga;
 mod moodstrip;
 mod ambient;
@@ -34,6 +35,7 @@ mod looks;
 pub(crate) mod adventure;
 mod adv_create;
 mod adv_travel;
+mod adv_end;
 pub(crate) use looks::tile_look;
 use looks::foliage;
 
@@ -253,7 +255,7 @@ fn draw_map(f: &mut Frame, app: &mut App, area: Rect) {
             ('D', (255, 90, 40))
         } else if c.species == crate::creature::Species::Undead && c.general.is_some() {
             ('N', (190, 110, 240))
-        } else if let Some(look) = g.kin_look(c) {
+        } else if let Some(look) = g.kin_look(c).or_else(|| g.clockwork_look(c)) {
             look
         } else {
             (info.glyph, info.color)
@@ -634,6 +636,7 @@ fn task_desc(g: &Game, d: &Dwarf) -> String {
         Task::Harvest { .. } => "Harvesting".into(),
         Task::Gather { .. } => "Gathering plants".into(),
         Task::Clean { .. } => "Cleaning up blood".into(),
+        Task::Pond { .. } => "Filling the pond".into(),
         Task::Fish { .. } => "Fishing".into(),
         Task::Eat { .. } => "Eating".into(),
         Task::DrinkItem { .. } | Task::DrinkWater { .. } => "Drinking".into(),
@@ -2782,11 +2785,12 @@ fn legends_lines(ow: &Overworld, tab: usize) -> Vec<Line<'static>> {
     }
 }
 
-fn draw_legends(f: &mut Frame, area: Rect, ow: &Overworld, tab: usize, scroll: usize, seen: &[u16]) {
+fn draw_legends(f: &mut Frame, area: Rect, ow: &Overworld, tab: usize, scroll: usize, seen: &[u16], from_world: bool) {
     let w = area.width.saturating_sub(6).min(120);
     let h = area.height.saturating_sub(4);
     let r = Rect::new(area.x + (area.width - w) / 2, area.y + 2, w, h);
-    let lines = if tab == 6 { bestiary_lines(ow, seen) } else { legends_lines(ow, tab) };
+    // History: by ages, with retellings and forgotten gaps (O09, ui/lore.rs).
+    let lines = if tab == 6 { bestiary_lines(ow, seen) } else if tab == 0 { lore::history_lines(ow, from_world) } else { legends_lines(ow, tab) };
     // The gods' myths run long: wrap them to the window.
     let lines = if tab == 5 { wrap_lines(lines, w.saturating_sub(2) as usize) } else { lines };
     let visible = h.saturating_sub(4) as usize;
@@ -2809,7 +2813,7 @@ fn draw_legends(f: &mut Frame, area: Rect, ow: &Overworld, tab: usize, scroll: u
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(KEY))
-                    .title(Span::styled(format!(" Legends of {} ", ow.name), Style::default().fg(KEY)))
+                    .title(Span::styled(lore::legends_title(ow), Style::default().fg(KEY)))
                     .title_bottom(Span::styled(" Tab/1-6 switch · ↑↓ PgUp/PgDn scroll · Esc back ", Style::default().fg(MUTED))),
             ),
         r,
@@ -2939,7 +2943,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if let Mode::Legends { tab, scroll, from_world: true } = app.mode {
         let (x, y) = app.game.site;
         draw_world(f, app, x, y);
-        draw_legends(f, area, &app.game.overworld, tab, scroll, &app.game.beasts_seen);
+        draw_legends(f, area, &app.game.overworld, tab, scroll, &app.game.beasts_seen, true);
         return;
     }
     let rows = Layout::default()
@@ -3096,7 +3100,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     };
     match app.mode {
         Mode::GameOver => draw_game_over(f, full, &app.game),
-        Mode::Legends { tab, scroll, .. } => draw_legends(f, area, &app.game.overworld, tab, scroll, &app.game.beasts_seen),
+        Mode::Legends { tab, scroll, from_world } => draw_legends(f, area, &app.game.overworld, tab, scroll, &app.game.beasts_seen, from_world),
         Mode::Trade { side, sel } => draw_trade(f, area, app, side, sel),
         Mode::Status { tab, scroll } => draw_status(f, area, &app.game, tab, scroll),
         Mode::Labors { row, col, detail } => draw_labors(f, area, app, row, col, detail),
@@ -3561,6 +3565,9 @@ fn look_lines(g: &Game, p: Pos, sel: usize) -> Vec<Line<'static>> {
                 }
                 if let Some(desc) = &c.desc {
                     v.push(plain(desc.clone(), Color::Rgb(210, 160, 255)));
+                }
+                for line in g.clockwork_lines(c) {
+                    v.push(plain(line, Color::Rgb(215, 175, 90)));
                 }
                 let state = if c.body.unconscious() {
                     "Unconscious"
@@ -4375,10 +4382,13 @@ fn draw_load_menu(f: &mut Frame, app: &App, sel: usize, confirm: bool) {
     for (i, m) in saves.iter().enumerate() {
         let st = if i == sel { Style::default().fg(BLACK).bg(KEY) } else { Style::default().fg(TEXT) };
         let tag = if m.autosave { " (autosave)" } else { "" };
+        // (An adventurer's save, marked with `@`: their date says where they are.)
+        let hero = m.kind == saves::SaveKind::Adventure;
+        let who = if !hero { format!(" {:>3} dwarves ", m.dwarves) } else if m.dwarves > 0 { "  adventurer ".into() } else { "  dead       ".into() };
         v.push(Line::from(vec![
-            Span::styled(format!(" {:<18}", format!("{}{}", m.fortress, tag)), st.add_modifier(Modifier::BOLD)),
+            Span::styled(format!(" {:<18}", format!("{}{}{}", if hero { "@ " } else { "" }, m.fortress, tag)), st.add_modifier(Modifier::BOLD)),
             Span::styled(format!(" {:<34}", m.date), st),
-            Span::styled(format!(" {:>3} dwarves ", m.dwarves), st),
+            Span::styled(who, st),
             Span::styled(format!(" {:<12}", saves::ago(m.saved_unix)), st),
         ]));
         v.push(plain(format!("   {}", m.world), MUTED));
