@@ -40,11 +40,9 @@ pub(super) fn draw(f: &mut Frame, app: &App) {
     if s.view == View::Create {
         return super::adv_create::draw(f, area, s);
     }
+    // Between sites: the world map and the road (A3).
     let Some(v) = s.adv.visit.as_ref() else {
-        backdrop(f, area);
-        let p = Paragraph::new(vec![Line::default(), plain("The adventure begins…".into(), KEY)]).alignment(ratatui::layout::Alignment::Center);
-        f.render_widget(p, area);
-        return;
+        return super::adv_travel::draw(f, area, s);
     };
     let side = if area.width >= 80 + SIDE_W { SIDE_W } else { 0 };
     let fold: u16 = if side == 0 { 2 } else { 0 };
@@ -85,6 +83,19 @@ pub(super) fn draw(f: &mut Frame, app: &App) {
     if s.help {
         draw_help(f, area);
     }
+    if let Some(w) = &s.page {
+        draw_writing(f, map, w);
+    }
+}
+
+/// A page being read (A5), on parchment over the map: a fallen fort's
+/// saga, its overseer's journal, its chronicle, its walls.
+fn draw_writing(f: &mut Frame, map: Rect, w: &crate::game::adv::sitegen::fallen::Writing) {
+    let p = super::saga::Page { title: w.title.clone(), doom: w.doom, open: false, sub: w.sub.clone(), chapters: w.chapters.clone(), closing: w.closing.clone(), fell: w.fell };
+    let width = map.width.saturating_sub(4).clamp(map.width.min(30), 76);
+    let h = super::saga::rows_needed(&p, width).min(map.height);
+    let r = Rect::new(map.x + map.width.saturating_sub(width) / 2, map.y + map.height.saturating_sub(h) / 2, width, h);
+    super::saga::draw_page(f, r, map, &p, None, "any key: put it down");
 }
 
 /// The site round the hero (or the look cursor) on the hero's level: what
@@ -355,7 +366,7 @@ fn body_words(d: &Dwarf) -> Vec<(String, Color)> {
 }
 
 /// The figure beside the blood bar and the words.
-fn body_block(d: &Dwarf, bar_w: usize) -> Vec<Line<'static>> {
+pub(super) fn body_block(d: &Dwarf, bar_w: usize) -> Vec<Line<'static>> {
     let words = body_words(d);
     let mut right: Vec<Vec<Span<'static>>> = vec![blood_bar(&d.body, bar_w)];
     for (w, c) in words.into_iter().take(3) {
@@ -700,7 +711,7 @@ fn draw_pick(f: &mut Frame, area: Rect, g: &Game, hero: usize, kind: Pick, ids: 
 }
 
 /// The menu (A11 adds saving).
-fn draw_menu(f: &mut Frame, area: Rect, sel: usize) {
+pub(super) fn draw_menu(f: &mut Frame, area: Rect, sel: usize) {
     let mut v: Vec<Line<'static>> = Vec::new();
     for (i, m) in MENU.iter().enumerate() {
         let st = if i == sel { Style::default().fg(BLACK).bg(KEY) } else { Style::default().fg(TEXT) };
@@ -724,6 +735,7 @@ fn draw_help(f: &mut Frame, area: Rect) {
         ("k", "talk to someone near"),
         ("g d", "get what lies here · drop something"),
         ("i", "inventory"),
+        ("R", "read a book here, or the engraved walls around"),
         ("w r", "wear or wield · take off or put away"),
         ("z", "status: body, wounds, skills, fame"),
         ("Z", "rest until healed or disturbed"),

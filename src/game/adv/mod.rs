@@ -82,6 +82,9 @@ pub struct Adventure {
     pub over: Option<AdvEnd>,
     /// The adventure's own dice: travel, encounters, weather.
     rng: Rng,
+    /// Where the fallen forts' saves are (A5; the app's saves folder).
+    #[serde(skip)]
+    pub saves_dir: Option<std::path::PathBuf>,
 }
 
 /// The hero, or a companion, between sites.
@@ -288,7 +291,8 @@ impl Adventure {
         if hero.civ.is_none() {
             hero.civ = home.and_then(|h| ow.sites.iter().find(|s| s.id == h)).and_then(|s| s.civ);
         }
-        let start_year = ow.year + 1;
+        // After the last fort the world remembers fell (A5).
+        let start_year = ow.forts.iter().filter_map(|f| f.fell).fold(ow.year, i32::max) + 1;
         Adventure {
             seed,
             ow,
@@ -308,6 +312,7 @@ impl Adventure {
             stats: AdvStats::default(),
             over: None,
             rng: Rng::new(seed.wrapping_mul(0x9E37_79B9).wrapping_add(17)),
+            saves_dir: None,
         }
     }
 
@@ -333,7 +338,11 @@ impl Adventure {
 
     /// The year now.
     pub fn year(&self) -> i32 {
-        self.start_year + (self.now() / YEAR) as i32
+        // (Inside a visit by its game's own dating: a fallen fort keeps its own.)
+        match &self.visit {
+            Some(v) => v.g.start_year + (v.g.tick / YEAR) as i32,
+            None => self.start_year + (self.clock / YEAR) as i32,
+        }
     }
 
     /// A tunable number: `default` unless a batch set it.

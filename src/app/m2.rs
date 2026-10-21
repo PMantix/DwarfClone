@@ -360,11 +360,9 @@ impl App {
         };
     }
 
-    /// A dwarf's family tree (O06).
-    fn key_family(&mut self, k: KeyEvent, id: u32, _sel: usize) {
-        if k.code == KeyCode::Esc {
-            self.mode = Mode::Life { id, scroll: 0 };
-        }
+    /// A dwarf's family tree (O06): the keys are in `ui/family.rs`.
+    fn key_family(&mut self, k: KeyEvent, id: u32, sel: usize) {
+        self.key_family_tree(k, id, sel);
     }
 
     /// Announcement control (O05): a row per kind; `p` pauses, `c` moves
@@ -396,17 +394,18 @@ mod tests {
     use super::*;
     use crossterm::event::KeyModifiers;
 
-    /// Each M2 screen is a placeholder that draws and that Esc leaves.
+    /// Each M2 screen draws, and Esc leaves it.
     #[test]
     fn the_m2_screens_open_and_close() {
         let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
-        for m in [Mode::Family { id: 1, sel: 0 }] {
+        let id = crate::game::Game::new(5).dwarves[0].id;
+        for m in [Mode::Family { id, sel: 0 }] {
             let mut app = App::with_game_for_tests(crate::game::Game::new(5));
             app.mode = m.clone();
             let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 40)).unwrap();
             term.draw(|f| crate::ui::draw(f, &mut app)).unwrap();
             let shown: String = term.backend().buffer().content().iter().map(|c| c.symbol()).collect();
-            assert!(shown.contains("Coming soon"), "{:?}", m);
+            assert!(shown.contains("The family of"), "{:?}", m);
             app.on_key(esc);
             assert_ne!(app.mode, m);
         }

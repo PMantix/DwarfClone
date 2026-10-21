@@ -218,8 +218,8 @@ fn draw_journal(f: &mut Frame, area: Rect, app: &App, page: usize, scroll: usize
     );
 }
 
-fn draw_family(f: &mut Frame, area: Rect, _app: &App, _id: u32, _sel: usize) {
-    coming_soon(f, area, " Family ");
+fn draw_family(f: &mut Frame, area: Rect, app: &App, id: u32, sel: usize) {
+    super::family::draw(f, area, app, id, sel);
 }
 
 /// Announcement control (O05, UI-07): a row per kind of announcement,

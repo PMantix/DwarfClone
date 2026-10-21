@@ -36,6 +36,11 @@ pub struct AdvScreen {
     pub help: bool,
     /// When the last act began: the log's lines since are this turn's.
     pub turn_from: u64,
+    /// A page being read (A5): a fallen fort's saga on arrival, a book, the
+    /// walls. Any key puts it down.
+    pub page: Option<adv::sitegen::fallen::Writing>,
+    /// Something met on the road, waiting on fight or flight (A3).
+    pub meet: Option<adv::travel::Encounter>,
 }
 
 /// What a letter list in the local view is for.
@@ -79,7 +84,7 @@ impl AdvScreen {
             View::Travel
         };
         let turn_from = adv.now();
-        AdvScreen { adv, view, flash: None, maker, pick: None, sneak: false, rest_until: None, help: false, turn_from }
+        AdvScreen { adv, view, flash: None, maker, pick: None, sneak: false, rest_until: None, help: false, turn_from, page: None, meet: None }
     }
 }
 
@@ -88,8 +93,11 @@ impl App {
     /// maker (A1).
     pub fn open_adventure(&mut self) {
         let seed = self.seed;
+        let dir = self.save_dir.clone();
         self.run_job("Making the world", move |report| {
-            let ow = Overworld::generate_with(seed, report);
+            let mut ow = Overworld::generate_with(seed, report);
+            // The forts that fell in this world before (A5).
+            adv::sitegen::fallen::scan(&dir, &mut ow);
             Ok(JobDone::Visited(Box::new(adv::create::unmade_in(ow, seed))))
         });
     }
@@ -107,16 +115,50 @@ impl App {
     /// The game-over page's `a` (after the save): an adventurer into this
     /// fallen fort's world.
     pub fn adventure_in_this_world(&mut self) {
-        let ow = std::mem::replace(&mut self.game.overworld, Overworld::empty());
+        let mut ow = std::mem::replace(&mut self.game.overworld, Overworld::empty());
         let seed = self.seed ^ 0xA0;
+        let dir = self.save_dir.clone();
         self.game = crate::game::Game::placeholder(Overworld::empty());
-        self.run_job("Setting out", move |_| Ok(JobDone::Visited(Box::new(adv::quick_start(ow, seed)))));
+        self.run_job("Setting out", move |_| {
+            adv::sitegen::fallen::scan(&dir, &mut ow);
+            Ok(JobDone::Visited(Box::new(adv::quick_start(ow, seed))))
+        });
+    }
+
+    /// The window's `--fallen` picture (A5): a fort of `seed` run two
+    /// months, fallen to goblins and saved to a scratch folder (never the
+    /// player's saves), and a hero of its world in its halls; `card`: the
+    /// saga of its fall is told on arrival.
+    pub fn start_fallen_seeded(&mut self, seed: u64, card: bool) {
+        let dir = std::env::temp_dir().join(format!("dwarfclone-fallen-shot-{}", seed));
+        self.save_dir = dir.clone();
+        self.run_job("Visiting the fallen", move |_| {
+            let mut a = adv::sitegen::fallen::demo(seed, 60, &dir)?;
+            if !card {
+                if let Some(v) = a.visit.as_mut() {
+                    v.g.spotlights.clear();
+                }
+            }
+            Ok(JobDone::Visited(Box::new(a)))
+        });
     }
 
     /// An adventure is ready (begun, a site entered, or loaded).
     pub fn adventure_ready(&mut self, a: Box<Adventure>) {
-        self.adv = Some(Box::new(AdvScreen::new(*a)));
+        let mut a = *a;
+        a.saves_dir = Some(self.save_dir.clone());
+        self.adv = Some(Box::new(AdvScreen::new(a)));
         self.mode = Mode::Adventure;
+        self.adv_take_page();
+    }
+
+    /// A fallen fort's saga, told as the hero walks in (A5).
+    fn adv_take_page(&mut self) {
+        let Some(s) = self.adv.as_mut() else { return };
+        let Some(v) = s.adv.visit.as_mut() else { return };
+        if s.page.is_none() {
+            s.page = adv::sitegen::fallen::take_reading(&mut v.g);
+        }
     }
 
     /// The window's `--adventure --fight` picture: a goblin raider comes at
@@ -147,6 +189,7 @@ impl App {
     /// a key, but a rest goes on a slice at a time until healed, woken or
     /// done.
     pub fn adv_frame(&mut self) {
+        self.adv_take_page();
         let Some(s) = self.adv.as_mut() else { return };
         let Some((until, mend)) = s.rest_until else { return };
         let Some(v) = s.adv.visit.as_mut() else {
@@ -319,6 +362,9 @@ impl App {
             s.help = false;
             return;
         }
+        if s.page.take().is_some() {
+            return;
+        }
         if s.pick.is_some() {
             return self.adv_key_pick(k);
         }
@@ -340,6 +386,9 @@ impl App {
         };
         let (h, g) = (v.hero, &v.g);
         let act = if let Some((dx, dy)) = step_of(&k) {
+            if self.adv_off_edge(dx, dy) {
+                return;
+            }
             Action::Move(dx, dy)
         } else {
             match k.code {
@@ -388,6 +437,14 @@ impl App {
                 KeyCode::Char('r') => return self.adv_open_pick(Pick::Remove),
                 KeyCode::Char('A') => return self.adv_open_pick(Pick::Aim),
                 KeyCode::Char('k') => return self.adv_open_pick(Pick::Talk),
+                KeyCode::Char('R') => {
+                    match adv::sitegen::fallen::read_here(g, h) {
+                        Ok(w) => s.page = Some(w),
+                        Err(why) => s.flash = Some(why),
+                    }
+                    return;
+                }
+                KeyCode::Char('T') => return self.adv_take_road(),
                 _ => return,
             }
         };
@@ -536,11 +593,11 @@ impl App {
     fn adv_key_menu(&mut self, k: KeyEvent, sel: usize) {
         let Some(s) = self.adv.as_mut() else { return };
         match k.code {
-            KeyCode::Esc => s.view = View::Local,
+            KeyCode::Esc => s.view = back(s),
             KeyCode::Up | KeyCode::Char('8') => s.view = View::Menu { sel: sel.saturating_sub(1) },
             KeyCode::Down | KeyCode::Char('2') => s.view = View::Menu { sel: (sel + 1).min(MENU.len() - 1) },
             KeyCode::Enter => match sel {
-                0 => s.view = View::Local,
+                0 => s.view = back(s),
                 _ => self.adventure_to_title(),
             },
             _ => {}
@@ -682,12 +739,192 @@ pub fn aim_penalty(p: Part) -> i32 {
     }
 }
 
+/// Out of the menu: back to the map the hero is on.
+fn back(s: &AdvScreen) -> View {
+    if s.adv.visit.is_some() {
+        View::Local
+    } else {
+        View::Travel
+    }
+}
+
+/// How near the edge of a site's map the hero must be to take the road.
+const EDGE: i32 = 3;
+
 impl App {
-    /// The world map (A3).
+    /// The world map (A3): the 8 directions walk a cell, Enter or `>`
+    /// enters the cell (its site, else its wild land), `Z` camps until
+    /// dawn, `s` travels quietly, `?` the keys, Esc the menu. Something met
+    /// on the road waits on Enter (stand and fight) or Esc (slip away).
     fn key_travel(&mut self, k: KeyEvent) {
-        if k.code == KeyCode::Esc {
-            self.adventure_to_title();
+        let Some(s) = self.adv.as_mut() else { return };
+        if s.help {
+            s.help = false;
+            return;
         }
+        if let Some(e) = s.meet.clone() {
+            match k.code {
+                KeyCode::Enter | KeyCode::Char('f') | KeyCode::Char('>') => self.adv_meet(e),
+                KeyCode::Esc => {
+                    let quiet = s.sneak;
+                    if s.adv.evade(&e, quiet) {
+                        s.meet = None;
+                        s.flash = Some("You slip away.".into());
+                    } else {
+                        self.adv_meet(e);
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
+        if let Some((dx, dy)) = step_of(&k) {
+            let quiet = s.sneak;
+            let out = s.adv.travel_with(dx, dy, quiet);
+            self.adv_after_road(out);
+            return;
+        }
+        match k.code {
+            KeyCode::Enter | KeyCode::Char('>') => self.adv_enter_cell(),
+            KeyCode::Char('Z') => {
+                if let Some(e) = s.adv.camp() {
+                    s.meet = Some(e);
+                } else if s.adv.over.is_some() {
+                    s.view = View::Dead;
+                }
+            }
+            KeyCode::Char('s') => {
+                s.sneak = !s.sneak;
+                s.flash = Some(if s.sneak { "You keep to cover: slower, but fewer will see you." } else { "You take the open road again." }.into());
+            }
+            KeyCode::Char('?') => s.help = true,
+            KeyCode::Esc => s.view = View::Menu { sel: 0 },
+            _ => {}
+        }
+    }
+
+    /// What a step on the road came to: a refusal said, an encounter
+    /// waiting on the player, or the end.
+    fn adv_after_road(&mut self, out: adv::travel::TravelOutcome) {
+        use adv::travel::TravelOutcome;
+        let Some(s) = self.adv.as_mut() else { return };
+        s.view = View::Travel;
+        match out {
+            TravelOutcome::Arrived => {}
+            TravelOutcome::Blocked(why) => s.flash = Some(why),
+            TravelOutcome::Encounter(e) => s.meet = Some(e),
+            TravelOutcome::Died(_) => s.view = View::Dead,
+        }
+    }
+
+    /// Into the cell the hero stands in: its site (or the fallen fort
+    /// there), else the wild. Building the place takes a moment, so it is
+    /// a job; a place that can't be entered leaves them on the road.
+    fn adv_enter_cell(&mut self) {
+        let Some(s) = self.adv.take() else { return };
+        let mut a = s.adv;
+        let (x, y) = a.at;
+        let ow = a.ow();
+        let key = match (ow.fort_at(x, y), ow.site_at(x, y)) {
+            (Some(i), _) => adv::SiteKey::Fort(i as u32),
+            (None, Some(site)) => adv::SiteKey::Site(site.id),
+            _ => adv::SiteKey::Wild(x, y),
+        };
+        let name = adv::sites::site_name(ow, key);
+        self.run_job(&format!("Into {}", name), move |_| {
+            if let Err(why) = a.enter(key) {
+                a.say(&why, (240, 150, 110));
+                // (A fallen fort that can't be opened: its wild land instead.)
+                if !matches!(key, adv::SiteKey::Wild(..)) && a.enter(adv::SiteKey::Wild(x, y)).is_err() {
+                    a.leave();
+                }
+            }
+            Ok(JobDone::Visited(Box::new(a)))
+        });
+    }
+
+    /// Stand and face what was met: into the wild land, foes at the edge.
+    fn adv_meet(&mut self, e: adv::travel::Encounter) {
+        let Some(s) = self.adv.take() else { return };
+        let mut a = s.adv;
+        self.run_job("To arms", move |_| {
+            if let Err(why) = a.meet(&e) {
+                a.say(&why, (240, 150, 110));
+            }
+            Ok(JobDone::Visited(Box::new(a)))
+        });
+    }
+
+    /// `T` in a site: out onto the world map, from anywhere under the sky
+    /// in the wild, or from near the edge of a site; never with a foe in
+    /// sight.
+    fn adv_take_road(&mut self) {
+        let Some(s) = self.adv.as_mut() else { return };
+        let Some(v) = s.adv.visit.as_ref() else { return };
+        let (g, h) = (&v.g, v.hero);
+        let p = g.dwarves[h].pos;
+        let w = &g.world;
+        let edge = p.x < EDGE || p.y < EDGE || p.x >= w.w - EDGE || p.y >= w.h - EDGE;
+        let wild = matches!(v.key, adv::SiteKey::Wild(..)) && w.in_bounds(p) && w.outside(p);
+        if !edge && !wild {
+            s.flash = Some("Walk to the edge of the place to take the road.".into());
+            return;
+        }
+        if let Some(why) = g.alarm(h, s.turn_from) {
+            s.flash = Some(format!("You can't leave now: {}", why));
+            return;
+        }
+        s.adv.take_road();
+        s.view = View::Travel;
+        s.pick = None;
+        s.rest_until = None;
+    }
+
+    /// A step off the edge of a site's map walks on into the next cell
+    /// (DF-like). True if it did.
+    fn adv_off_edge(&mut self, dx: i32, dy: i32) -> bool {
+        let Some(s) = self.adv.as_mut() else { return false };
+        let Some(v) = s.adv.visit.as_ref() else { return false };
+        let (g, h) = (&v.g, v.hero);
+        let to = g.dwarves[h].pos.offset(dx, dy, 0);
+        if g.world.in_bounds(to) {
+            return false;
+        }
+        if let Some(why) = g.alarm(h, s.turn_from) {
+            s.flash = Some(format!("You can't leave now: {}", why));
+            return true;
+        }
+        s.adv.take_road();
+        let quiet = s.sneak;
+        let out = s.adv.travel_with(dx, dy, quiet);
+        self.adv_after_road(out);
+        true
+    }
+
+    /// The window's `--adventure --travel` picture: out of the home site
+    /// and a few days on the road, east where the land allows, with a
+    /// wound that bleeds on the way.
+    pub fn adventure_journey(&mut self) {
+        let Some(s) = self.adv.as_mut() else { return };
+        s.adv.knobs.set.insert("travel.encounters".into(), 0.0);
+        s.adv.take_road();
+        s.view = View::Travel;
+        let mut dir = (1, 0);
+        for i in 0..9 {
+            // (Hurt on the way: a mangled arm, still bleeding at the end.)
+            if i == 7 {
+                s.adv.hero.dwarf.body.wound(Part::LeftArm, 20, true);
+                s.adv.say("A loose stone turns under you; you fall hard on the rocks and your arm is torn open.", (235, 90, 80));
+            }
+            let out = s.adv.travel_with(dir.0, dir.1, false);
+            if let adv::travel::TravelOutcome::Blocked(_) = out {
+                dir = adv::travel::DIRS[(i * 3 + 1) % 8];
+            }
+            if s.adv.over.is_some() {
+                break;
+            }
+        }
+        s.adv.knobs.set.remove("travel.encounters");
     }
 }
 
@@ -1006,5 +1243,100 @@ mod tests {
         app.adv.as_mut().unwrap().view = View::Local;
         app.adv.as_mut().unwrap().help = true;
         assert!(screen(&mut app, 80, 24).contains("Keys"));
+    }
+
+    /// An app with a hero in the wild of a cell with three cells of land to
+    /// the east, nothing about, and nothing met on the road.
+    fn road_app(seed: u64) -> (App, (i32, i32)) {
+        static WORLD: std::sync::OnceLock<Overworld> = std::sync::OnceLock::new();
+        let ow = WORLD.get_or_init(|| Overworld::generate(5)).clone();
+        let mut app = App::new(seed);
+        app.save_dir = std::env::temp_dir().join("dwarfclone-no-saves-here");
+        let mut a = adv::quick_start(ow, seed);
+        a.leave();
+        let ow = a.ow();
+        let land = |x: i32, y: i32| x >= 0 && y >= 0 && x < ow.w && y < ow.h && !ow.cell(x, y).biome.is_water();
+        let start = (0..ow.h).flat_map(|y| (0..ow.w).map(move |x| (x, y))).find(|&(x, y)| (0..4).all(|i| land(x + i, y)) && ow.site_at(x + 3, y).is_none() && ow.fort_at(x + 3, y).is_none()).expect("land");
+        a.at = start;
+        a.knobs.set.insert("travel.encounters".into(), 0.0);
+        a.enter(adv::SiteKey::Wild(start.0, start.1)).unwrap();
+        a.visit.as_mut().unwrap().g.creatures.clear();
+        app.adventure_ready(Box::new(a));
+        (app, start)
+    }
+
+    #[test]
+    fn travel_by_keys() {
+        let (mut app, start) = road_app(12);
+        // `T` in the open wild: out onto the world map.
+        app.on_key(key(KeyCode::Char('T')));
+        let s = app.adv.as_ref().unwrap();
+        assert_eq!(s.view, View::Travel, "{:?}", s.flash);
+        assert!(s.adv.visit.is_none());
+        assert_eq!(s.adv.at, start);
+        let t0 = s.adv.clock;
+        // Three cells east, by arrow and numpad: time passes, the road is told.
+        for k in [KeyCode::Right, KeyCode::Char('6'), KeyCode::Right] {
+            app.on_key(key(k));
+        }
+        let s = app.adv.as_ref().unwrap();
+        assert_eq!(s.adv.at, (start.0 + 3, start.1), "{:?}", s.flash);
+        assert!(s.adv.clock >= t0 + DAY, "three cells take more than a day");
+        assert_eq!(s.adv.road().len(), 4, "the start and three steps");
+        let text = screen(&mut app, 150, 45);
+        assert!(text.contains('@') && text.contains("The road so far"), "{}", text);
+        assert!(screen(&mut app, 80, 24).contains('@'), "drawn small too");
+        // Enter: into the land of that cell.
+        app.on_key(key(KeyCode::Enter));
+        settle(&mut app);
+        let s = app.adv.as_ref().unwrap();
+        assert_eq!(s.view, View::Local);
+        let v = s.adv.visit.as_ref().expect("in the wild");
+        assert_eq!(v.key, adv::SiteKey::Wild(start.0 + 3, start.1));
+        assert_eq!(v.g.site, (start.0 + 3, start.1));
+        // A step off the edge of the map walks on into the next cell.
+        let h = v.hero;
+        let hero = game(&app).dwarves[h].pos;
+        game_mut(&mut app).dwarves[h].pos = crate::geom::Pos::new(0, hero.y, hero.z);
+        app.on_key(key(KeyCode::Left));
+        let s = app.adv.as_ref().unwrap();
+        assert_eq!(s.view, View::Travel, "{:?}", s.flash);
+        assert_eq!(s.adv.at, (start.0 + 2, start.1));
+    }
+
+    #[test]
+    fn met_on_the_road_by_keys() {
+        let (mut app, start) = road_app(13);
+        app.on_key(key(KeyCode::Char('T')));
+        // Something is sure to come; Enter stands to meet it.
+        app.adv.as_mut().unwrap().adv.knobs.set.insert("travel.encounters".into(), 50.0);
+        // (Back and forth until something comes: the chance tops out at 90%.)
+        for i in 0..20 {
+            app.on_key(key(if i % 2 == 0 { KeyCode::Right } else { KeyCode::Left }));
+            if app.adv.as_ref().unwrap().meet.is_some() {
+                break;
+            }
+        }
+        let s = app.adv.as_ref().unwrap();
+        let e = s.meet.clone().expect("met something");
+        let at = s.adv.at;
+        assert!(screen(&mut app, 150, 45).contains("stand and fight"));
+        app.on_key(key(KeyCode::Enter));
+        settle(&mut app);
+        let s = app.adv.as_ref().unwrap();
+        assert_eq!(s.view, View::Local);
+        let v = s.adv.visit.as_ref().expect("in the wild");
+        assert_eq!(v.key, adv::SiteKey::Wild(at.0, at.1));
+        assert!(at.1 == start.1 && (at.0 == start.0 || at.0 == start.0 + 1));
+        let foes = v.g.creatures.values().filter(|c| c.target == Some(adv::HERO_ID)).count();
+        assert_eq!(foes, e.foes.iter().map(|f| f.1 as usize).sum::<usize>(), "{:?}", e);
+        // And the road can't be taken with foes at your heels.
+        let near = v.g.creatures.values().find(|c| c.target == Some(adv::HERO_ID)).map(|c| c.pos).unwrap();
+        let h = v.hero;
+        game_mut(&mut app).dwarves[h].pos = near.offset(1, 0, 0);
+        app.on_key(key(KeyCode::Char('T')));
+        let s = app.adv.as_ref().unwrap();
+        assert_eq!(s.view, View::Local);
+        assert!(s.flash.as_deref().map_or(false, |f| f.starts_with("You can't leave now")), "{:?}", s.flash);
     }
 }

@@ -47,6 +47,9 @@ impl Game {
             return false;
         }
         let Some((item, path)) = self.find_item(d.pos, |it| corpses.contains(&it.id)) else { return false };
+        // Families are buried together (familytree.rs).
+        let dead = self.items.get(&item).and_then(|it| it.label.as_deref()).and_then(|n| self.dead_unrested(n)).map(|i| self.dwarves[i].id);
+        let coffin = dead.and_then(|id| self.coffin_beside_kin(id)).unwrap_or(coffin);
         self.claim_item(item, d.id);
         self.buildings.get_mut(&coffin).unwrap().worker = Some(d.id);
         Self::set_path(d, path);
@@ -90,7 +93,11 @@ impl Game {
             b.occupant = Some(dead);
         }
         let tomb = self.zone_kind_at(site) == Some(ZoneKind::Tomb);
-        self.lay_to_rest(i, if tomb { "has been entombed" } else { "has been laid to rest" }, tomb);
+        let how = if tomb { "has been entombed" } else { "has been laid to rest" };
+        match self.beside_kin(dead, site) {
+            Some(k) => self.lay_to_rest(i, &format!("{} beside {}", how, k), tomb),
+            None => self.lay_to_rest(i, how, tomb),
+        }
     }
 
     /// Mark a dead dwarf as resting, lay any ghost and comfort the mourners.

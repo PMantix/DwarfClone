@@ -29,6 +29,12 @@ pub const MAX_CLIPS: usize = 24;
 pub const MAX_STARS: usize = 12;
 /// The most marks filmed in a frame, however thick the battle.
 pub const MAX_MARKS: usize = 120;
+/// The most changed tiles kept in a frame filmed off the screen (rain and
+/// flicker change more tiles than who moves does).
+pub const MAX_DRAWN_MARKS: usize = 240;
+
+/// A tile as the map draws it: glyph, ink and paper.
+pub type Look = (char, (u8, u8, u8), (u8, u8, u8));
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Clip {
@@ -54,6 +60,15 @@ pub struct Clip {
     /// The overseer's moment of the year.
     #[serde(default)]
     pub star: bool,
+    /// How many of its frames (from the first) were filmed off the screen,
+    /// exactly as the map draws them (`ui/highlights.rs: film_drawn`), not
+    /// just who moved: 0 for a clip filmed without a screen (a batch).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub drawn: u8,
+}
+
+fn is_zero(n: &u8) -> bool {
+    *n == 0
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -133,6 +148,57 @@ impl Clip {
             .collect()
     }
 
+    /// Take the ground from the map as drawn (`cells`, row by row, the
+    /// window's size): the first frame of a clip filmed off the screen.
+    pub fn set_ground(&mut self, cells: &[Look]) {
+        self.ground = cells.iter().map(|c| c.0).collect();
+        self.ink = cells.iter().map(|c| code(c.1)).collect();
+        self.paper = cells.iter().map(|c| code(c.2)).collect();
+    }
+
+    /// A frame from the map as drawn: every tile that differs from the
+    /// ground, so whatever the map shows (blood, smoke, fire, a new kind of
+    /// mark) is in the clip without the reel knowing what it is.
+    pub fn diff_frame(&self, cells: &[Look]) -> String {
+        let g: Vec<char> = self.ground.chars().collect();
+        let ink: Vec<char> = self.ink.chars().collect();
+        let paper: Vec<char> = self.paper.chars().collect();
+        let mut s = String::new();
+        let mut n = 0;
+        for (i, &(ch, fg, bg)) in cells.iter().enumerate() {
+            let (fc, bc) = (code(fg), code(bg));
+            if g.get(i) == Some(&ch) && ink.get(i) == Some(&fc) && paper.get(i) == Some(&bc) {
+                continue;
+            }
+            if n == MAX_DRAWN_MARKS {
+                break;
+            }
+            n += 1;
+            s.push(num(i as i32 % CLIP_W));
+            s.push(num(i as i32 / CLIP_W));
+            s.push(ch);
+            s.push(fc);
+            s.push(bc);
+        }
+        s
+    }
+
+    /// Every tile of frame `i`, the ground with the frame's marks over it.
+    pub fn frame_cells(&self, i: usize) -> Vec<Look> {
+        let mut cells: Vec<Look> = self.ground_rows().into_iter().flatten().collect();
+        for m in self.marks(i) {
+            if m.x >= 0 && m.y >= 0 && m.x < CLIP_W && m.y < CLIP_H {
+                let c = &mut cells[(m.y * CLIP_W + m.x) as usize];
+                c.0 = m.glyph;
+                c.1 = m.ink;
+                if let Some(p) = m.paper {
+                    c.2 = p;
+                }
+            }
+        }
+        cells
+    }
+
     /// Roughly how much save it takes, in bytes.
     pub fn size(&self) -> usize {
         self.ground.len() + self.ink.len() + self.paper.len() + self.frames.iter().map(|f| f.len()).sum::<usize>() + self.title.len() + self.caption.len()
@@ -150,6 +216,8 @@ fn score_of(title: &str) -> u8 {
         "A ghost" | "Cave-in!" | "An execution" | "The magma sea" | "A cavern" => 65,
         "A death" => 55,
         "A wedding" | "Carried from the field" | "A new noble" => 45,
+        "A saga ends" => 80,
+        "A saga turns" => 70,
         _ => 35,
     }
 }
@@ -166,7 +234,7 @@ impl Game {
         if let Some(c) = self.reel.clips.iter_mut().rev().find(|c| c.title == title && c.tick + 2 * DAY > tick) {
             // A second death or wedding so soon is a line on the first's
             // clip, not lost; marked "Elsewhere" when it isn't in the shot.
-            if matches!(title, "A death" | "A wedding") && !caption.is_empty() && !c.caption.contains(caption) && c.caption.len() + caption.len() < 400 {
+            if matches!(title, "A death" | "A wedding" | "A saga turns" | "A saga ends") && !caption.is_empty() && !c.caption.contains(caption) && c.caption.len() + caption.len() < 400 {
                 let inside = at.map_or(true, |p| p.z == c.corner.z && p.x >= c.corner.x && p.y >= c.corner.y && p.x < c.corner.x + CLIP_W && p.y < c.corner.y + CLIP_H);
                 c.caption.push_str(if inside { " " } else { " Elsewhere: " });
                 c.caption.push_str(caption);
@@ -189,6 +257,33 @@ impl Game {
                 self.reel.clips.remove(i);
             }
         }
+    }
+
+    /// For the screenshot of the reel (`--reel`): a siege comes now, the
+    /// scouts' warning waited out; too young a fort for one gets a goblin
+    /// raid at the wagon instead. False if not even that could come.
+    pub fn siege_now_for_show(&mut self) -> bool {
+        for _ in 0..100 {
+            self.maybe_siege();
+            if let Some((at, ..)) = self.incoming.clone() {
+                self.tick = at;
+                self.army_arrives();
+                return true;
+            }
+        }
+        let c = self.embark;
+        let mut n = 0;
+        for (dx, dy) in [(9, 0), (10, 1), (10, -1), (11, 0), (11, 2), (12, -2), (-9, 1), (-10, 0)] {
+            let p = self.world.settle(Pos::new(c.x + dx, c.y + dy, c.z));
+            if self.world.in_bounds(p) && !self.world.t(p).kind.solid() {
+                self.spawn_creature(crate::creature::Species::Goblin, p, u64::MAX);
+                n += 1;
+            }
+        }
+        if n > 0 {
+            self.spotlight("Siege!", "Goblins fall on the wagon!", Some(c), (255, 70, 70));
+        }
+        n > 0
     }
 
     #[cfg(test)]
@@ -335,6 +430,22 @@ impl Game {
             let first = text.split(" and ").next().unwrap_or("").to_string();
             let at = self.dwarves.iter().find(|d| d.name == first).map(|d| d.pos);
             self.film("A wedding", &text, at);
+        }
+        // Sagas worth telling: each turn and each ending is a clip, filmed
+        // where the one it follows stands (else in the thick of things).
+        let mut turns: Vec<(&'static str, String, Option<Pos>)> = Vec::new();
+        for s in self.sagas.list.iter().filter(|s| s.told()) {
+            let at = self.dwarves.iter().find(|d| d.alive && (d.id as u64 == s.key || d.id as u64 == s.key & 0xffff_ffff)).map(|d| d.pos);
+            for c in s.chapters.iter().filter(|c| c.tick > since && c.beat == super::sagas::Beat::Turn) {
+                turns.push(("A saga turns", format!("{}: {}", s.title, c.text), at));
+            }
+            if s.ended.map_or(false, |t| t > since) {
+                let last = if s.closing.is_empty() { s.chapters.last().map_or("", |c| c.text.as_str()) } else { s.closing.as_str() };
+                turns.push(("A saga ends", format!("{}: {}", s.title, last), at));
+            }
+        }
+        for (title, caption, at) in turns {
+            self.film(title, &caption, at);
         }
     }
 
@@ -531,6 +642,42 @@ mod tests {
         g.film("A death", "Bomrek was struck down.", Some(at));
         let c = &g.reel.clips[0];
         assert!(c.caption.contains("Elsewhere: Kadol") && c.caption.contains(" Bomrek") && !c.caption.contains("Elsewhere: Bomrek"), "{}", c.caption);
+    }
+
+    /// A saga's turns and endings are on the reel, captioned with the saga.
+    #[test]
+    fn a_saga_ending_is_filmed() {
+        let mut g = Game::new(5);
+        g.tick = 50;
+        g.reel.seen = 1;
+        g.saga_demo();
+        let s = g.told_sagas().first().map(|s| s.title.clone()).expect("the demo tells a saga");
+        while g.tick % (FRAME_TICKS * 5) != 1 {
+            g.tick += 1;
+        }
+        g.reel_tick();
+        let c = g.reel.clips.iter().find(|c| c.title == "A saga ends").expect("a clip of the saga's end");
+        assert!(c.caption.starts_with(&s), "{}", c.caption);
+        assert_eq!(c.score, 80);
+    }
+
+    /// Frames filmed off the screen keep only what changed, and play back
+    /// as the map was drawn.
+    #[test]
+    fn a_drawn_frame_is_what_changed() {
+        let mut c = Clip::default();
+        let mut cells: Vec<Look> = vec![('.', (100, 100, 100), (0, 0, 0)); (CLIP_W * CLIP_H) as usize];
+        c.set_ground(&cells);
+        assert!(c.diff_frame(&cells).is_empty());
+        cells[CLIP_W as usize * 3 + 7] = ('g', (0, 255, 0), (153, 0, 0));
+        c.frames.push(c.diff_frame(&cells));
+        let m = c.marks(0);
+        assert_eq!(m.len(), 1);
+        assert_eq!((m[0].x, m[0].y, m[0].glyph, m[0].paper), (7, 3, 'g', Some((153, 0, 0))));
+        assert_eq!(c.frame_cells(0)[CLIP_W as usize * 3 + 7], ('g', (0, 255, 0), (153, 0, 0)));
+        // A storm of changes is cut at the cap.
+        let all: Vec<Look> = vec![('~', (0, 0, 255), (0, 0, 102)); (CLIP_W * CLIP_H) as usize];
+        assert_eq!(c.diff_frame(&all).chars().count(), MAX_DRAWN_MARKS * 5);
     }
 
     /// A siege packed into the window stays small: frames hold at most

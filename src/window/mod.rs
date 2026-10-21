@@ -8,6 +8,7 @@ mod backend;
 mod glyphs;
 mod input;
 mod png;
+pub mod picture;
 mod tiles;
 
 use crate::app::App;
@@ -229,11 +230,12 @@ pub fn play(app: &mut App, args: &[String]) -> Result<()> {
 }
 
 /// `--window --screenshot FILE [--seed N] [--days D] [--size WxH] [--cell PX]
-/// [--plan] [--saga | --sagas] [--adventure [--fight]]`: watch a seeded fort for a few days, draw it
+/// [--plan] [--saga | --sagas] [--reel] [--export DIR] [--adventure [--fight | --travel]]`: watch a seeded fort for a few days, draw it
 /// the way the window would, save a PNG and print how long a frame took to draw.
 /// `--plan` shows the main level with the plan over it, `--saga` the fort's
 /// latest saga on its card, `--sagas` the Sagas screen (a great siege is told
-/// first if the fort has no saga yet).
+/// first if the fort has no saga yet), `--reel` a siege brought on and then
+/// the show of the reel's best moments, `--export DIR` the fort exported.
 pub fn screenshot(args: &[String]) -> Result<()> {
     let out = opt(args, "--screenshot").ok_or_else(|| anyhow!("--screenshot needs a file name"))?;
     let seed: u64 = opt(args, "--seed").and_then(|s| s.parse().ok()).unwrap_or(7);
@@ -244,7 +246,9 @@ pub fn screenshot(args: &[String]) -> Result<()> {
     let mut app = App::new(seed);
     // `--adventure`: a seeded adventure, the hero set out from home.
     let adventure = args.iter().any(|a| a == "--adventure");
-    if adventure {
+    if adventure && args.iter().any(|a| a == "--fallen") {
+        app.start_fallen_seeded(seed, !args.iter().any(|a| a == "--quiet"));
+    } else if adventure {
         app.start_adventure_seeded(seed);
     } else {
         app.start_watch_seeded(seed);
@@ -256,6 +260,10 @@ pub fn screenshot(args: &[String]) -> Result<()> {
     // (`--fight`: a goblin raider comes at the hero, for the combat log.)
     if adventure && args.iter().any(|a| a == "--fight") {
         app.adventure_skirmish();
+    }
+    // (`--travel`: out on the road for a few days, wounded, for the travel view.)
+    if adventure && args.iter().any(|a| a == "--travel") {
+        app.adventure_journey();
     }
     for _ in 0..if adventure { 0 } else { days * crate::game::DAY } {
         app.game.step();
@@ -315,6 +323,15 @@ pub fn screenshot(args: &[String]) -> Result<()> {
         app.arena = Some(Box::new(a));
         app.mode = crate::app::Mode::Arena;
     }
+    // (`--reel`: a siege comes, filmed as the map draws it, and the show
+    // of the best moments plays; `--export DIR` exports the fort too.)
+    if args.iter().any(|a| a == "--reel") {
+        reel_shot(&mut app);
+    }
+    if let Some(dir) = opt(args, "--export") {
+        let e = ui::export::export_fort(&mut app, Some(std::path::Path::new(dir))).map_err(|e| anyhow!(e))?;
+        println!("{}", e.summary());
+    }
     let mut terminal = Terminal::new(TileBackend::new(w, h, cell, Box::new(move |c, s| fonts.raster(c, s))))?;
     terminal.draw(|f| ui::draw(f, &mut app))?;
     // A whole screen drawn from nothing, a few times over, glyphs cached...
@@ -344,6 +361,22 @@ pub fn screenshot(args: &[String]) -> Result<()> {
         out, b.width, b.height, grid.width, grid.height, cell, full, frame
     );
     Ok(())
+}
+
+/// The screenshot's `--reel`: a siege now, filmed frame by frame as the
+/// map draws it, a day of the fight, then the show of the best moments,
+/// some way into the clip.
+fn reel_shot(app: &mut App) {
+    if !app.game.siege_now_for_show() {
+        println!("No siege would come; the reel shows what it has.");
+    }
+    for _ in 0..crate::game::DAY / 2 {
+        app.game.step();
+        app.film_drawn();
+    }
+    if ui::highlights::open_show(app) {
+        app.frame_dt = 0.1;
+    }
 }
 
 #[cfg(test)]

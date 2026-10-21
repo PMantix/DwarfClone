@@ -574,6 +574,7 @@ impl App {
             let watching = self.game.overseer.is_some();
             for _ in 0..self.ticks_per_frame() {
                 self.game.step();
+                self.film_drawn();
                 if self.game.pause_request {
                     self.game.pause_request = false;
                     // The overseer doesn't stop for news; you can.
@@ -2115,6 +2116,10 @@ impl App {
                 self.game.cycle_condition(sel);
                 let o = &self.game.work_orders[sel];
                 self.flash = Some(format!("{}: {}.", o.name(), o.cond.describe(o.keep)));
+            }
+            KeyCode::Char('w') => {
+                let on = self.game.toggle_dig_wet();
+                self.flash = Some(if on { "Miners dig on through damp and warm stone. Mind the water.".into() } else { "Miners stop at damp and warm stone.".into() });
             }
             KeyCode::Char('a') => {
                 self.game.auto_conditions();
