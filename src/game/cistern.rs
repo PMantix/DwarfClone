@@ -621,7 +621,7 @@ impl Game {
                 let spot = (1..=3)
                     .flat_map(|r| (-r..=r).flat_map(move |dy| (-r..=r).map(move |dx| (dx, dy))))
                     .map(|(dx, dy)| mouth.offset(dx, dy, 0))
-                    .find(|&q| !plan.way.contains(&q) && self.free_floor(o, q) && self.world.walkable(q));
+                    .find(|&q| !plan.way.contains(&q) && self.free_floor(o, q) && self.world.walkable(q) && !o.base.map_or(false, |b| Self::gatehouse(b, q)));
                 if let Some(q) = spot {
                     if self.place_building(BuildingKind::Lever, q) {
                         plan.lever = Some(q);

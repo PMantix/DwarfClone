@@ -16,11 +16,16 @@ use super::*;
 
 /// The trap hall's pieces, by local column (x from the foot of the stair)
 /// on both rows of the corridor: a foe running in from the gate trips at
-/// x+8, and lies on the floor while those behind it come on over the spikes
-/// at x+9, which fire when one of them treads on the plates at x+10; then
-/// the weapon traps at x+11. (Cage traps stand at x+4..7, stone-fall traps
-/// from Fortify at x+12..14.)
+/// x+8 and goes headlong onto the spikes at x+9, which the wire springs;
+/// they spring again whenever one of those behind treads on the plates at
+/// x+10; then the weapon traps at x+11. (Cage traps stand at x+4..7, only
+/// on the far row once the overseer means to let them in; stone-fall traps
+/// from Fortify at x+12..14; the inner lever just past them.)
 const HALL: [(i32, BuildingKind); 4] = [(8, BuildingKind::Tripwire), (9, BuildingKind::Spikes), (10, BuildingKind::PressurePlate), (11, BuildingKind::WeaponTrap)];
+
+/// Where the inner lever may go, best first: past the stone-fall traps,
+/// beside the squads holding the far end of the hall (or else among them).
+const INNER_LEVER: [(i32, i32); 9] = [(15, 1), (15, 0), (16, 1), (16, 0), (17, 1), (17, 0), (14, 1), (13, 1), (14, 0)];
 
 /// Names for the hall, as for a beast's mouth.
 const HALL_NAMES: [&str; 10] = [
@@ -118,7 +123,9 @@ impl Game {
             let want = want || (o.ordered(super::commands::Command::RaiseBridge, self.tick) && !self.sallying());
             let bridges = self.gate_bridges(base);
             let raised = bridges.iter().any(|id| self.buildings.get(id).map_or(false, |b| b.raised));
-            if let Some(lever) = self.gate_lever(base) {
+            // (Letting them in, the lever behind the hall shuts them in.)
+            let lever = if let_in { self.inner_lever(base).or_else(|| self.gate_lever(base)) } else { self.gate_lever(base) };
+            if let Some(lever) = lever {
                 // Anyone standing by the lever (the squad holds station there) throws it at once.
                 let lp = self.buildings[&lever].pos;
                 let by = self.dwarves.iter().any(|d| d.alive && d.pos.z == lp.z && (d.pos.x - lp.x).abs() <= 1 && (d.pos.y - lp.y).abs() <= 1);
@@ -138,6 +145,23 @@ impl Game {
 
     pub(super) fn gate_lever(&self, base: Pos) -> Option<u32> {
         self.buildings.values().find(|b| b.kind == BuildingKind::Lever && b.built && b.pos == base.offset(3, 1, 0)).map(|b| b.id)
+    }
+
+    /// The second lever on the gate's bridge, behind the trap hall where the
+    /// squads hold (O04): once it works both halves.
+    pub(super) fn inner_lever(&self, base: Pos) -> Option<u32> {
+        let bridges = self.gate_bridges(base);
+        if bridges.is_empty() {
+            return None;
+        }
+        INNER_LEVER
+            .iter()
+            .filter_map(|&(dx, dy)| match self.world.get(base.offset(dx, dy, 0)).map_or(0, |t| t.building) {
+                0 => None,
+                id => self.buildings.get(&id),
+            })
+            .find(|b| b.kind == BuildingKind::Lever && b.built && bridges.iter().all(|id| b.links.contains(id)))
+            .map(|b| b.id)
     }
 
     pub(super) fn gate_bridges(&self, base: Pos) -> Vec<u32> {
@@ -274,8 +298,9 @@ impl Game {
         if self.tick / DAY % 3 == 0 && self.stock_of(ItemKind::Mechanism) >= 1 {
             self.lay_trap_hall(base);
         }
-        // The plates fire every spike in the hall.
-        let plates: Vec<u32> = self.hall_parts(base, BuildingKind::PressurePlate);
+        // The plates and the wires fire every spike in the hall.
+        let mut plates: Vec<u32> = self.hall_parts(base, BuildingKind::PressurePlate);
+        plates.extend(self.hall_parts(base, BuildingKind::Tripwire));
         let spikes: Vec<u32> = self.hall_parts(base, BuildingKind::Spikes);
         for &p in &plates {
             for &sp in &spikes {
@@ -283,6 +308,9 @@ impl Game {
                     let _ = self.link_lever(p, sp);
                 }
             }
+        }
+        if self.lets_them_in(o) {
+            self.open_the_way(o, base);
         }
         // The siege is over: carry the dead off the traps.
         if !self.alert && !self.creatures.values().any(|c| c.alive && c.siege) {
@@ -299,6 +327,58 @@ impl Game {
                 }
                 let name = self.trap_hall_name().unwrap_or_else(|| "the trap hall".into());
                 Self::note_as(o, self.tick, NoteKind::Gate, format!("Had {} bodies dragged out of {}, so its traps can bite again.", bodies.len(), name));
+            }
+        }
+    }
+
+    /// For an overseer that lets the army in (O04): the cage traps taken up
+    /// from the near row, so the army comes on along it into the hall
+    /// rather than losing its first few to the cages and turning back; and
+    /// a second lever on the bridge behind the hall, where the squads hold,
+    /// to shut them in.
+    fn open_the_way(&mut self, o: &mut Overseer, base: Pos) {
+        let near_row: Vec<u32> = (4..8)
+            .filter_map(|dx| match self.world.get(base.offset(dx, 0, 0)).map_or(0, |t| t.building) {
+                0 => None,
+                id => self.buildings.get(&id).filter(|b| b.kind == BuildingKind::CageTrap).map(|b| b.id),
+            })
+            .collect();
+        if !near_row.is_empty() && !self.alert {
+            for id in &near_row {
+                self.remove_building(*id);
+            }
+            let name = self.trap_hall_name().unwrap_or_else(|| "the trap hall".into());
+            Self::note_as(o, self.tick, NoteKind::Gate, format!("Took up {} cage traps from the near side of the corridor: let them walk freely into {}.", near_row.len(), name));
+        }
+        if self.inner_lever(base).is_some() || !o.did("linked") {
+            return;
+        }
+        let bridges = self.gate_bridges(base);
+        let built = bridges.len() == 2 && bridges.iter().all(|id| self.buildings.get(id).map_or(false, |b| b.built));
+        let at = INNER_LEVER.iter().map(|&(dx, dy)| base.offset(dx, dy, 0)).find(|&p| self.building_at(p) == Some(BuildingKind::Lever));
+        match at {
+            None => {
+                if built && self.stock_of(ItemKind::Mechanism) >= 1 {
+                    if let Some(p) = INNER_LEVER.iter().map(|&(dx, dy)| base.offset(dx, dy, 0)).find(|&p| self.can_place(BuildingKind::Lever, p)) {
+                        self.place_building(BuildingKind::Lever, p);
+                    }
+                }
+            }
+            Some(p) => {
+                let Some(lever) = self.buildings.values().find(|b| b.kind == BuildingKind::Lever && b.pos == p && b.built).map(|b| b.id) else { return };
+                if !built {
+                    return;
+                }
+                for id in bridges {
+                    if !self.buildings[&lever].links.contains(&id) {
+                        let _ = self.link_lever(lever, id);
+                    }
+                }
+                if self.inner_lever(base).is_some() && !o.did("innerlever") {
+                    o.done.push("innerlever".into());
+                    let name = self.trap_hall_name().unwrap_or_else(|| "the trap hall".into());
+                    Self::note_as(o, self.tick, NoteKind::Gate, format!("Linked a second lever to the drawbridge, behind {}: let them in, then shut them in.", name));
+                }
             }
         }
     }
@@ -589,6 +669,54 @@ mod tests {
         let cautious = called_at(&mut g, vec![Trait::Cautious]);
         assert!(!g.lets_them_in(g.overseer.as_ref().unwrap()));
         assert!(bold >= cautious + 200, "seed {}: the bold overseer called the bridge up after {} ticks, the cautious one after {}", seed, bold, cautious);
+    }
+
+    /// O04, the hall made to kill: an overseer that lets them in takes the
+    /// cage traps up from the near row, ties the wires to the spikes, and
+    /// sets a second lever behind the hall, which it pulls to shut in an
+    /// army that has come into it.
+    #[test]
+    fn a_bold_overseer_shuts_them_in_from_behind() {
+        let (seed, mut g) = hall_fort();
+        finish_hall(&mut g);
+        let (top, base) = { let o = g.overseer.as_ref().unwrap(); (o.top.unwrap(), o.base.unwrap()) };
+        // A cage trap on the near row, as the gate's first traps leave one.
+        let _ = g.place_building(BuildingKind::CageTrap, base.offset(5, 0, 0));
+        for _ in 0..4 {
+            g.spawn_item(ItemKind::Mechanism, Mat::Granite, g.embark);
+        }
+        g.alert = false;
+        let mut o = g.overseer.take().unwrap();
+        assert!(g.lets_them_in(&o), "seed {}: a Warlord with a hall should let them in", seed);
+        g.ov_trap_hall(&mut o);
+        assert!((4..8).all(|dx| g.building_at(base.offset(dx, 0, 0)) != Some(BuildingKind::CageTrap)), "seed {}: cage traps left on the near row", seed);
+        let wires = g.hall_parts(base, BuildingKind::Tripwire);
+        assert!(!wires.is_empty() && wires.iter().all(|w| !g.buildings[w].links.is_empty()), "the wires aren't tied to the spikes");
+        let lp = INNER_LEVER.iter().map(|&(dx, dy)| base.offset(dx, dy, 0)).find(|&p| g.building_at(p) == Some(BuildingKind::Lever));
+        let lp = lp.unwrap_or_else(|| panic!("seed {}: no lever laid behind the hall", seed));
+        let id = g.world.t(lp).building;
+        {
+            let b = g.buildings.get_mut(&id).unwrap();
+            b.built = true;
+            b.parts = BuildingKind::Lever.parts();
+        }
+        g.ov_trap_hall(&mut o);
+        assert_eq!(g.inner_lever(base), Some(id), "seed {}: the inner lever isn't linked to the bridge", seed);
+        assert!(o.did("innerlever"));
+        // Most of an army in the hall: the inner lever is the one called for.
+        g.creatures.retain(|_, c| !c.siege);
+        for dy in 0..2 {
+            let c = g.spawn_creature(crate::creature::Species::Goblin, base.offset(9, dy, 0), u64::MAX);
+            g.creatures.get_mut(&c).unwrap().siege = true;
+        }
+        let e = g.embark;
+        for d in g.dwarves.iter_mut() {
+            d.pos = e;
+        }
+        g.ov_gate_alert(&mut o, top, base, true);
+        g.overseer = Some(o);
+        assert!(g.buildings[&id].pull, "seed {}: nobody was asked to pull the lever behind the hall", seed);
+        assert!(g.gate_lever(base).map_or(true, |l| !g.buildings[&l].pull), "the outer lever was called for");
     }
 
     /// When the siege ends, the hall's toll is told, and a hall that took

@@ -180,9 +180,14 @@ impl Game {
                         break;
                     }
                     let def = self.creature_fighter(c);
+                    let att = self.sprawled(&att, c);
                     let mut body = c.body.clone();
                     let (cpos, csp, owner, seen) = (c.pos, c.species, super::gore::owner_of_creature(c), super::melee::a_or_name(c));
+                    let hp: i32 = body.hp.iter().sum();
                     let blow = self.strike(&att, &def, &mut body);
+                    if body.hp.iter().sum::<i32>() < hp || body.dead {
+                        self.trap_hurt(cid);
+                    }
                     if let Some(m) = blow.msg.as_ref().filter(|_| blow.notable) {
                         self.msg(m, (235, 200, 130));
                     }
@@ -193,8 +198,7 @@ impl Game {
                     }
                     if dead {
                         if let Some(c) = self.creatures.remove(&cid) {
-                            self.trap_kill(&c);
-                            self.creature_died(c);
+                            self.trap_kill(c);
                         }
                         break;
                     }
@@ -231,10 +235,18 @@ impl Game {
                 }
             }
             BuildingKind::Tripwire => {
-                // Down it goes, and lies there a while under the traps behind.
+                // Down it goes, headlong onto the next tile it was making
+                // for if the spikes wait there, and lies there a while.
+                let ahead = self.creatures.get(&cid).and_then(|c| c.path.last().copied()).filter(|&q| {
+                    q.z == pos.z && (q.x - pos.x).abs() <= 1 && (q.y - pos.y).abs() <= 1 && q != pos && self.building_at(q) == Some(BuildingKind::Spikes)
+                });
                 if let Some(c) = self.creatures.get_mut(&cid) {
                     c.move_cd = c.move_cd.max(TRIPPED);
                     c.attack_cd = c.attack_cd.max(TRIPPED);
+                    if let Some(q) = ahead {
+                        c.pos = q;
+                        c.path.pop();
+                    }
                 }
                 // (Reset once it's up and has had time to stagger on.)
                 if let Some(b) = self.buildings.get_mut(&tid) {
@@ -242,7 +254,13 @@ impl Game {
                 }
                 self.count("m2.tripped", 1);
                 if self.creatures.get(&cid).map_or(false, |c| c.siege) {
-                    self.msg_at(&format!("A {} trips on a wire and sprawls on the floor.", name), (220, 200, 160), Some(pos), super::logkind::LogKind::Siege);
+                    let text = if ahead.is_some() { format!("A {} trips on a wire and sprawls headlong onto the spikes.", name) } else { format!("A {} trips on a wire and sprawls on the floor.", name) };
+                    self.msg_at(&text, (220, 200, 160), Some(pos), super::logkind::LogKind::Siege);
+                }
+                // The wire is tied to the spikes' catch: they spring up.
+                let links = self.buildings.get(&tid).map_or(Vec::new(), |b| b.links.clone());
+                for s in links {
+                    self.fire_spikes(s);
                 }
             }
             _ => {}
@@ -268,8 +286,10 @@ impl Game {
             b.trap_cd = tick + 30;
             b.timer = tick + 30;
         }
-        // Bolts make thinner spikes than a spear's head.
-        let base = if load.0 == ItemKind::Bolt { 7.0 } else { 9.0 };
+        // A bed of bolt points thrusts up as hard as a spear's head, and even
+        // wooden ones are driven up with all the mechanism's weight.
+        let base = 9.0;
+        let mult = if load.0 == ItemKind::Bolt { load.1.weapon_mult().max(self.knob("trap.bolt_spike", 1.0) as f32) } else { load.1.weapon_mult() };
         if tracing() {
             let on = self.creatures.values().filter(|c| c.alive && c.pos == pos).count();
             eprintln!("  T{} spikes {} fire ({:?} {:?}) on {}", tick, sid, load.0, load.1, on);
@@ -277,7 +297,7 @@ impl Game {
         let att = super::combat::Fighter {
             name: "the spikes".into(),
             skill: 8 + quality as u32,
-            dmg: base * load.1.weapon_mult() * (1.0 + 0.1 * load.2 as f32),
+            dmg: base * mult * (1.0 + 0.1 * load.2 as f32),
             verb: "impales",
             edged: true,
             helm: 0,
@@ -294,9 +314,14 @@ impl Game {
                     break;
                 }
                 let def = self.creature_fighter(c);
+                let att = self.sprawled(&att, c);
                 let mut body = c.body.clone();
                 let (cpos, csp, owner, seen) = (c.pos, c.species, super::gore::owner_of_creature(c), super::melee::a_or_name(c));
+                let hp: i32 = body.hp.iter().sum();
                 let blow = self.strike(&att, &def, &mut body);
+                if body.hp.iter().sum::<i32>() < hp || body.dead {
+                    self.trap_hurt(cid);
+                }
                 if let Some(m) = blow.msg.as_ref().filter(|_| blow.notable) {
                     self.msg(m, (235, 200, 130));
                 }
@@ -307,8 +332,7 @@ impl Game {
                 }
                 if dead {
                     if let Some(c) = self.creatures.remove(&cid) {
-                        self.trap_kill(&c);
-                        self.creature_died(c);
+                        self.trap_kill(c);
                     }
                     break;
                 }
@@ -317,15 +341,59 @@ impl Game {
         true
     }
 
-    /// A trap has killed `c`: a besieger counts toward the siege's toll in
-    /// the trap hall (`SiegeNote.trapped`).
-    fn trap_kill(&mut self, c: &crate::creature::Creature) {
-        if !c.siege || c.legendary() {
+    /// A trap's blow has killed `c` on the spot (its toll is taken in
+    /// `hall_death`, as it dies).
+    fn trap_kill(&mut self, c: crate::creature::Creature) {
+        if c.siege && !c.legendary() {
+            self.count("m2.trap_blow_kills", 1);
+        }
+        self.creature_died(c);
+    }
+
+    /// A trap has wounded creature `cid`: a besieger is marked, so its death
+    /// is the trap hall's even if it bleeds out somewhere else.
+    fn trap_hurt(&mut self, cid: u32) {
+        if !self.creatures.get(&cid).map_or(false, |c| c.siege && !c.legendary()) {
             return;
         }
-        self.count("m2.trap_kills", 1);
         if let Some(s) = self.annals.sieges.iter_mut().rev().find(|s| s.ended.is_none()) {
+            if !s.trap_hurt.contains(&cid) {
+                s.trap_hurt.push(cid);
+            }
+        }
+    }
+
+    /// A besieger has died (`note_foe_slain`): it counts toward the siege's
+    /// toll in the trap hall (`SiegeNote.trapped`) if a trap wounded it, or
+    /// if it fell in the hall itself, under the soldiers holding its far
+    /// end.
+    pub(super) fn hall_death(&mut self, c: &crate::creature::Creature) {
+        let in_hall = self.overseer.as_ref().filter(|o| o.gate_stage >= 1).and_then(|o| o.base).map_or(false, |b| {
+            c.pos.z == b.z && (8..=13).contains(&(c.pos.x - b.x)) && (0..=1).contains(&(c.pos.y - b.y))
+        });
+        let Some(s) = self.annals.sieges.iter_mut().rev().find(|s| s.ended.is_none()) else { return };
+        let hurt = match s.trap_hurt.iter().position(|&id| id == c.id) {
+            Some(i) => {
+                s.trap_hurt.swap_remove(i);
+                true
+            }
+            None => false,
+        };
+        if hurt || in_hall {
             s.trapped += 1;
+            self.count("m2.trap_kills", 1);
+        }
+    }
+
+    /// A foe lying where a tripwire threw it (or a blow sent it sprawling)
+    /// can't twist away: a trap's blow finds it as it would a helpless one.
+    fn sprawled(&self, att: &super::combat::Fighter, c: &crate::creature::Creature) -> super::combat::Fighter {
+        let down = c.move_cd > 10;
+        super::combat::Fighter {
+            name: att.name.clone(),
+            skill: att.skill + if down { self.knob("trap.sprawl_skill", 8.0) as u32 } else { 0 },
+            dmg: att.dmg * if down { self.knob("trap.sprawl_dmg", 1.5) as f32 } else { 1.0 },
+            ..*att
         }
     }
 
@@ -366,15 +434,15 @@ impl Game {
     /// Link a lever to a door or drawbridge. Uses up a mechanism from stock.
     pub fn link_lever(&mut self, lever: u32, target: u32) -> Result<String, String> {
         let Some(t) = self.buildings.get(&target) else { return Err("Nothing to link there.".into()) };
-        let plate = self.buildings.get(&lever).map_or(false, |l| l.kind == BuildingKind::PressurePlate);
+        let plate = self.buildings.get(&lever).map_or(false, |l| matches!(l.kind, BuildingKind::PressurePlate | BuildingKind::Tripwire));
         if plate && t.kind != BuildingKind::Spikes {
-            return Err("Pressure plates work upright spikes.".into());
+            return Err("Pressure plates and tripwires work upright spikes.".into());
         }
         if !matches!(t.kind, BuildingKind::Door | BuildingKind::Bridge | BuildingKind::Floodgate | BuildingKind::Spikes) {
             return Err("Levers work doors, drawbridges, floodgates and spikes.".into());
         }
         let tname = t.name();
-        if self.buildings.get(&lever).map_or(true, |l| !matches!(l.kind, BuildingKind::Lever | BuildingKind::PressurePlate) || !l.built) {
+        if self.buildings.get(&lever).map_or(true, |l| !matches!(l.kind, BuildingKind::Lever | BuildingKind::PressurePlate | BuildingKind::Tripwire) || !l.built) {
             return Err("The lever isn't built yet.".into());
         }
         if self.buildings[&lever].links.contains(&target) {
@@ -741,6 +809,65 @@ mod tests {
         let gob2 = g.spawn_creature(Species::Goblin, b, u64::MAX);
         g.traps_tick();
         assert!(g.creatures[&gob2].move_cd >= TRIPPED, "the goblin didn't trip");
+    }
+
+    /// O04: a goblin tripped on a wire goes headlong onto the spikes ahead,
+    /// which the wire springs; one a trap wounded counts in the siege's toll
+    /// when it dies later, wherever it falls, and one no trap touched doesn't.
+    #[test]
+    fn a_tripwire_throws_a_goblin_onto_the_spikes() {
+        let mut g = Game::new(58);
+        g.creatures.retain(|_, c| c.tame);
+        let mut skip = Vec::new();
+        let (a, b) = loop {
+            let a = spot(&g, &skip);
+            let b = a.offset(1, 0, 0);
+            let t = g.world.t(b);
+            if t.kind == TileKind::Floor && t.water == 0 && t.building == 0 && t.zone == 0 && g.world.walkable(b) {
+                break (a, b);
+            }
+            skip.push(a);
+        };
+        let wire = built(&mut g, BuildingKind::Tripwire, a, Some((ItemKind::Thread, Mat::Flesh, 0)));
+        let spikes = built(&mut g, BuildingKind::Spikes, b, Some((ItemKind::Bolt, Mat::Wood, 0)));
+        assert!(g.link_lever(wire, spikes).is_ok(), "a wire can't be tied to the spikes");
+        g.annals.sieges.push(crate::game::annals::SiegeNote { foe: "goblins".into(), size: 6, ..Default::default() });
+        let mut wounded = None;
+        for _ in 0..20 {
+            let gob = g.spawn_creature(Species::Goblin, a, u64::MAX);
+            let blood = g.creatures[&gob].body.blood;
+            {
+                let c = g.creatures.get_mut(&gob).unwrap();
+                c.siege = true;
+                c.path = vec![b];
+            }
+            g.tick += 100;
+            g.traps_tick();
+            assert!(g.creatures.get(&gob).map_or(true, |c| c.pos == b), "the goblin didn't go headlong");
+            if g.creatures.get(&gob).map_or(false, |c| c.alive) && hurt(&g, gob, blood) {
+                wounded = Some(gob);
+                break;
+            }
+            g.creatures.retain(|_, c| c.tame);
+        }
+        assert!(g.log.iter().any(|l| l.text.contains("headlong onto the spikes")), "nobody saw it go onto the spikes");
+        let gob = wounded.expect("twenty goblins thrown on the spikes and none left wounded");
+        let s = g.annals.sieges.last().unwrap();
+        assert!(s.trap_hurt.contains(&gob), "the wounded goblin isn't marked");
+        let before = s.trapped;
+        // It bleeds out far from the hall: still the trap's.
+        let mut c = g.creatures.remove(&gob).unwrap();
+        c.pos = g.embark;
+        g.creature_died(c);
+        let s = g.annals.sieges.last().unwrap();
+        assert_eq!(s.trapped, before + 1, "the bleed-out wasn't the trap's");
+        assert!(s.trap_hurt.is_empty());
+        // One no trap touched isn't.
+        let other = g.spawn_creature(Species::Goblin, g.embark, u64::MAX);
+        let mut c = g.creatures.remove(&other).unwrap();
+        c.siege = true;
+        g.creature_died(c);
+        assert_eq!(g.annals.sieges.last().unwrap().trapped, before + 1);
     }
 
     /// ENG-19: a stone-fall trap drops its stone three times before it is
