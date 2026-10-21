@@ -271,19 +271,24 @@ fn default_caverns() -> Vec<(i32, i32)> {
     vec![(5, 8)]
 }
 
-/// Most of a map is long runs of identical rock, so saves store (count, tile) pairs.
+/// Most of a map is long runs of identical rock, so saves store runs: each
+/// different tile once (`pal`), then (count, which) pairs, flat (`runs`).
+/// Older saves' (count, tile) pairs and plain arrays still load.
 mod tiles_rle {
     use super::Tile;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::HashMap;
 
     #[derive(Serialize)]
     struct Out<'a> {
-        rle: Vec<(u32, &'a Tile)>,
+        pal: Vec<&'a Tile>,
+        runs: Vec<u32>,
     }
 
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum In {
+        Pal { pal: Vec<Tile>, runs: Vec<u32> },
         Rle { rle: Vec<(u32, Tile)> },
         Plain(Vec<Tile>),
     }
@@ -296,12 +301,32 @@ mod tiles_rle {
                 _ => rle.push((1, t)),
             }
         }
-        Out { rle }.serialize(s)
+        // (Tiles are told apart by how they are written.)
+        let mut pal: Vec<&Tile> = Vec::new();
+        let mut index: HashMap<String, u32> = HashMap::new();
+        let mut runs = Vec::with_capacity(rle.len() * 2);
+        for (n, t) in rle {
+            let key = serde_json::to_string(t).map_err(<S::Error as serde::ser::Error>::custom)?;
+            let i = *index.entry(key).or_insert_with(|| {
+                pal.push(t);
+                pal.len() as u32 - 1
+            });
+            runs.extend([n, i]);
+        }
+        Out { pal, runs }.serialize(s)
     }
 
     pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<Tile>, D::Error> {
         Ok(match In::deserialize(d)? {
             In::Plain(v) => v,
+            In::Pal { pal, runs } => {
+                let mut v = Vec::with_capacity(runs.chunks(2).map(|r| r[0] as usize).sum());
+                for r in runs.chunks_exact(2) {
+                    let t = pal.get(r[1] as usize).ok_or_else(|| serde::de::Error::custom("a run of a tile not in the palette"))?;
+                    v.extend(std::iter::repeat(*t).take(r[0] as usize));
+                }
+                v
+            }
             In::Rle { rle } => {
                 let mut v = Vec::with_capacity(rle.iter().map(|(n, _)| *n as usize).sum());
                 for (n, t) in rle {

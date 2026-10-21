@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn make_a_hero_by_keys() {
         let mut app = App::new(5);
-        app.save_dir = std::env::temp_dir().join("dwarfclone-no-saves-here");
+        app.save_dir = std::env::temp_dir().join(format!("dwarfclone-make-hero-{}", std::process::id()));
         app.mode = Mode::Title { sel: TITLE_ADVENTURE };
         app.on_key(key(KeyCode::Enter));
         settle(&mut app);

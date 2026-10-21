@@ -283,6 +283,10 @@ pub fn screenshot(args: &[String]) -> Result<()> {
     if adventure && args.iter().any(|a| a == "--travel") {
         app.adventure_journey();
     }
+    // (`--saved`: saved to a scratch folder, the menu up.)
+    if adventure && args.iter().any(|a| a == "--saved") {
+        app.adventure_saved();
+    }
     for _ in 0..if adventure { 0 } else { days * crate::game::DAY } {
         app.game.step();
     }
