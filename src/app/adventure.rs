@@ -52,6 +52,8 @@ pub struct AdvScreen {
     pub chat: Option<adv::talk::Chat>,
     /// The end has been written into the world file (A19).
     pub recorded: bool,
+    /// `D` was pressed: the next key is the way to dig (climb.rs).
+    pub digging: bool,
 }
 
 /// What a letter list in the local view is for.
@@ -102,7 +104,7 @@ impl AdvScreen {
         let turn_from = adv.now();
         // (A save made with something met on the road: it waits still.)
         let meet = adv.meet.take();
-        AdvScreen { adv, view, flash: None, maker, pick: None, sneak: false, rest_until: None, help: false, turn_from, page: None, meet, replay: None, chat: None, recorded: false }
+        AdvScreen { adv, view, flash: None, maker, pick: None, sneak: false, rest_until: None, help: false, turn_from, page: None, meet, replay: None, chat: None, recorded: false, digging: false }
     }
 }
 
@@ -216,6 +218,42 @@ impl App {
         }
     }
 
+    /// The window's `--adventure --climb` picture: the hero moved to the
+    /// hillside nearby with the most ways up and down to see, a pick in
+    /// hand, so the bright ramps and the "Here:" line show.
+    pub fn adventure_hillside(&mut self) {
+        use crate::game::adv::climb;
+        let Some(s) = self.adv.as_mut() else { return };
+        let Some(v) = s.adv.visit.as_mut() else { return };
+        let (h, w) = (v.hero, &v.g.world);
+        let me = v.g.dwarves[h].pos;
+        let mut ways = std::collections::HashSet::new();
+        for z in me.z - 8..=me.z + 8 {
+            for y in me.y - 70..=me.y + 70 {
+                for x in me.x - 70..=me.x + 70 {
+                    let p = crate::geom::Pos::new(x, y, z);
+                    if w.in_bounds(p) && w.kind(p) == Some(crate::world::TileKind::Ramp) && climb::usable(w, p) == Some(true) {
+                        ways.insert(p);
+                    }
+                }
+            }
+        }
+        // Beside a ramp up, with the most others in sight of it.
+        let best = ways
+            .iter()
+            .flat_map(|r| crate::geom::DIRS8.iter().map(move |&(dx, dy)| r.offset(dx, dy, 0)))
+            .filter(|&q| w.in_bounds(q) && w.t(q).kind == crate::world::TileKind::Floor && w.passable(q, crate::world::Mover::Dwarf) && w.outside(q))
+            .max_by_key(|q| (ways.iter().filter(|r| r.z == q.z && (r.x - q.x).abs() <= 12 && (r.y - q.y).abs() <= 8).count(), -(q.x - me.x).abs() - (q.y - me.y).abs()));
+        let Some(q) = best else { return };
+        v.g.dwarves[h].pos = q;
+        let pick = v.g.spawn_item(crate::items::ItemKind::Pick, crate::material::Mat::Iron, q);
+        if let Some(it) = v.g.items.get_mut(&pick) {
+            it.carried_by = Some(adv::HERO_ID);
+        }
+        v.g.dwarves[h].held = Some(pick);
+        v.g.reveal_seen(h);
+    }
+
     /// The window's `--adventure --saved` picture (A11): the adventure saved
     /// (to a scratch folder, never the player's saves) and the menu up.
     pub fn adventure_saved(&mut self) {
@@ -284,7 +322,7 @@ impl App {
             return;
         }
         // The hero's saga so far (A10).
-        let free = s.pick.is_none() && s.page.is_none() && s.meet.is_none() && !s.help && s.rest_until.is_none();
+        let free = s.pick.is_none() && s.page.is_none() && s.meet.is_none() && !s.help && s.rest_until.is_none() && !s.digging;
         if k.code == KeyCode::Char('S') && free && matches!(s.view, View::Local | View::Travel) {
             s.view = View::Saga;
             return;
@@ -547,6 +585,20 @@ impl App {
         if s.pick.is_some() {
             return self.adv_key_pick(k);
         }
+        // `D` then the way to dig: a direction, `<` up or `>` down.
+        if s.digging {
+            s.digging = false;
+            let way = match (step_of(&k), k.code) {
+                (Some((dx, dy)), _) => Some((dx, dy, 0)),
+                (_, KeyCode::Char('<')) => Some((0, 0, 1)),
+                (_, KeyCode::Char('>')) => Some((0, 0, -1)),
+                _ => None,
+            };
+            if let Some((dx, dy, dz)) = way {
+                self.adv_act(Action::Dig(dx, dy, dz));
+            }
+            return;
+        }
         match s.view.clone() {
             View::Look(p) => return self.adv_key_look(k, p),
             View::Inventory { sel } => return self.adv_key_inventory(k, sel),
@@ -617,6 +669,15 @@ impl App {
                 KeyCode::Char('A') => return self.adv_open_pick(Pick::Aim),
                 KeyCode::Char('f') => return self.adv_open_pick(Pick::Fire),
                 KeyCode::Char('b') => Action::Bind,
+                KeyCode::Char('D') => {
+                    if g.pick_in_hand(h).is_none() {
+                        s.flash = Some("You need a pick to dig.".into());
+                    } else {
+                        s.digging = true;
+                        s.flash = Some("Dig which way? A direction, < up or > down (any other key: never mind)".into());
+                    }
+                    return;
+                }
                 KeyCode::Char('k') => return self.adv_open_pick(Pick::Talk),
                 KeyCode::Char('R') => {
                     match adv::sitegen::fallen::read_here(g, h) {
@@ -651,7 +712,11 @@ impl App {
             _ => None,
         };
         before.shot = matches!(act, Action::Fire { .. });
-        let mut out = v.g.act(h, act);
+        let mut out = match act {
+            // (Through the visit, so the site remembers what was dug.)
+            Action::Dig(dx, dy, dz) => v.dig(dx, dy, dz),
+            act => v.g.act(h, act),
+        };
         // Sneaking: each step taken slowly, as long again.
         if s.sneak && step && v.g.dwarves[h].pos != was && matches!(out, Outcome::Done { .. }) {
             out = v.g.act(h, Action::Wait(SNEAK_EXTRA));
@@ -1728,6 +1793,48 @@ mod tests {
         app.on_key(ch('*'));
         let mine = |app: &App, k: ItemKind| game(app).items.values().any(|it| it.kind == k && it.carried_by == Some(adv::HERO_ID));
         assert!(mine(&app, ItemKind::Spear) && mine(&app, ItemKind::Helm) && !mine(&app, ItemKind::Corpse));
+    }
+
+    #[test]
+    fn d_digs_with_a_pick_and_the_here_line_shows() {
+        let mut app = field_app(41);
+        let ch = |c: char| key(KeyCode::Char(c));
+        let p = hero(&app).pos;
+        let east = p.offset(1, 0, 0);
+        {
+            let g = game_mut(&mut app);
+            let t = g.world.t_mut(east);
+            t.kind = crate::world::TileKind::Wall;
+            t.mat = crate::material::Mat::Granite;
+            t.built_from = None;
+        }
+        app.on_key(ch('D'));
+        assert_eq!(app.adv.as_ref().unwrap().flash.as_deref(), Some("You need a pick to dig."));
+        assert!(!app.adv.as_ref().unwrap().digging);
+        {
+            let g = game_mut(&mut app);
+            let id = g.spawn_item(crate::items::ItemKind::Pick, crate::material::Mat::Iron, p);
+            g.items.get_mut(&id).unwrap().carried_by = Some(adv::HERO_ID);
+            let h = g.dwarves.iter().position(|d| d.id == adv::HERO_ID).unwrap();
+            g.dwarves[h].held = Some(id);
+        }
+        app.on_key(ch('D'));
+        assert!(app.adv.as_ref().unwrap().digging, "waiting for the way");
+        app.on_key(key(KeyCode::Right));
+        assert_eq!(game(&app).world.t(east).kind, crate::world::TileKind::Floor, "dug east");
+        assert!(!app.adv.as_ref().unwrap().digging);
+        // `D` then any other key: nothing dug, no time passed.
+        let t0 = game(&app).tick;
+        app.on_key(ch('D'));
+        app.on_key(ch('x'));
+        assert_eq!(game(&app).tick, t0);
+        // The Here line, wide and folded.
+        for (w, h) in [(160, 50), (100, 40)] {
+            let text = screen(&mut app, w, h);
+            assert!(text.contains("Here:"), "{}x{}: {}", w, h, text);
+        }
+        app.on_key(ch('?'));
+        assert!(screen(&mut app, 160, 50).contains("dig with a pick"));
     }
 
     #[test]

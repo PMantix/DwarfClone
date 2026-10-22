@@ -39,6 +39,9 @@ pub enum Action {
     Rest,
     /// Speak to someone (A7).
     Talk(u32),
+    /// Dig with the pick in hand: beside (dz 0), a stair down (-1) or up (1)
+    /// (`climb.rs`).
+    Dig(i32, i32, i32),
 }
 
 /// Whom an act is aimed at.
@@ -145,19 +148,27 @@ impl Game {
                 let Some(&(next, _)) = nb.iter().find(|(q, _)| q.x == to.x && q.y == to.y) else {
                     return Outcome::Refused("Something is in the way.".into());
                 };
+                // Onto a ramp that leads on up the way they go: up it, as
+                // in DF (two steps' time).
+                if next.z == from.z {
+                    if let Some(top) = self.ramp_top(next, dx, dy) {
+                        self.dwarves[hero].pos = top;
+                        return self.adv_run(hero, 2 * (MOVE_DELAY + limp), false);
+                    }
+                }
                 self.dwarves[hero].pos = next;
                 self.adv_run(hero, MOVE_DELAY + limp, false)
             }
             Action::Climb(dz) => {
                 let from = self.dwarves[hero].pos;
-                let mut nb = Vec::new();
-                self.world.neighbors(from, &mut nb, Mover::Dwarf);
-                let Some(&(next, _)) = nb.iter().find(|(q, _)| q.x == from.x && q.y == from.y && q.z == from.z + dz.signum()) else {
+                // A stair, or a ramp's top, or down onto a ramp beside.
+                let Some(next) = self.climb_to(from, dz.signum(), None) else {
                     return Outcome::Refused(if dz > 0 { "There is no way up here." } else { "There is no way down here." }.into());
                 };
                 self.dwarves[hero].pos = next;
                 self.adv_run(hero, MOVE_DELAY + limp, false)
             }
+            Action::Dig(dx, dy, dz) => self.hero_dig(hero, dx, dy, dz),
             Action::Wait(n) => self.adv_run(hero, n.max(1), n > 10),
             Action::Attack { target: Target::Creature(cid), aim } => self.hero_blow(hero, cid, aim),
             Action::Attack { target: Target::Dwarf(_), .. } | Action::Fire { target: Target::Dwarf(_), .. } => Outcome::Refused("You can't bring yourself to strike them.".into()),

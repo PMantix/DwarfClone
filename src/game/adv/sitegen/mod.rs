@@ -128,6 +128,15 @@ pub fn recall(g: &mut Game, ctx: &Ctx, made: &mut Made) {
         keep.push((id, key));
     }
     made.placed = keep;
+    // What the hero dug before (climb.rs): the rock stays gone.
+    for &(p, k) in &memo.dug {
+        if g.world.in_bounds(p) {
+            let t = g.world.t_mut(p);
+            t.kind = k;
+            t.dug = true;
+            t.revealed = true;
+        }
+    }
     // What was left lying (the dead where they fell, a slain foe's gear,
     // what the hero dropped): bodies rot to bones after a season.
     let old = ctx.now >= memo.visited_tick + SEASON;

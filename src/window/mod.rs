@@ -287,6 +287,10 @@ pub fn screenshot(args: &[String]) -> Result<()> {
     if adventure && args.iter().any(|a| a == "--talk") {
         app.adventure_talk();
     }
+    // (`--climb`: on a hillside, the ways up and down shown.)
+    if adventure && args.iter().any(|a| a == "--climb") {
+        app.adventure_hillside();
+    }
     // (`--saved`: saved to a scratch folder, the menu up.)
     if adventure && args.iter().any(|a| a == "--saved") {
         app.adventure_saved();

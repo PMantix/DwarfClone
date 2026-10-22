@@ -79,7 +79,7 @@ impl Adventure {
         }
         arrival(&mut g, &made, at, ctx.memo.visited_tick > 0);
         self.at = cell;
-        self.visit = Some(Box::new(Visit { key, g, hero, placed: made.placed }));
+        self.visit = Some(Box::new(Visit { key, g, hero, placed: made.placed, dug: Vec::new() }));
         Ok(())
     }
 
@@ -93,6 +93,11 @@ impl Adventure {
         } else {
             let memo = self.memos.entry(v.key).or_default();
             sitegen::remember(&v.g, &v.placed, memo);
+            // What the hero dug stays dug (climb.rs).
+            for &(p, k) in &v.dug {
+                memo.dug.retain(|(q, _)| *q != p);
+                memo.dug.push((p, k));
+            }
             turned_guards(&v.g)
         };
         // What the hero took from a fallen fort, and slew there (A5).
