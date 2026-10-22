@@ -13,6 +13,7 @@
 #![allow(dead_code)]
 
 pub mod bot;
+pub mod climb;
 pub mod company;
 pub mod create;
 pub mod fame;
@@ -160,6 +161,10 @@ pub struct Visit {
     /// What the site was made with, for its memory (A4: `sitegen::remember`).
     #[serde(default)]
     pub placed: Vec<(u32, String)>,
+    /// The tiles the hero dug here and what they became (`climb.rs`), for
+    /// the site's memory.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dug: Vec<(Pos, crate::world::TileKind)>,
 }
 
 /// What screen the adventure shows (App-side, never saved).
@@ -198,6 +203,9 @@ pub struct SiteMemo {
     pub corpses: Vec<(Pos, String)>,
     #[serde(default)]
     pub visited_tick: u64,
+    /// What the hero dug here, laid back over the map (`climb.rs`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dug: Vec<(Pos, crate::world::TileKind)>,
 }
 
 /// Renown and infamy (A10).

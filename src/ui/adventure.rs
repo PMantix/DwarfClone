@@ -15,6 +15,7 @@ use crate::game::adv::fight::{Aim, AIMS};
 use crate::app::App;
 use crate::body::{Body, Part, PARTS};
 use crate::dwarf::{skill_rank, Dwarf, LABORS};
+use crate::game::adv::climb;
 use crate::game::adv::turn::Sight;
 use crate::game::adv::{Adventure, QuestState, View};
 use crate::game::{clock, Game};
@@ -53,6 +54,12 @@ const SIDE_W: u16 = 38;
 /// Rows of the log box under the map (with its border).
 const LOG_ROWS: u16 = 8;
 const RED: Color = Color::Rgb(235, 70, 60);
+/// A ramp or stair up that can be climbed, and its ground.
+const WAY_UP: Color = Color::Rgb(255, 222, 110);
+const WAY_UP_BG: Color = Color::Rgb(56, 44, 0);
+/// A way down that can be taken.
+const WAY_DOWN: Color = Color::Rgb(120, 212, 255);
+const WAY_DOWN_BG: Color = Color::Rgb(0, 34, 58);
 const WARN: Color = Color::Rgb(240, 150, 110);
 
 pub(super) fn draw(f: &mut Frame, app: &App) {
@@ -254,6 +261,16 @@ fn draw_local(f: &mut Frame, area: Rect, a: &Adventure, sight: &Sight, look: Opt
                 fg = Color::Rgb(235, 240, 250);
                 if matches!(ch, '.' | ',' | '`' | '\'' | '·') {
                     ch = '·';
+                }
+            }
+            // A way up or down that works stands out; a slope that leads
+            // nowhere (or a ramp far below) is dimmed (climb.rs).
+            if matches!(ch, '▲' | '▼' | '<' | '>' | 'X') {
+                match climb::usable(w, p) {
+                    Some(true) if matches!(ch, '▼' | '>') => (fg, bg) = (WAY_DOWN, WAY_DOWN_BG),
+                    Some(true) => (fg, bg) = (WAY_UP, WAY_UP_BG),
+                    Some(false) => fg = dim(fg, 0.5),
+                    None => {}
                 }
             }
             // Blood dashed up a wall, in streaks through the stone.
@@ -504,6 +521,19 @@ fn draw_side(f: &mut Frame, r: Rect, s: &AdvScreen, sight: &Sight) {
     v.push(plain(g.fortress_name.clone(), TEXT));
     v.push(plain(g.date_string(), MUTED));
     v.push(plain(format!("{}, {}", cap(clock::time_words(g.tick)), clock::moon_words(g.tick)), MUTED));
+    // What the hero's tile allows: up, down, or neither (climb.rs).
+    let (here, near) = climb::here_lines(&g.world, d.pos);
+    let w = r.width.saturating_sub(2) as usize;
+    for (i, row) in wrap_words(&format!("Here: {}", here), w).into_iter().enumerate() {
+        v.push(if i == 0 && row.starts_with("Here: ") {
+            Line::from(vec![Span::styled("Here: ", Style::default().fg(KEY)), Span::styled(row[6..].to_string(), Style::default().fg(TEXT))])
+        } else {
+            plain(row, TEXT)
+        });
+    }
+    for n in near {
+        v.extend(wrap_words(&format!("{}.", n), w).into_iter().map(|row| plain(row, MUTED)));
+    }
     v.push(Line::default());
     v.push(header("Body"));
     v.extend(body_block(d, 10));
@@ -572,10 +602,10 @@ fn draw_side(f: &mut Frame, r: Rect, s: &AdvScreen, sight: &Sight) {
     // The keys, along the bottom.
     let inner_h = r.height.saturating_sub(2) as usize;
     let keys = vec![
-        plain("move: arrows · numpad · 7 9 1 3".into(), MUTED),
+        plain("move: arrows · numpad · < > up/down".into(), MUTED),
         plain("l look  g get  i pack  z status".into(), MUTED),
         plain("A aim  f fire  b bind  s sneak".into(), MUTED),
-        plain("Z rest  ? help".into(), MUTED),
+        plain("D dig  Z rest  ? help".into(), MUTED),
     ];
     if v.len() + keys.len() < inner_h {
         v.resize(inner_h - keys.len(), Line::default());
@@ -603,12 +633,24 @@ fn draw_strip(f: &mut Frame, r: Rect, s: &AdvScreen) {
         }
     }
     let place = a.visit.as_ref().map_or(String::new(), |v| v.g.fortress_name.clone());
-    let mut l2 = format!("{} · {}", place, cap(clock::time_words(a.now())));
-    if s.sneak {
-        l2.push_str(" · sneaking");
+    // What the hero's tile allows first (climb.rs), then the place.
+    let mut l2 = vec![];
+    if let Some(v) = a.visit.as_ref() {
+        let (here, near) = climb::here_lines(&v.g.world, d.pos);
+        l2.push(Span::styled("Here: ", Style::default().fg(KEY)));
+        l2.push(Span::styled(here, Style::default().fg(TEXT)));
+        if let Some(n) = near.first() {
+            l2.push(Span::styled(format!(" ({})", n.to_lowercase()), Style::default().fg(MUTED)));
+        }
+        l2.push(Span::raw("  "));
     }
-    l2.push_str("   l look · i pack · z status · ? help");
-    f.render_widget(Paragraph::new(vec![Line::from(l1), plain(l2, MUTED)]), r);
+    let mut rest = format!("{} · {}", place, cap(clock::time_words(a.now())));
+    if s.sneak {
+        rest.push_str(" · sneaking");
+    }
+    rest.push_str("   l look · i pack · D dig · ? help");
+    l2.push(Span::styled(rest, Style::default().fg(MUTED)));
+    f.render_widget(Paragraph::new(vec![Line::from(l1), Line::from(l2)]), r);
 }
 
 /// The visit's newest announcements, the flash first; this turn's lines
@@ -861,7 +903,8 @@ fn draw_help(f: &mut Frame, area: Rect) {
         ("1-9", "move (numpad; 7 9 1 3 and Home/End/PgUp/PgDn diagonal)"),
         ("arrows", "move; into a foe to strike it"),
         (". 5", "wait a moment"),
-        ("< >", "up or down a stair or ramp"),
+        ("< >", "up or down a stair or ramp (walking onto a ramp climbs it too)"),
+        ("D", "dig with a pick in hand: then a direction, < a stair up, > a stair down"),
         ("A", "attack: a foe in reach, then where: head, eyes, teeth, arm, leg..."),
         ("f", "fire the crossbow: a foe in sight, then where"),
         ("b", "bind your bleeding wounds (cloth from the pack, or your shirt)"),

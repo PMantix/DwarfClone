@@ -184,7 +184,7 @@ fn enter_save(adv: &mut Adventure, i: u32, mark: &FortMark, dir: &Path, from: Op
         }
     }
     adv.at = mark.site;
-    adv.visit = Some(Box::new(Visit { key, g, hero, placed: made.placed }));
+    adv.visit = Some(Box::new(Visit { key, g, hero, placed: made.placed, dug: Vec::new() }));
     Ok(())
 }
 
@@ -699,6 +699,9 @@ pub struct Spoils {
     pub slain: Vec<String>,
     /// No one is left alive of those who lived here.
     pub cleared: bool,
+    /// Tiles the hero dug (climb.rs): the save is written back for them
+    /// too, with no legend.
+    pub dug: usize,
 }
 
 /// Read what the hero takes from a fort as they leave (None for any other
@@ -732,6 +735,7 @@ pub fn spoils(v: &Visit) -> Option<Spoils> {
         }
     }
     sp.cleared = any && !alive;
+    sp.dug = v.dug.len();
     Some(sp)
 }
 
@@ -757,7 +761,9 @@ struct OwnWorld {
 pub fn write_back(adv: &mut Adventure, v: &mut Visit, sp: &Spoils) -> Result<(), String> {
     let SiteKey::Fort(i) = v.key else { return Ok(()) };
     let i = i as usize;
-    if sp.took.is_empty() && sp.slain.is_empty() {
+    // (Only dug: the halls as the pick left them, and no legend.)
+    let told = !sp.took.is_empty() || !sp.slain.is_empty();
+    if !told && sp.dug == 0 {
         return Ok(());
     }
     let Some(mark) = adv.ow.forts.get(i).cloned() else { return Ok(()) };
@@ -793,8 +799,10 @@ pub fn write_back(adv: &mut Adventure, v: &mut Visit, sp: &Spoils) -> Result<(),
             m.occupant = Some(Occupant::Empty);
         }
     };
-    update(&mut adv.ow.forts[i]);
-    adv.ow.log(year, legend.clone());
+    if told {
+        update(&mut adv.ow.forts[i]);
+        adv.ow.log(year, legend.clone());
+    }
     // The fort's own world: only its mark and the legend change.
     let data = std::fs::read_to_string(&path).map_err(|e| format!("Could not read {}: {}", mark.save_file, e))?;
     let mut own = serde_json::from_str::<OwnWorld>(&data).map_err(|e| format!("Could not read {}: {}", mark.save_file, e))?.overworld;
@@ -810,7 +818,9 @@ pub fn write_back(adv: &mut Adventure, v: &mut Visit, sp: &Spoils) -> Result<(),
         }
         None => own.forts.push(now),
     }
-    own.log(year, legend);
+    if told {
+        own.log(year, legend);
+    }
     remap_engravings(&mut v.g.world, &adv.ow, &mut own);
     v.g.overworld = own;
     v.g.fallen = true;
@@ -1130,6 +1140,50 @@ pub(crate) mod tests {
         assert!(std::fs::read(&backup).unwrap() == original, "never written over");
         let saved = crate::saves::read(&dir, &file, &|_, _| {}).unwrap();
         assert_eq!(saved.overworld.forts[0].robbed.len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A tunnel dug in a fallen fort is in its save when the hero comes
+    /// out (climb.rs), with no legend of plunder.
+    #[test]
+    fn a_tunnel_dug_in_a_fallen_fort_stays_dug() {
+        use crate::world::TileKind;
+        let dir = tmp("dug");
+        let ow = fallen_fort(37, |_| Some("goblin".into()), &dir);
+        let file = ow.forts[0].save_file.clone();
+        let mut a = adventure(ow, 37, &dir);
+        a.enter(SiteKey::Fort(0)).unwrap();
+        let rock = {
+            let v = a.visit.as_mut().unwrap();
+            let h = v.hero;
+            // (Its band gone, unslain, so no foe stops the digging.)
+            v.g.creatures.clear();
+            v.placed.retain(|(_, k)| !k.starts_with('@'));
+            let w = &v.g.world;
+            // A floor under rock with rough stone beside it.
+            let (at, rock) = (0..w.tiles.len())
+                .map(|i| w.pos_of(i))
+                .filter(|&p| w.t(p).kind == TileKind::Floor && !w.outside(p) && w.t(p).building == 0)
+                .find_map(|p| {
+                    let q = p.offset(1, 0, 0);
+                    let t = w.get(q)?;
+                    (t.kind == TileKind::Wall && t.built_from.is_none() && t.mat.diggable() && !t.aquifer).then_some((p, q))
+                })
+                .expect("rock beside a hall");
+            v.g.dwarves[h].pos = at;
+            let id = v.g.spawn_item(ItemKind::Pick, Mat::Steel, at);
+            v.g.items.get_mut(&id).unwrap().carried_by = Some(HERO_ID);
+            v.g.dwarves[h].held = Some(id);
+            let out = v.dig(1, 0, 0);
+            assert!(matches!(out, Outcome::Done { .. }), "{:?}", out);
+            // (The pick goes home with the hero, not taken from the fort.)
+            rock
+        };
+        a.leave();
+        let saved = crate::saves::read(&dir, &file, &|_, _| {}).unwrap();
+        assert_eq!(saved.world.t(rock).kind, TileKind::Floor, "the save has the tunnel");
+        assert!(dir.join(backup_file(&file)).exists(), "the player's save kept first");
+        assert!(saved.overworld.forts[0].robbed.is_empty(), "digging is no robbery: {:?}", saved.overworld.forts[0].robbed);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
