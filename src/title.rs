@@ -3,6 +3,23 @@
 //! lie of the land, the hour, the weather, who turns up. Left open long
 //! enough, the screen dissolves into another scene.
 
+mod a_kit;
+mod a_bees;
+mod a_embark;
+mod a_fireflies;
+mod a_fishing;
+mod a_flock;
+mod a_funeral;
+mod a_goats;
+mod a_harvest;
+mod a_meteors;
+mod a_pass;
+mod a_rainbow;
+mod a_ridge;
+mod a_thaw;
+mod a_thunder;
+mod a_waterfall;
+mod a_wedding;
 mod caravan;
 mod caverns;
 mod dragon;
@@ -159,6 +176,23 @@ const SCENES: &[Scene] = &[
     Scene { name: "ages", draw: c_ages::draw, taglines: c_ages::TAGLINES },
     Scene { name: "skyisles", draw: c_skyisles::draw, taglines: c_skyisles::TAGLINES },
     Scene { name: "volcano", draw: c_volcano::draw, taglines: c_volcano::TAGLINES },
+    // The surface, nature and the seasons (the a_ set).
+    Scene { name: "a_bees", draw: a_bees::draw, taglines: a_bees::TAGLINES },
+    Scene { name: "a_embark", draw: a_embark::draw, taglines: a_embark::TAGLINES },
+    Scene { name: "a_fireflies", draw: a_fireflies::draw, taglines: a_fireflies::TAGLINES },
+    Scene { name: "a_fishing", draw: a_fishing::draw, taglines: a_fishing::TAGLINES },
+    Scene { name: "a_flock", draw: a_flock::draw, taglines: a_flock::TAGLINES },
+    Scene { name: "a_funeral", draw: a_funeral::draw, taglines: a_funeral::TAGLINES },
+    Scene { name: "a_goats", draw: a_goats::draw, taglines: a_goats::TAGLINES },
+    Scene { name: "a_harvest", draw: a_harvest::draw, taglines: a_harvest::TAGLINES },
+    Scene { name: "a_meteors", draw: a_meteors::draw, taglines: a_meteors::TAGLINES },
+    Scene { name: "a_pass", draw: a_pass::draw, taglines: a_pass::TAGLINES },
+    Scene { name: "a_rainbow", draw: a_rainbow::draw, taglines: a_rainbow::TAGLINES },
+    Scene { name: "a_ridge", draw: a_ridge::draw, taglines: a_ridge::TAGLINES },
+    Scene { name: "a_thaw", draw: a_thaw::draw, taglines: a_thaw::TAGLINES },
+    Scene { name: "a_thunder", draw: a_thunder::draw, taglines: a_thunder::TAGLINES },
+    Scene { name: "a_waterfall", draw: a_waterfall::draw, taglines: a_waterfall::TAGLINES },
+    Scene { name: "a_wedding", draw: a_wedding::draw, taglines: a_wedding::TAGLINES },
 ];
 
 /// How many scenes there are to choose from.
@@ -686,7 +720,7 @@ mod tests {
 
     #[test]
     fn the_scenes_are_all_there_and_named_once() {
-        assert!(SCENE_COUNT >= 16);
+        assert_eq!(SCENE_COUNT, 64);
         for (i, a) in SCENES.iter().enumerate() {
             assert!(SCENES.iter().skip(i + 1).all(|b| b.name != a.name), "{} twice", a.name);
         }
