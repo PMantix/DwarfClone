@@ -26,6 +26,7 @@ mod ledger;
 mod lore;
 pub mod saga;
 mod moodstrip;
+mod worldshow;
 mod ambient;
 mod ticker;
 mod sound;
@@ -2414,100 +2415,7 @@ fn draw_world_setup(f: &mut Frame, app: &App, sel: usize) {
 }
 
 fn draw_worldgen(f: &mut Frame, app: &App) {
-    use crate::genshow::Stage;
-    let area = f.size();
-    let Some(g) = &app.worldgen else { return };
-    let ow = &g.ow;
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(10)])
-        .split(area);
-    let cols = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(20), Constraint::Length(SIDEBAR_W + 8)])
-        .split(rows[1]);
-    let show = app.genshow.as_ref();
-    let t = app.show_t;
-    let (stage, _) = show.map_or((Stage::Ocean, 0.0), |s| s.stage_at(t));
-    let year = show.and_then(|s| s.year_at(t));
-    let finished = app.worldgen_finished();
-    f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(" ☼ DwarfClone ", Style::default().fg(KEY).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("│ Creating {} │ seed {}", ow.name, g.params.seed), Style::default().fg(TEXT)),
-        ]))
-        .style(Style::default().bg(Color::Rgb(20, 20, 30))),
-        rows[0],
-    );
-    let title = match year {
-        Some(y) => format!(" Year {} ", y),
-        None => format!(" {} ", stage.short()),
-    };
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(MUTED))
-        .title(Span::styled(title, Style::default().fg(KEY)))
-        .title_bottom(Span::styled(format!(" {} ", stage.caption()), Style::default().fg(TEXT)));
-    let inner = block.inner(cols[0]);
-    f.render_widget(block, cols[0]);
-    if let Some(s) = show {
-        let fr = s.frame(t, g);
-        let w = ow.w;
-        paint_cells(f, inner, (ow.w, ow.h), ow.h, None, &|x, y| fr.site[(y * w + x) as usize], &|x, y| fr.looks[(y * w + x) as usize]);
-    }
-
-    // The stages, then what history has made so far.
-    let width = 28usize;
-    let frac = show.map_or(0.0, |s| (t / s.end()).clamp(0.0, 1.0)) as f32;
-    let filled = ((frac * width as f32).round() as usize).min(width);
-    let mut v = vec![
-        plain(stage.caption().to_string(), TEXT),
-        Line::from(vec![
-            Span::styled("█".repeat(filled), Style::default().fg(Color::Rgb(255, 200, 80))),
-            Span::styled("░".repeat(width - filled), Style::default().fg(Color::Rgb(60, 55, 50))),
-            Span::styled(format!(" {:>3}%", (frac * 100.0) as u32), Style::default().fg(MUTED)),
-        ]),
-        Line::default(),
-    ];
-    for s in &Stage::ALL[..7] {
-        let (mark, col) = if *s < stage { ("✓ ", MUTED) } else if *s == stage { ("▶ ", KEY) } else { ("  ", Color::Rgb(90, 90, 100)) };
-        v.push(plain(format!("{}{}", mark, s.short()), col));
-    }
-    v.push(Line::default());
-    let y = year.unwrap_or(0);
-    let (towns, ruins) = match (show, year) {
-        (Some(s), Some(y)) => s.tally(g, y),
-        _ => (0, 0),
-    };
-    let peoples = if year.is_some() { ow.civs.len() } else { 0 };
-    v.push(plain(format!("Year          {:>5} of {}", y, g.params.history), TEXT));
-    v.push(plain(format!("Civilizations {:>5}", peoples), TEXT));
-    v.push(plain(format!("Settlements   {:>5}", towns), TEXT));
-    v.push(plain(format!("Ruins         {:>5}", ruins), TEXT));
-    v.push(Line::default());
-    v.push(header("Lately"));
-    // Events wrap to about two lines each; show as many as fit.
-    let fit = (cols[1].height as usize).saturating_sub(v.len() + 3) / 2;
-    let seen: Vec<_> = if year.is_some() { ow.events.iter().filter(|e| e.year <= y).collect() } else { Vec::new() };
-    for e in seen.iter().rev().take(fit).collect::<Vec<_>>().into_iter().rev() {
-        v.push(Line::from(vec![
-            Span::styled(format!("{:>4} ", e.year), Style::default().fg(MUTED)),
-            Span::styled(e.text.clone(), Style::default().fg(Color::Rgb(190, 190, 200))),
-        ]));
-    }
-    let keys = if finished { " Enter accept · r another world · Esc settings " } else { " Space skip · r new seed · Esc settings " };
-    f.render_widget(
-        Paragraph::new(v)
-            .wrap(Wrap { trim: true })
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(MUTED))
-                    .title(Span::styled(if finished { " The world is ready " } else { " Generating " }, Style::default().fg(KEY)))
-                    .title_bottom(Span::styled(keys, Style::default().fg(KEY))),
-            ),
-        cols[1],
-    );
+    worldshow::draw_worldgen(f, app)
 }
 
 fn world_info(ow: &Overworld, x: i32, y: i32, flash: &Option<String>) -> Vec<Line<'static>> {

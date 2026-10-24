@@ -543,8 +543,9 @@ impl App {
                 if self.genshow.is_none() && g.land_ready() {
                     self.genshow = Some(crate::genshow::Show::new(g));
                 }
-                if let Some(s) = &self.genshow {
-                    self.show_t = if self.gen_fast { s.end() } else { (self.show_t + self.frame_dt.clamp(0.0, 0.1)).min(s.ready_until(g)) };
+                if let Some(s) = self.genshow.as_mut() {
+                    s.sync(g);
+                    self.show_t = if self.gen_fast { s.end() } else { (self.show_t + self.frame_dt.clamp(0.0, 0.1) * s.speed).min(s.ready_until(g)) };
                 }
             }
             return;
@@ -712,6 +713,17 @@ impl App {
             KeyCode::Char('r') => {
                 self.world_params.seed = random_seed();
                 self.start_worldgen();
+            }
+            // Watch faster or slower, or skip to the next stage or age.
+            KeyCode::Char(c @ ('+' | '=' | '-')) => {
+                if let Some(s) = self.genshow.as_mut() {
+                    s.speed = if c == '-' { (s.speed / 2.0).max(0.5) } else { (s.speed * 2.0).min(8.0) };
+                }
+            }
+            KeyCode::Tab => {
+                if let (Some(s), Some(g)) = (&self.genshow, &self.worldgen) {
+                    self.show_t = s.next_mark(self.show_t).min(s.ready_until(g));
+                }
             }
             KeyCode::Esc | KeyCode::Char('e') => {
                 self.worldgen = None;
