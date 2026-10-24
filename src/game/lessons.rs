@@ -283,7 +283,7 @@ impl Game {
             return;
         }
         let w = SiegeWatch::default();
-        if self.traps_wanted(o) && self.stock_of(ItemKind::Mechanism) >= 2 {
+        if self.traps_wanted(o) && !self.gate_first(o) && self.stock_of(ItemKind::Mechanism) >= 2 {
             o.done.retain(|d| d != "stonetraps");
             self.apply_lesson(o, Lesson::TrapTheWay, &w);
         }

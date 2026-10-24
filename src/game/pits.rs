@@ -196,6 +196,10 @@ impl Game {
     /// under it once it stands, then the lever behind, linked.
     pub(super) fn ov_pit(&mut self, o: &mut Overseer) {
         let Some(base) = o.base else { return };
+        // (The gate's own bridge has the first mechanisms: gatehouse.rs.)
+        if self.gate_first(o) {
+            return;
+        }
         if o.gate_stage == 1 {
             if !self.pit_due(o) || o.did("nopit") {
                 return;

@@ -611,7 +611,7 @@ impl Game {
         }
         if !plan.breached {
             // Mechanisms for the gate and its lever, after the drawbridge's.
-            let spare = o.did("linked") || self.stock_of(ItemKind::Mechanism) >= 4;
+            let spare = !self.gate_first(o) || (!o.did("bridge") && self.stock_of(ItemKind::Mechanism) >= 4);
             if spare && dug(self, plan.gate) && self.world.t(plan.gate).building == 0 {
                 self.place_building(BuildingKind::Floodgate, plan.gate);
             }
