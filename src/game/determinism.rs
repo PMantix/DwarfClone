@@ -10,6 +10,7 @@ impl Game {
     /// A fingerprint of the fort as it stands: the dice, the dwarves, the
     /// creatures, the items and buildings, the designations. Two games that
     /// differ in anything that matters soon differ here.
+    #[cfg(test)]
     pub fn state_hash(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.tick.hash(&mut h);

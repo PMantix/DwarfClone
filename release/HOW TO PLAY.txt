@@ -9,16 +9,12 @@ STARTING THE GAME
 -----------------
 1. Put this folder somewhere you can write to (Documents or the Desktop,
    not Program Files). Saves go in a "saves" folder next to the game.
-2. Open Windows Terminal (built into Windows 11; free from the Microsoft
-   Store on Windows 10). The old black console window works, but colours
-   and symbols look much better in Windows Terminal.
-3. Make the window big: at least 130 x 40 characters (maximise it).
-4. Run dwarfclone.exe: drag it into the terminal and press Enter, or cd
-   to this folder and type  .\dwarfclone.exe
-5. Or play in a window of square tiles, where walls, water and floors
-   join into a solid map:  .\dwarfclone.exe --window
+2. Double-click dwarfclone.exe. The game opens in its own window of
+   square tiles, where walls, water and floors join into a solid map.
    Ctrl and + or - (or Ctrl and the mouse wheel) zoom the tiles. Text
    uses Cascadia Mono or Consolas; --font PATH picks another .ttf.
+3. To play in a terminal instead: open Windows Terminal, make it at
+   least 130 x 40 characters, and run  .\dwarfclone.exe --terminal
 
 FIRST STEPS
 -----------
