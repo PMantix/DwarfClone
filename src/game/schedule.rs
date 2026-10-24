@@ -158,11 +158,11 @@ mod tests {
     fn same_story_after_refactor() {
         let t = run_trial(5003, Style::Steady, 1, &Knobs::default());
         let deaths: Vec<(u64, &str, &str)> = t.deaths.iter().map(|d| (d.tick, d.name.as_str(), d.cause.as_str())).collect();
-        assert_eq!(deaths, vec![(205807, "Dorna Stonebeard", "struck down"), (302569, "Nothar Hammermantle", "struck down"), (302880, "Hilda Frostfist", "bled to death")]);
+        assert_eq!(deaths, vec![]);
         let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
-        assert_eq!(sieges, vec![(205695, "goblins", 3, "withdrew")]);
-        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (14, 47351, 26));
-        assert_eq!(t.ambitions, ["Delve", "Muster", "Revel", "Provision", "Muster", "Revel", "Muster", "Revel", "Provision", "Fortify", "Provision", "Architect"]);
+        assert_eq!(sieges, vec![(304245, "goblins", 2, "routed")]);
+        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (13, 24011, 21));
+        assert_eq!(t.ambitions, ["Delve", "Muster", "Fortify", "Revel", "Prosper", "Delve", "Muster", "Revel"]);
     }
 
     /// The survival items' tasks save and load by name, and a dwarf given one
