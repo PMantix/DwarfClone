@@ -16,6 +16,7 @@ pub mod arena;
 pub mod sound;
 pub mod m2;
 pub mod adventure;
+pub mod worldsetup;
 
 pub const SPEEDS: [u32; 6] = [1, 2, 5, 10, 25, 60];
 pub const SAVE_DIR: &str = "saves";
@@ -29,26 +30,8 @@ pub const TITLE_ADVENTURE: usize = 4;
 pub const TITLE_ARENA: usize = 5;
 pub const TITLE_SOUND: usize = 6;
 
-/// Rows of the world settings screen.
-pub const SETUP_ROWS: [&str; 8] = ["Preset", "Seed", "World size", "History", "Civilizations", "Savagery", "Minerals", "Generate world"];
-pub const HISTORY_CHOICES: [i32; 5] = [50, 100, 200, 300, 500];
-pub const LEVELS: [[&str; 3]; 4] =
-    [["Few", "Normal", "Many"], ["Calm", "Normal", "Savage"], ["Sparse", "Normal", "Rich"], ["Small", "Medium", "Large"]];
-
-/// (name, history, civs, savagery, minerals)
-pub const PRESETS: [(&str, i32, u8, u8, u8); 4] = [
-    ("Quick", 50, 0, 1, 1),
-    ("Standard", 200, 1, 1, 1),
-    ("Long history", 500, 2, 1, 1),
-    ("Harsh", 300, 1, 2, 0),
-];
-
-pub fn preset_name(p: &WorldParams) -> &'static str {
-    PRESETS
-        .iter()
-        .find(|(_, h, c, s, m)| *h == p.history && *c == p.civs && *s == p.savagery && *m == p.minerals)
-        .map_or("Custom", |x| x.0)
-}
+/// Rows of the world settings screen (`app/worldsetup.rs`).
+pub use worldsetup::ROWS as SETUP_ROWS;
 
 fn random_seed() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64) % 1_000_000_000
@@ -685,46 +668,26 @@ impl App {
     }
 
     fn key_world_setup(&mut self, k: KeyEvent, sel: usize) {
+        use worldsetup::Row;
         let n = SETUP_ROWS.len();
+        let row = SETUP_ROWS[sel.min(n - 1)].0;
         let p = &mut self.world_params;
-        let step = |v: u8, right: bool| if right { (v + 1).min(2) } else { v.saturating_sub(1) };
-        let horiz = matches!(k.code, KeyCode::Left | KeyCode::Right);
-        let right = k.code == KeyCode::Right;
         match k.code {
             KeyCode::Esc => self.mode = Mode::Title { sel: 0 },
             KeyCode::Up => self.mode = Mode::WorldSetup { sel: (sel + n - 1) % n },
             KeyCode::Down | KeyCode::Tab => self.mode = Mode::WorldSetup { sel: (sel + 1) % n },
             KeyCode::Enter => self.start_worldgen(),
             KeyCode::Char('r') => p.seed = random_seed(),
-            KeyCode::Char(c @ '0'..='9') if sel == 1 => {
+            KeyCode::Char('d') => worldsetup::defaults(p),
+            KeyCode::Char(c @ '0'..='9') if row == Row::Seed => {
                 if p.seed < 100_000_000_000_000_000 {
                     p.seed = p.seed * 10 + (c as u64 - '0' as u64);
                 }
             }
-            KeyCode::Backspace if sel == 1 => p.seed /= 10,
-            _ if horiz => match sel {
-                0 => {
-                    let cur = PRESETS.iter().position(|x| x.0 == preset_name(p));
-                    let i = match (cur, right) {
-                        (Some(i), true) => (i + 1) % PRESETS.len(),
-                        (Some(i), false) => (i + PRESETS.len() - 1) % PRESETS.len(),
-                        (None, _) => 1,
-                    };
-                    let (_, h, c, s, m) = PRESETS[i];
-                    (p.history, p.civs, p.savagery, p.minerals) = (h, c, s, m);
-                }
-                1 => p.seed = random_seed(),
-                2 => p.size = step(p.size, right),
-                3 => {
-                    let i = HISTORY_CHOICES.iter().position(|&h| h >= p.history).unwrap_or(2);
-                    let i = if right { (i + 1).min(HISTORY_CHOICES.len() - 1) } else { i.saturating_sub(1) };
-                    p.history = HISTORY_CHOICES[i];
-                }
-                4 => p.civs = step(p.civs, right),
-                5 => p.savagery = step(p.savagery, right),
-                6 => p.minerals = step(p.minerals, right),
-                _ => {}
-            },
+            KeyCode::Backspace if row == Row::Seed => p.seed /= 10,
+            KeyCode::Char(c @ ('+' | '=' | '-')) if row == Row::Size => worldsetup::nudge_width(p, c != '-'),
+            KeyCode::Left | KeyCode::Right if row == Row::Seed => p.seed = random_seed(),
+            KeyCode::Left | KeyCode::Right => row.step(p, k.code == KeyCode::Right),
             _ => {}
         }
     }

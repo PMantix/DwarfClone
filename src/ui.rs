@@ -1,4 +1,4 @@
-use crate::app::{look_entries, preset_name, App, LookEntry, Mode, ZoneTool, DESIG_KEYS, LEVELS, SETUP_ROWS, TITLE_MENU};
+use crate::app::{look_entries, App, LookEntry, Mode, ZoneTool, DESIG_KEYS, SETUP_ROWS, TITLE_MENU};
 use crate::body::PARTS;
 use crate::buildings::BuildingKind;
 use crate::dwarf::{skill_level, skill_rank, Dwarf, Task, LABORS};
@@ -2376,50 +2376,31 @@ fn draw_world_setup(f: &mut Frame, app: &App, sel: usize) {
     let area = f.size();
     backdrop(f, area);
     let p = &app.world_params;
-    let values = [
-        preset_name(p).to_string(),
-        format!("{}", p.seed),
-        {
-            let (w, h) = p.dims();
-            format!("{} {}×{}", LEVELS[3][p.size.min(2) as usize], w, h)
-        },
-        format!("{} years", p.history),
-        LEVELS[0][p.civs.min(2) as usize].to_string(),
-        LEVELS[1][p.savagery.min(2) as usize].to_string(),
-        LEVELS[2][p.minerals.min(2) as usize].to_string(),
-        String::new(),
-    ];
-    let notes = [
-        "Quick, Standard, Long history, Harsh",
-        "type digits · r random",
-        "bigger worlds hold more peoples",
-
-        "years simulated before you arrive",
-        "how many peoples share the world",
-        "how dangerous the wildlife is",
-        "how much ore and gem lies in the rock",
-        "",
-    ];
+    // Short screens drop the blank lines and group headings first.
+    let roomy = area.height >= SETUP_ROWS.len() as u16 + 12;
     let mut v: Vec<Line> = vec![Line::default()];
-    for (i, row) in SETUP_ROWS.iter().enumerate() {
+    for (i, (row, head)) in SETUP_ROWS.iter().enumerate() {
         let on = i == sel;
         if i == SETUP_ROWS.len() - 1 {
             v.push(Line::default());
             let st = if on { Style::default().fg(BLACK).bg(KEY).add_modifier(Modifier::BOLD) } else { Style::default().fg(KEY) };
-            v.push(Line::from(Span::styled(format!("   ▶ {}   ", row), st)));
+            v.push(Line::from(Span::styled(format!("   ▶ {}   ", row.label()), st)));
             continue;
+        }
+        if let (Some(h), true) = (head, roomy) {
+            v.push(Line::from(Span::styled(format!("  ─ {} ", h), Style::default().fg(Color::Rgb(150, 140, 100)))));
         }
         let st = if on { Style::default().fg(BLACK).bg(Color::Rgb(90, 110, 170)) } else { Style::default().fg(TEXT) };
         let arrows = if on { ("◀ ", " ▶") } else { ("  ", "  ") };
         v.push(Line::from(vec![
-            Span::styled(format!("  {:<15}", row), Style::default().fg(MUTED)),
-            Span::styled(format!("{}{:^16}{}", arrows.0, values[i], arrows.1), st),
-            Span::styled(format!("  {}", notes[i]), Style::default().fg(Color::Rgb(100, 100, 110))),
+            Span::styled(format!("  {:<15}", row.label()), Style::default().fg(MUTED)),
+            Span::styled(format!("{}{:^18}{}", arrows.0, row.value(p), arrows.1), st),
+            Span::styled(format!("  {}", row.note()), Style::default().fg(Color::Rgb(100, 100, 110))),
         ]));
     }
     v.push(Line::default());
-    v.push(plain("  ↑↓ choose · ←→ change · Enter generate · Esc back".into(), MUTED));
-    let r = centered(area, 82, v.len() as u16 + 2);
+    v.push(plain("  ↑↓ choose · ←→ change · +/- width · d defaults · Enter generate · Esc back".into(), MUTED));
+    let r = centered(area, 92, v.len() as u16 + 2);
     f.render_widget(Clear, r);
     f.render_widget(
         Paragraph::new(v).style(Style::default().bg(Color::Rgb(12, 12, 20))).block(
