@@ -123,7 +123,7 @@ impl Game {
         let due = self.incoming.as_ref().map(|i| i.0);
         match &self.wargame {
             Some(w) if Some(w.due) == due && w.grim() => self.knob("wargame.grim_lead", DAY as f64) as u64,
-            _ => 400,
+            _ => 400 + self.march_lead(),
         }
     }
 

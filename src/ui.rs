@@ -37,6 +37,8 @@ mod adv_create;
 mod adv_travel;
 mod adv_end;
 mod adv_talk;
+// M4 B01: the world map in play.
+pub mod atlas;
 pub(crate) use looks::tile_look;
 use looks::foliage;
 
@@ -1406,6 +1408,7 @@ fn sidebar(app: &App) -> (String, Vec<Line<'static>>) {
             v.extend(look_lines(g, app.cursor, 0));
         }
         Mode::WorldMap { .. }
+        | Mode::Atlas { .. }
         | Mode::Legends { .. }
         | Mode::Trade { .. }
         | Mode::Status { .. }
@@ -3104,6 +3107,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Mode::GameOver => draw_game_over(f, full, &app.game),
         Mode::Legends { tab, scroll, from_world } => draw_legends(f, area, &app.game.overworld, tab, scroll, &app.game.beasts_seen, from_world),
         Mode::Trade { side, sel } => draw_trade(f, area, app, side, sel),
+        Mode::Atlas { x, y } => atlas::draw_atlas(f, area, app, x, y),
         Mode::Status { tab, scroll } => draw_status(f, area, &app.game, tab, scroll),
         Mode::Labors { row, col, detail } => draw_labors(f, area, app, row, col, detail),
         Mode::Appoint { pos, sel } => draw_appoint(f, area, &app.game, pos, sel),
@@ -3141,7 +3145,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         _ => {}
     }
     // Full-screen views sit over everything else.
-    if matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GameOver | Mode::Highlights { .. } | Mode::Life { .. }) {
+    if matches!(app.mode, Mode::Legends { .. } | Mode::Atlas { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::GameOver | Mode::Highlights { .. } | Mode::Life { .. }) {
         add_target(area, Target::Block);
     }
     if let Some(p) = pane {
@@ -3158,7 +3162,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     // The news ticker, when the announcements are hidden or full (src/ui/ticker.rs).
     if app.in_fortress() && app.mode != Mode::GameOver {
         let covered = pane.is_some()
-            || matches!(app.mode, Mode::Legends { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Highlights { .. } | Mode::Life { .. } | Mode::Sagas { .. } | Mode::Help);
+            || matches!(app.mode, Mode::Legends { .. } | Mode::Atlas { .. } | Mode::Trade { .. } | Mode::Status { .. } | Mode::Labors { .. } | Mode::Chronicle { .. } | Mode::Brain { .. } | Mode::Reports { .. } | Mode::Highlights { .. } | Mode::Life { .. } | Mode::Sagas { .. } | Mode::Help);
         let reserve = if pane.is_some() { 28 } else if app.dockable() { 14 } else { 0 };
         ticker::draw(f, app, full, if covered { 0 } else { news_rows }, covered && app.game.overseer.is_some(), reserve);
     }

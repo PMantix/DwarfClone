@@ -289,6 +289,8 @@ pub enum Mode {
     Expedition { squad: usize, sel: usize },
     /// Choose an embark site on the world map.
     WorldMap { x: i32, y: i32 },
+    /// The world map in play: armies on the march and the news (M4 B01, ui/atlas.rs).
+    Atlas { x: i32, y: i32 },
     /// Embark here? The site's summary, then Play now, Prepare carefully
     /// or Back (`sel` is the highlighted one).
     Embark { x: i32, y: i32, sel: usize },
@@ -1761,6 +1763,21 @@ impl App {
                 }
             }
             Mode::WorldMap { x, y } => self.key_world(k, x, y),
+            Mode::Atlas { x, y } => {
+                let (w, h) = (self.game.overworld.w, self.game.overworld.h);
+                let (dx, dy) = match k.code {
+                    KeyCode::Left => (-1, 0),
+                    KeyCode::Right => (1, 0),
+                    KeyCode::Up => (0, -1),
+                    KeyCode::Down => (0, 1),
+                    _ => (0, 0),
+                };
+                match k.code {
+                    KeyCode::Esc | KeyCode::Char('W') => self.mode = Mode::Normal,
+                    KeyCode::Char('f') => self.mode = Mode::Atlas { x: self.game.site.0, y: self.game.site.1 },
+                    _ => self.mode = Mode::Atlas { x: (x + dx).clamp(0, w - 1), y: (y + dy).clamp(0, h - 1) },
+                }
+            }
             Mode::Legends { tab, scroll, from_world } => {
                 let back = if from_world {
                     let (x, y) = self.game.site;
@@ -1853,6 +1870,7 @@ impl App {
             },
             KeyCode::Char('j') => self.mode = Mode::Orders { sel: 0, pick: None },
             KeyCode::Char('L') => self.mode = Mode::Legends { tab: 0, scroll: usize::MAX, from_world: false },
+            KeyCode::Char('W') => self.mode = Mode::Atlas { x: self.game.site.0, y: self.game.site.1 },
             KeyCode::Char('v') => {
                 let c = self.cursor;
                 if let Some(d) = self.game.dwarves.iter().find(|d| d.alive && d.pos == c) {

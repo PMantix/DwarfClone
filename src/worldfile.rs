@@ -224,6 +224,14 @@ pub fn merge(a: &Overworld, b: &Overworld) -> Overworld {
             x.ruined |= s.ruined;
         }
     }
+    // A place founded since (M4 B17: the world turns in a fort) stands.
+    for s in other.sites.iter().skip(m.sites.len()) {
+        if s.id as usize == m.sites.len() && s.x < m.w && s.y < m.h && m.site_at(s.x, s.y).is_none() {
+            let cell = (s.y * m.w + s.x) as usize;
+            m.cells[cell].site = s.id + 1;
+            m.sites.push(s.clone());
+        }
+    }
 
     // The ages: each by its first year (the base's name where both have one).
     for age in &other.ages {

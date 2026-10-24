@@ -459,9 +459,10 @@ Goal: the world map is alive. What happens out there reaches the fort, and the f
 
 #### B01 Scouts and armies on the world map (M)
 - **Why:** sieges appear from nowhere. Seeing an army march across the map is a story.
-- **Steps:** [ ] armies and caravans move between sites on the world map, drawn on it · [ ] a
-  scout warns days before a siege, with its size and leader (partly: a day ahead, S03; half a day
-  more from a watchtower, ad88122; a season ahead if a captive talked) · [ ] roads and tracks between
+- **Steps:** [ ] armies and caravans move between sites on the world map, drawn on it (partly:
+  armies march from a town of theirs and are drawn on the atlas, `W`, this commit; no caravans) · [x] a
+  scout warns days before a siege, with its size and leader (a day ahead, S03; half a day
+  more from a watchtower, ad88122; a season ahead if a captive talked; up to three days by the march, this commit) · [ ] roads and tracks between
   sites drawn on the world map
 - **Done when:** a siege is announced days ahead and the army can be seen approaching.
 
@@ -500,7 +501,7 @@ Goal: the world map is alive. What happens out there reaches the fort, and the f
 
 #### B17 The world turns (L)
 - **Why:** The world should move while the fort lives: a yearly history pass, wars starting and ending, news arriving.
-- **Steps:** [ ] The world turns each year ([WLD-05](ideas/world-and-overseer.md)) · [ ] Wars declared and ended in play ([WLD-06](ideas/world-and-overseer.md)) · [ ] News and rumours reach the fort ([WLD-07](ideas/world-and-overseer.md)) · [ ] Towns fall and rise ([WLD-19](ideas/world-and-overseer.md)) · [ ] Alliances against doom ([WLD-20](ideas/world-and-overseer.md)) · [ ] Refugees and bandit camps ([WLD-21](ideas/world-and-overseer.md)) · [ ] A fully living world ([WLD-32](ideas/world-and-overseer.md))
+- **Steps:** [x] The world turns each year ([WLD-05](ideas/world-and-overseer.md), this commit) · [ ] Wars declared and ended in play ([WLD-06](ideas/world-and-overseer.md); partly: the home civ's wars follow the yearly pass and bring or stop sieges, this commit; no wars of the fort's own) · [ ] News and rumours reach the fort ([WLD-07](ideas/world-and-overseer.md); partly: a spring card of the year's news, this commit; no merchants' rumours or false news) · [ ] Towns fall and rise ([WLD-19](ideas/world-and-overseer.md); partly: towns are founded, razed and conquered in play and the world file keeps it, this commit; no resettled ruins or tributaries) · [ ] Alliances against doom ([WLD-20](ideas/world-and-overseer.md)) · [ ] Refugees and bandit camps ([WLD-21](ideas/world-and-overseer.md)) · [ ] A fully living world ([WLD-32](ideas/world-and-overseer.md))
 - **Done when:** After three years the legends show wars and deaths elsewhere that the fort heard about.
 
 #### B18 Missions that matter (M)

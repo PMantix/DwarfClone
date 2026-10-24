@@ -156,6 +156,8 @@ pub mod defences;
 // Adventurer mode (G03): one hero against the world (game/adv/).
 pub mod adv;
 pub mod clock;
+// M4 B17/B01: the world turns, and armies march on it.
+pub mod worldturn;
 pub use ambitions::{Ambition, Sense};
 
 pub use knobs::Knobs;
@@ -444,6 +446,9 @@ pub struct Game {
     /// how many, and who leads it.
     #[serde(default)]
     pub incoming: Option<(u64, Neighbor, u32, String)>,
+    /// The world after the embark: armies on the march, the news heard (worldturn.rs).
+    #[serde(default)]
+    pub worldturn: worldturn::WorldTurn,
     /// Some tile has snow on it (so a thaw knows to look).
     #[serde(default)]
     snow_lying: bool,
@@ -742,6 +747,7 @@ impl Game {
             breaches: Vec::new(),
             troubles: Vec::new(),
             incoming: None,
+            worldturn: Default::default(),
             snow_lying: false,
             fire_cells: None,
             miasma_cells: None,

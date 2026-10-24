@@ -1132,6 +1132,8 @@ impl Game {
         // A watch kept from a watchtower sees them further off (towers.rs).
         let (sooner, watch) = self.watch_warning();
         let arrive = arrive + sooner;
+        // B01: they march from a town of theirs, days off on the world map (worldturn.rs).
+        let (arrive, from) = self.march_from(&foe, arrive);
         let civ = self.overworld.civ(foe.civ).name.clone();
         let plural = self.army_plural(foe.civ, Self::army_species(foe.race));
         let raid = n <= 3;
@@ -1153,6 +1155,9 @@ impl Game {
             self.count("watch.warned", 1);
             text = format!("The watch on {} sees {} of the {}, led by {}, far off and marching on {}. They will be at the gates in a day and a half!", tower, what, civ, leader, self.fortress_name);
         }
+        if let Some(far) = self.march_words(from, arrive) {
+            text = text.replace("They will be at the gates within a day!", &far).replace("They will be at the gates in a day and a half!", &far);
+        }
         // They remember how the last one went.
         if self.annals.sieges.last().map_or(false, |s| s.outcome == "routed") {
             text.push_str(" They have not forgotten their last defeat, and come in greater numbers.");
@@ -1165,6 +1170,7 @@ impl Game {
         text.push_str(&self.captive_words(foe.civ, warned));
         self.msg(&text, (255, 120, 80));
         self.spotlight(if raid { "Raiders sighted" } else { "An army on the march" }, &text, None, (255, 120, 80));
+        self.dispatch_army(&foe, from, n, &leader, arrive);
         self.incoming = Some((arrive, foe, n, leader));
         // At the warning, soldiers put on whatever kit is in the stores.
         self.kit_up();
