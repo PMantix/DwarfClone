@@ -49,7 +49,7 @@ pub(super) fn draw(cv: &mut Canvas) {
             let (ch, fg) = match hs % 13 {
                 0 => ('*', flowers[(hs / 13 % 5) as usize]),
                 1 | 2 => ('"', (150, 200, 90)),
-                3 if d > 2.0 => ('▓', (130, 130, 120)),
+                3 if d > 2.0 && hs % 3 == 0 => ('▓', (130, 130, 120)),
                 _ => (' ', (0, 0, 0)),
             };
             let bg = if ch == '▓' { (150, 150, 140) } else { bg };

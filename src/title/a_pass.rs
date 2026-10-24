@@ -42,9 +42,9 @@ pub(super) fn draw(cv: &mut Canvas) {
         let s = surf[x as usize];
         for y in s..g {
             let d = (y - s) as f32;
-            let rock = hash(x + salt, y * 3) % 7 == 0 && d > 1.0;
+            let rock = d > 1.0 && (x as f32 * 0.31 + y as f32 * 0.9).sin() + (x as f32 * 0.13 - y as f32 * 0.5 + 2.0).sin() > 1.25 + (hash(x + salt, y) % 10) as f32 * 0.03;
             let c = if rock { lerp((90, 90, 100), bot, 0.3) } else { lerp((236, 238, 244), (196, 202, 216), (d / 6.0).min(1.0)) };
-            cv.put(x, y, if y == s { '▲' } else if rock { '▓' } else { ' ' }, rgb(if rock { (70, 70, 80) } else { (250, 250, 255) }), Some(rgb(lerp(c, bot, 0.15))));
+            cv.put(x, y, if y == s { '▲' } else if rock && hash(x, y) % 3 == 0 { '▒' } else { ' ' }, rgb(if rock { (70, 70, 80) } else { (250, 250, 255) }), Some(rgb(lerp(c, bot, 0.15))));
         }
     }
     // The snowfield below.
