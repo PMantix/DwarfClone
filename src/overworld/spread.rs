@@ -112,13 +112,15 @@ mod tests {
             }
         }
         eprintln!("civs by level (4 seeds): {:?}, civ sites: {:?}", by_level, sites_by_level);
-        // "Very few" is a handful: two or three peoples on a small world.
-        assert!(by_level[0] <= 4 * 3, "very few civs gave {:?}", by_level);
+        // "Very few" is a handful: two peoples founded on a small world, and
+        // perhaps one a villain makes or a realm that splits.
+        assert!(by_level[0] <= 4 * 4, "very few civs gave {:?}", by_level);
         for k in 1..5 {
             assert!(by_level[k] > by_level[k - 1], "civ counts don't rise with the setting: {:?}", by_level);
             assert!(sites_by_level[k] >= sites_by_level[k - 1], "sites don't rise with the setting: {:?}", sites_by_level);
         }
-        assert!(sites_by_level[2] <= 4 * 40, "a normal small world holds {} sites", sites_by_level[2] / 4);
+        // (Every site ever founded, ruins too: the old normal world founded 450.)
+        assert!(sites_by_level[2] <= 4 * 60, "a normal small world holds {} sites", sites_by_level[2] / 4);
         // Further apart means fewer.
         let near = counts(WorldParams { seed: 3, spacing: 0, ..WorldParams::default() }).1;
         let far = counts(WorldParams { seed: 3, spacing: 2, ..WorldParams::default() }).1;
