@@ -204,7 +204,7 @@ pub(super) fn draw(cv: &mut Canvas) {
         for (i, side) in [-1, 1].iter().enumerate() {
             let dx = side * (1 + (hash(k, i as i32) % 2) as i32);
             let x = cx + dx;
-            let col = coats[((hash(k, 40 + i as i32) + seed as u32) % 6) as usize];
+            let col = coats[(hash(k, 40 + i as i32).wrapping_add(seed as u32) % 6) as usize];
             cv.glyph(x, g - 1, '☺', rgb(col));
             let sip = (t / 40 + k as u64 + i as u64) % 5 == 0;
             if cheer || sip {
