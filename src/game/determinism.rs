@@ -4,6 +4,7 @@
 //! failed by what ran beside it was a fort that played differently.)
 
 use super::*;
+#[cfg(test)]
 use std::hash::{Hash, Hasher};
 
 impl Game {
