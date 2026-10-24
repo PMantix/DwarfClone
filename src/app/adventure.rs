@@ -334,14 +334,8 @@ impl App {
             View::Travel => self.key_travel(k),
             View::Dead => self.key_end(k),
             View::Talk { .. } => self.key_talk(k),
-            View::Company => self.key_company(k),
-            _ => {
-                if k.code == KeyCode::Esc {
-                    if let Some(s) = self.adv.as_mut() {
-                        s.view = View::Local;
-                    }
-                }
-            }
+            View::Quests => self.key_quests(k),
+            View::Company { .. } => self.key_company(k),
         }
         self.adv_notice();
     }
@@ -679,6 +673,15 @@ impl App {
                     return;
                 }
                 KeyCode::Char('k') => return self.adv_open_pick(Pick::Talk),
+                // The quest log (A8) and the company (A9).
+                KeyCode::Char('j') => {
+                    s.view = View::Quests;
+                    return;
+                }
+                KeyCode::Char('c') => {
+                    s.view = View::Company { sel: 0 };
+                    return;
+                }
                 KeyCode::Char('R') => {
                     match adv::sitegen::fallen::read_here(g, h) {
                         Ok(w) => s.page = Some(w),
@@ -1084,6 +1087,8 @@ impl App {
                 s.flash = Some(if s.sneak { "You keep to cover: slower, but fewer will see you." } else { "You take the open road again." }.into());
             }
             KeyCode::Char('?') => s.help = true,
+            KeyCode::Char('j') => s.view = View::Quests,
+            KeyCode::Char('c') => s.view = View::Company { sel: 0 },
             KeyCode::Esc => s.view = View::Menu { sel: 0 },
             _ => {}
         }
@@ -1355,6 +1360,42 @@ impl App {
         }
     }
 
+    /// The window's `--adventure --quests` picture (A8, A9): a famous hero
+    /// at home has sworn to bring a fallen fort's relic home, taken more
+    /// work from the folk, and hired a companion; the quest log is up.
+    pub fn adventure_quests(&mut self) {
+        self.adventure_talk();
+        let Some(s) = self.adv.as_mut() else { return };
+        s.chat = None;
+        s.adv.hero.coins += 60;
+        let fort = s.adv.ow().forts.len().saturating_sub(1) as u32;
+        let _ = s.adv.seek_work(adv::SiteKey::Fort(fort));
+        let ids: Vec<u32> = match s.adv.visit.as_ref() {
+            Some(v) => {
+                let mut ids: Vec<u32> = v.g.creatures.values().filter(|c| c.alive && c.visitor == adv::sitegen::town::FOLK).map(|c| c.id).collect();
+                ids.sort();
+                ids
+            }
+            None => Vec::new(),
+        };
+        for id in ids {
+            if s.adv.quests.len() >= 2 {
+                break;
+            }
+            if let Some(p) = s.adv.person(id) {
+                let _ = s.adv.quest_talk(&p);
+            }
+        }
+        let _ = s.adv.hire_for_the_road();
+        for _ in 0..3 {
+            self.adv_act(Action::Wait(10));
+        }
+        if let Some(s) = self.adv.as_mut() {
+            s.view = View::Quests;
+            s.flash = None;
+        }
+    }
+
     /// Open a conversation with `id`: the first moment of talk passes
     /// (refused, with why, if they're hostile or gone), then the greeting.
     pub(crate) fn adv_talk_open(&mut self, id: u32) {
@@ -1438,13 +1479,53 @@ impl App {
 }
 
 impl App {
-    /// Companions' orders (A9).
-    fn key_company(&mut self, k: KeyEvent) {
-        if k.code == KeyCode::Esc {
-            if let Some(s) = self.adv.as_mut() {
-                s.view = View::Local;
-            }
+    /// Back from a popup to the map the hero is on.
+    fn adv_back(&mut self) {
+        if let Some(s) = self.adv.as_mut() {
+            s.view = if s.adv.visit.is_some() { View::Local } else { View::Travel };
         }
+    }
+
+    /// The quest log (A8): any of `j`, Esc or Enter puts it away.
+    fn key_quests(&mut self, k: KeyEvent) {
+        if matches!(k.code, KeyCode::Esc | KeyCode::Enter | KeyCode::Char('j')) {
+            self.adv_back();
+        }
+    }
+
+    /// Companions' orders (A9): choose one, then follow, wait here,
+    /// attack what is in sight, or send them home.
+    fn key_company(&mut self, k: KeyEvent) {
+        let Some(s) = self.adv.as_mut() else { return };
+        let View::Company { sel } = s.view else { return };
+        let n = s.adv.companions().len().max(1);
+        let pick = s.adv.companions().get(sel).map(|c| c.0);
+        let order = match k.code {
+            KeyCode::Esc | KeyCode::Char('c') => return self.adv_back(),
+            KeyCode::Up | KeyCode::Char('8') => {
+                s.view = View::Company { sel: (sel + n - 1) % n };
+                return;
+            }
+            KeyCode::Down | KeyCode::Char('2') => {
+                s.view = View::Company { sel: (sel + 1) % n };
+                return;
+            }
+            KeyCode::Char('f') => adv::company::Order::Follow,
+            KeyCode::Char('w') => adv::company::Order::Wait,
+            KeyCode::Char('a') => adv::company::Order::Attack,
+            KeyCode::Char('x') => adv::company::Order::Home,
+            _ => return,
+        };
+        let Some(i) = pick else { return };
+        match s.adv.order(i, order) {
+            Ok(said) => {
+                s.adv.say(&said, (200, 200, 170));
+                s.flash = Some(said);
+            }
+            Err(why) => s.flash = Some(why),
+        }
+        let n = s.adv.companions().len();
+        s.view = View::Company { sel: sel.min(n.saturating_sub(1)) };
     }
 }
 

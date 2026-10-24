@@ -388,9 +388,6 @@ impl Game {
     fn foe_at(&self, p: Pos) -> Option<u32> {
         self.creatures.values().find(|c| c.alive && c.pos == p && !c.tame && c.pet_of.is_none()).map(|c| c.id)
     }
-
-    /// Companions follow and fight (A9 fills it).
-    pub(crate) fn company_tick(&mut self) {}
 }
 
 /// What the hero sees: a square of tiles round them on their level.

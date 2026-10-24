@@ -257,7 +257,7 @@ impl Adventure {
 
     /// A chapter of the hero's saga. A long saga keeps its first chapters
     /// and its latest, as the fort's do.
-    fn chapter(&mut self, beat: Beat, text: String, weight: u32) {
+    pub(super) fn chapter(&mut self, beat: Beat, text: String, weight: u32) {
         let when = self.when();
         let s = self.saga_mut();
         if s.chapters.len() >= 9 {
@@ -351,6 +351,11 @@ impl Adventure {
         self.notice_treasure(key);
         self.notice_wounds();
         self.stats.slain = self.hero_dwarf().kills;
+        // Companions (A9) and quests (A8): after the deeds they count on.
+        self.company_check();
+        self.check_quests();
+        // The sworn enemy (A12).
+        self.nemesis_check();
     }
 
     /// Lay the remains of the fallen in the site just entered.
@@ -612,6 +617,10 @@ impl Adventure {
         let saga = self.end_saga(true, format!("{} {}.", first(&d.name), cause), eulogy.clone());
         let legend = format!("{} of {} {}, in {}.", called, home, cause, year);
         self.legend(legend.clone());
+        // Oaths unkept (A8), and companions who carry the news home (A9).
+        self.oaths_at_death();
+        self.company_at_death();
+        self.nemesis_at_death();
         let race = self.hero.race;
         self.fame.end = Some(Ending { called, dwarf: d, race, figure, died: true, year, cause: cause.to_string(), place, home, legend, saga, remains: Some(remains), eulogy, story });
     }

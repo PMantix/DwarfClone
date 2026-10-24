@@ -140,6 +140,22 @@ pub struct AdvTrial {
     /// The run's timeline, a line a turn of the story.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub story: Vec<String>,
+    /// The quests sworn (A8), as asked, and how many were done and paid.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub quests: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub quests_done: u32,
+    /// Who walked with the hero (A9), and who of them fell or left.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub company: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub company_lost: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub company_quit: Vec<String>,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// How to play a batch.
@@ -374,6 +390,18 @@ fn play(ow: Overworld, seed: u64, goal: Goal, opts: &BotOpts, dir: &Path) -> Adv
     if let Some(heard) = a.hear_at_home() {
         note(&mut r, &a, &heard);
     }
+    // Work for the road, and company on it, as a player asks for them
+    // (A8, A9): the deed it sets out for, sworn to one of the folk.
+    a.notice();
+    if let Some(w) = a.seek_work(target) {
+        note(&mut r, &a, &w);
+    }
+    for _ in 0..a.knob("bot.company", 1.0) as usize {
+        match a.hire_for_the_road() {
+            Some(c) => note(&mut r, &a, &c),
+            None => break,
+        }
+    }
     note(&mut r, &a, &format!("{} the {} {} sets out for {} ({} cells).", hname, race, calling, tname, dist));
     let fate = journey(&mut a, &mut r, opts);
     finish(a, r, seed, fate, tname, dist, opts)
@@ -410,6 +438,11 @@ fn nowhere(seed: u64, goal: Goal, opts: &BotOpts, why: &str) -> AdvTrial {
         epithet: None,
         knobs: opts.knobs.set.clone(),
         story: Vec::new(),
+        quests: Vec::new(),
+        quests_done: 0,
+        company: Vec::new(),
+        company_lost: Vec::new(),
+        company_quit: Vec::new(),
     }
 }
 
@@ -460,6 +493,9 @@ fn journey(a: &mut Adventure, r: &mut Run, opts: &BotOpts) -> Fate {
                 note(r, a, &format!("Couldn't go in: {}", e));
                 return Fate::Lost;
             }
+            // (Deeds, quests paid, companions: as after every act.)
+            a.notice();
+            tell(r, a);
             if r.leg == Leg::Road {
                 r.reached = true;
                 let title = a.visit.as_ref().map_or(String::new(), |v| v.g.fortress_name.clone());
@@ -486,7 +522,10 @@ fn journey(a: &mut Adventure, r: &mut Run, opts: &BotOpts) -> Fate {
         let hurt = !a.hero.dwarf.body.healed();
         if (clock::is_night(a.clock) || hurt) && camps < 4 {
             camps += 1;
-            if let Some(e) = a.camp() {
+            let e = a.camp();
+            a.notice();
+            tell(r, a);
+            if let Some(e) = e {
                 r.fights += 1;
                 note(r, a, &e.text);
                 let _ = a.meet(&e);
@@ -498,7 +537,10 @@ fn journey(a: &mut Adventure, r: &mut Run, opts: &BotOpts) -> Fate {
             note(r, a, "No road leads on.");
             return Fate::Lost;
         };
-        match a.travel(dx, dy) {
+        let out = a.travel(dx, dy);
+        a.notice();
+        tell(r, a);
+        match out {
             TravelOutcome::Arrived => {}
             TravelOutcome::Blocked(why) => {
                 note(r, a, &why);
@@ -621,6 +663,11 @@ fn in_site(a: &mut Adventure, r: &mut Run) -> bool {
             eprintln!("t{} {:?} -> {:?} blood {}/{} foes {} held {:?}", v.g.tick, act, out, d.body.blood, d.body.max_blood, foes.len(), d.held.and_then(|i| v.g.items.get(&i)).map(|i| i.name()));
         }
         let mut news = Vec::new();
+        if v.g.dwarves[h].alive {
+            a.notice();
+            tell(r, a);
+        }
+        let v = a.visit.as_mut().unwrap();
         match &act {
             Action::Attack { target: Target::Creature(id), .. } => {
                 if let Some(c) = v.g.creatures.get(id).filter(|c| !c.alive) {
@@ -835,6 +882,11 @@ fn finish(a: Adventure, r: Run, seed: u64, fate: Fate, target: String, dist: u32
         epithet: d.epithet.clone(),
         knobs: opts.knobs.set.clone(),
         story: r.story,
+        quests: a.quests.iter().map(|q| format!("{} ({:?})", q.ask(), q.state)).collect(),
+        quests_done: a.quests.iter().filter(|q| q.state == super::QuestState::Done).count() as u32,
+        company: a.band.joined.clone(),
+        company_lost: a.band.lost.clone(),
+        company_quit: a.band.quit.clone(),
     }
 }
 
@@ -941,10 +993,42 @@ pub fn trial_batch(args: &[String]) {
     let _ = std::fs::remove_dir_all(&opts.dir);
     all.sort_by_key(|t| t.seed);
     print!("{}", crate::report::adventures(&all, None));
+    print!("{}", quests_report(&all));
     if let Some(path) = opt("--out") {
         match serde_json::to_string(&all).map_err(|e| e.to_string()).and_then(|s| std::fs::write(&path, s).map_err(|e| e.to_string())) {
             Ok(()) => println!("\n  Saved the batch to {} (compare two with --adventure-trial --compare A B).", path),
             Err(e) => println!("\n  Couldn't save the batch to {}: {}", path, e),
+        }
+    }
+}
+
+/// The quests and companions of a batch (A8, A9), in two lines.
+pub fn quests_report(all: &[AdvTrial]) -> String {
+    let sworn: usize = all.iter().map(|t| t.quests.len()).sum();
+    let done: u32 = all.iter().map(|t| t.quests_done).sum();
+    let heroes = all.iter().filter(|t| t.quests_done > 0).count();
+    let joined: usize = all.iter().map(|t| t.company.len()).sum();
+    let lost: usize = all.iter().map(|t| t.company_lost.len()).sum();
+    let quit: usize = all.iter().map(|t| t.company_quit.len()).sum();
+    let home = all.iter().filter(|t| t.fate == Fate::Home && t.company.len() > t.company_lost.len() + t.company_quit.len()).count();
+    format!(
+        "\n  Quests: {} sworn, {} done and paid ({} of {} heroes kept an oath).\n  Companions: {} walked with the heroes; {} fell, {} left, and {} came home beside a hero.\n",
+        sworn, done, heroes, all.len(), joined, lost, quit, home
+    )
+}
+
+/// Lines the log told since the last look that the story should keep:
+/// quests won and paid, companions joined, fallen or gone.
+fn tell(r: &mut Run, a: &Adventure) {
+    let log = match &a.visit {
+        Some(v) => &v.g.log,
+        None => &a.log,
+    };
+    let keep = |t: &str| t.starts_with("You have sworn") || t.contains(" is dead. They followed") || t.contains("has had enough") || t.contains("will want to hear of it") || t.contains(" is yours. Bring it") || (t.contains(": \"") && t.contains("coins"));
+    let fresh: Vec<String> = log.iter().rev().take(12).filter(|e| keep(&e.text)).map(|e| e.text.clone()).collect();
+    for t in fresh.into_iter().rev() {
+        if !r.story.iter().rev().take(30).any(|s| s.ends_with(&t)) {
+            note(r, a, &t);
         }
     }
 }

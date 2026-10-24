@@ -74,6 +74,12 @@ pub struct Adventure {
     pub quests: Vec<Quest>,
     #[serde(default)]
     pub nemesis: Option<Nemesis>,
+    /// Who wanted the hero's blood in the site they're in (A12).
+    #[serde(default)]
+    pub watch: nemesis::Watch,
+    /// What the companions have been through together (A9).
+    #[serde(default)]
+    pub band: company::Band,
     #[serde(default)]
     pub weather: Weather,
     /// The travel log; a visit uses its `Game`'s.
@@ -179,7 +185,7 @@ pub enum View {
     Inventory { sel: usize },
     Status,
     Quests,
-    Company,
+    Company { sel: usize },
     Saga,
     Dead,
     Menu { sel: usize },
@@ -252,6 +258,27 @@ pub struct Quest {
     pub target: String,
     pub reward: u32,
     pub state: QuestState,
+    /// Where the deed is to be done (A8).
+    #[serde(default)]
+    pub key: Option<SiteKey>,
+    /// That place's world cell, for the way there.
+    #[serde(default)]
+    pub cell: (i32, i32),
+    /// That place's name.
+    #[serde(default)]
+    pub place: String,
+    /// The figure of the legends to slay, if it is one.
+    #[serde(default)]
+    pub figure: Option<u32>,
+    /// The giver's people, who will think better of the hero for it.
+    #[serde(default)]
+    pub civ: Option<u32>,
+    /// The giver's words when they gave it.
+    #[serde(default)]
+    pub plea: String,
+    /// The year it was sworn.
+    #[serde(default)]
+    pub year: i32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -266,6 +293,8 @@ pub enum QuestKind {
 pub enum QuestState {
     #[default]
     Open,
+    /// The deed is done: the reward waits with the giver (A8).
+    Won,
     Done,
     Failed,
 }
@@ -279,6 +308,30 @@ pub struct Nemesis {
     pub name: String,
     #[serde(default)]
     pub at: (i32, i32),
+    #[serde(default)]
+    pub race: Option<Race>,
+    /// "goblin", "bandit".
+    #[serde(default)]
+    pub kind: String,
+    /// "swore vengeance on Urist for the blood shed in ...".
+    #[serde(default)]
+    pub grudge: String,
+    /// How many it brings.
+    #[serde(default)]
+    pub band: u8,
+    /// When it swore, when it last moved, and when it may come again.
+    #[serde(default)]
+    pub since: u64,
+    #[serde(default)]
+    pub moved: u64,
+    #[serde(default)]
+    pub next: u64,
+    /// Times it has met the hero.
+    #[serde(default)]
+    pub met: u8,
+    /// The feud is over (one of them is dead).
+    #[serde(default)]
+    pub done: bool,
 }
 
 /// The run's numbers, for the end page and the batch.
@@ -330,6 +383,8 @@ impl Adventure {
             fame: Fame::default(),
             quests: Vec::new(),
             nemesis: None,
+            watch: nemesis::Watch::default(),
+            band: company::Band::default(),
             weather: Weather::Clear,
             log: Vec::new(),
             knobs: Knobs::default(),
