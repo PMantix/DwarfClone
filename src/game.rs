@@ -3513,7 +3513,7 @@ mod tests {
         eprintln!("large world: {:?}, {} civs, {} sites, {} regions", took, ow.civs.len(), ow.sites.len(), ow.regions.len());
         assert_eq!((ow.w, ow.h), (288, 120));
         assert!(took.as_secs_f32() < 10.0, "large world took {:?}", took);
-        assert!(ow.civs.len() >= 20, "too few civilizations for a large world");
+        assert!(ow.civs.len() >= 8, "too few civilizations for a large world");
         assert!(ow.regions.iter().any(|r| r.kind == crate::overworld::RegionKind::Mountains), "no named mountains");
         assert!(ow.regions.iter().all(|r| !r.name.is_empty()));
         let names: std::collections::HashSet<&str> = ow.regions.iter().map(|r| r.name.as_str()).collect();

@@ -6,6 +6,8 @@ use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 
 mod peoples;
+pub mod spread;
+pub mod epics;
 mod marks;
 #[allow(unused_imports)] // G03 wave 1 (A5) uses them
 pub use marks::{FortMark, Occupant, Remains, Robbery};
@@ -534,6 +536,12 @@ pub struct Overworld {
     /// (`game/tales.rs`); empty, or past its end, means known.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub known: Vec<bool>,
+    /// The settings the world was made with (None in old saves).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub made_with: Option<WorldParams>,
+    /// The great events of its history (`overworld/epics.rs`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub epics: Vec<epics::Epic>,
 }
 
 /// How a clash ended for the place attacked.
@@ -577,53 +585,109 @@ fn one() -> f64 {
     1.0
 }
 
-/// Settings chosen on the world creation screen.
+/// Settings chosen on the world creation screen. Kept with the world it
+/// made (`Overworld::made_with`); the same settings and seed make the same
+/// world.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct WorldParams {
     pub seed: u64,
     /// Years of history before the expedition sets out.
     pub history: i32,
-    /// 0 few, 1 normal, 2 many civilizations.
+    /// Civilizations: 0 very few, 1 few, 2 normal, 3 many, 4 crowded.
     pub civs: u8,
-    /// 0 calm, 1 normal, 2 savage wildlife.
+    /// 0 calm, 1 normal, 2 savage wildlife (and fewer or more great beasts).
     pub savagery: u8,
     /// 0 sparse, 1 normal, 2 rich ore and gems.
     pub minerals: u8,
-    /// 0 small (128×56), 1 medium (192×80), 2 large (288×120).
-    #[serde(default)]
+    /// 0 small (128×56), 1 medium (192×80), 2 large (288×120), 3 huge
+    /// (384×160), 4 tiny (96×40).
     pub size: u8,
+    /// A custom width in cells (0: the size's own); the height follows at
+    /// the usual shape.
+    pub width: u16,
+    /// The land's make-up, 0..=4 each, 2 the usual: how much sea, how
+    /// mountainous, how wet, how warm, how wooded (`worldgen::fields::Mix`).
+    pub ocean: u8,
+    pub mountains: u8,
+    pub rain: u8,
+    pub heat: u8,
+    pub forest: u8,
+    /// How far apart sites keep: 0 close, 1 normal, 2 far (`overworld/spread.rs`).
+    pub spacing: u8,
+    /// Great events of history: 0 none, 1 rare, 2 common (`overworld/epics.rs`).
+    pub epics: u8,
+    /// The world as it was made before these settings existed: the old
+    /// count of peoples, settling as close as they liked, no great events.
+    /// `Overworld::generate` makes these, so the forts the tests and the
+    /// autoplay batches embark in stay the same; the creation screen never.
+    #[serde(skip)]
+    pub classic: bool,
 }
 
 impl Default for WorldParams {
     fn default() -> Self {
-        WorldParams { seed: 0, history: 200, civs: 1, savagery: 1, minerals: 1, size: 0 }
+        WorldParams { seed: 0, history: 200, civs: 2, savagery: 1, minerals: 1, size: 0, width: 0, ocean: 2, mountains: 2, rain: 2, heat: 2, forest: 2, spacing: 1, epics: 1, classic: false }
     }
 }
 
 impl WorldParams {
+    /// The peoples to found, in order: a dwarven and a goblin people in
+    /// every world, then humans and elves and more of each. "Very few" on a
+    /// small world is just the first two; bigger worlds hold more.
     pub fn civ_plan(&self) -> Vec<Race> {
         use Race::*;
-        let one: Vec<Race> = match self.civs {
-            0 => vec![Dwarf, Human, Elf, Goblin],
-            1 => vec![Dwarf, Dwarf, Human, Human, Elf, Goblin, Goblin],
-            _ => vec![Dwarf, Dwarf, Dwarf, Human, Human, Human, Elf, Elf, Goblin, Goblin, Goblin],
-        };
-        // Bigger worlds hold more peoples.
-        one.iter().copied().cycle().take(one.len() * self.scale()).collect()
+        if self.classic {
+            let one: Vec<Race> = match self.civs {
+                0 => vec![Dwarf, Human, Elf, Goblin],
+                1 => vec![Dwarf, Dwarf, Human, Human, Elf, Goblin, Goblin],
+                _ => vec![Dwarf, Dwarf, Dwarf, Human, Human, Human, Elf, Elf, Goblin, Goblin, Goblin],
+            };
+            return one.iter().copied().cycle().take(one.len() * self.scale()).collect();
+        }
+        const ORDER: [Race; 12] = [Dwarf, Goblin, Human, Elf, Dwarf, Human, Goblin, Human, Elf, Dwarf, Goblin, Human];
+        let base = [2.0, 3.0, 5.0, 7.0, 10.0][self.civs.min(4) as usize];
+        let n = ((base * self.reach()).round() as usize).max(2);
+        ORDER.iter().copied().cycle().take(n).collect()
     }
 
     pub fn dims(&self) -> (i32, i32) {
         // One character a cell, so a cell is twice as tall as it is wide.
-        [(128, 56), (192, 80), (288, 120)][self.size.min(2) as usize]
+        if self.width > 0 {
+            let w = (self.width as i32).clamp(64, 512);
+            return (w, (w * 5 / 12).max(28));
+        }
+        [(128, 56), (192, 80), (288, 120), (384, 160), (96, 40)][self.size.min(4) as usize]
     }
 
-    /// How many times more land than a small world, roughly (for civs and beasts).
+    /// How many times more land than a small world, roughly (for beasts,
+    /// volcanoes and deep rivers).
     pub fn scale(&self) -> usize {
-        [2, 3, 6][self.size.min(2) as usize]
+        if self.width == 0 && self.size <= 2 {
+            return [2, 3, 6][self.size as usize];
+        }
+        let (w, h) = self.dims();
+        ((2 * w * h) as f64 / (128.0 * 56.0)).round().max(1.0) as usize
+    }
+
+    /// The settings worlds were made with before there were more of them
+    /// (see `classic`).
+    pub fn classic(seed: u64) -> WorldParams {
+        WorldParams { seed, civs: 1, epics: 0, classic: true, ..WorldParams::default() }
+    }
+
+    /// The land's make-up for `worldgen::build_mixed`.
+    pub fn mix(&self) -> crate::worldgen::fields::Mix {
+        crate::worldgen::fields::Mix::from_levels(self.ocean, self.mountains, self.rain, self.heat, self.forest)
     }
 
     pub fn savagery_mult(&self) -> f64 {
         [0.5, 1.0, 1.7][self.savagery.min(2) as usize]
+    }
+
+    /// How many great beasts wake, for the savagery.
+    pub fn beasts(&self) -> usize {
+        [2, 4, 6][self.savagery.min(2) as usize] * self.scale()
     }
 
     pub fn minerals_mult(&self) -> f64 {
@@ -712,6 +776,8 @@ impl WorldGen {
             remains: Vec::new(),
             ages: Vec::new(),
             known: Vec::new(),
+            made_with: (!params.classic).then_some(params),
+            epics: Vec::new(),
         };
         WorldGen { params, ow, rng, land: None, row: 0, stage: GenStage::Terrain, rivers: Vec::new(), trace: None }
     }
@@ -796,6 +862,8 @@ impl WorldGen {
                     }
                     let year = self.ow.year + 1;
                     self.ow.simulate_year(&mut self.rng, year);
+                    let params = self.params;
+                    self.ow.epic_year(&params, year);
                     self.ow.year = year;
                     self.note_sites(year);
                 }
@@ -837,7 +905,8 @@ impl WorldGen {
     fn terrain_row(&mut self, y: i32) {
         let (w, h) = (self.ow.w, self.ow.h);
         let traced = self.trace.is_some();
-        let land = self.land.get_or_insert_with(|| crate::worldgen::build_traced(self.params.seed, w, h, traced));
+        let mix = self.params.mix();
+        let land = self.land.get_or_insert_with(|| crate::worldgen::build_mixed(self.params.seed, w, h, traced, &mix));
         for x in 0..w {
             let i = (y * w + x) as usize;
             let elev = land.grids.elev[i].round().clamp(0.0, 255.0) as u8;
@@ -900,15 +969,25 @@ impl WorldGen {
         let params = self.params;
         // Civilizations and their capitals.
         let plan = params.civ_plan();
+        // Capitals stand well apart: three times the gap between any two
+        // sites, closing in a little each time no spot is found.
+        let mut far = 3 * params.site_gap();
         for race in plan {
             let mut spot = None;
-            for _ in 0..400 {
-                let (x, y) = (self.rng.range(1, w - 1), self.rng.range(1, h - 1));
-                let c = self.ow.cell(x, y);
-                if c.site == 0 && race.home(c.biome, c.evil) && self.ow.sites.iter().all(|s| (s.x - x).abs() + (s.y - y).abs() > 8) {
-                    spot = Some((x, y));
+            for _ in 0..if params.classic { 1 } else { 6 } {
+                for _ in 0..400 {
+                    let (x, y) = (self.rng.range(1, w - 1), self.rng.range(1, h - 1));
+                    let c = self.ow.cell(x, y);
+                    let apart = if params.classic { self.ow.sites.iter().all(|s| (s.x - x).abs() + (s.y - y).abs() > 8) } else { self.ow.clear_of_sites(x, y, far) };
+                    if c.site == 0 && race.home(c.biome, c.evil) && apart {
+                        spot = Some((x, y));
+                        break;
+                    }
+                }
+                if spot.is_some() {
                     break;
                 }
+                far = (far * 3 / 4).max(params.site_gap());
             }
             let Some((x, y)) = spot else { continue };
             let id = self.ow.civs.len() as u32;
@@ -1055,7 +1134,7 @@ impl WorldGen {
     fn place_beasts(&mut self) {
         let (w, h) = (self.ow.w, self.ow.h);
         // Megabeasts in remote lairs.
-        for i in 0..4 * self.params.scale() {
+        for i in 0..self.params.beasts() {
             let (kind, part) = BEASTS[(i + self.rng.range(0, 5) as usize) % BEASTS.len()];
             let mut spot = None;
             for _ in 0..300 {
@@ -1612,13 +1691,15 @@ impl Overworld {
             remains: Vec::new(),
             ages: Vec::new(),
             known: Vec::new(),
+            made_with: None,
+            epics: Vec::new(),
         }
     }
 
     /// Generate with default settings, reporting each stage and how far along it is (0..1).
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn generate_with(seed: u64, report: &dyn Fn(&str, f32)) -> Overworld {
-        let mut g = WorldGen::new(WorldParams { seed, ..WorldParams::default() });
+        let mut g = WorldGen::new(WorldParams::classic(seed));
         while !g.step(usize::MAX, 5) {
             let (stage, frac) = g.progress();
             report(&stage, frac);
@@ -1667,7 +1748,7 @@ impl Overworld {
             // Expansion.
             if !sites.is_empty() && rng.chance(0.18) {
                 let from = self.sites[*rng.pick(&sites) as usize].clone();
-                if let Some((x, y)) = self.free_spot_near(rng, from.x, from.y, 6, race) {
+                if let Some((x, y)) = self.spread_spot(rng, from.x, from.y, race, sites.len()) {
                     let sid = self.add_site(rng, Overworld::site_kind_for(race, false), Some(c), x, y, year);
                     let text = format!(
                         "The {} of {} founded the {} of {}.",
@@ -1937,7 +2018,7 @@ mod tests {
     #[test]
     fn stepwise_generation_matches_one_go() {
         for seed in [3u64, 99] {
-            let params = WorldParams { seed, history: 60, civs: 2, savagery: 0, minerals: 2, size: 1 };
+            let params = WorldParams { seed, history: 60, civs: 3, savagery: 0, minerals: 2, size: 1, ..WorldParams::default() };
             let mut g = WorldGen::new(params);
             let mut steps = 0;
             while !g.step(1, 1) {
@@ -1950,7 +2031,7 @@ mod tests {
         }
         // Settings matter.
         let a = WorldGen::new(WorldParams { seed: 5, ..WorldParams::default() }).finish();
-        let b = WorldGen::new(WorldParams { seed: 5, civs: 2, ..WorldParams::default() }).finish();
+        let b = WorldGen::new(WorldParams { seed: 5, civs: 4, ..WorldParams::default() }).finish();
         assert!(b.civs.len() > a.civs.len());
         assert_eq!(a.year, 200);
     }

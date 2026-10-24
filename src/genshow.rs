@@ -9,12 +9,22 @@
 //! rivers running down the heights; 5. rivers growing from their springs to
 //! the sea and lakes filling their basins; 6. rain and warmth bringing the
 //! biomes in (a wildfire or two sweeping dry land and greening back);
-//! 7. history, year by year: settlements springing up, clashes flashing
-//! between them, ruins where they fell. The last frame is the finished map.
+//! 7. the first peoples founding their capitals one by one, and the great
+//! beasts waking in their lairs; 8. history, age by age: settlements
+//! springing up, raiders running between them, ruins smouldering where they
+//! fell, each age given the same few seconds whatever its length so its
+//! theme can be read (`chronicle`), and the great events (`overworld/epics.rs`)
+//! held on screen while their shockwave spreads. The last frame is the
+//! finished map. Each stage fades into the next rather than cutting.
 //!
 //! Fires, lava and smoke are flourishes of the playback only.
 
-use crate::overworld::{river_glyph, Biome, ClashEnd, Overworld, SiteState, WorldGen};
+pub mod chronicle;
+
+use crate::overworld::epics::{Epic, EpicKind};
+use crate::overworld::spread::gap_between;
+use crate::overworld::{river_glyph, Biome, ClashEnd, Overworld, SiteKind, SiteState, WorldGen};
+use chronicle::Era;
 use crate::worldgen::fields::{HILLS, MOUNTAIN, SEA};
 use ratatui::style::Color;
 
@@ -32,12 +42,13 @@ pub enum Stage {
     Weathering,
     Rivers,
     Life,
+    Founding,
     History,
     Done,
 }
 
 impl Stage {
-    pub const ALL: [Stage; 8] = [Stage::Ocean, Stage::Rising, Stage::Mountains, Stage::Weathering, Stage::Rivers, Stage::Life, Stage::History, Stage::Done];
+    pub const ALL: [Stage; 9] = [Stage::Ocean, Stage::Rising, Stage::Mountains, Stage::Weathering, Stage::Rivers, Stage::Life, Stage::Founding, Stage::History, Stage::Done];
 
     /// What the stage shows, for the caption.
     pub fn caption(self) -> &'static str {
@@ -48,6 +59,7 @@ impl Stage {
             Stage::Weathering => "Wind and water wear the heights down",
             Stage::Rivers => "Rivers find their way to the sea",
             Stage::Life => "Rain and warmth bring the land to life",
+            Stage::Founding => "The first peoples raise their halls",
             Stage::History => "The peoples spread across the land",
             Stage::Done => "History is written",
         }
@@ -62,6 +74,7 @@ impl Stage {
             Stage::Weathering => "Weathering",
             Stage::Rivers => "Rivers forming",
             Stage::Life => "Climate and life",
+            Stage::Founding => "The first peoples",
             Stage::History => "History",
             Stage::Done => "The finished world",
         }
@@ -69,13 +82,27 @@ impl Stage {
 }
 
 /// Seconds each stage before history takes at normal speed.
-const DUR: [f64; 6] = [2.5, 6.0, 6.0, 5.5, 6.0, 6.5];
+const DUR: [f64; 7] = [2.5, 6.0, 6.0, 5.5, 6.0, 6.5, 6.0];
+/// The stage index of history.
+const HIST: usize = 7;
 /// The finished world held still after the last year, before it's done.
 const HOLD: f64 = 2.0;
 /// How fast a trial river's head runs, cells a second.
 const PATH_SPEED: f64 = 45.0;
 /// How long a flash (a founding, a clash) lasts, seconds.
-const FLASH: f64 = 0.7;
+const FLASH: f64 = 1.2;
+/// How long one stage takes to fade into the next, seconds.
+const XF: f64 = 1.0;
+/// How long the show lingers on a great event, seconds.
+pub const EPIC_HOLD: f64 = 5.0;
+
+/// History's pacing, worked out once it's all written: when each year
+/// begins (seconds from the start of history), the ages, and the great
+/// events with when the show reaches them.
+struct Timeline {
+    ys: Vec<f64>,
+    eras: Vec<Era>,
+}
 
 /// One frame: every cell's look, and which cells hold a site (so a
 /// shrunken map lets them show through).
@@ -113,8 +140,12 @@ pub struct Show {
     volcanoes: Vec<(usize, f64)>,
     fires: Vec<Fire>,
     history: i32,
-    /// Start of each stage, seconds; `starts[7]` is when it's all done.
-    starts: [f64; 8],
+    /// Start of each stage, seconds; `starts[8]` is when it's all done.
+    starts: [f64; 9],
+    /// History's pacing, once history is written (`sync`).
+    timeline: Option<Timeline>,
+    /// How fast the show plays (the + and - keys).
+    pub speed: f64,
 }
 
 fn hash(x: i32, y: i32, salt: u64) -> u64 {
@@ -233,17 +264,78 @@ impl Show {
 
         let fires = Show::fires(ow);
         let history = g.params.history.max(1);
-        let mut starts = [0.0; 8];
-        for k in 0..6 {
+        let mut starts = [0.0; 9];
+        for k in 0..HIST {
             starts[k + 1] = starts[k] + DUR[k];
         }
-        starts[7] = starts[6] + Show::history_secs(history) + HOLD;
-        Show { w, h, raw, eroded, fin, raw_max, paths, river_key, lake_key, life_key, volcanoes, fires, history, starts }
+        starts[8] = starts[HIST] + Show::history_secs(history) + HOLD;
+        let mut show = Show { w, h, raw, eroded, fin, raw_max, paths, river_key, lake_key, life_key, volcanoes, fires, history, starts, timeline: None, speed: 1.0 };
+        show.sync(g);
+        show
     }
 
-    /// Seconds the years of history take.
+    /// Seconds the years of history take before the ages are known.
     fn history_secs(history: i32) -> f64 {
         (history as f64 * 0.09).clamp(8.0, 20.0)
+    }
+
+    /// Once history is all written, pace it: every age gets the same few
+    /// seconds whatever its length (so a long quiet age passes as quickly
+    /// as a short bloody one), and each great event holds the year it
+    /// happens in for `EPIC_HOLD`.
+    pub fn sync(&mut self, g: &WorldGen) {
+        if self.timeline.is_some() || !g.done() {
+            return;
+        }
+        let none = Vec::new();
+        let clashes = g.trace.as_ref().map_or(&none, |t| &t.clashes);
+        let eras = chronicle::eras(&g.ow, clashes, self.history);
+        // A few seconds an age, a little more for a long one.
+        let per_era = |len: i32| (6.0 + 0.05 * len as f64).min(15.0);
+        let hy = self.history as usize;
+        let mut ys = vec![0.0; hy + 2];
+        let mut t = 0.0;
+        for y in 0..=hy {
+            ys[y] = t;
+            let len = eras.iter().find(|e| e.from <= y as i32 && y as i32 <= e.to).map_or(10, |e| e.to - e.from + 1);
+            t += per_era(len) / len as f64;
+            if g.ow.epics.iter().any(|e| e.year == y as i32) {
+                t += EPIC_HOLD;
+            }
+        }
+        ys[hy + 1] = t;
+        self.starts[8] = self.starts[HIST] + t + HOLD;
+        self.timeline = Some(Timeline { ys, eras });
+    }
+
+    /// The ages of history, once it's written.
+    pub fn eras(&self) -> &[Era] {
+        self.timeline.as_ref().map_or(&[], |t| &t.eras)
+    }
+
+    /// The age the show is in at `t`, and its index.
+    pub fn era_at(&self, t: f64) -> Option<(usize, &Era)> {
+        let y = self.year_at(t)?;
+        self.eras().iter().enumerate().find(|(_, e)| e.from <= y && y <= e.to)
+    }
+
+    /// The great event the show is lingering on at `t`, and how far through.
+    pub fn epic_at<'a>(&self, t: f64, g: &'a WorldGen) -> Option<(&'a Epic, f64)> {
+        self.timeline.as_ref()?;
+        g.ow.epics.iter().find_map(|e| {
+            let age = t - self.time_of_year(e.year);
+            (0.0..EPIC_HOLD).contains(&age).then_some((e, age / EPIC_HOLD))
+        })
+    }
+
+    /// The next place worth skipping to after `t`: the next stage, age or
+    /// great event.
+    pub fn next_mark(&self, t: f64) -> f64 {
+        let mut marks: Vec<f64> = self.starts.to_vec();
+        for e in self.eras() {
+            marks.push(self.time_of_year(e.from));
+        }
+        marks.into_iter().filter(|&m| m > t + 0.05).fold(self.end(), f64::min)
     }
 
     /// A wildfire or two on dry, warm grass and scrub, spreading into the
@@ -306,17 +398,17 @@ impl Show {
 
     /// When the whole show is over (seconds).
     pub fn end(&self) -> f64 {
-        self.starts[7]
+        self.starts[8]
     }
 
     /// The stage at time `t` and how far through it (0..1).
     pub fn stage_at(&self, t: f64) -> (Stage, f64) {
-        if t >= self.starts[7] {
+        if t >= self.starts[8] {
             return (Stage::Done, 1.0);
         }
-        for k in (0..7).rev() {
+        for k in (0..8).rev() {
             if t >= self.starts[k] {
-                let len = if k == 6 { Show::history_secs(self.history) } else { DUR[k] };
+                let len = if k == HIST { self.starts[8] - self.starts[HIST] } else { DUR[k] };
                 return (Stage::ALL[k], ((t - self.starts[k]) / len).clamp(0.0, 1.0));
             }
         }
@@ -331,27 +423,37 @@ impl Show {
 
     /// The year of history at `t`, once history has begun.
     pub fn year_at(&self, t: f64) -> Option<i32> {
-        if t < self.starts[6] {
+        if t < self.starts[HIST] {
             return None;
         }
-        let q = ((t - self.starts[6]) / Show::history_secs(self.history)).clamp(0.0, 1.0);
-        Some(((q * self.history as f64).floor() as i32).min(self.history))
+        let rel = t - self.starts[HIST];
+        match &self.timeline {
+            Some(tl) => Some((tl.ys.partition_point(|&s| s <= rel) as i32 - 1).clamp(0, self.history)),
+            None => {
+                let q = (rel / Show::history_secs(self.history)).clamp(0.0, 1.0);
+                Some(((q * self.history as f64).floor() as i32).min(self.history))
+            }
+        }
     }
 
     /// When year `y` begins on the show's clock.
-    fn time_of_year(&self, y: i32) -> f64 {
-        self.starts[6] + Show::history_secs(self.history) * y as f64 / self.history as f64
+    pub fn time_of_year(&self, y: i32) -> f64 {
+        match &self.timeline {
+            Some(tl) => self.starts[HIST] + tl.ys[y.clamp(0, self.history + 1) as usize],
+            None => self.starts[HIST] + Show::history_secs(self.history) * y as f64 / self.history as f64,
+        }
     }
 
-    /// How far the show can run with what the generator has made so far
-    /// (it can't show a year before it's been simulated).
+    /// How far the show can run with what the generator has made so far:
+    /// the land until the first peoples are placed, then up to history,
+    /// which waits until it's all written and paced (`sync`).
     pub fn ready_until(&self, g: &WorldGen) -> f64 {
-        if g.done() {
+        if g.done() && self.timeline.is_some() {
             f64::INFINITY
         } else if !g.history_ready() {
-            self.starts[6] - 1e-3
+            self.starts[HIST - 1] - 1e-3
         } else {
-            self.time_of_year(g.ow.year + 1) - 1e-3
+            self.starts[HIST] - 1e-3
         }
     }
 
@@ -392,14 +494,32 @@ impl Show {
         (ch, fg, if ow.cell(x, y).evil { rgb(45, 10, 55) } else { BLACK })
     }
 
-    /// The frame at `t` seconds into the show.
+    /// The frame at `t` seconds into the show: the stage's own, faded in
+    /// over the end of the one before for its first moment.
     pub fn frame(&self, t: f64, g: &WorldGen) -> ShowFrame {
+        let (stage, p) = self.stage_at(t);
+        let mut fr = self.stage_frame(stage, p, t, g);
+        let k = Stage::ALL.iter().position(|&s| s == stage).unwrap_or(0);
+        if k >= 1 && stage != Stage::Done && t - self.starts[k] < XF {
+            let old = self.stage_frame(Stage::ALL[k - 1], 1.0, t, g);
+            let q = smooth((t - self.starts[k]) / XF) as f32;
+            for (new, old) in fr.looks.iter_mut().zip(&old.looks) {
+                if new != old {
+                    *new = (if q < 0.5 { old.0 } else { new.0 }, blend(old.1, new.1, q), blend(old.2, new.2, q));
+                }
+            }
+        }
+        fr
+    }
+
+    /// A stage's frame `p` of the way through it, at clock time `t` (for
+    /// the waves and flicker).
+    fn stage_frame(&self, stage: Stage, p: f64, t: f64, g: &WorldGen) -> ShowFrame {
         let ow = &g.ow;
         let (w, h) = (self.w, self.h);
         let n = (w * h) as usize;
         let mut looks: Vec<Look> = vec![(' ', BLACK, BLACK); n];
         let mut site = vec![false; n];
-        let (stage, p) = self.stage_at(t);
         let at = |i: usize| (i as i32 % w, i as i32 / w);
         match stage {
             Stage::Ocean => {
@@ -499,6 +619,7 @@ impl Show {
                     self.burn(ow, &mut looks, p, t);
                 }
             }
+            Stage::Founding => self.founding(g, p, t, &mut looks, &mut site),
             Stage::History => self.history(g, t, &mut looks, &mut site),
             Stage::Done => {
                 for i in 0..n {
@@ -636,6 +757,72 @@ impl Show {
         }
     }
 
+    /// The first peoples' capitals rising one by one, each with a ring of
+    /// its people's colour spreading out over the land it will claim; then
+    /// the great beasts waking in their lairs, a dark pulse round each.
+    fn founding(&self, g: &WorldGen, p: f64, t: f64, looks: &mut [Look], site: &mut [bool]) {
+        let ow = &g.ow;
+        let w = self.w;
+        for i in 0..(w * self.h) as usize {
+            looks[i] = Show::land_look(ow, i as i32 % w, i as i32 / w);
+        }
+        let first: Vec<&crate::overworld::Site> = ow.sites.iter().filter(|s| s.founded <= 0).collect();
+        let caps: Vec<&&crate::overworld::Site> = first.iter().filter(|s| s.civ.is_some()).collect();
+        let lairs: Vec<&&crate::overworld::Site> = first.iter().filter(|s| s.civ.is_none()).collect();
+        let mut rise: Vec<(&crate::overworld::Site, f64, Color)> = Vec::new();
+        for (k, s) in caps.iter().enumerate() {
+            let col = ow.site_look(s).1;
+            let col = s.civ.map_or(col, |c| ow.civ(c).race.color());
+            rise.push((s, 0.06 + 0.56 * k as f64 / caps.len().max(2).saturating_sub(1).max(1) as f64, col));
+        }
+        for (k, s) in lairs.iter().enumerate() {
+            rise.push((s, 0.68 + 0.16 * k as f64 / lairs.len().max(2).saturating_sub(1).max(1) as f64, rgb(170, 40, 150)));
+        }
+        let pulse = 0.5 + 0.5 * (t * 5.0).sin() as f32;
+        for (s, at, col) in rise {
+            if p < at || s.x < 0 || s.y < 0 || s.x >= w || s.y >= self.h {
+                continue;
+            }
+            let age = (p - at) * DUR[6];
+            // The ring: out to a few cells over a second, fading as it goes.
+            if age < 1.4 {
+                let r = age * 6.0;
+                let fade = (1.0 - age / 1.4) as f32;
+                self.ring(looks, (s.x, s.y), r, blend(BLACK, col, 0.55 * fade));
+            }
+            let i = (s.y * w + s.x) as usize;
+            let mut then = s.clone();
+            if let Some(f) = g.trace.as_ref().and_then(|t| t.first.get(s.id as usize)) {
+                (then.civ, then.kind, then.ruined) = (f.civ, f.kind, f.ruined);
+            }
+            let (ch, fg) = ow.site_look(&then);
+            let land = looks[i];
+            let q = (age / 0.5).min(1.0) as f32;
+            let bg = if s.kind == SiteKind::Lair { blend(rgb(60, 0, 50), BLACK, 1.0 - pulse * (1.0 - q * 0.6)) } else { land.2 };
+            let bg = if age < FLASH { blend(blend(BLACK, col, 0.6), bg, (age / FLASH) as f32) } else { bg };
+            looks[i] = (if q < 0.3 { land.0 } else { ch }, blend(land.1, fg, q), if age >= 2.0 || p >= 0.999 { land.2 } else { bg });
+            site[i] = true;
+        }
+    }
+
+    /// Tint the background of the cells about `r` from `c` (map distance).
+    fn ring(&self, looks: &mut [Look], c: (i32, i32), r: f64, col: Color) {
+        let ri = r.ceil() as i32 + 1;
+        for dy in -(ri / 2 + 1)..=(ri / 2 + 1) {
+            for dx in -ri..=ri {
+                let (x, y) = (c.0 + dx, c.1 + dy);
+                if x < 0 || y < 0 || x >= self.w || y >= self.h {
+                    continue;
+                }
+                let d = gap_between((x, y), c) as f64;
+                if (d - r).abs() < 0.8 {
+                    let i = (y * self.w + x) as usize;
+                    looks[i].2 = blend(looks[i].2, col, 0.85);
+                }
+            }
+        }
+    }
+
     /// Each site's standing in year `y` (or `None` before it's founded).
     fn sites_in(&self, g: &WorldGen, y: i32) -> Vec<Option<SiteState>> {
         let ow = &g.ow;
@@ -672,6 +859,14 @@ impl Show {
         (towns, ruins)
     }
 
+    /// Living peoples in year `y` (those with a standing site).
+    pub fn peoples(&self, g: &WorldGen, y: i32) -> usize {
+        let mut civs: Vec<u32> = self.sites_in(g, y).into_iter().flatten().filter(|s| !s.ruined).filter_map(|s| s.civ).collect();
+        civs.sort_unstable();
+        civs.dedup();
+        civs.len()
+    }
+
     fn history(&self, g: &WorldGen, t: f64, looks: &mut [Look], site: &mut [bool]) {
         let ow = &g.ow;
         let (w, h) = (self.w, self.h);
@@ -680,6 +875,16 @@ impl Show {
         }
         let y = self.year_at(t).unwrap_or(0);
         let states = self.sites_in(g, y);
+        // When each site last changed hands or fell, up to now.
+        let mut changed: Vec<Option<i32>> = vec![None; ow.sites.len()];
+        if let Some(tr) = &g.trace {
+            for &(yr, sid, _) in tr.changes.iter().take_while(|c| c.0 <= y) {
+                if let Some(c) = changed.get_mut(sid as usize) {
+                    *c = Some(yr);
+                }
+            }
+        }
+        let flick = ((t * 8.0) as i64) % 2 == 0;
         for (k, s) in ow.sites.iter().enumerate() {
             let Some(st) = states[k] else { continue };
             if s.x < 0 || s.y < 0 || s.x >= w || s.y >= h {
@@ -688,17 +893,34 @@ impl Show {
             let i = (s.y * w + s.x) as usize;
             let mut then = s.clone();
             (then.civ, then.kind, then.ruined) = (st.civ, st.kind, st.ruined);
-            let (ch, fg) = ow.site_look(&then);
-            let mut bg = looks[i].2;
-            // Newly founded: a brief glow.
+            let (mut ch, mut fg) = ow.site_look(&then);
+            let land = looks[i];
+            let mut bg = land.2;
+            // Newly founded: it grows out of the land with a warm glow (the
+            // first peoples' were shown rising already).
             let age = t - self.time_of_year(s.founded);
-            if age < FLASH {
-                bg = blend(rgb(150, 125, 30), bg, (age / FLASH) as f32);
+            if s.founded > 0 && age < FLASH {
+                let q = (age / FLASH) as f32;
+                bg = blend(rgb(150, 125, 30), bg, q);
+                fg = blend(land.1, fg, (q * 2.0).min(1.0));
+            }
+            // Fallen lately: it burns, then cools to grey ruin.
+            if let Some(yr) = changed[k] {
+                let age = t - self.time_of_year(yr);
+                if st.ruined && age < FLASH * 1.5 {
+                    let q = (age / (FLASH * 1.5)) as f32;
+                    if q < 0.5 {
+                        ch = if flick { '*' } else { '☼' };
+                    }
+                    fg = blend(if flick { rgb(255, 170, 40) } else { rgb(230, 70, 30) }, fg, q);
+                    bg = blend(rgb(90, 20, 0), bg, q);
+                }
             }
             looks[i] = (ch, fg, bg);
             site[i] = true;
         }
-        // Clashes flash between the attacker and the place attacked.
+        // Raiders run from the attacker to the place attacked; the place
+        // flashes when they reach it.
         if let Some(tr) = &g.trace {
             for c in &tr.clashes {
                 let age = t - self.time_of_year(c.year);
@@ -706,14 +928,19 @@ impl Show {
                     continue;
                 }
                 let (Some(a), Some(b)) = (ow.sites.get(c.from as usize), ow.sites.get(c.to as usize)) else { continue };
-                let fade = (age / FLASH) as f32;
                 let hue = match c.end {
                     ClashEnd::Fell | ClashEnd::Taken => rgb(255, 70, 40),
                     ClashEnd::Slain => rgb(120, 220, 255),
                     _ => rgb(255, 170, 60),
                 };
                 let steps = (b.x - a.x).abs().max((b.y - a.y).abs());
+                let run = FLASH * 0.5;
+                let head = (age / run).min(1.0) * steps as f64;
                 for k in 1..steps {
+                    let behind = head - k as f64;
+                    if !(0.0..4.0).contains(&behind) {
+                        continue;
+                    }
                     let x = a.x + ((b.x - a.x) as f64 * k as f64 / steps as f64).round() as i32;
                     let yy = a.y + ((b.y - a.y) as f64 * k as f64 / steps as f64).round() as i32;
                     let i = (yy * w + x) as usize;
@@ -721,12 +948,53 @@ impl Show {
                         continue;
                     }
                     let base = looks[i];
-                    looks[i] = ('·', blend(hue, base.1, fade), base.2);
+                    let fade = (behind / 4.0) as f32;
+                    looks[i] = (if behind < 1.0 { '•' } else { '·' }, blend(hue, base.1, fade), base.2);
                 }
-                let i = (b.y * w + b.x) as usize;
-                looks[i].2 = blend(rgb(170, 30, 15), looks[i].2, fade);
+                if age >= run {
+                    let i = (b.y * w + b.x) as usize;
+                    looks[i].2 = blend(rgb(170, 30, 15), looks[i].2, ((age - run) / (FLASH - run)) as f32);
+                }
             }
         }
+        // A great event: a shockwave out from where it struck, the places it
+        // touched pulsing, for as long as the show lingers on it.
+        if let Some((e, q)) = self.epic_at(t, g) {
+            let col = epic_color(e.kind);
+            let age = q * EPIC_HOLD;
+            let fade = (1.0 - q) as f32;
+            for k in 0..3 {
+                let r = age * 7.0 - k as f64 * 4.0;
+                if r > 0.0 {
+                    self.ring(looks, (e.x, e.y), r, blend(BLACK, col, 0.7 * fade));
+                }
+            }
+            let pulse = 0.5 + 0.5 * (t * 6.0).sin() as f32;
+            for &s in &e.sites {
+                if let Some(s) = ow.sites.get(s as usize) {
+                    let i = (s.y * w + s.x) as usize;
+                    looks[i].2 = blend(looks[i].2, col, 0.7 * pulse * fade);
+                }
+            }
+            if e.x >= 0 && e.y >= 0 && e.x < w && e.y < h {
+                let i = (e.y * w + e.x) as usize;
+                if !site[i] {
+                    looks[i] = ('☼', blend(rgb(255, 255, 200), col, pulse), blend(BLACK, col, 0.5 * fade));
+                }
+            }
+        }
+    }
+}
+
+/// The colour of a great event, for its shockwave and banner.
+pub fn epic_color(k: EpicKind) -> Color {
+    match k {
+        EpicKind::Eruption => rgb(255, 110, 30),
+        EpicKind::Starfall => rgb(200, 160, 255),
+        EpicKind::Rampage => rgb(230, 50, 120),
+        EpicKind::Plague => rgb(150, 200, 60),
+        EpicKind::Sundering => rgb(120, 170, 255),
+        EpicKind::Empire => rgb(255, 210, 80),
     }
 }
 
@@ -780,7 +1048,7 @@ mod tests {
             t += 1.0 / 30.0;
         }
         assert_eq!(seen, Stage::ALL.to_vec(), "every stage, in order");
-        assert!((30.0..=60.0).contains(&show.end()), "the show runs {:.1}s", show.end());
+        assert!((45.0..=150.0).contains(&show.end()), "the show runs {:.1}s", show.end());
 
         // The last frames are the finished map, cell for cell.
         let ow = &g.ow;
@@ -833,8 +1101,10 @@ mod tests {
             let s = &ow.sites[sid as usize];
             let i = (s.y * ow.w + s.x) as usize;
             let before = show.frame(show.time_of_year(yr - 1) + 0.01, &g);
-            let after = show.frame(show.time_of_year(yr) + 0.01, &g);
+            let burning = show.frame(show.time_of_year(yr) + 0.01, &g);
+            let after = show.frame(show.time_of_year(yr) + FLASH * 1.6, &g);
             assert_ne!(before.looks[i].0, '×');
+            assert!(matches!(burning.looks[i].0, '*' | '☼'), "a fallen place burns first, not {:?}", burning.looks[i].0);
             assert_eq!(after.looks[i].0, '×');
         }
         assert!(!tr.clashes.is_empty(), "no battles recorded");
@@ -844,16 +1114,87 @@ mod tests {
     fn the_show_waits_for_history() {
         let mut g = WorldGen::traced(WorldParams { seed: 9, history: 100, ..WorldParams::default() });
         g.step(usize::MAX, 0);
-        let show = Show::new(&g);
-        assert!(show.ready_until(&g) < show.start_of(Stage::History));
+        let mut show = Show::new(&g);
+        assert!(show.ready_until(&g) < show.start_of(Stage::Founding));
         while !g.history_ready() {
             g.step(usize::MAX, 0);
         }
         g.step(usize::MAX, 10);
+        show.sync(&g);
         let r = show.ready_until(&g);
-        assert_eq!(show.year_at(r), Some(10));
+        assert!(r > show.start_of(Stage::Founding) && r < show.start_of(Stage::History));
         while !g.step(usize::MAX, 50) {}
+        show.sync(&g);
         assert!(show.ready_until(&g) > show.end());
+    }
+
+    /// Every age gets its few seconds whatever its length, a great event
+    /// holds its year on screen, and history reads slowly enough to follow.
+    #[test]
+    fn history_is_paced_by_its_ages_and_lingers_on_great_events() {
+        let mut found_epic = false;
+        for seed in [2u64, 11, 23] {
+            let mut g = WorldGen::traced(WorldParams { seed, history: 250, epics: 2, ..WorldParams::default() });
+            while !g.step(usize::MAX, 50) {}
+            let show = Show::new(&g);
+            let eras = show.eras().to_vec();
+            assert!(!eras.is_empty());
+            let secs = show.end() - show.start_of(Stage::History);
+            let epics = g.ow.epics.len() as f64;
+            assert!(secs >= 12.0 + epics * EPIC_HOLD, "seed {}: history over in {:.1}s", seed, secs);
+            for e in &eras {
+                let span = show.time_of_year(e.to + 1) - show.time_of_year(e.from);
+                let held = g.ow.epics.iter().filter(|p| p.year >= e.from && p.year <= e.to).count() as f64 * EPIC_HOLD;
+                assert!((5.99..=15.01).contains(&(span - held)), "seed {}: {} lasts {:.1}s", seed, e.name, span);
+                let mid = show.time_of_year((e.from + e.to) / 2) + 0.01;
+                assert_eq!(show.era_at(mid).map(|x| x.1.name.clone()), Some(e.name.clone()));
+            }
+            for p in &g.ow.epics {
+                found_epic = true;
+                let t = show.time_of_year(p.year) + 1.0;
+                assert_eq!(show.year_at(t), Some(p.year));
+                assert_eq!(show.year_at(t + EPIC_HOLD * 0.8), Some(p.year), "the year holds through the event");
+                assert_eq!(show.epic_at(t, &g).map(|x| x.0.name.clone()), Some(p.name.clone()));
+                // The shockwave shows on the map.
+                let f = show.frame(t, &g);
+                let tinted = f.looks.iter().filter(|l| l.2 != BLACK).count();
+                let calm = show.frame(show.time_of_year(p.year) - 0.01, &g).looks.iter().filter(|l| l.2 != BLACK).count();
+                assert!(tinted > calm, "seed {}: no shockwave for {}", seed, p.name);
+            }
+            // Tab-like skipping lands on each age in turn.
+            let t0 = show.start_of(Stage::History);
+            assert!(show.next_mark(t0 - 0.5) <= t0 + 1e-9);
+        }
+        assert!(found_epic, "no great events in three worlds at 'common'");
+    }
+
+    /// Stages fade into each other: no frame changes more than a fraction
+    /// of the map from the one a thirtieth of a second before, except
+    /// where a stage cuts to its own first picture.
+    #[test]
+    fn the_show_moves_smoothly() {
+        let g = made(31, 60);
+        let show = Show::new(&g);
+        let n = g.ow.cells.len();
+        let mut worst = (0usize, 0.0f64);
+        let mut last = show.frame(0.0, &g);
+        let mut t = 0.0;
+        while t < show.start_of(Stage::History) + 2.0 {
+            t += 1.0 / 30.0;
+            let f = show.frame(t, &g);
+            let jumped = f.looks.iter().zip(&last.looks).filter(|(a, b)| a.0 != b.0 && a.1 != b.1).count();
+            if jumped > worst.0 {
+                worst = (jumped, t);
+            }
+            last = f;
+        }
+        eprintln!("worst frame-to-frame change: {} of {} cells at {:.2}s", worst.0, n, worst.1);
+        assert!(worst.0 * 4 < n, "{} of {} cells jumped at {:.2}s ({:?})", worst.0, n, worst.1, show.stage_at(worst.1));
+        // The first peoples rise during their stage, not all at once.
+        let caps = |f: &ShowFrame| f.site.iter().filter(|&&s| s).count();
+        let early = show.frame(show.start_of(Stage::Founding) + 1.5, &g);
+        let late = show.frame(show.start_of(Stage::History) - 0.01, &g);
+        assert!(caps(&early) < caps(&late) && caps(&early) > 0, "{} then {}", caps(&early), caps(&late));
     }
 
     /// One frame from each stage: `cargo test --release print_show_stages -- --ignored --nocapture`.
@@ -864,7 +1205,7 @@ mod tests {
         let show = Show::new(&g);
         let w = g.ow.w;
         for (k, s) in Stage::ALL.iter().enumerate() {
-            let t = if *s == Stage::Done { show.end() } else { show.start_of(*s) + [0.6, 0.55, 0.75, 0.5, 0.6, 0.65, 0.55][k] * if k < 6 { DUR[k] } else { Show::history_secs(200) } };
+            let t = if *s == Stage::Done { show.end() } else { show.start_of(*s) + [0.6, 0.55, 0.75, 0.5, 0.6, 0.65, 0.8, 0.55][k] * if k < HIST { DUR[k] } else { show.end() - show.start_of(Stage::History) } };
             let f = show.frame(t, &g);
             let y = show.year_at(t).map_or(String::new(), |y| format!(", year {}", y));
             println!("-- {} ({}{}), t {:.1}s", s.short(), s.caption(), y, t);

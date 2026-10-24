@@ -1,4 +1,4 @@
-use crate::app::{look_entries, preset_name, App, LookEntry, Mode, ZoneTool, DESIG_KEYS, LEVELS, SETUP_ROWS, TITLE_MENU};
+use crate::app::{look_entries, App, LookEntry, Mode, ZoneTool, DESIG_KEYS, SETUP_ROWS, TITLE_MENU};
 use crate::body::PARTS;
 use crate::buildings::BuildingKind;
 use crate::dwarf::{skill_level, skill_rank, Dwarf, Task, LABORS};
@@ -26,6 +26,7 @@ mod ledger;
 mod lore;
 pub mod saga;
 mod moodstrip;
+mod worldshow;
 mod ambient;
 mod ticker;
 mod sound;
@@ -2384,50 +2385,31 @@ fn draw_world_setup(f: &mut Frame, app: &App, sel: usize) {
     let area = f.size();
     backdrop(f, area);
     let p = &app.world_params;
-    let values = [
-        preset_name(p).to_string(),
-        format!("{}", p.seed),
-        {
-            let (w, h) = p.dims();
-            format!("{} {}×{}", LEVELS[3][p.size.min(2) as usize], w, h)
-        },
-        format!("{} years", p.history),
-        LEVELS[0][p.civs.min(2) as usize].to_string(),
-        LEVELS[1][p.savagery.min(2) as usize].to_string(),
-        LEVELS[2][p.minerals.min(2) as usize].to_string(),
-        String::new(),
-    ];
-    let notes = [
-        "Quick, Standard, Long history, Harsh",
-        "type digits · r random",
-        "bigger worlds hold more peoples",
-
-        "years simulated before you arrive",
-        "how many peoples share the world",
-        "how dangerous the wildlife is",
-        "how much ore and gem lies in the rock",
-        "",
-    ];
+    // Short screens drop the blank lines and group headings first.
+    let roomy = area.height >= SETUP_ROWS.len() as u16 + 12;
     let mut v: Vec<Line> = vec![Line::default()];
-    for (i, row) in SETUP_ROWS.iter().enumerate() {
+    for (i, (row, head)) in SETUP_ROWS.iter().enumerate() {
         let on = i == sel;
         if i == SETUP_ROWS.len() - 1 {
             v.push(Line::default());
             let st = if on { Style::default().fg(BLACK).bg(KEY).add_modifier(Modifier::BOLD) } else { Style::default().fg(KEY) };
-            v.push(Line::from(Span::styled(format!("   ▶ {}   ", row), st)));
+            v.push(Line::from(Span::styled(format!("   ▶ {}   ", row.label()), st)));
             continue;
+        }
+        if let (Some(h), true) = (head, roomy) {
+            v.push(Line::from(Span::styled(format!("  ─ {} ", h), Style::default().fg(Color::Rgb(150, 140, 100)))));
         }
         let st = if on { Style::default().fg(BLACK).bg(Color::Rgb(90, 110, 170)) } else { Style::default().fg(TEXT) };
         let arrows = if on { ("◀ ", " ▶") } else { ("  ", "  ") };
         v.push(Line::from(vec![
-            Span::styled(format!("  {:<15}", row), Style::default().fg(MUTED)),
-            Span::styled(format!("{}{:^16}{}", arrows.0, values[i], arrows.1), st),
-            Span::styled(format!("  {}", notes[i]), Style::default().fg(Color::Rgb(100, 100, 110))),
+            Span::styled(format!("  {:<15}", row.label()), Style::default().fg(MUTED)),
+            Span::styled(format!("{}{:^18}{}", arrows.0, row.value(p), arrows.1), st),
+            Span::styled(format!("  {}", row.note()), Style::default().fg(Color::Rgb(100, 100, 110))),
         ]));
     }
     v.push(Line::default());
-    v.push(plain("  ↑↓ choose · ←→ change · Enter generate · Esc back".into(), MUTED));
-    let r = centered(area, 82, v.len() as u16 + 2);
+    v.push(plain("  ↑↓ choose · ←→ change · +/- width · d defaults · Enter generate · Esc back".into(), MUTED));
+    let r = centered(area, 92, v.len() as u16 + 2);
     f.render_widget(Clear, r);
     f.render_widget(
         Paragraph::new(v).style(Style::default().bg(Color::Rgb(12, 12, 20))).block(
@@ -2441,100 +2423,7 @@ fn draw_world_setup(f: &mut Frame, app: &App, sel: usize) {
 }
 
 fn draw_worldgen(f: &mut Frame, app: &App) {
-    use crate::genshow::Stage;
-    let area = f.size();
-    let Some(g) = &app.worldgen else { return };
-    let ow = &g.ow;
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(10)])
-        .split(area);
-    let cols = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(20), Constraint::Length(SIDEBAR_W + 8)])
-        .split(rows[1]);
-    let show = app.genshow.as_ref();
-    let t = app.show_t;
-    let (stage, _) = show.map_or((Stage::Ocean, 0.0), |s| s.stage_at(t));
-    let year = show.and_then(|s| s.year_at(t));
-    let finished = app.worldgen_finished();
-    f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(" ☼ DwarfClone ", Style::default().fg(KEY).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("│ Creating {} │ seed {}", ow.name, g.params.seed), Style::default().fg(TEXT)),
-        ]))
-        .style(Style::default().bg(Color::Rgb(20, 20, 30))),
-        rows[0],
-    );
-    let title = match year {
-        Some(y) => format!(" Year {} ", y),
-        None => format!(" {} ", stage.short()),
-    };
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(MUTED))
-        .title(Span::styled(title, Style::default().fg(KEY)))
-        .title_bottom(Span::styled(format!(" {} ", stage.caption()), Style::default().fg(TEXT)));
-    let inner = block.inner(cols[0]);
-    f.render_widget(block, cols[0]);
-    if let Some(s) = show {
-        let fr = s.frame(t, g);
-        let w = ow.w;
-        paint_cells(f, inner, (ow.w, ow.h), ow.h, None, &|x, y| fr.site[(y * w + x) as usize], &|x, y| fr.looks[(y * w + x) as usize]);
-    }
-
-    // The stages, then what history has made so far.
-    let width = 28usize;
-    let frac = show.map_or(0.0, |s| (t / s.end()).clamp(0.0, 1.0)) as f32;
-    let filled = ((frac * width as f32).round() as usize).min(width);
-    let mut v = vec![
-        plain(stage.caption().to_string(), TEXT),
-        Line::from(vec![
-            Span::styled("█".repeat(filled), Style::default().fg(Color::Rgb(255, 200, 80))),
-            Span::styled("░".repeat(width - filled), Style::default().fg(Color::Rgb(60, 55, 50))),
-            Span::styled(format!(" {:>3}%", (frac * 100.0) as u32), Style::default().fg(MUTED)),
-        ]),
-        Line::default(),
-    ];
-    for s in &Stage::ALL[..7] {
-        let (mark, col) = if *s < stage { ("✓ ", MUTED) } else if *s == stage { ("▶ ", KEY) } else { ("  ", Color::Rgb(90, 90, 100)) };
-        v.push(plain(format!("{}{}", mark, s.short()), col));
-    }
-    v.push(Line::default());
-    let y = year.unwrap_or(0);
-    let (towns, ruins) = match (show, year) {
-        (Some(s), Some(y)) => s.tally(g, y),
-        _ => (0, 0),
-    };
-    let peoples = if year.is_some() { ow.civs.len() } else { 0 };
-    v.push(plain(format!("Year          {:>5} of {}", y, g.params.history), TEXT));
-    v.push(plain(format!("Civilizations {:>5}", peoples), TEXT));
-    v.push(plain(format!("Settlements   {:>5}", towns), TEXT));
-    v.push(plain(format!("Ruins         {:>5}", ruins), TEXT));
-    v.push(Line::default());
-    v.push(header("Lately"));
-    // Events wrap to about two lines each; show as many as fit.
-    let fit = (cols[1].height as usize).saturating_sub(v.len() + 3) / 2;
-    let seen: Vec<_> = if year.is_some() { ow.events.iter().filter(|e| e.year <= y).collect() } else { Vec::new() };
-    for e in seen.iter().rev().take(fit).collect::<Vec<_>>().into_iter().rev() {
-        v.push(Line::from(vec![
-            Span::styled(format!("{:>4} ", e.year), Style::default().fg(MUTED)),
-            Span::styled(e.text.clone(), Style::default().fg(Color::Rgb(190, 190, 200))),
-        ]));
-    }
-    let keys = if finished { " Enter accept · r another world · Esc settings " } else { " Space skip · r new seed · Esc settings " };
-    f.render_widget(
-        Paragraph::new(v)
-            .wrap(Wrap { trim: true })
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(MUTED))
-                    .title(Span::styled(if finished { " The world is ready " } else { " Generating " }, Style::default().fg(KEY)))
-                    .title_bottom(Span::styled(keys, Style::default().fg(KEY))),
-            ),
-        cols[1],
-    );
+    worldshow::draw_worldgen(f, app)
 }
 
 fn world_info(ow: &Overworld, x: i32, y: i32, flash: &Option<String>) -> Vec<Line<'static>> {

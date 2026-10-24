@@ -14,6 +14,46 @@ pub const SEA: f32 = 92.0;
 pub const HILLS: f32 = 148.0;
 pub const MOUNTAIN: f32 = 170.0;
 
+/// The world-creation knobs that shape the land: how much of it is sea,
+/// how much mountain, how wet, warm and wooded. The default is the world
+/// as it has always been made (every offset zero, the usual shares).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Mix {
+    /// Share of the map below sea level.
+    pub sea: f64,
+    /// Where on the land's heights the hills and the mountains begin
+    /// (quantiles of the land).
+    pub hills: f64,
+    pub mountains: f64,
+    /// Added to every cell's rain and warmth (0..100 scales).
+    pub wet: f32,
+    pub warm: f32,
+    /// The rain above which temperate and warm land grows forest.
+    pub forest: f32,
+}
+
+impl Default for Mix {
+    fn default() -> Self {
+        Mix { sea: 0.4, hills: 0.8, mountains: 0.93, wet: 0.0, warm: 0.0, forest: 50.0 }
+    }
+}
+
+impl Mix {
+    /// The mix for the setup screen's levels (0..=4 each, 2 the usual).
+    pub fn from_levels(ocean: u8, mountains: u8, rain: u8, heat: u8, forest: u8) -> Mix {
+        let l = |v: u8| v.min(4) as usize;
+        let (hills, mts) = [(0.90, 0.985), (0.85, 0.96), (0.80, 0.93), (0.74, 0.89), (0.66, 0.84)][l(mountains)];
+        Mix {
+            sea: [0.22, 0.31, 0.4, 0.5, 0.6][l(ocean)],
+            hills,
+            mountains: mts,
+            wet: [-22.0, -11.0, 0.0, 11.0, 22.0][l(rain)],
+            warm: [-20.0, -10.0, 0.0, 10.0, 20.0][l(heat)],
+            forest: [62.0, 56.0, 50.0, 44.0, 38.0][l(forest)],
+        }
+    }
+}
+
 /// The fields, as floats while the world is made.
 #[derive(Clone, Debug)]
 #[cfg_attr(not(test), allow(dead_code))]
@@ -102,6 +142,11 @@ pub struct Sample {
 /// The biome the fields call for (see the table in `docs/worldgen.md`).
 /// Lakes come from the river phase, not from here.
 pub fn classify(s: &Sample) -> Biome {
+    classify_with(s, 50.0)
+}
+
+/// `classify`, with forest beginning at `forest` rain (`Mix::forest`).
+pub fn classify_with(s: &Sample, forest: f32) -> Biome {
     let (e, t, r, d) = (s.elev, s.temp, s.rain, s.drain);
     if e < SEA {
         return Biome::Ocean;
@@ -136,7 +181,7 @@ pub fn classify(s: &Sample) -> Biome {
             Biome::Grassland
         };
     }
-    if r < 50.0 {
+    if r < forest.max(30.0) {
         return if t >= 62.0 { Biome::Savanna } else { Biome::Grassland };
     }
     if t >= 62.0 {
@@ -213,13 +258,19 @@ pub fn uniform(v: &mut [f32]) {
 /// hills and mountains come out the same in every world: 40% below the
 /// sea, the land's 80th percentile at the hills line, its 93rd at the
 /// mountain line.
+#[allow(dead_code)]
 pub fn proportion(elev: &mut [f32]) {
+    proportion_with(elev, &Mix::default())
+}
+
+/// `proportion` with the shares of `mix`.
+pub fn proportion_with(elev: &mut [f32], mix: &Mix) {
     let mut s: Vec<f32> = elev.to_vec();
     s.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let n = s.len();
     let at = |q: f64| s[((n - 1) as f64 * q).round() as usize];
-    let land = |q: f64| at(0.4 + 0.6 * q);
-    let knots = [(s[0], 0.0f32), (at(0.4), SEA), (land(0.8), HILLS), (land(0.93), MOUNTAIN), (s[n - 1], 255.0)];
+    let land = |q: f64| at(mix.sea + (1.0 - mix.sea) * q);
+    let knots = [(s[0], 0.0f32), (at(mix.sea), SEA), (land(mix.hills), HILLS), (land(mix.mountains), MOUNTAIN), (s[n - 1], 255.0)];
     for v in elev.iter_mut() {
         let x = *v;
         let mut out = 255.0;
@@ -244,6 +295,11 @@ pub fn proportion(elev: &mut [f32]) {
 /// Elevation: midpoint displacement over a continent-shaped lattice, with
 /// ranges lifted along ridged noise, proportioned.
 pub fn elevation(seed: u64, w: i32, h: i32) -> Vec<f32> {
+    elevation_with(seed, w, h, &Mix::default())
+}
+
+/// `elevation` with the shares of `mix`.
+pub fn elevation_with(seed: u64, w: i32, h: i32, mix: &Mix) -> Vec<f32> {
     let mut rng = Rng::new(seed ^ 0xE1E7_0001);
     let (wf, hf) = (w as f32, h as f32);
     // A few masses of land, placed at random, raise the lattice round them.
@@ -274,7 +330,7 @@ pub fn elevation(seed: u64, w: i32, h: i32) -> Vec<f32> {
             e[i] += r * 0.22 * inland;
         }
     }
-    proportion(&mut e);
+    proportion_with(&mut e, mix);
     e
 }
 
@@ -290,7 +346,13 @@ pub fn wind(lat: f32) -> i32 {
 
 /// Everything but the elevation, which must be final (after erosion) so
 /// the temperature, rain and salt follow the land as it ends up.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn climate(seed: u64, w: i32, h: i32, elev: Vec<f32>) -> Grids {
+    climate_with(seed, w, h, elev, &Mix::default())
+}
+
+/// `climate`, wetter or drier and warmer or colder by `mix`.
+pub fn climate_with(seed: u64, w: i32, h: i32, elev: Vec<f32>, mix: &Mix) -> Grids {
     let n = (w * h) as usize;
     let mut rng = Rng::new(seed ^ 0xC11A_7E00);
     let heat = Noise::new(seed ^ 0x4EA7_0002);
@@ -312,7 +374,7 @@ pub fn climate(seed: u64, w: i32, h: i32, elev: Vec<f32>) -> Grids {
             let i = (y * w + x) as usize;
             let noise = (heat.fbm2(x as f64 / 24.0, y as f64 / 12.0, 3) as f32 - 0.5) * 16.0;
             let lapse = ((elev[i] - SEA).max(0.0) / (255.0 - SEA)) * 45.0;
-            temp[i] = (102.0 - lat_of(y) * 100.0 + noise - lapse).clamp(0.0, 100.0);
+            temp[i] = (102.0 - lat_of(y) * 100.0 + noise - lapse + mix.warm).clamp(0.0, 100.0);
         }
     }
 
@@ -349,7 +411,7 @@ pub fn climate(seed: u64, w: i32, h: i32, elev: Vec<f32>) -> Grids {
         let belt = 16.0 * (1.0 - lat / 0.15).max(0.0) - 22.0 * (1.0 - ((lat - 0.33) / 0.13).abs()).max(0.0) + 6.0 * (1.0 - ((lat - 0.55) / 0.12).abs()).max(0.0) - 14.0 * ((lat - 0.8) / 0.2).max(0.0);
         for x in 0..w {
             let i = (y * w + x) as usize;
-            rain[i] = (0.35 * rain_base[i] + 70.0 * oro[i] + belt).clamp(0.0, 100.0);
+            rain[i] = (0.35 * rain_base[i] + 70.0 * oro[i] + belt + mix.wet).clamp(0.0, 100.0);
         }
     }
     blur(&mut rain, w, h, 1);

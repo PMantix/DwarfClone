@@ -76,21 +76,27 @@ pub fn build(seed: u64, w: i32, h: i32) -> Land {
 
 /// `build`, keeping a `Trace` of the making when `trace` is set. The land
 /// comes out the same either way.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn build_traced(seed: u64, w: i32, h: i32, trace: bool) -> Land {
+    build_mixed(seed, w, h, trace, &fields::Mix::default())
+}
+
+/// `build_traced` with the land shaped by the creation knobs (`Mix`).
+pub fn build_mixed(seed: u64, w: i32, h: i32, trace: bool, mix: &fields::Mix) -> Land {
     let n = (w * h) as usize;
-    let mut elev = fields::elevation(seed, w, h);
+    let mut elev = fields::elevation_with(seed, w, h, mix);
     let mut tr = if trace { Some(Trace { raw: elev.clone(), ..Default::default() }) } else { None };
     rivers::erode_traced(&mut elev, w, h, seed, tr.as_mut().map(|t| &mut t.paths));
-    fields::proportion(&mut elev);
+    fields::proportion_with(&mut elev, mix);
     if let Some(t) = tr.as_mut() {
         t.eroded = elev.clone();
     }
     let (spill, recv) = rivers::route(&elev, w, h);
     let depth: Vec<f32> = (0..n).map(|i| if elev[i] < fields::SEA { 0.0 } else { spill[i] - elev[i] }).collect();
     let filled: Vec<f32> = (0..n).map(|i| if elev[i] < fields::SEA { elev[i] } else { spill[i] }).collect();
-    let grids = fields::climate(seed, w, h, filled);
+    let grids = fields::climate_with(seed, w, h, filled, mix);
     let water = rivers::water(&grids.elev, &depth, recv, &grids.rain, w, h);
-    let biomes: Vec<Biome> = (0..n).map(|i| if water.lake[i] != 0 { Biome::Lake } else { fields::classify(&grids.sample(i)) }).collect();
+    let biomes: Vec<Biome> = (0..n).map(|i| if water.lake[i] != 0 { Biome::Lake } else { fields::classify_with(&grids.sample(i), mix.forest) }).collect();
     let evil = (0..n).map(|i| !biomes[i].is_water() && grids.good[i] < EVIL).collect();
     let mut river = vec![0u8; n];
     let mut brook = vec![0u8; n];

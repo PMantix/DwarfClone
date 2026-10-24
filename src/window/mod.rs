@@ -535,6 +535,20 @@ pub fn screenshot(args: &[String]) -> Result<()> {
         let e = ui::export::export_fort(&mut app, Some(std::path::Path::new(dir))).map_err(|e| anyhow!(e))?;
         println!("{}", e.summary());
     }
+    // (`--setup`: the world creation settings; `--worldgen T`: a world being
+    // made, T seconds into its show.)
+    if args.iter().any(|a| a == "--setup") {
+        app.world_params = crate::overworld::WorldParams { seed, ..Default::default() };
+        app.mode = crate::app::Mode::WorldSetup { sel: 4 };
+    }
+    if let Some(t) = opt(args, "--worldgen").and_then(|s| s.parse::<f64>().ok()) {
+        app.world_params = crate::overworld::WorldParams { seed, ..Default::default() };
+        app.start_worldgen();
+        app.frame_dt = 1.0 / 30.0;
+        while app.show_t < t && !app.worldgen_finished() {
+            app.frame();
+        }
+    }
     let mut terminal = Terminal::new(TileBackend::new(w, h, cell, looks.raster()))?;
     // (`--tile PX`: the adventure map's tiles that big; the cell size or less draws it as text.)
     if let Some(t) = opt(args, "--tile").and_then(|s| s.parse().ok()) {
