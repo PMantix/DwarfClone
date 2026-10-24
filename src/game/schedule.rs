@@ -157,8 +157,8 @@ mod tests {
         assert_eq!(deaths, vec![(303681, "Sorli Aleshaper", "struck down"), (303820, "Dorna Stonebeard", "struck down")]);
         let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
         assert_eq!(sieges, vec![(203295, "goblins", 3, "withdrew"), (303395, "goblins", 8, "routed")]);
-        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (16, 32800, 32));
-        assert_eq!(t.ambitions, ["Delve", "Muster", "Revel", "Provision", "Muster", "Revel", "Muster", "Revel", "Provision", "Fortify", "Architect", "Revel", "Muster", "Provision", "Prosper", "Architect", "Expand"]);
+        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (15, 31530, 32));
+        assert_eq!(t.ambitions, ["Delve", "Muster", "Revel", "Provision", "Muster", "Revel", "Muster", "Revel", "Provision", "Fortify", "Architect", "Revel", "Muster", "Provision", "Prosper", "Provision", "Architect"]);
     }
 
     /// The survival items' tasks save and load by name, and a dwarf given one

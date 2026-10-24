@@ -101,7 +101,7 @@ impl Game {
         if t != super::bottle::Tipsy::Sober {
             v.push((t.word().to_string(), (220, 180, 110)));
         } else if let Some(s) = self.society.bar.drinkers.get(&d.id) {
-            if d.need(crate::dwarf::NeedKind::Drink).map_or(false, |n| n.strength >= 2) && tick > s.last_drink + 3 * DAY {
+            if d.need(crate::dwarf::NeedKind::Drink).map_or(false, |n| n.strength >= 2) && tick > s.last_drink + 6 * DAY {
                 v.push(("Shaky for want of a drink".into(), (200, 170, 120)));
             }
         }

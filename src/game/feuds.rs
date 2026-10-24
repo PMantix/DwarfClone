@@ -80,6 +80,9 @@ pub struct Feuds {
     /// Pairs who glared at each other today: (a, b, when).
     #[serde(default)]
     pub glared: Vec<(u32, u32, u64)>,
+    /// Squadmates the overseer has already parted.
+    #[serde(default)]
+    pub parted: Vec<(u32, u32)>,
 }
 
 /// How long a brawl can go on.
@@ -263,16 +266,16 @@ impl Game {
             let care = |side: &Vec<u32>| {
                 side.iter()
                     .filter_map(|m| self.dwarves.iter().find(|x| x.id == *m))
-                    .map(|m| o.regard(m.id) + if super::society::close_kin(o, m) { 50 } else { 0 })
+                    .map(|m| o.regard(m.id) + if super::society::close_kin(o, m) { 60 } else { 0 })
                     .max()
                     .unwrap_or(-100)
             };
             let (c0, c1) = (care(&br.sides[0]), care(&br.sides[1]));
             let (best, other) = if c0 >= c1 { (0, c1) } else { (1, c0) };
             let top = c0.max(c1);
-            if top >= 40 && top >= other + 20 && o.personality.temper > -10 && br.sides[best].len() < 6 {
+            if top >= 60 && top >= other + 20 && o.personality.temper > -10 && br.sides[best].len() < 6 {
                 let (oid, called) = (o.id, o.called());
-                let friend = br.sides[best].iter().filter_map(|m| self.dwarves.iter().find(|x| x.id == *m)).max_by_key(|m| (o.regard(m.id) + if super::society::close_kin(o, m) { 50 } else { 0 }, m.id)).map(|m| m.called()).unwrap_or_default();
+                let friend = br.sides[best].iter().filter_map(|m| self.dwarves.iter().find(|x| x.id == *m)).max_by_key(|m| (o.regard(m.id) + if super::society::close_kin(o, m) { 60 } else { 0 }, m.id)).map(|m| m.called()).unwrap_or_default();
                 br.sides[best].push(oid);
                 let text = format!("{} waded in on {}'s side!", called, first(&friend));
                 self.msg_at(&text, (255, 150, 80), Some(at), logkind::LogKind::Combat);
@@ -316,12 +319,12 @@ impl Game {
         let (n0, n1) = (name(self, &br.sides[0]), name(self, &br.sides[1]));
         let many = br.sides[0].len() + br.sides[1].len();
         let mut text = why.unwrap_or_else(|| format!("The brawl between {} and {} is over.", n0, n1));
-        if many >= 3 {
+        if many >= 4 {
             text.push_str(&format!(" {} dwarves were in it, and {} blows were landed.", many, br.blows));
         }
         self.msg_at(&text, (230, 170, 110), Some(br.at), logkind::LogKind::Combat);
         self.gossip(text);
-        if many >= 3 && br.sides.iter().all(|s| !s.is_empty()) {
+        if many >= 4 && br.sides.iter().all(|s| !s.is_empty()) {
             let names = [format!("{}'s lot", n0), format!("{}'s lot", n1)];
             let line = format!("The fort is split: {} against {}.", names[0], names[1]);
             self.msg(&line, (255, 170, 90));
@@ -334,8 +337,8 @@ impl Game {
         // Blood spilled settles a feud for a while.
         for f in self.society.feuds.ladder.iter_mut() {
             if br.sides.iter().any(|s| s.contains(&f.a)) && br.sides.iter().any(|s| s.contains(&f.b)) {
-                f.stage = 1;
-                f.last = tick;
+                f.stage = 0;
+                f.last = tick + SEASON;
             }
         }
     }
@@ -364,8 +367,8 @@ impl Game {
             }
             let d = self.dwarves[a].clone();
             if self.start_brawl(&d, f.b, BrawlCause::Feud).is_some() {
-                self.society.feuds.ladder[k].stage = 1;
-                self.society.feuds.ladder[k].last = tick;
+                self.society.feuds.ladder[k].stage = 0;
+                self.society.feuds.ladder[k].last = tick + SEASON;
             }
         }
         // At meals.
@@ -428,7 +431,9 @@ impl Game {
                 self.society.feuds.ladder[k].stage = 0;
                 continue;
             }
-            if f.stage >= 4 || tick < f.last + DAY * 2 || names::hash(&[f.a as u64, f.b as u64, tick / DAY, 0xfe]) % 4 != 0 {
+            // Only the hot-headed come to blows; the rest stop at slander.
+            let hot = self.dwarves[a].personality.temper > 0 || self.dwarves[b].personality.temper > 0;
+            if f.stage >= 4 || (f.stage >= 3 && !hot) || tick < f.last + DAY * 4 || names::hash(&[f.a as u64, f.b as u64, tick / DAY, 0xfe]) % 6 != 0 {
                 continue;
             }
             let stage = f.stage + 1;
@@ -487,15 +492,17 @@ impl Game {
     }
 
     /// The overseer's round: squadmates who brawled on opposing sides are
-    /// moved apart (into another squad, or out of it).
+    /// moved apart, into another squad (once a pair).
     pub(super) fn ov_feuds(&mut self, o: &mut Overseer) {
         if self.society.feuds.factions.is_empty() || self.raided() {
             return;
         }
         for s in 0..self.squads.len() {
             let m = self.squads[s].members.clone();
-            let pair = m.iter().flat_map(|&a| m.iter().map(move |&b| (a, b))).find(|&(a, b)| a < b && self.factions_apart(a, b));
+            let parted = &self.society.feuds.parted;
+            let pair = m.iter().flat_map(|&a| m.iter().map(move |&b| (a, b))).find(|&(a, b)| a < b && self.factions_apart(a, b) && !parted.contains(&(a, b)));
             let Some((a, b)) = pair else { continue };
+            self.society.feuds.parted.push((a, b));
             // The weaker of the two goes.
             let xp = |id: u32| self.dwarves.iter().find(|d| d.id == id).map_or(0, |d| d.fight_xp);
             let go = if xp(a) < xp(b) { a } else { b };
@@ -503,16 +510,10 @@ impl Game {
             let name = |id: u32| self.dwarves.iter().find(|d| d.id == id).map_or(String::new(), |d| d.called());
             let (gn, sn) = (name(go), name(stay));
             let other = (0..self.squads.len()).filter(|&t| t != s).find(|&t| !self.squads[t].members.iter().any(|&x| self.factions_apart(x, go)));
-            let text = match other {
-                Some(t) => {
-                    self.set_squad_member(t, go, true);
-                    format!("{} and {} came to blows. I moved {} to {}.", first(&gn), first(&sn), first(&gn), self.squads[t].name)
-                }
-                None => {
-                    self.set_squad_member(s, go, false);
-                    format!("{} and {} came to blows. I took {} out of {} before they killed each other.", first(&gn), first(&sn), first(&gn), self.squads[s].name)
-                }
-            };
+            // (With one squad, they'll have to stand it: a soldier short is worse.)
+            let Some(t) = other else { continue };
+            self.set_squad_member(t, go, true);
+            let text = format!("{} and {} came to blows. I moved {} to {}.", first(&gn), first(&sn), first(&gn), self.squads[t].name);
             Self::note_as(o, self.tick, super::personality::NoteKind::Plain, text);
             self.count("soc.squad_split", 1);
             return;
@@ -599,6 +600,7 @@ mod tests {
         let (a, b) = (g.dwarves[0].id, g.dwarves[1].id);
         g.dwarves[0].adjust_regard(b, -70);
         g.dwarves[1].adjust_regard(a, -70);
+        g.dwarves[0].personality.temper = 30;
         let c = g.dwarves[2].id;
         g.dwarves[0].adjust_regard(c, 50);
         for _ in 0..200 {
@@ -623,6 +625,7 @@ mod tests {
         let mut g = quiet(64);
         g.set_overseer(Some(Style::Steady));
         let (a, b) = (g.dwarves[0].id, g.dwarves[1].id);
+        g.new_squad();
         g.new_squad();
         g.set_squad_member(0, a, true);
         g.set_squad_member(0, b, true);

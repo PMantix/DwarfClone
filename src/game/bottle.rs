@@ -6,7 +6,7 @@
 //!   rash (quick to brawl), stumbling (they trip), sick, out cold (asleep
 //!   on the floor), and past that poisoned.
 //! - *Drink withdrawal* (HLT-09): a dwarf who needs their ale and has had
-//!   none for three days gets the shakes; after a week, sick with want.
+//!   none for six days gets the shakes; after ten, sick with want.
 //! - *Drinking yourself to death* (HLT-10): the level-headed stop at merry
 //!   when the ale is free (a festival); the rash don't stop at all.
 //! - *Tripping* (HLT-24): a stumbling drunk on the move trips now and then.
@@ -246,7 +246,8 @@ impl Game {
                 self.count("soc.spree", 1);
                 continue;
             }
-            if want < 2 || dry < 3 {
+            // (Thirst comes every four days or so: two dry turns is want.)
+            if want < 2 || dry < 6 {
                 continue;
             }
             let first = !s.shaky;
@@ -255,7 +256,7 @@ impl Game {
                 self.count("soc.withdrawal", 1);
             }
             let d = &mut self.dwarves[i];
-            if dry >= 7 {
+            if dry >= 10 {
                 d.think("was sick with want of drink", 6, tick);
             } else {
                 d.think("had the shakes for want of a drink", 3, tick);
@@ -348,7 +349,7 @@ mod tests {
         }
         g.items.retain(|_, it| it.kind != ItemKind::Drink);
         g.bottle_daily();
-        g.tick += 4 * DAY;
+        g.tick += 7 * DAY;
         g.bottle_daily();
         assert!(g.dwarves.iter().filter(|d| !d.is_child()).all(|d| d.thoughts.iter().any(|t| t.text.contains("the shakes"))));
         assert!(g.annals.counters.get("soc.withdrawal").copied().unwrap_or(0) > 0);
