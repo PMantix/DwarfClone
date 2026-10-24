@@ -77,13 +77,18 @@ fn main() -> Result<()> {
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or_else(|| SystemTime::now().duration_since(UNIX_EPOCH).map_or(1, |d| d.as_secs()));
 
-    let windowed = args.iter().any(|a| a == "--window");
+    // Square tiles in a window are the default; `--terminal` plays in the
+    // terminal instead (and a build without the window feature always does).
+    let asked_window = args.iter().any(|a| a == "--window");
+    let windowed = cfg!(feature = "window") && !args.iter().any(|a| a == "--terminal");
     #[cfg(feature = "window")]
     if windowed && args.iter().any(|a| a == "--screenshot") {
         return window::screenshot(&args);
     }
     #[cfg(not(feature = "window"))]
-    if windowed {
+    let _ = windowed;
+    #[cfg(not(feature = "window"))]
+    if asked_window {
         anyhow::bail!("This build has no window mode (it was built without the `window` feature).");
     }
 
@@ -99,11 +104,19 @@ fn main() -> Result<()> {
 
     #[cfg(feature = "window")]
     if windowed {
-        let result = window::play(&mut app, &args);
-        if result.is_ok() && !app.game.is_placeholder() {
-            println!("Seed {} — {} dwarves survived to {}.", seed, app.game.alive_count(), app.game.date_string());
+        match window::play(&mut app, &args) {
+            Ok(()) => {
+                if !app.game.is_placeholder() {
+                    println!("Seed {} — {} dwarves survived to {}.", seed, app.game.alive_count(), app.game.date_string());
+                }
+                return Ok(());
+            }
+            // Asked for by name, a window that won't open is an error; by
+            // default, the terminal takes over (no display, no font...).
+            Err(e) if asked_window => return Err(e),
+            Err(e) if app.quit => return Err(e),
+            Err(e) => eprintln!("No window ({}); playing in the terminal.", e),
         }
-        return result;
     }
 
     enable_raw_mode()?;

@@ -14,10 +14,10 @@ cargo run --release -- --autoplay --runs 10 --years 5   # let the overseer play 
 cargo run --release -- --autoplay --runs 25 --years 3 --seed 5000 --story --out after.json
 cargo run --release -- --compare batches/baseline-v0.2.0.json after.json
 cargo run --release -- --sound-check   # play a few seconds of sound and say if the device works
-cargo run --release -- --window        # play in a window of square tiles instead of the terminal
+cargo run --release -- --terminal      # play in the terminal instead of the square-tile window
 ```
 
-**Window mode.** `--window` opens the game in its own window with square cells, so walls,
+**Window mode** (the default; `--terminal` for the terminal). The game opens in its own window with square cells, so walls,
 water and floors join into a solid map whatever the terminal's font. Text comes from the
 system's monospace font (Cascadia Mono, then Consolas, then Lucida Console; `--font PATH`
 picks another .ttf), stretched to fill the cell's height; box lines, blocks, walls, water,
