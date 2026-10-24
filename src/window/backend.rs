@@ -79,6 +79,15 @@ impl TileBackend {
         self.cache.resize(cell.clamp(MIN_CELL, MAX_CELL));
     }
 
+    /// Draw text with `font` from now on (a new face, or the same drawn
+    /// wider or heavier): every glyph is forgotten, and the caller clears
+    /// the terminal so it all redraws.
+    pub fn set_font(&mut self, font: Box<dyn Fn(char, usize) -> Mask>) {
+        self.font = font;
+        self.cache.forget();
+        self.big_cache.forget();
+    }
+
     /// How many glyphs have been drawn into the cache (for tests).
     #[cfg(test)]
     pub fn glyphs_drawn(&self) -> usize {
@@ -438,6 +447,23 @@ mod tests {
         term.draw(text("aaab")).unwrap();
         assert!(term.backend().dirty);
         assert_eq!(term.backend().glyphs_drawn(), 2);
+    }
+
+    #[test]
+    fn a_new_font_forgets_the_glyphs_and_redraws() {
+        let mut term = Terminal::new(backend(4, 1)).unwrap();
+        let text = |f: &mut ratatui::Frame| f.render_widget(ratatui::widgets::Paragraph::new("ab"), f.size());
+        term.draw(text).unwrap();
+        assert_eq!(term.backend().glyphs_drawn(), 2);
+        let white = rgb(Color::Reset, true, false);
+        assert_eq!(term.backend().pixels[8 * 64 + 8], white, "the old font fills the middle");
+        assert_eq!(term.backend().pixels[64 + 1], 0);
+        // A font that fills the whole cell.
+        term.backend_mut().set_font(Box::new(|_, s| vec![255; s * s]));
+        term.clear().unwrap();
+        term.draw(text).unwrap();
+        assert_eq!(term.backend().glyphs_drawn(), 4, "both letters drawn again in the new font");
+        assert_eq!(term.backend().pixels[64 + 1], white, "the new font is on screen");
     }
 
     #[test]

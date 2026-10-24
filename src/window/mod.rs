@@ -2,9 +2,13 @@
 //! The same `ui::draw` paints a ratatui buffer; our backend turns its cells
 //! into pixels (text from the system's monospace font, walls, water, trees
 //! and box lines from our own tileset), and the window's keys and mouse come
-//! back as the crossterm events `App` already handles.
+//! back as the crossterm events `App` already handles. Ctrl+F (or F on the
+//! title) opens the font screen; its choices are kept in `display.cfg`.
 
 mod backend;
+mod display;
+mod fontlist;
+mod fontscreen;
 mod glyphs;
 mod input;
 mod png;
@@ -16,10 +20,13 @@ use crate::ui;
 use anyhow::{anyhow, Result};
 use backend::TileBackend;
 use crossterm::event::{KeyCode, KeyModifiers};
+use display::Display;
+use fontscreen::FontScreen;
 use glyphs::Fonts;
 use ratatui::backend::Backend;
 use ratatui::Terminal;
 use std::num::NonZeroU32;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
@@ -37,17 +44,113 @@ fn opt<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).map(|s| s.as_str())
 }
 
-/// Draw a frame, telling the adventure map how big the window wants its tiles.
-fn draw(terminal: &mut Terminal<TileBackend>, app: &mut App) -> Result<()> {
+/// Draw a frame, telling the adventure map how big the window wants its
+/// tiles, with the font screen over it if it's open.
+fn draw(terminal: &mut Terminal<TileBackend>, app: &mut App, looks: &Looks, screen: Option<&FontScreen>) -> Result<()> {
     let b = terminal.backend();
-    let px = (b.cell() as u16, b.tile as u16);
-    ui::adventure::TILE_PX.with(|t| t.set(Some(px)));
-    terminal.draw(|f| ui::draw(f, app))?;
+    let (cell, tile) = (b.cell(), b.tile);
+    ui::adventure::TILE_PX.with(|t| t.set(Some((cell as u16, tile as u16))));
+    terminal.draw(|f| {
+        ui::draw(f, app);
+        if let Some(s) = screen {
+            s.draw(f, &looks.display, cell, tile, &looks.name);
+        }
+    })?;
     Ok(())
 }
 
-fn load_fonts(args: &[String]) -> Result<Fonts> {
-    Fonts::load(opt(args, "--font")).map_err(|e| anyhow!(e))
+/// What the window draws text with: the font loaded, and the display
+/// settings as they stand.
+struct Looks {
+    fonts: Rc<Fonts>,
+    display: Display,
+    /// Where the settings are saved (None: a screenshot, nothing saved).
+    dir: Option<PathBuf>,
+    /// The font's name, as the font screen shows it.
+    name: String,
+}
+
+impl Looks {
+    /// The font, drawn as wide and heavy as the settings say, for the backend.
+    fn raster(&self) -> Box<dyn Fn(char, usize) -> tiles::Mask> {
+        let (f, w, h) = (self.fonts.clone(), self.display.width, self.display.weight);
+        Box::new(move |c, s| f.styled(c, s, w, h))
+    }
+
+    /// Load `fonts` to draw with, by `display`.
+    fn new(fonts: Fonts, display: Display, dir: Option<PathBuf>) -> Looks {
+        let name = fontlist::name_of(&fonts.path);
+        Looks { fonts: Rc::new(fonts), display, dir, name }
+    }
+
+    fn save(&self) {
+        if let Some(d) = &self.dir {
+            let _ = self.display.save(d);
+        }
+    }
+}
+
+/// The fonts to start with: `--font` for this run if given, else the one
+/// the player chose last time, else the first of the usual ones, else the
+/// first monospace font on the machine. Something to tell the player, too.
+fn load_fonts(args: &[String], d: &Display) -> Result<(Fonts, Option<String>)> {
+    if let Some(p) = opt(args, "--font") {
+        return Ok((Fonts::load(Some(p)).map_err(|e| anyhow!(e))?, None));
+    }
+    let mut note = None;
+    if let Some(p) = &d.font {
+        match Fonts::load(Some(p)) {
+            Ok(f) => return Ok((f, None)),
+            Err(_) => note = Some(format!("Couldn't read the font {}; using the usual one (Ctrl+F to choose).", p)),
+        }
+    }
+    match Fonts::load(None) {
+        Ok(f) => Ok((f, note)),
+        Err(e) => {
+            // None of the usual ones: the first monospace font there is.
+            let found = fontlist::scan().into_iter().find_map(|f| Some((Fonts::load(f.path.to_str()).ok()?, f.name)));
+            let (f, name) = found.ok_or_else(|| anyhow!(e))?;
+            let note = format!("None of the usual fonts ({}) is on this PC; using {} (Ctrl+F to choose).", glyphs::MONO_NAMES.join(", "), name);
+            Ok((f, Some(note)))
+        }
+    }
+}
+
+/// Make the backend show what `want` says, from what `looks` shows now:
+/// a new font loaded, the glyphs drawn again, the cells resized. A font
+/// that won't load is left as it was, and the screen says so.
+fn apply(terminal: &mut Terminal<TileBackend>, looks: &mut Looks, mut want: Display, screen: Option<&mut FontScreen>) -> Result<()> {
+    let mut restyle = (want.width, want.weight) != (looks.display.width, looks.display.weight);
+    if want.font != looks.display.font {
+        match want.font.as_deref().map(|p| Fonts::load(Some(p))) {
+            Some(Ok(f)) => {
+                looks.name = fontlist::name_of(&f.path);
+                looks.fonts = Rc::new(f);
+                restyle = true;
+            }
+            Some(Err(_)) => {
+                if let Some(s) = screen {
+                    s.note = Some(format!("Couldn't read {}.", want.font.as_deref().unwrap_or("")));
+                }
+                want.font = looks.display.font.clone();
+            }
+            None => {}
+        }
+    }
+    looks.display = want;
+    let b = terminal.backend_mut();
+    if restyle {
+        b.set_font(looks.raster());
+    }
+    if let Some(c) = looks.display.cell {
+        b.set_cell(c);
+    }
+    if let Some(t) = looks.display.tile {
+        b.tile = t.min(backend::MAX_TILE);
+    }
+    looks.save();
+    terminal.clear()?;
+    Ok(())
 }
 
 /// The window and its drawing surface, and the events it has had since they
@@ -119,7 +222,13 @@ impl Shell {
 
 /// Play `app` in a window until it quits or the window is closed.
 pub fn play(app: &mut App, args: &[String]) -> Result<()> {
-    let fonts = load_fonts(args)?;
+    let display = Display::load(&app.save_dir);
+    let (fonts, note) = load_fonts(args, &display)?;
+    if note.is_some() {
+        app.flash = note;
+    }
+    let mut looks = Looks::new(fonts, display, Some(app.save_dir.clone()));
+    let mut screen: Option<FontScreen> = None;
     let mut event_loop = EventLoop::new()?;
     let mut shell = Shell::default();
     let t0 = Instant::now();
@@ -134,9 +243,14 @@ pub fn play(app: &mut App, args: &[String]) -> Result<()> {
     }
     let window = shell.window.clone().unwrap();
     // Cells as big on a high-DPI screen as on a plain one, an even number of pixels.
-    let cell = ((START_CELL as f64 * window.scale_factor()).round() as usize / 2 * 2).clamp(backend::MIN_CELL, backend::MAX_CELL);
+    // (Unless the player chose a size.)
+    let auto = (START_CELL as f64 * window.scale_factor()).round() as usize / 2 * 2;
+    let cell = looks.display.cell.unwrap_or(auto).clamp(backend::MIN_CELL, backend::MAX_CELL);
     let size = window.inner_size();
-    let backend = TileBackend::new(size.width.max(1) as usize, size.height.max(1) as usize, cell, Box::new(move |c, s| fonts.raster(c, s)));
+    let mut backend = TileBackend::new(size.width.max(1) as usize, size.height.max(1) as usize, cell, looks.raster());
+    if let Some(t) = looks.display.tile {
+        backend.tile = t.min(backend::MAX_TILE);
+    }
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
     let mut mods = ModifiersState::empty();
@@ -144,7 +258,7 @@ pub fn play(app: &mut App, args: &[String]) -> Result<()> {
     let mut last = Instant::now();
     while !app.quit {
         let start = Instant::now();
-        draw(&mut terminal, app)?;
+        draw(&mut terminal, app, &looks, screen.as_ref())?;
         let b = terminal.backend_mut();
         if b.dirty {
             shell.present(b);
@@ -172,14 +286,31 @@ pub fn play(app: &mut App, args: &[String]) -> Result<()> {
                     WindowEvent::ModifiersChanged(m) => mods = m.state(),
                     WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                         if let Some(k) = input::key_event(&event.logical_key, mods) {
+                            let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+                            // (F opens the font screen where the game has no F of its own.)
+                            let f_free = matches!(app.mode, crate::app::Mode::Title { .. } | crate::app::Mode::Sound { .. });
                             match k.code {
                                 // Ctrl and + or - zoom the tiles.
-                                KeyCode::Char('+' | '=') if k.modifiers.contains(KeyModifiers::CONTROL) => zoom = 1,
-                                KeyCode::Char('-') if k.modifiers.contains(KeyModifiers::CONTROL) => zoom = -1,
+                                KeyCode::Char('+' | '=') if ctrl => zoom = 1,
+                                KeyCode::Char('-') if ctrl => zoom = -1,
+                                _ if screen.is_some() => {
+                                    let s = screen.as_mut().unwrap();
+                                    let mut want = looks.display.clone();
+                                    let b = terminal.backend();
+                                    if s.key(&k, &mut want, b.cell(), b.tile) == fontscreen::Out::Close {
+                                        screen = None;
+                                    } else if want != looks.display {
+                                        apply(&mut terminal, &mut looks, want, Some(s))?;
+                                    }
+                                }
+                                KeyCode::Char('f') if ctrl => screen = Some(FontScreen::open(&looks.fonts.path)),
+                                KeyCode::Char('F') if !ctrl && f_free => screen = Some(FontScreen::open(&looks.fonts.path)),
                                 _ => app.on_key(k),
                             }
                         }
                     }
+                    // (The font screen takes no clicks; the game under it gets none.)
+                    WindowEvent::CursorMoved { .. } | WindowEvent::MouseInput { .. } if screen.is_some() => {}
                     WindowEvent::CursorMoved { position, .. } => {
                         if let Some(m) = mouse.moved(position.x, position.y, cell, km) {
                             app.on_mouse(m);
@@ -219,6 +350,8 @@ pub fn play(app: &mut App, args: &[String]) -> Result<()> {
                     let to = (b.tile as i32 + 4 * zoom).clamp(cell as i32 + 2, backend::MAX_TILE as i32) as usize;
                     if to != b.tile {
                         b.tile = to;
+                        looks.display.tile = Some(to);
+                        looks.save();
                         terminal.clear()?;
                     }
                 } else if zoom != 0 {
@@ -226,6 +359,8 @@ pub fn play(app: &mut App, args: &[String]) -> Result<()> {
                     let to = (cell as i32 + 2 * zoom).clamp(backend::MIN_CELL as i32, backend::MAX_CELL as i32) as usize;
                     if to != cell {
                         b.set_cell(to);
+                        looks.display.cell = Some(to);
+                        looks.save();
                         terminal.clear()?;
                     }
                 }
@@ -248,7 +383,8 @@ pub fn play(app: &mut App, args: &[String]) -> Result<()> {
 }
 
 /// `--window --screenshot FILE [--seed N] [--days D] [--size WxH] [--cell PX]
-/// [--tile PX] [--plan] [--saga | --sagas] [--reel] [--export DIR] [--adventure [--fight | --travel]]`: watch a seeded fort for a few days, draw it
+/// [--tile PX] [--font PATH] [--width W] [--weight W] [--font-screen] [--plan] [--saga | --sagas] [--reel] [--export DIR]
+/// [--adventure [--fight | --travel]]`: watch a seeded fort for a few days, draw it
 /// the way the window would, save a PNG and print how long a frame took to draw.
 /// `--plan` shows the main level with the plan over it, `--saga` the fort's
 /// latest saga on its card, `--sagas` the Sagas screen (a great siege is told
@@ -260,7 +396,22 @@ pub fn screenshot(args: &[String]) -> Result<()> {
     let days: u64 = opt(args, "--days").and_then(|s| s.parse().ok()).unwrap_or(20);
     let cell: usize = opt(args, "--cell").and_then(|s| s.parse().ok()).unwrap_or(START_CELL);
     let (w, h) = opt(args, "--size").and_then(|s| s.split_once('x')).and_then(|(a, b)| Some((a.parse().ok()?, b.parse().ok()?))).unwrap_or((1920usize, 1080usize));
-    let fonts = load_fonts(args)?;
+    // (Display settings from flags, never the player's saved ones:
+    // `--width narrow|normal|wide`, `--weight normal|bright|bold`.)
+    let mut display = Display::default();
+    if let Some(w) = opt(args, "--width") {
+        display.width = display::Width::ALL.into_iter().find(|x| x.name() == w).ok_or_else(|| anyhow!("--width is narrow, normal or wide"))?;
+    }
+    if let Some(w) = opt(args, "--weight") {
+        display.weight = display::Weight::ALL.into_iter().find(|x| x.name() == w).ok_or_else(|| anyhow!("--weight is normal, bright or bold"))?;
+    }
+    let (fonts, note) = load_fonts(args, &display)?;
+    if let Some(n) = note {
+        println!("{}", n);
+    }
+    let looks = Looks::new(fonts, display, None);
+    // (`--font-screen`: the font screen open over the game.)
+    let screen = args.iter().any(|a| a == "--font-screen").then(|| FontScreen::open(&looks.fonts.path));
     let mut app = App::new(seed);
     // `--adventure`: a seeded adventure, the hero set out from home.
     let adventure = args.iter().any(|a| a == "--adventure");
@@ -366,18 +517,18 @@ pub fn screenshot(args: &[String]) -> Result<()> {
         let e = ui::export::export_fort(&mut app, Some(std::path::Path::new(dir))).map_err(|e| anyhow!(e))?;
         println!("{}", e.summary());
     }
-    let mut terminal = Terminal::new(TileBackend::new(w, h, cell, Box::new(move |c, s| fonts.raster(c, s))))?;
+    let mut terminal = Terminal::new(TileBackend::new(w, h, cell, looks.raster()))?;
     // (`--tile PX`: the adventure map's tiles that big; the cell size or less draws it as text.)
     if let Some(t) = opt(args, "--tile").and_then(|s| s.parse().ok()) {
         terminal.backend_mut().tile = t;
     }
-    draw(&mut terminal, &mut app)?;
+    draw(&mut terminal, &mut app, &looks, screen.as_ref())?;
     // A whole screen drawn from nothing, a few times over, glyphs cached...
     let n = 10;
     let t = Instant::now();
     for _ in 0..n {
         terminal.clear()?;
-        draw(&mut terminal, &mut app)?;
+        draw(&mut terminal, &mut app, &looks, screen.as_ref())?;
     }
     let full = t.elapsed().as_secs_f64() * 1000.0 / n as f64;
     // ...and frames as play goes on, where only what changed is painted.
@@ -388,7 +539,7 @@ pub fn screenshot(args: &[String]) -> Result<()> {
         } else {
             app.game.step();
         }
-        draw(&mut terminal, &mut app)?;
+        draw(&mut terminal, &mut app, &looks, screen.as_ref())?;
     }
     let frame = t.elapsed().as_secs_f64() * 1000.0 / n as f64;
     let b = terminal.backend();

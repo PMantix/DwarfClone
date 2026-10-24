@@ -1854,6 +1854,7 @@ fn help_text() -> Vec<Line<'static>> {
         k("G", "grow the map north, east, south or west"),
         k("M", "sound on / off (anywhere)"),
         k("O", "sound: volumes for music, ambience, effects"),
+        k("Ctrl+F", "font: face, size, letter width (in the window)"),
         k("A", "autoplay: the overseer plays (pick a style)"),
         k("  (hands off)", "20 s untouched while it plays: the camera tours"),
         k("B", "the overseer's brain: senses, ambitions, nudges"),
@@ -4358,7 +4359,9 @@ fn draw_title(f: &mut Frame, app: &App, sel: usize) {
     if let Some(fl) = &app.flash {
         v.push(plain(fl.clone(), Color::Rgb(240, 150, 110)));
     } else {
-        v.push(plain("↑↓ choose · Enter · Esc quits".into(), MUTED));
+        // (In the window, F opens the font screen.)
+        let font = if adventure::TILE_PX.with(|t| t.get()).is_some() { " · F font" } else { "" };
+        v.push(plain(format!("↑↓ choose · Enter · Esc quits{}", font), MUTED));
     }
     let h = v.len() as u16 + 2;
     let w = 66.min(area.width);

@@ -2,21 +2,27 @@
 //! cell, and the cache of every glyph drawn so far. Nothing here ships a
 //! font: the font files are read from the player's own system at startup.
 
+use super::display::{Weight, Width};
 use super::tiles::{self, Mask};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// The monospace fonts tried in turn, then symbol fonts for characters the
 /// first one lacks (☺, ♪, ⚔, braille...).
-const MONO: [&str; 3] = ["CascadiaMono.ttf", "consola.ttf", "lucon.ttf"];
+pub const MONO: [&str; 3] = ["CascadiaMono.ttf", "consola.ttf", "lucon.ttf"];
+/// The same, by the names a player knows them by.
+pub const MONO_NAMES: [&str; 3] = ["Cascadia Mono", "Consolas", "Lucida Console"];
 const FALLBACK: [&str; 3] = ["seguisym.ttf", "consola.ttf", "segoeui.ttf"];
 
-fn font_dir() -> std::path::PathBuf {
+pub fn font_dir() -> std::path::PathBuf {
     let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string());
     std::path::Path::new(&windir).join("Fonts")
 }
 
 /// The loaded fonts, and how big to draw them to fill a cell.
 pub struct Fonts {
+    /// The text font's file.
+    pub path: PathBuf,
     /// The text font first, then the fallbacks.
     fonts: Vec<fontdue::Font>,
     /// From the top of a capital to the bottom of a descender, per pixel of size.
@@ -33,9 +39,9 @@ impl Fonts {
             let bytes = std::fs::read(p).ok()?;
             fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).ok()
         };
-        let main = match path {
-            Some(p) => read(std::path::Path::new(p)).ok_or_else(|| format!("Couldn't read the font {} (give --font a .ttf or .otf file).", p))?,
-            None => MONO.iter().find_map(|f| read(&dir.join(f))).ok_or_else(|| {
+        let (main, path) = match path {
+            Some(p) => (read(std::path::Path::new(p)).ok_or_else(|| format!("Couldn't read the font {} (give --font a .ttf or .otf file).", p))?, PathBuf::from(p)),
+            None => MONO.iter().find_map(|f| Some((read(&dir.join(f))?, dir.join(f)))).ok_or_else(|| {
                 format!("No monospace font found in {} (looked for {}). Give one with --font PATH.", dir.display(), MONO.join(", "))
             })?,
         };
@@ -48,13 +54,25 @@ impl Fonts {
         let cap = (top.ymin as f32 + top.height as f32) / probe;
         let descent = (-(low.ymin as f32) / probe).max(0.1);
         let advance = fonts[0].metrics('M', probe).advance_width / probe;
-        Ok(Fonts { fonts, cap: cap.max(0.4), descent, advance: advance.max(0.3) })
+        Ok(Fonts { path, fonts, cap: cap.max(0.4), descent, advance: advance.max(0.3) })
     }
 
     /// `c` drawn to fill a cell `s` pixels square: capitals and descenders
     /// together take the cell's height, and letters are widened a little
     /// (never squeezed) and centred.
     pub fn raster(&self, c: char, s: usize) -> Mask {
+        self.styled(c, s, Width::Normal, Weight::Normal)
+    }
+
+    /// `c` drawn to fill a cell `s` pixels square, its letters stretched
+    /// `width`-wide and drawn `weight`-heavy.
+    pub fn styled(&self, c: char, s: usize, width: Width, weight: Weight) -> Mask {
+        let mut m = self.shape(c, s, width);
+        weight.apply(&mut m, s);
+        m
+    }
+
+    fn shape(&self, c: char, s: usize, width: Width) -> Mask {
         let font = self.fonts.iter().find(|f| f.lookup_glyph_index(c) != 0);
         let Some(font) = font else { return missing(s) };
         let sf = s as f32;
@@ -62,7 +80,8 @@ impl Fonts {
         let px = (sf - margin) / (self.cap + self.descent);
         let baseline = margin / 2.0 + self.cap * px;
         let adv = self.advance * px;
-        let stretch = (0.72 * sf / adv).clamp(1.0, 1.3);
+        let (fill, most) = width.stretch();
+        let stretch = (fill * sf / adv).clamp(1.0, most);
         let (m, bmp) = font.rasterize(c, px);
         let mut out = vec![0u8; s * s];
         if m.width == 0 || m.height == 0 {
@@ -123,6 +142,11 @@ impl GlyphCache {
 
     pub fn size(&self) -> usize {
         self.size
+    }
+
+    /// Forget every glyph (a new font, or the same drawn differently).
+    pub fn forget(&mut self) {
+        self.masks.clear();
     }
 
     /// A new cell size forgets every glyph.
