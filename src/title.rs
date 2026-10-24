@@ -3,6 +3,17 @@
 //! lie of the land, the hour, the weather, who turns up. Left open long
 //! enough, the screen dissolves into another scene.
 
+mod a_kit;
+mod a_bees;
+mod a_embark;
+mod a_fireflies;
+mod a_fishing;
+mod a_goats;
+mod a_harvest;
+mod a_pass;
+mod a_thaw;
+mod a_thunder;
+mod a_waterfall;
 mod caravan;
 mod caverns;
 mod dragon;
@@ -70,7 +81,7 @@ struct Scene {
     taglines: &'static [&'static str],
 }
 
-const SCENES: [Scene; 16] = [
+const SCENES: [Scene; 26] = [
     Scene { name: "fortress", draw: fortress::draw, taglines: fortress::TAGLINES },
     Scene { name: "siege", draw: siege::draw, taglines: siege::TAGLINES },
     Scene { name: "dragon", draw: dragon::draw, taglines: dragon::TAGLINES },
@@ -87,6 +98,17 @@ const SCENES: [Scene; 16] = [
     Scene { name: "festival", draw: festival::draw, taglines: festival::TAGLINES },
     Scene { name: "gorge", draw: gorge::draw, taglines: gorge::TAGLINES },
     Scene { name: "flood", draw: flood::draw, taglines: flood::TAGLINES },
+    // The surface, nature and the seasons (the a_ set).
+    Scene { name: "a_bees", draw: a_bees::draw, taglines: a_bees::TAGLINES },
+    Scene { name: "a_embark", draw: a_embark::draw, taglines: a_embark::TAGLINES },
+    Scene { name: "a_fireflies", draw: a_fireflies::draw, taglines: a_fireflies::TAGLINES },
+    Scene { name: "a_fishing", draw: a_fishing::draw, taglines: a_fishing::TAGLINES },
+    Scene { name: "a_goats", draw: a_goats::draw, taglines: a_goats::TAGLINES },
+    Scene { name: "a_harvest", draw: a_harvest::draw, taglines: a_harvest::TAGLINES },
+    Scene { name: "a_pass", draw: a_pass::draw, taglines: a_pass::TAGLINES },
+    Scene { name: "a_thaw", draw: a_thaw::draw, taglines: a_thaw::TAGLINES },
+    Scene { name: "a_thunder", draw: a_thunder::draw, taglines: a_thunder::TAGLINES },
+    Scene { name: "a_waterfall", draw: a_waterfall::draw, taglines: a_waterfall::TAGLINES },
 ];
 
 /// How many scenes there are to choose from.
@@ -614,7 +636,7 @@ mod tests {
 
     #[test]
     fn the_scenes_are_all_there_and_named_once() {
-        assert_eq!(SCENE_COUNT, 16);
+        assert_eq!(SCENE_COUNT, 26);
         for (i, a) in SCENES.iter().enumerate() {
             assert!(SCENES.iter().skip(i + 1).all(|b| b.name != a.name), "{} twice", a.name);
         }
