@@ -74,6 +74,9 @@ pub struct Adventure {
     pub quests: Vec<Quest>,
     #[serde(default)]
     pub nemesis: Option<Nemesis>,
+    /// Who wanted the hero's blood in the site they're in (A12).
+    #[serde(default)]
+    pub watch: nemesis::Watch,
     /// What the companions have been through together (A9).
     #[serde(default)]
     pub band: company::Band,
@@ -305,6 +308,30 @@ pub struct Nemesis {
     pub name: String,
     #[serde(default)]
     pub at: (i32, i32),
+    #[serde(default)]
+    pub race: Option<Race>,
+    /// "goblin", "bandit".
+    #[serde(default)]
+    pub kind: String,
+    /// "swore vengeance on Urist for the blood shed in ...".
+    #[serde(default)]
+    pub grudge: String,
+    /// How many it brings.
+    #[serde(default)]
+    pub band: u8,
+    /// When it swore, when it last moved, and when it may come again.
+    #[serde(default)]
+    pub since: u64,
+    #[serde(default)]
+    pub moved: u64,
+    #[serde(default)]
+    pub next: u64,
+    /// Times it has met the hero.
+    #[serde(default)]
+    pub met: u8,
+    /// The feud is over (one of them is dead).
+    #[serde(default)]
+    pub done: bool,
 }
 
 /// The run's numbers, for the end page and the batch.
@@ -356,6 +383,7 @@ impl Adventure {
             fame: Fame::default(),
             quests: Vec::new(),
             nemesis: None,
+            watch: nemesis::Watch::default(),
             band: company::Band::default(),
             weather: Weather::Clear,
             log: Vec::new(),

@@ -249,6 +249,10 @@ impl Adventure {
     }
 
     fn roll_encounter_with(&mut self, mult: f64) -> Option<Encounter> {
+        // The sworn enemy, caught up at last (A12).
+        if let Some(e) = self.nemesis_meet() {
+            return Some(e);
+        }
         let p = self.encounter_chance(self.at) * mult;
         if p <= 0.0 || !self.rng().chance(p) {
             return None;
@@ -429,6 +433,8 @@ impl Adventure {
         if !g.world.walkable(at) {
             at = g.edge_entry().unwrap_or(me.offset(10, 0, 0));
         }
+        // (A figure is one of them: the first to come.)
+        let mut named = false;
         for &(sp, n) in &e.foes {
             for _ in 0..n {
                 let p = g.spot_near(at, 2);
@@ -440,7 +446,8 @@ impl Adventure {
                 let Some(c) = g.creatures.get_mut(&id) else { continue };
                 c.siege = true;
                 c.target = Some(HERO_ID);
-                if let Some((f, name, kind)) = figure {
+                if let Some((f, name, kind)) = figure.filter(|_| !named) {
+                    named = true;
                     c.figure = Some(f);
                     c.label = Some(format!("{} the {}", name, kind));
                     c.breathes_fire = kind == "dragon";
