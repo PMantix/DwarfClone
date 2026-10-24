@@ -35,23 +35,23 @@ Best first: fun for an overseer-run fort, then how easy it is.
 | ECO-01 | Starving dwarves raid the caravan | A dwarf desperate with hunger or thirst grabs food or drink off the depot; if the fort can't cover the price, the civ's opinion drops. | Missing | S | ★★★ | B15 | Bloat#230; roadmap Bloat230 |
 | ECO-02 | Harming merchants has fallout | Killing, robbing or caging merchants (by a mad dwarf, a Reckless overseer or a trap) sours or ends relations and can bring war. | Partial: a slain caravan spills its goods, no diplomatic effect (`trade.rs`) | S | ★★★ | B15 | Bloat#31; roadmap Bloat31 (abusing envoys); Story:Animal Justice |
 | ECO-03 | Caravans bring what you lack | The caravan's list leans toward the fort's open troubles (no food when stores are full, more of what is short), and the overseer buys against its troubles list. | Partial: fixed race lists, overseer buys food then metal | S | ★★ | B15 | Log2023; Req555; Core38 |
-| ECO-04 | Conditional work orders | Orders that fire when a stock falls below N or another order finishes, repeat daily/monthly/yearly or N times, with an "auto" button filling sensible conditions; the overseer writes them as its plans. | Partial: keep-N-in-stock orders (W14) | M | ★★★ | O08 | Log2021; Log2016/Rel0.43; Req2; roadmap standing orders 2012-16 |
+| ECO-04 | Conditional work orders | Orders that fire when a stock falls below N or another order finishes, repeat daily/monthly/yearly or N times, with an "auto" button filling sensible conditions; the overseer writes them as its plans. | Have: done in O08 (WISHLIST) | M | ★★★ | O08 | Log2021; Log2016/Rel0.43; Req2; roadmap standing orders 2012-16 |
 | ECO-05 | Neighbours judge your conduct | Elves count felled trees, wooden goods and displayed hides; other civs note executions and trophies; caravans shrink, stop or turn hostile. | Missing | M | ★★★ | B15 | Story:Animal Justice; Req132; Req463; Req516; Bloat#72 (roadmap); Log2025 |
 | ECO-06 | Haggling explained | Counter-offers come from the broker's skill against the merchants' mood and profit, and the screen and overseer notes say why a deal failed. | Partial: broker cuts markup | S | ★★ | B15 | Log2023; Req260; Req279 |
 | ECO-07 | Trade that dies off | If merchants make no profit for a few visits, caravans come less often and smaller. | Missing | S | ★★ | B15 | Log2026 |
 | ECO-08 | Wary caravans | Merchants check the depot approach for ambush and refuse to enter a fort with a bad name or bodies on the road. | Missing | S | ★★ | B15 | Story:Animal Justice |
 | ECO-09 | Nobility drives trade | Each noble rank enlarges the home caravan; a barony opens trade or diplomacy with far civs. | Partial: baron/count/duke by wealth, no effect on caravans | S | ★★ | B15 | Log2025 |
 | ECO-10 | Export bans | A noble or the civ forbids selling certain goods; selling them anyway angers the noble (a Greedy overseer may risk it). | Missing | S | ★★ | B15 | Log2025; Rel0.31 |
-| ECO-11 | Orders queue their own inputs | An order missing thread queues spinning first instead of failing and spamming; impossible jobs show what is missing. | Partial: Inbox note on order spam | M | ★★ | O08 | Bloat#253; Req2; Rel0.31 (missing reagents shown) |
+| ECO-11 | Orders queue their own inputs | An order missing thread queues spinning first instead of failing and spamming; impossible jobs show what is missing. | Have: done in O08 (WISHLIST) | M | ★★ | O08 | Bloat#253; Req2; Rel0.31 (missing reagents shown) |
 | ECO-12 | Mercenaries and monster hunters for hire | Companies with reputations take contracts (hunt the cave horror, guard the gate) for pay or goods; they can fail or cheat. | Planned: F07 (hunters) | M | ★★★ | P04 | Story:Monster Quest; Log2016 (mercenary companies); Log2024 (companies in history) |
-| ECO-13 | Workshop masters and apprentices | A workshop gets a permanent master, a skill minimum and apprentices who learn faster there. | Partial: workshop profiles; Inbox min skill | S | ★★ | O08 | Bloat#32; Req560 |
-| ECO-14 | Vein mining | Mark a vein or gem cluster and the designation spreads as miners uncover it, with ore-only or gem-only filters. | Missing | S | ★★ | O08 | Bloat#218; Req393; 2016; Rel0.40 |
-| ECO-15 | Records of production | The fort keeps a ledger of who made what, read in the chronicle or after the fall. | Partial: chronicle, legends | S | ★★ | O08 | Core70; Rel0.31 |
+| ECO-13 | Workshop masters and apprentices | A workshop gets a permanent master, a skill minimum and apprentices who learn faster there. | Have: done in O08 (WISHLIST) | S | ★★ | O08 | Bloat#32; Req560 |
+| ECO-14 | Vein mining | Mark a vein or gem cluster and the designation spreads as miners uncover it, with ore-only or gem-only filters. | Have: done in O08 (WISHLIST) | S | ★★ | O08 | Bloat#218; Req393; 2016; Rel0.40 |
+| ECO-15 | Records of production | The fort keeps a ledger of who made what, read in the chronicle or after the fall. | Have: done in O08 (WISHLIST) | S | ★★ | O08 | Core70; Rel0.31 |
 | ECO-16 | Thieves at the depot | Skulkers go for goods marked for trade and for small animals. | Partial: skulkers steal the best loose item | S | ★★ |  | Bloat#113 |
 | ECO-17 | Exported wealth counts | Exported wealth is tracked apart from created wealth and pushes titles, migrants and attention. | Partial: titles by total wealth | S | ★★ |  | Rel0.31; Log2016 (tunable thresholds) |
 | ECO-18 | Selling captives | Caged beasts or prisoners can be sold; their later fate (a pet, an arena) can come back as news. | Missing (needs S03 captives) | S | ★★ |  | Req110 |
 | ECO-19 | Tribute through caravans | Tribute owed or demanded travels in real caravans that can be raided or withheld. | Planned: B02 | M | ★★★ | B24 | Core81; 2016-2020 |
-| ECO-20 | Job priorities and postings | Jobs advertise and the best free dwarf takes them; urgent jobs pull workers off minor ones; dig designations carry a 1-7 priority. | Missing | M | ★★ | O08 | Bloat#54; Req86; Req428; 2016; Log2016/Rel0.40 |
+| ECO-20 | Job priorities and postings | Jobs advertise and the best free dwarf takes them; urgent jobs pull workers off minor ones; dig designations carry a 1-7 priority. | Have: done in O08 (WISHLIST) | M | ★★ | O08 | Bloat#54; Req86; Req428; 2016; Log2016/Rel0.40 |
 | ECO-21 | Trade agreements | The liaison agrees what next year's caravan brings and what the civ wants; export agreements pay a premium on one or two goods. | Planned: B02 | M | ★★ | B24 | Req555; Log2010/Rel0.31; Log2025 |
 | ECO-22 | Messengers open trade | A messenger sent from the world screen can open trade early with a neighbour or improve terms. | Planned: B02 | S | ★★ | B24 | Log2026 |
 | ECO-23 | Local prices | Each civ prices goods by its own scarcity and tastes; food prices move too. | Missing | M | ★★ | B24 | Bloat#155; Core38; Story:catalogue |
@@ -65,8 +65,8 @@ Best first: fun for an overseer-run fort, then how easy it is.
 | ECO-31 | Your own caravans | The fort sends wagons out to sell to neighbours. | Missing | M | ★★ | P05 | Req425; Arc Merchant; Trader role |
 | ECO-32 | Caravans on the world map | Caravans travel visibly between sites by road and carry what you sold. | Planned: B01 | L | ★★ | P05 | Core3; Arc Caravan; 2011 |
 | ECO-33 | Hill and deep dwarf partners | Nearby dwarf settlements, above and in the deep roads, trade food and send migrants. | Planned: B03 | L | ★★ | P05 | 2016-2020 scenarios; 2018; Log2012 (deep dwarf sites) |
-| ECO-34 | Material-specific orders | An order for a named stone, wood or plant uses exactly that, which matters for noble demands. | Partial: stockpile filters | S | ★ | O08 | Log2023; Req27; Req287; 2012 |
-| ECO-35 | Mandates feed orders | A noble's production mandate can be sent straight into the work orders. | Missing | S | ★ | O08 | Bloat#250; Bloat53 (roadmap) |
+| ECO-34 | Material-specific orders | An order for a named stone, wood or plant uses exactly that, which matters for noble demands. | Have: done in O08 (WISHLIST) | S | ★ | O08 | Log2023; Req27; Req287; 2012 |
+| ECO-35 | Mandates feed orders | A noble's production mandate can be sent straight into the work orders. | Have: done in O08 (WISHLIST) | S | ★ | O08 | Bloat#250; Bloat53 (roadmap) |
 | ECO-36 | Stockpile links | Piles give to and take from chosen piles or workshops only. | Planned: Inbox stockpile links | S | ★ | B11 | Req1; Log2012/Rel0.31; Log2021 |
 | ECO-37 | Quality filters and tidying | Piles accept by quality or wear, a meltables pile, and an order to pack a pile's items together. | Partial: kind and material filters | S | ★ | B11 | Bloat#308; Bloat#313; Req528 |
 | ECO-38 | Everything pile and repainting | One click makes an all-goods pile; piles can be resized or repainted. | Partial: W14 | S | ★ |  | Log2021 |
@@ -116,41 +116,41 @@ Best first: fun for an overseer-run fort, then how easy it is.
 
 | ID | Idea | Mechanic | Status | Size | Fun | Roadmap | Sources |
 |---|---|---|---|---|---|---|---|
-| CRF-01 | Trophies of war | Skulls, hides, horns and banners of slain foes become crafts or hall displays that cheer dwarves and enrage the victims' kin; enemies hang trophies made from your dead. | Partial: dragon skull treasure | S | ★★★ | O03 | Bloat#161; Bloat#165; PG19; PG181; Story:Animal Justice; Story:Heroes of the Coast |
-| CRF-02 | Named weapons | A weapon that kills enough gets a name; its wielder grows attached and others may covet it. | Missing | S | ★★★ | O03 | Story:catalogue; PG133; Core99 |
-| CRF-03 | Blueprints | An inspired engineer draws plans for a grand work, which the overseer may adopt as an Architect ambition. | Missing | M | ★★★ | O12 | Story:Half Dwarf; Story:catalogue |
+| CRF-01 | Trophies of war | Skulls, hides, horns and banners of slain foes become crafts or hall displays that cheer dwarves and enrage the victims' kin; enemies hang trophies made from your dead. | Have: done in O03 (WISHLIST) | S | ★★★ | O03 | Bloat#161; Bloat#165; PG19; PG181; Story:Animal Justice; Story:Heroes of the Coast |
+| CRF-02 | Named weapons | A weapon that kills enough gets a name; its wielder grows attached and others may covet it. | Have: done in O03 (WISHLIST) | S | ★★★ | O03 | Story:catalogue; PG133; Core99 |
+| CRF-03 | Blueprints | An inspired engineer draws plans for a grand work, which the overseer may adopt as an Architect ambition. | Have: done in O12 (WISHLIST) | M | ★★★ | O12 | Story:Half Dwarf; Story:catalogue |
 | CRF-04 | Heirlooms and tokens | Items tied to a person pass to kin; one found away from its owner tells of their fate. | Planned: B05 | M | ★★★ | B05 | Story:Gorge of the Righteous; Story:Animal Justice; 2016; 2020 artifacts; Rel0.44 |
 | CRF-05 | Artifact claims | Families, civs and faiths claim artifacts, which drives theft, demands, envoys and war. | Planned: B05 | M | ★★★ | B05 | Rel0.44; 2016; 2020; Story:Dwarven Assault |
-| CRF-06 | Inscriptions and maker's marks | Dwarves carve names, prayers or taunts on gear; blades carry a maker's mark and spark quarrels over ownership. | Missing | S | ★★ | O03 | Story:catalogue; PG133; Core99; Bloat#260 |
-| CRF-07 | Display furniture | Pedestals and cases show artifacts and fine goods; a museum room can sit inside a tavern, temple or library. | Missing | S | ★★ | B05 | Log2020; Rel0.47; 2016 artifacts |
-| CRF-08 | Name creator | Artifacts, weapons and places get generated names the overseer can use for halls and gear. | Missing (O03 named halls) | S | ★★ | O03 | Log2022 |
+| CRF-06 | Inscriptions and maker's marks | Dwarves carve names, prayers or taunts on gear; blades carry a maker's mark and spark quarrels over ownership. | Have: done in O03 (WISHLIST) | S | ★★ | O03 | Story:catalogue; PG133; Core99; Bloat#260 |
+| CRF-07 | Display furniture | Pedestals and cases show artifacts and fine goods; a museum room can sit inside a tavern, temple or library. | Partial: trophies set up on displays in the great hall (CRF-01, O03); no pedestals or museum rooms | S | ★★ | B05 | Log2020; Rel0.47; 2016 artifacts |
+| CRF-08 | Name creator | Artifacts, weapons and places get generated names the overseer can use for halls and gear. | Have: done in O03 (WISHLIST) | S | ★★ | O03 | Log2022 |
 | CRF-09 | Artifact sets | Some artifacts come as matched sets: a quiver of bolts, a suite of jewellery. | Missing | S | ★★ | B05 | Bloat#49 |
 | CRF-10 | Melting and recycling | Captured gear marked for the (magma) forge returns bars; furniture broken down; flux recovered; melting a masterwork upsets its maker. | Planned: Inbox melting | S | ★★ | D08 | Log2022; Bloat#265; Bloat#363; Rel40d |
 | CRF-11 | Rust and tarnish | Neglected metal rusts or greens, lowering value and edge until cleaned. | Missing | S | ★★ | X02 | Bloat#145 |
-| CRF-12 | Gems in engravings, engraved built walls | Engravings set with gems or metal; built walls can be smoothed and engraved like rock. | Missing | S | ★★ | O03 | Bloat#245; Log2023 |
-| CRF-13 | Jeweler and decorations | A jeweler sets gems into furniture and gear, each decoration with its own quality and value. | Planned: Inbox jeweler | S | ★★ | O03 | Bloat#2; inventory gap |
+| CRF-12 | Gems in engravings, engraved built walls | Engravings set with gems or metal; built walls can be smoothed and engraved like rock. | Have: done in O03 (WISHLIST) | S | ★★ | O03 | Bloat#245; Log2023 |
+| CRF-13 | Jeweler and decorations | A jeweler sets gems into furniture and gear, each decoration with its own quality and value. | Have: done in O03 (WISHLIST) | S | ★★ | O03 | Bloat#2; inventory gap |
 | CRF-14 | Toys and games | Wooden toys and board games; children play with them and copy sports heroes. | Missing | S | ★★ | D08 | Bloat#41; Story:Dwarven Servitude; Story:catalogue |
-| CRF-15 | Musical instruments | Instruments of several parts and materials, by culture, played in the tavern. | Missing | S | ★★ | D08 | Log2020; Rel0.42 |
+| CRF-15 | Musical instruments | Instruments of several parts and materials, by culture, played in the tavern. | Have: done in D08 (WISHLIST) | S | ★★ | D08 | Log2020; Rel0.42 |
 | CRF-16 | Fossils | Fossils and petrified wood turn up in digging and are prized by collectors. | Missing | S | ★★ |  | Bloat#324 |
 | CRF-17 | Found treasures | Jade in some rivers, pearls, amber, horn and ivory as rare materials. | Partial: bone crafts, dragon hoards | S | ★★ |  | Bloat#322; roadmap Bloat322 |
 | CRF-18 | Restraints | Rope, chains and cages to bind prisoners and beasts in jail or pasture. | Planned: Inbox jail chains | S | ★★ |  | Story:catalogue; Story:Animal Justice |
 | CRF-19 | Wall hangings and paintings | Rugs, tapestries, paints and pigments that raise room value. | Missing | S | ★★ |  | Bloat#165 |
 | CRF-20 | Living and trick statues | Statues with hidden levers or moving arms, and rare ones that wake. | Missing | M | ★★★ |  | Bloat#224 |
-| CRF-21 | Statues and figurines of things | Figurines and statues depict creatures, objects, buildings and engines, not just scenes. | Partial: legend engravings, monument | S | ★★ | O03 | Bloat#152; Bloat#116; Log2021 |
+| CRF-21 | Statues and figurines of things | Figurines and statues depict creatures, objects, buildings and engines, not just scenes. | Have: done in O03 (WISHLIST) | S | ★★ | O03 | Bloat#152; Bloat#116; Log2021 |
 | CRF-22 | Art critics | Remarks on an artist's works track a career of rising or falling taste. | Missing | S | ★★ |  | Bloat#22 |
 | CRF-23 | Etching and runes | Etched designs on items, a path toward magic runes. | Partial: engraved walls | S | ★★ |  | Bloat#97 |
 | CRF-24 | Layered pictures | An item's image has parts that take further decoration (ruby eyes on a carved tortoise); detail scales with skill; motifs like eyes or hands. | Partial: quality, engravings | M | ★★ |  | Bloat#2; Bloat#221; Bloat#302; Bloat#1; Rel40d |
-| CRF-25 | Whole-carcass butchery | Carcasses yield organs, fat, skull, horn, teeth, ivory, shell and chitin, each usable; skull totems from heads. | Partial: meat, bone, hide, tallow | M | ★★ | D08 | Rel0.31; Bloat#246; Bloat#104; Log2023 (shell crafts) |
+| CRF-25 | Whole-carcass butchery | Carcasses yield organs, fat, skull, horn, teeth, ivory, shell and chitin, each usable; skull totems from heads. | Partial: meat, bone, hide, tallow; each animal's products, wool, feathers, ivory, venom, 4c95ef8 (D08) | M | ★★ | D08 | Rel0.31; Bloat#246; Bloat#104; Log2023 (shell crafts) |
 | CRF-26 | Artifacts from history | World history already holds mood artifacts, heroes' named gear and relics that can turn up. | Partial: ruin vault artifact | M | ★★ |  | Rel0.42; Rel0.44 |
 | CRF-27 | Clothing variety and fashions | Each people dresses its own way in many garments and colours; trade blurs it; dwarves remark on strangers' dress. | Partial: shirt/trousers/shoes; Inbox cloaks | M | ★★ | X02 | Bloat#243; Bloat#242 |
-| CRF-28 | Automatons | Clockwork servants, best made in a fey mood. | Missing | M | ★★ | O12 | Bloat#42; 2020 |
+| CRF-28 | Automatons | Clockwork servants, best made in a fey mood. | Have: done in O12 (WISHLIST) | M | ★★ | O12 | Bloat#42; 2020 |
 | CRF-29 | Masterwork history | Making or losing a masterwork enters the legends. | Partial: first masterwork milestone | S | ★ |  | Rel0.31 |
 | CRF-30 | Gear wear and grime | Weapons and armour wear in fights; blood and mud on gear need cleaning and unsettle onlookers. | Partial: clothes wear (W12) | S | ★ | X02 | Req149; Req431; Log2023; Story:catalogue |
 | CRF-31 | Leather done right | Hide size follows the creature and yields several leathers; tawing and waterproofing. | Partial: tanner's shop | S | ★ | D08 | Bloat#257; Bloat#258; Bloat#259; Req91; Log2023 |
 | CRF-32 | Oil, potash, lye | Nuts pressed to oil, ash to potash and lye, broadening soap and fertiliser chains. | Partial: soap from ash and tallow | S | ★ | D08 | Rel0.31 |
 | CRF-33 | Keys and locks | Real keys for locked doors; lost keys in old ruins. | Partial: lever-locked doors | S | ★ |  | Bloat#188 |
 | CRF-34 | Comfortable beds | Beds of more materials with blankets and pillows. | Missing | S | ★ |  | Bloat#40 |
-| CRF-35 | Luxury trinkets | Mirrors, clocks, masks, dice and cards. | Missing | S | ★ | O12 | Bloat#34; Bloat#39 |
+| CRF-35 | Luxury trinkets | Mirrors, clocks, masks, dice and cards. | Have: done in O12 (WISHLIST) | S | ★ | O12 | Bloat#34; Bloat#39 |
 | CRF-36 | Decor shows the owner | Gloomy nobles pick sinister furniture, cheerful ones bright. | Missing | S | ★ |  | Story:catalogue |
 | CRF-37 | Shoddy primitive loot | Goblin and kobold gear is old, rotten or crude. | Missing | S | ★ |  | Story:catalogue |
 | CRF-38 | Gem cuts by culture | Each civ has its own cuts; plain stones are cut as cabochons. | Missing | S | ★ |  | Log2008 |
@@ -203,7 +203,7 @@ Best first: fun for an overseer-run fort, then how easy it is.
 | AGR-01 | Pets eat pets | A hungry carnivorous pet kills another's pet; the owners come to blows and a grudge starts. | Partial: pets and grudges | S | ★★★ | B20 | Bloat#168; Bloat#95 |
 | AGR-02 | Livestock raids | Hungry neighbours, bandits or kobolds rustle animals from outdoor pastures at night. | Missing | S | ★★★ | B20 | Story:The Nation of Man; Story:Night of the Kobold; Story:catalogue |
 | AGR-03 | Soil depth | Surface soil far above the caverns farms poorly while cavern soil is rich, pulling farms (and farmers) into danger. | Partial: crops by place | S | ★★★ | B12 | Log2023 |
-| AGR-04 | Vermin in stores and fields | Hoarded food draws rats and worse, which eat seeds and food left in piles; burrowers in fields; ratting cats earn their keep. | Planned: B12 (pests) | M | ★★★ | B20 | Bloat#11; Bloat#12; Req336; Log2024 (vermin raids); Rel40d (vermin colonies) |
+| AGR-04 | Vermin in stores and fields | Hoarded food draws rats and worse, which eat seeds and food left in piles; burrowers in fields; ratting cats earn their keep. | Partial: vermin eat loose food and cats catch them, 4c95ef8; food doesn't draw them (B20) | M | ★★★ | B20 | Bloat#11; Bloat#12; Req336; Log2024 (vermin raids); Rel40d (vermin colonies) |
 | AGR-05 | Named drinks and vintages | Brews get names commemorating events; fine drink is bottled, labelled and aged; drinking rituals; collectors. | Missing | S | ★★★ | C11 | Bloat#109; Bloat#212 |
 | AGR-06 | Signature recipes | A great cook's dish gets a name, joins the civ's recipes and turns up in later forts; nobles crave particular dishes. | Missing | M | ★★★ | C11 | Req129; Req162; Bloat85 (roadmap) |
 | AGR-07 | Training knowledge per species | Each fort learns to tame a species by trying; training fades without practice and half-tamed beasts go wild and violent; only young beasts train fully. | Partial: cage taming | M | ★★★ | D09 | Rel0.40; Bloat#50 |
@@ -211,13 +211,13 @@ Best first: fun for an overseer-run fort, then how easy it is.
 | AGR-09 | Logging angers the wild | Felling trees on savage land brings packs of enraged beasts; elves notice too (ECO-05). | Missing | M | ★★★ | B20 | Log2025 |
 | AGR-10 | Fish run out | Overfishing depletes a stretch of water with a warning; predators that ate those fish come closer. | Planned: Inbox fish stocks | S | ★★ | B20 | Rel0.31; Story:catalogue |
 | AGR-11 | Grazing and hunger | Grazers eat grass or cave moss in their pasture, bigger beasts more; barren sites starve herds. | Planned: Inbox grazing | S | ★★ | D09 | Bloat#247; Rel0.34; Log2023; Livestock 2012-20 |
-| AGR-12 | Eggs, nests and hatchlings | Fowl lay in nest boxes; hatchlings follow their mother; dragon and roc nests can be raided. | Planned: Inbox eggs | S | ★★ | D09 | Rel0.34; Log2025; Story:Mother of Death; Story:catalogue |
+| AGR-12 | Eggs, nests and hatchlings | Fowl lay in nest boxes; hatchlings follow their mother; dragon and roc nests can be raided. | Partial: kept hens lay eggs, 4c95ef8 (D09) | S | ★★ | D09 | Rel0.34; Log2025; Story:Mother of Death; Story:catalogue |
 | AGR-13 | Beekeeping | A wild hive seeds artificial hives; honey and wax pressed from comb; mead; a hive limit. | Planned: Inbox bees | S | ★★ | D09 | Rel0.34; Log2023; Story:features |
 | AGR-14 | Cats fish | Cats catch fish from ponds. | Missing | S | ★★ | B20 | Bloat#47 |
 | AGR-15 | Animal messengers | Bats, birds or trained pets carry word to the mountainhome or allies, or report a death. | Missing | S | ★★ |  | Story:The Assassination of Zecalo Bronzeflower; Story:Animal Justice |
-| AGR-16 | Wool, milk and cheese | Shearing and milking at the farm, cheese at a workshop, even milkable cave creatures. | Planned: Inbox milking, shearing | M | ★★ | D09 | Bloat#58; Rel0.34; 2011 Creature I.C; Story:features |
+| AGR-16 | Wool, milk and cheese | Shearing and milking at the farm, cheese at a workshop, even milkable cave creatures. | Partial: sheep shed wool, 4c95ef8 (D09) | M | ★★ | D09 | Bloat#58; Rel0.34; 2011 Creature I.C; Story:features |
 | AGR-17 | War beasts | Trained big beasts beyond dogs: armoured animals, beasts drawing chariots. | Partial: war dogs | M | ★★ | D09 | Story:Forest Befouled; Story:catalogue |
-| AGR-18 | Wildlife populations | Local wildlife numbers fall with hunting, recover slowly, and predators hunt prey. | Missing | M | ★★ | B20 | Core78; Req80; Req561; 2012; Rel0.34 |
+| AGR-18 | Wildlife populations | Local wildlife numbers fall with hunting, recover slowly, and predators hunt prey. | Have: done in B20 (WISHLIST) | M | ★★ | B20 | Core78; Req80; Req561; 2012; Rel0.34 |
 | AGR-19 | Visible fishing and big catches | Fish are seen in the water, fishing gets harder, large aquatic beasts can be hooked. | Partial: Fishing labor, F12 legendary catch | M | ★★ |  | Bloat#356; Bloat#81; Req326 |
 | AGR-20 | Fishery | Fish are cleaned at a fishery before cooking; raw fish rots slowly in the pile. | Planned: Inbox fishery | S | ★ | C11 | Rel0.31; Bloat#225 |
 | AGR-21 | Orchards and growths | Plants carry seasonal fruit, flowers and leaves; trees can be planted; gatherers use stepladders. | Planned: Inbox orchards | M | ★★ | B12 | Farming 2012-20; Rel0.40; Log2021 |
@@ -269,26 +269,26 @@ Best first: fun for an overseer-run fort, then how easy it is.
 
 | ID | Idea | Mechanic | Status | Size | Fun | Roadmap | Sources |
 |---|---|---|---|---|---|---|---|
-| ENG-01 | Traps jammed with bodies | Corpses and carcasses pile up in a trap corridor until it stops working and someone must clear it, maybe under fire. | Missing | S | ★★★ | O04 | Story:Animal Justice; Story:Half Dwarf |
+| ENG-01 | Traps jammed with bodies | Corpses and carcasses pile up in a trap corridor until it stops working and someone must clear it, maybe under fire. | Have: done in O04 (WISHLIST) | S | ★★★ | O04 | Story:Animal Justice; Story:Half Dwarf |
 | ENG-02 | Deliberate flooding | The overseer opens floodgates to drown invaders or escaping prisoners in a sealed section. | Partial: lever floodgates exist, never used this way | S | ★★★ | O04 | Story:Summoned to Darkness; Story:Steam |
-| ENG-03 | Pits and ponds | A zone over a hole lets haulers fill it with water bucket by bucket, or drop captured creatures and prisoners into it. | Missing | S | ★★★ | O04 | Rel0.31; Log2022 |
-| ENG-04 | Upright spikes | Lever-raised spikes, and spiked pits that impale whatever falls in. | Missing | S | ★★★ | O04 | Rel0.34; Story:Bride Price |
+| ENG-03 | Pits and ponds | A zone over a hole lets haulers fill it with water bucket by bucket, or drop captured creatures and prisoners into it. | Have: done in O04 (WISHLIST) | S | ★★★ | O04 | Rel0.31; Log2022 |
+| ENG-04 | Upright spikes | Lever-raised spikes, and spiked pits that impale whatever falls in. | Have: done in O04 (WISHLIST) | S | ★★★ | O04 | Rel0.34; Story:Bride Price |
 | ENG-05 | Fire as tool and threat | Designate things to burn, kindling and hay, burning buildings to flee, bucket brigades from the well. | Partial: fire spreads; Inbox bucket brigades | S | ★★★ | B13 | Fire 2012-20; Core14 |
-| ENG-06 | Pressure plates | Triggered by creature weight or fluid depth (even "empty"), linked to doors, bridges and traps, outdoors too. | Planned: Inbox pressure plates | S | ★★ | O04 | Bloat#29; Log2007; Log2022 |
-| ENG-07 | Trapdoors and chutes | Hatches and slides that drop whoever stands on them into a cell below. | Planned: Inbox hatches | S | ★★ | O04 | Story:catalogue; Log2023; Log2007 |
-| ENG-08 | Nets and tripwires | Tripwire gauntlets and nets that snare or trip intruders. | Missing | S | ★★ | O04 | Story:Half Dwarf; Story:Curse of the Cyclops |
-| ENG-09 | One-column stairs | Designate a single column and it becomes up stair at the bottom, down stair at top, both between; stairs into open air; multi-level designations. | Partial: constructed stairs | S | ★★ | O11 | Log2022; Rel0.34 |
-| ENG-10 | Builders don't wall themselves in | Builders pick where to stand; diggers start from the nearest tile. | Partial | S | ★★ | O11 | Rel0.34 |
+| ENG-06 | Pressure plates | Triggered by creature weight or fluid depth (even "empty"), linked to doors, bridges and traps, outdoors too. | Have: done in O04 (WISHLIST) | S | ★★ | O04 | Bloat#29; Log2007; Log2022 |
+| ENG-07 | Trapdoors and chutes | Hatches and slides that drop whoever stands on them into a cell below. | Partial: channel under any drawbridge and raising it drops whoever stands on it into the pit like a trapdoor; no hatches or chutes (O04) | S | ★★ | O04 | Story:catalogue; Log2023; Log2007 |
+| ENG-08 | Nets and tripwires | Tripwire gauntlets and nets that snare or trip intruders. | Partial: tripwires of thread throw a foe down under the traps behind, headlong onto the spikes, which the wire springs, a70e977; no nets (O04) | S | ★★ | O04 | Story:Half Dwarf; Story:Curse of the Cyclops |
+| ENG-09 | One-column stairs | Designate a single column and it becomes up stair at the bottom, down stair at top, both between; stairs into open air; multi-level designations. | Have: done in O11 (WISHLIST) | S | ★★ | O11 | Log2022; Rel0.34 |
+| ENG-10 | Builders don't wall themselves in | Builders pick where to stand; diggers start from the nearest tile. | Have: done in O11 (WISHLIST) | S | ★★ | O11 | Rel0.34 |
 | ENG-11 | Chasm dumping | Refuse, corpses or any marked object are thrown into a chasm. | Partial: dump zone, chasm site feature | S | ★★ |  | Req28; Req47; Rel0.31 |
 | ENG-12 | Magma melts constructions | Magma wears and melts constructions of meltable material. | Partial | S | ★★ |  | Req554 |
 | ENG-13 | Flow pushes | Fast water and magma shove creatures and items along. | Missing | S | ★★ |  | Rel0.31 |
 | ENG-14 | Ice and thaw | Freezing traps creatures in ice; thin ice breaks; spilled water evaporates; rain pools; deep snow slows. | Partial: ice and snow (W19) | S | ★★ |  | Log2007; Bloat286; Bloat287; Bloat292 (roadmap) |
 | ENG-15 | Warm and damp warnings, aquifer tools | Digging near magma or water warns; a shaft can be pumped dry; warning before embarking on a heavy aquifer. | Planned: W26 (aquifer step) | S | ★★ | W26 | Log2022; Log2019 |
-| ENG-16 | Named halls | Custom names for buildings, halls and stockpiles. | Planned: O03 | S | ★★ | O11 | Req421 |
-| ENG-17 | Bulk rooms and overlapping zones | One drag over many enclosed rooms makes each its own room; zones repaint, move and overlap. | Partial: zones; Inbox overlapping zones | S | ★★ | O11 | Log2022 |
-| ENG-18 | Wells and cisterns inside | A cistern fed by a channel under the halls, with a well above it. | Planned: S05 (last step) | S | ★★ | W26 | Bloat#360; Story:Steam |
-| ENG-19 | Better traps | Hammer traps that fling, rolling boulders down ramps, stone-falls that need a stone set above, multi-tile blade halls with a spring to reset, traps that keep striking. | Planned: B07 | M | ★★★ | O04 | Bloat#278; Bloat#295; Bloat#372; Improved mechanics |
-| ENG-20 | Moats and wide drawbridges | Drawbridges of any width over open space that fling what's on them when raised. | Planned: Inbox drawbridges, O04 | M | ★★★ | O04 | Bloat#28 (great gates) |
+| ENG-16 | Named halls | Custom names for buildings, halls and stockpiles. | Have: done in O11 (WISHLIST) | S | ★★ | O11 | Req421 |
+| ENG-17 | Bulk rooms and overlapping zones | One drag over many enclosed rooms makes each its own room; zones repaint, move and overlap. | Have: done in O11 (WISHLIST) | S | ★★ | O11 | Log2022 |
+| ENG-18 | Wells and cisterns inside | A cistern fed by a channel under the halls, with a well above it. | Have: done in W26 (WISHLIST) | S | ★★ | W26 | Bloat#360; Story:Steam |
+| ENG-19 | Better traps | Hammer traps that fling, rolling boulders down ramps, stone-falls that need a stone set above, multi-tile blade halls with a spring to reset, traps that keep striking. | Have: done in O04 (WISHLIST) | M | ★★★ | O04 | Bloat#278; Bloat#295; Bloat#372; Improved mechanics |
+| ENG-20 | Moats and wide drawbridges | Drawbridges of any width over open space that fling what's on them when raised. | Have: done in O04 (WISHLIST) | M | ★★★ | O04 | Bloat#28 (great gates) |
 | ENG-21 | Screw pumps | Lift water or magma one level by hand or power; stacks drain shafts. | Planned: W26 | M | ★★★ | W26 | Log2007 |
 | ENG-22 | Size-limited passages | Narrow doors stop large creatures (who may smash through); cramped tunnels hamper archers. | Missing | M | ★★★ | D04 | Story:Home Tree; Story:Orther Pushes His Luck |
 | ENG-23 | Secret doors and escape tunnels | Hidden or one-way doors; passages for evacuation, sorties or smuggling. | Missing | M | ★★★ | D04 | Bloat#280; Story:Half Dwarf; Story:Summoned to Darkness |
@@ -311,9 +311,9 @@ Best first: fun for an overseer-run fort, then how easy it is.
 | ENG-40 | Volcanoes refill | A drained magma pipe slowly refills. | Missing | S | ★ | W26 | Rel0.31 |
 | ENG-41 | Floating | Light items and swimmers float. | Missing | S | ★ |  | Req433 |
 | ENG-42 | Burying things | Bury items in soil to hide them from thieves. | Missing | S | ★ |  | Req99 |
-| ENG-43 | Spatter and cleaning | Blood, mud and vomit pile up by amount, stain and dry; footprints; rain washes; cleaning designations. | Missing | S | ★ |  | Req289; Bloat#170; Bloat#319; Bloat#321; Req462; Rel40d |
+| ENG-43 | Spatter and cleaning | Blood, mud and vomit pile up by amount, stain and dry; footprints; rain washes; cleaning designations. | Partial: gore.rs, blood pools and trails, bloody footprints, rain washes them and haulers scrub; no mud, no cleaning designations | S | ★ |  | Req289; Bloat#170; Bloat#319; Bloat#321; Req462; Rel40d |
 | ENG-44 | Clearing stuck rubbish | Get refuse out of fortifications and unreachable tiles. | Missing | S | ★ |  | Bloat#294 |
-| ENG-45 | Build over built floors | Any construction can go on a built floor without removing it first. | Partial | S | ★ | O11 | Log2022 |
+| ENG-45 | Build over built floors | Any construction can go on a built floor without removing it first. | Have: done in O11 (WISHLIST) | S | ★ | O11 | Log2022 |
 | ENG-46 | Weather-tight buildings | Roofed buildings keep off rain and snow. | Partial: roof makes a room | S | ★ |  | Log2023 |
 | ENG-47 | Workshop footprints | Fix trouble from blocked tiles in multi-tile workshops. | Partial | S | ★ |  | Bloat#301 |
 | ENG-48 | Box construction and map notes | Lay many constructions in a box; pin notes and waypoints to tiles. | Partial: box constructions | S | ★ |  | Rel0.34 |
