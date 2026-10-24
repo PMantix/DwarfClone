@@ -1030,6 +1030,10 @@ impl Game {
                 continue;
             }
             let t = *self.world.t(p);
+            // (Never into the rock round the pit bridge's pit: pits.rs.)
+            if matches!(d, Desig::Dig | Desig::Channel | Desig::StairUp | Desig::StairDown | Desig::StairUD | Desig::Ramp) && self.pit_shell(p) {
+                continue;
+            }
             if d == Desig::None {
                 if t.desig != Desig::None {
                     self.world.t_mut(p).desig = Desig::None;

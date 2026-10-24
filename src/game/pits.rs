@@ -428,6 +428,12 @@ impl Game {
             if !d.alive || d.move_cd > 0 || !in_pit(d.pos) {
                 continue;
             }
+            // (One who walked in, where the rock round the pit was dug
+            // away, walks out: else they'd be lifted out every few steps
+            // on their way to whatever lies down there, and back.)
+            if crate::path::astar(&self.world, d.pos, out, 4_000, crate::world::Mover::Dwarf).is_some() {
+                continue;
+            }
             let name = d.name.clone();
             let d = &mut self.dwarves[i];
             d.pos = out;
@@ -436,6 +442,18 @@ impl Game {
             self.msg_at(&format!("{} climbed out of {}.", cap(&name), pit), (200, 200, 140), Some(out), super::logkind::LogKind::Job);
             self.count("m2.pit_climbed", 1);
         }
+    }
+
+    /// Whether `p` is in the rock round the pit, which nobody may dig
+    /// (`designate`): a hall cut into it lets the fort walk in, and
+    /// whatever fell in walk out.
+    pub(super) fn pit_shell(&self, p: Pos) -> bool {
+        if self.pits.decks.is_empty() {
+            return false;
+        }
+        let depth = if self.pits.depth > 0 { self.pits.depth } else { PIT_DEPTH };
+        self.pits.decks.iter().any(|d| p.z < d.z && p.z >= d.z - depth && (p.x - d.x).abs() <= 1 && (p.y - d.y).abs() <= 1)
+            && !self.pits.decks.iter().any(|d| d.x == p.x && d.y == p.y)
     }
 
     /// The decks at `at` have just gone from under whoever stood on them
@@ -786,6 +804,35 @@ mod tests {
         assert!(g.log.iter().any(|l| l.text.contains("climbed out of")));
         // And the cause of a death by falling is told as such.
         assert_eq!(super::super::annals::cause_of("fell to their death in the Belly"), "fell into a pit");
+    }
+
+    /// Nobody digs into the rock round the pit; and one who walked down
+    /// into it (where the rock was dug away before) walks out, not lifted.
+    #[test]
+    fn the_pit_keeps_its_walls() {
+        let mut g = Game::new(51);
+        let (p, _, _) = bridge(&mut g);
+        g.channel_under_bridge(p);
+        g.pits.decks = vec![p];
+        let side = p.offset(1, 0, -PIT_DEPTH);
+        assert_eq!(g.designate(side, side, Desig::Dig), 0, "dug into the pit's wall");
+        assert_eq!(g.designate(p.offset(3, 0, -1), p.offset(3, 0, -1), Desig::Dig), 1, "the rock further off is anyone's");
+        // A way in from the side, cut before the pit was guarded.
+        let floor = p.offset(0, 0, -PIT_DEPTH);
+        for x in 1..=3 {
+            let t = g.world.t_mut(floor.offset(x, 0, 0));
+            t.kind = TileKind::Floor;
+            t.dug = true;
+        }
+        g.world.t_mut(floor.offset(3, 0, 0)).kind = TileKind::StairUD;
+        g.world.t_mut(floor.offset(3, 0, 1)).kind = TileKind::StairUD;
+        g.world.t_mut(p.offset(3, 0, 0)).kind = TileKind::StairDown;
+        g.dig_version += 1;
+        g.dwarves[0].pos = floor;
+        g.dwarves[0].move_cd = 0;
+        g.drown_tick();
+        assert_eq!(g.dwarves[0].pos, floor, "lifted out though there's a way out on foot");
+        assert!(!g.log.iter().any(|l| l.text.contains("climbed out of")));
     }
 
     /// Over hollow rock two levels down, the gatehouse's pit is cut a level
