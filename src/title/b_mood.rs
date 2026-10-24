@@ -29,8 +29,16 @@ pub(super) fn draw(cv: &mut Canvas) {
     let light = [(255, 230, 140), (170, 220, 255), (230, 170, 255), (160, 255, 190)][(cv.roll(2) % 4) as usize];
     let air = lerp(stone, (0, 0, 0), 0.78);
     bedrock(cv, 0, h, stone, salt);
-    hollow(cv, 0, 1, w, g, air);
+    let ty = (g - ((g as f32 * 0.6) as i32).clamp(4, 10)).max(1);
+    hollow(cv, 0, ty, w, g, air);
     floor(cv, 0, w, g, lerp(stone, (160, 150, 140), 0.3));
+    // Smoothed walls and their pillars, and shelves of the workshop's odds.
+    for x in (5..w).step_by(18) {
+        for y in ty..g {
+            cv.put(x, y, '║', rgb(lerp(stone, (170, 160, 150), 0.3)), Some(rgb(lerp(stone, (0, 0, 0), 0.4))));
+        }
+        cv.glyph(x, ty, '╦', rgb(lerp(stone, (190, 180, 170), 0.3)));
+    }
 
     // The beat: seized; fetching; working; done; taken away to be admired.
     let at = beat(cv, 1600, 3);
@@ -58,7 +66,7 @@ pub(super) fn draw(cv: &mut Canvas) {
             let pulse = ((tf * 0.08 + r as f32 * 1.7).sin() * 0.5 + 0.5) * 0.6 + 0.4;
             let end = (wx + 2 + (a.cos() * reach) as i32, wy + (a.sin() * reach * 0.4) as i32);
             for (i, (x, y)) in line((wx + 2, wy), end).into_iter().enumerate() {
-                if y >= 1 && y < g {
+                if y >= 0 && y < g {
                     let fall = 1.0 - i as f32 / reach;
                     cv.glow(x, y, light, glow * pulse * fall * 0.35);
                 }
@@ -127,6 +135,7 @@ pub(super) fn draw(cv: &mut Canvas) {
     }
     torch(cv, w - 3, g - 3, 2, 3.0);
     torch(cv, 2, g - 3, 3, 3.0);
+    torch(cv, w / 2, ty, 4, 4.0);
 
     // Below: the announcement, and older artifacts on their plinths.
     let lb = below(cv);
