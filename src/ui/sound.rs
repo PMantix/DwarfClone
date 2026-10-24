@@ -42,7 +42,8 @@ pub fn draw(f: &mut Frame, app: &App, sel: usize) {
         "No sound device: the game runs silently."
     };
     v.push(Line::from(Span::styled(format!(" {}", note), Style::default().fg(MUTED))));
-    v.push(Line::from(Span::styled(" ↑↓ choose  ←→ change  Enter toggles  M mutes anywhere  Esc back", Style::default().fg(MUTED))));
+    let font = if super::adventure::TILE_PX.with(|t| t.get()).is_some() { "  F font" } else { "" };
+    v.push(Line::from(Span::styled(format!(" ↑↓ choose  ←→ change  Enter toggles  M mutes anywhere{}  Esc back", font), Style::default().fg(MUTED))));
     popup(f, f.size(), 72, v.len() as u16 + 2, " Sound ", v);
 }
 
