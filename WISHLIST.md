@@ -24,70 +24,62 @@ about. Losing is fun, but a fortress has to live long enough to have a story.
 
 ## Where we stand (October 2026)
 
-**19 October 2026.** v0.4.0 is released, and Milestone 1 is all but done: 61 of its 62 steps
-(only "the shelter sings" is open). Three gaps remain from its goal: no Reckless fort lives three
-years, no Warlord fort ever falls, and no fort builds a well or a cistern (the overseer finds no
-site for one). Much was built outside the step lists: gods, relics, omens and the wizard; horrors,
-the thing in the night and peoples made by villains; arts and culture; named battles, weddings,
-lairs and the shelter; the director camera, the mood strip, the highlight reel, life stories and
-the news ticker; towers, curtain walls and maturing interiors; gore and close combat, the
-bestiary, sound and the arena; the world drawn as it's made, and the title scenes. The steps
-these cover are now ticked, and steps they only partly cover say what exists. Steps done:
+**24 October 2026, v0.10.0.** Milestone 1 is done but for one step, Milestone 2 is nearly done,
+and adventurer mode has its first slice. Past that the roadmap has barely begun: Milestones 3 to
+8 have 25 of their 449 steps. Much of the work since v0.4 went into things no milestone asked
+for (gore, sound, the square-tile window, title scenes, the arena, sagas, the bestiary), which
+make forts rich to watch while their society, their world and their sieges stay thin. The
+milestone version labels below (v0.3 to v1.0) are the old plan: releases no longer mark them.
 
-| Milestone | Done |
+| Milestone | Steps done |
 |---|---|
-| 1 Forts that live to tell the tale | 61 of 62 |
-| 2 The overseer as a character | 17 of 86 |
-| 3 The fort as a society | 4 of 97 |
+| 1 Forts that live to tell the tale | 61 of 62 (OUT-19's care packages are open) |
+| 2 The overseer as a character | 80 of 87 |
+| 3 The fort as a society | 5 of 97 |
 | 4 The world comes to you | 4 of 115 |
-| 5 War in earnest | 2 of 56 |
-| 6 Deep fortress | 2 of 113 |
+| 5 War in earnest | 6 of 56 |
+| 6 Deep fortress | 4 of 113 |
 | 7 Dread | 3 of 36 |
 | 8 A world of forts | 0 of 32 |
-| Other ways to play | 2 of 9 (the arena, G01, went to Done) |
+| Other ways to play | 7 of 9 (the arena, G01, went to Done) |
 
-The rest of this section is the v0.2.0 picture that set Milestone 1's order.
+**Releases since this section was last written:**
 
-A batch of 25 overseer-run forts (`--autoplay --runs 25 --years 3 --seed 5000`, v0.2.0) gave
-**no survivors after three years**, and most fell within the first year. The build before
-the planned layouts did the same (0 of the 15 it finished), so this is long-standing, not new.
+- **v0.4.0** (19 October): the Milestone 1 release batch; gods, relics and omens, horrors, arts
+  and culture, sound, the arena and a bestiary of 278 animals.
+- **v0.5.0** (19 October): Milestone 1 closed out with river cisterns, the Reckless levy,
+  Warlord sallies and the shelter that sings; drills in the barracks; the square-tile window.
+- **v0.6.0** (19 October): sagas, plans that fit the land (O02), and sworn hosts that avenge a
+  proud overseer's sallies.
+- **v0.7.0** (20 October): Milestone 2's first waves (a mortal overseer with faith and
+  succession, last words, orders that think, a miner's craft) and adventurer mode's foundations.
+- **v0.8.0** (21 October): engraved halls and statues, the trap hall, the family tree, cave-ins,
+  masters and apprentices; gore that changes fights; a hero made, walking the road, entering
+  sites and fallen forts, and fighting as a person.
+- **v0.9.0** (21 October): defences named in legend, towers and pits, blueprints, automatons;
+  heroes who talk and hear rumours, win fame and a saga, save and load, and share one world
+  file with later forts; the adventure bot (`--adventure-trial`).
+- **v0.10.0** (24 October): the square-tile window is the default (`--terminal` for the
+  terminal) with a font screen (`Ctrl+F`); 64 title scenes; heroes climb ramps and dig with a
+  pick.
 
-S01's report on the same batch (saved as `batches/baseline-v0.2.0.json`):
+**Still open:**
 
-- **Standing:** 13 forts after year 1, 3 after year 2, 1 after year 3 (a Warlord fort).
-- **Deaths (451):** bled to death 45%, struck down 35%, fell on an expedition 10%, starvation
-  6%, thirst 4%.
-- **Killers:** goblins 55% of all deaths; cave horrors, troglodytes, the walking dead, dragons
-  and wolves about 5% each.
-- **Where:** 58% died during a siege, 36% under the open sky, and **32% inside the shelter**:
-  the alert burrow doesn't keep goblins out (the bridge went up in only 22% of first sieges).
-- **Sieges:** about five goblins each. The first kills 5.5 dwarves on average and the second
-  8.5, while dwarves kill fewer than one goblin per siege.
+- Balance hasn't been measured since 19 October (`batches/warlord.json`): Milestone 2's waves
+  and gore that does harm landed without a batch.
+- A sally rarely breaks an army outright, and Warlord forts fall a season after their pride is
+  paid for, not at the gate.
+- Only 4 of 20 adventure heroes come home; quests, companions and the nemesis (A8, A9, A12) are
+  empty stubs.
+- No yearly world tick, no siege AI, no drink or tavern night, no night in the fort, and nobles
+  and justice that never push back.
 
-**The fights up close** (the arena, `cargo test arena -- --ignored --nocapture`; the blow counts
-in the batch report; and a tick-by-tick replay, `SEED=5005 STYLE=steady SIEGE=2 cargo test
-siege_replay -- --ignored --nocapture`):
+The v0.2.0 picture that set Milestone 1's order (no fort of 25 standing after three years) is
+in `batches/baseline-v0.2.0.json` and in this file's history.
 
-- A one-on-one fight is over in 70–100 ticks. Bare-handed, with a pick or with a copper axe a
-  dwarf loses to a goblin 76–100% of the time; an iron axe with helm, mail and shield wins
-  75–88%, a trained veteran 81–99%. 85–100% of the losers bleed out, within a hundred ticks.
-- In real sieges goblins struck civilians 2,130 times (65% drew blood) and soldiers 1,362 times
-  (22%: armour works). Soldiers drew blood with 68% of 474 blows but killed fewer than one goblin
-  a siege: they swing **wooden crossbows** (1.8 damage, blunt, barely bleeds), and fired only 92
-  bolts in 31 sieges.
-- When the first siege came, most squads held wooden crossbows and no armour while 10–32 pieces
-  of armour lay in stock; three Warlord forts had **no soldiers at all**, lost on expeditions.
-- The replay of a typical massacre: the alert sends every civilian into the shelter within 100
-  ticks, but **the gate has only one door on a two-tile corridor** (the overseer marks the gate
-  done when either door is placed) and no drawbridge (never built for want of mechanisms), so
-  all five goblins walk in by tick 200 and kill the cornered civilians one at a time, four or
-  five to a dwarf.
-
-So the order is clear: the shelter and the bridge (S04), dwarves who fight back (S04), the
-bleeding (S02), and expeditions that cost a tenth of all deaths (a new item below, S06).
-
-What's strong now: the world map and its history, varied sites, planned fortress layouts, the
-overseer's ambitions and brain, festivals, heroes, mysteries, legends and the chronicle.
+What's strong now: the world map and its history, planned and walled forts, overseers with a
+character, sieges with traps and sallies, gore, sagas, legends and the chronicle, and the
+director camera that tells it all.
 
 ## Roadmap
 
