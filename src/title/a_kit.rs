@@ -43,25 +43,6 @@ pub(super) fn clouds(cv: &mut Canvas, n: i32, rows: (i32, i32), every: u64, body
     }
 }
 
-/// Rain over rows `0..rows`: `n` drops leaning `lean` cells per row
-/// (`/` one way, `\` the other, `│` straight down).
-pub(super) fn rain(cv: &mut Canvas, n: i32, rows: i32, lean: i32, col: Rgb, salt: i32) {
-    let (w, t) = (cv.w(), cv.t);
-    let rows = rows.min(cv.h()).max(1);
-    let ch = match lean.signum() {
-        1 => '/',
-        -1 => '\\',
-        _ => '│',
-    };
-    for k in 0..n {
-        let speed = 1 + (k % 2) as u64;
-        let y = ((hash(k + salt, 2) as u64 + t / speed) % rows as u64) as i32;
-        let x0 = (hash(k + salt, 3) % w.max(1) as u32) as i32;
-        let x = (x0 - y * lean / 2).rem_euclid(w.max(1));
-        cv.glyph(x, y, ch, rgb(col));
-    }
-}
-
 /// A dwarf standing at (`x`, `y`).
 pub(super) fn dwarf(cv: &mut Canvas, x: i32, y: i32, coat: Rgb) {
     cv.glyph(x, y, '☺', rgb(coat));

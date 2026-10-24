@@ -40,14 +40,23 @@ pub(super) fn draw(cv: &mut Canvas) {
     }
 
     // The fields below: grain bending in waves of wind.
-    let hedge = |y: i32| y > g && (y - g) % 7 == 0;
+    // Hedgerows wander between the fields; each field has its own crop.
+    let bend = (cv.roll(5) % 628) as f32 / 100.0;
     for y in g.max(0)..h {
         for x in 0..w {
-            if hedge(y) {
+            let yy = (y - g) as f32 - 1.0 - ((x as f32 * 0.05 + bend).sin() * 2.0 + (x as f32 * 0.13).sin() * 0.6);
+            let field = (yy / 7.0).floor() as i32;
+            if yy > 0.0 && (yy.round() as i32) % 7 == 0 && hash(x + salt, field) % 11 != 0 {
                 let ch = if hash(x + salt, y) % 2 == 0 { '♣' } else { '♠' };
                 cv.put(x, y, ch, rgb((40, 90, 40)), Some(rgb((50, 70, 34))));
                 continue;
             }
+            let kind = hash(field + salt, 17) % 5;
+            let (ripe, dry) = match kind {
+                0 => ((150, 180, 80), (110, 140, 60)),
+                1 => ((170, 120, 80), (130, 90, 60)),
+                _ => (ripe, dry),
+            };
             let wave = (x as f32 * 0.12 - tf * 0.09 + y as f32 * 0.35).sin() + (x as f32 * 0.31 + tf * 0.05).sin() * 0.3;
             let ch = if wave > 0.75 { '/' } else if wave > 0.1 { '"' } else if wave > -0.6 { '\'' } else { ',' };
             let lit = (wave * 0.5 + 0.5) * 0.6;

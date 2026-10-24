@@ -23,9 +23,10 @@ pub(super) fn draw(cv: &mut Canvas) {
     let evening = cv.roll(1) % 2 == 0;
     let (top, bot) = if evening { ((80, 90, 150), (250, 190, 130)) } else { ((70, 140, 220), (200, 225, 245)) };
     let p = (cv.roll(2) % 628) as f32 / 100.0;
-    // Where the storm's front has got to: it rolls across, then starts over.
-    let span = (w * 2 + 40) as u64;
-    let front = ((t / 4 + cv.roll(3) as u64) % span) as i32 - 20;
+    // Where the storm's front has got to: it rolls in over the valley,
+    // hangs there, and draws back towards the peaks.
+    let swell = (cv.roll(3) % 628) as f32 / 100.0;
+    let front = (w as f32 * (0.62 + 0.4 * (tf * 0.002 + swell).sin())) as i32;
     let gap = 70 + (cv.roll(4) % 60) as u64; // frames between strikes
     let since = (t + cv.roll(5) as u64) % gap;
     let strike = (t + cv.roll(5) as u64) / gap;
@@ -42,9 +43,12 @@ pub(super) fn draw(cv: &mut Canvas) {
             let depth = edge + lump - (y - cloud_base).max(0) as f32 * 3.0;
             let mut c = base;
             if depth > 0.0 {
-                let dark = (depth / 12.0).min(1.0);
-                let bulge = ((x as f32 * 0.4 + y as f32 * 1.3 + p).sin() * 0.5 + 0.5) * 0.25;
-                c = lerp(lerp((150, 150, 165), (46, 48, 62), dark), (200, 200, 210), bulge * (1.0 - dark));
+                // Billows: lit tops and dark bellies, churning slowly.
+                let edge_fade = (depth / 4.0).min(1.0);
+                let billow = ((x as f32 * 0.13 + y as f32 * 0.6 + p + tf * 0.01).sin() * 0.5 + (x as f32 * 0.31 - y as f32 * 0.9 + tf * 0.017).sin() * 0.3 + 0.5).clamp(0.0, 1.0);
+                let low = (y as f32 / cloud_base.max(1) as f32).min(1.0);
+                let body = lerp(lerp((120, 122, 140), (36, 38, 52), low * 0.8), (176, 176, 190), billow * (1.0 - low) * 0.8);
+                c = lerp(c, lerp(body, (30, 32, 44), billow * low * 0.5), edge_fade);
             }
             if flash {
                 c = lerp(c, (230, 230, 255), 0.55);

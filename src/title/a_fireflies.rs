@@ -69,7 +69,7 @@ pub(super) fn draw(cv: &mut Canvas) {
         let bark = lerp((30, 26, 24), (14, 14, 16), off as f32 / clearing.max(1) as f32);
         for y in top..h {
             for i in 0..girth {
-                let ch = if (y + i) % 4 == 0 { '║' } else { ' ' };
+                let ch = if hash(x + i, y + salt) % 5 == 0 { '│' } else { ' ' };
                 cv.put(x + i, y, ch, rgb((40, 36, 32)), Some(rgb(bark)));
             }
         }
