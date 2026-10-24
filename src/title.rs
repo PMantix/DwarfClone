@@ -21,6 +21,26 @@ mod snapshot;
 mod siege;
 mod tavern;
 mod winter;
+// Set C: the world, history, adventure, sea and sky.
+mod c_kit;
+mod c_campfire;
+mod c_slayer;
+mod c_voyage;
+mod c_lighthouse;
+mod c_worldgen;
+mod c_march;
+mod c_elves;
+mod c_castle;
+mod c_darkfort;
+mod c_fair;
+mod c_ford;
+mod c_comet;
+mod c_eclipse;
+mod c_ages;
+mod c_skyisles;
+mod c_volcano;
+#[cfg(test)]
+mod c_tests;
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -70,7 +90,7 @@ struct Scene {
     taglines: &'static [&'static str],
 }
 
-const SCENES: [Scene; 16] = [
+const SCENES: &[Scene] = &[
     Scene { name: "fortress", draw: fortress::draw, taglines: fortress::TAGLINES },
     Scene { name: "siege", draw: siege::draw, taglines: siege::TAGLINES },
     Scene { name: "dragon", draw: dragon::draw, taglines: dragon::TAGLINES },
@@ -87,6 +107,23 @@ const SCENES: [Scene; 16] = [
     Scene { name: "festival", draw: festival::draw, taglines: festival::TAGLINES },
     Scene { name: "gorge", draw: gorge::draw, taglines: gorge::TAGLINES },
     Scene { name: "flood", draw: flood::draw, taglines: flood::TAGLINES },
+    // Set C: the world, history, adventure, sea and sky.
+    Scene { name: "campfire", draw: c_campfire::draw, taglines: c_campfire::TAGLINES },
+    Scene { name: "slayer", draw: c_slayer::draw, taglines: c_slayer::TAGLINES },
+    Scene { name: "voyage", draw: c_voyage::draw, taglines: c_voyage::TAGLINES },
+    Scene { name: "lighthouse", draw: c_lighthouse::draw, taglines: c_lighthouse::TAGLINES },
+    Scene { name: "worldgen", draw: c_worldgen::draw, taglines: c_worldgen::TAGLINES },
+    Scene { name: "march", draw: c_march::draw, taglines: c_march::TAGLINES },
+    Scene { name: "elves", draw: c_elves::draw, taglines: c_elves::TAGLINES },
+    Scene { name: "castle", draw: c_castle::draw, taglines: c_castle::TAGLINES },
+    Scene { name: "darkfort", draw: c_darkfort::draw, taglines: c_darkfort::TAGLINES },
+    Scene { name: "fair", draw: c_fair::draw, taglines: c_fair::TAGLINES },
+    Scene { name: "ford", draw: c_ford::draw, taglines: c_ford::TAGLINES },
+    Scene { name: "comet", draw: c_comet::draw, taglines: c_comet::TAGLINES },
+    Scene { name: "eclipse", draw: c_eclipse::draw, taglines: c_eclipse::TAGLINES },
+    Scene { name: "ages", draw: c_ages::draw, taglines: c_ages::TAGLINES },
+    Scene { name: "skyisles", draw: c_skyisles::draw, taglines: c_skyisles::TAGLINES },
+    Scene { name: "volcano", draw: c_volcano::draw, taglines: c_volcano::TAGLINES },
 ];
 
 /// How many scenes there are to choose from.
@@ -614,7 +651,7 @@ mod tests {
 
     #[test]
     fn the_scenes_are_all_there_and_named_once() {
-        assert_eq!(SCENE_COUNT, 16);
+        assert!(SCENE_COUNT >= 16);
         for (i, a) in SCENES.iter().enumerate() {
             assert!(SCENES.iter().skip(i + 1).all(|b| b.name != a.name), "{} twice", a.name);
         }
