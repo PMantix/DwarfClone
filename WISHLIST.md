@@ -24,70 +24,62 @@ about. Losing is fun, but a fortress has to live long enough to have a story.
 
 ## Where we stand (October 2026)
 
-**19 October 2026.** v0.4.0 is released, and Milestone 1 is all but done: 61 of its 62 steps
-(only "the shelter sings" is open). Three gaps remain from its goal: no Reckless fort lives three
-years, no Warlord fort ever falls, and no fort builds a well or a cistern (the overseer finds no
-site for one). Much was built outside the step lists: gods, relics, omens and the wizard; horrors,
-the thing in the night and peoples made by villains; arts and culture; named battles, weddings,
-lairs and the shelter; the director camera, the mood strip, the highlight reel, life stories and
-the news ticker; towers, curtain walls and maturing interiors; gore and close combat, the
-bestiary, sound and the arena; the world drawn as it's made, and the title scenes. The steps
-these cover are now ticked, and steps they only partly cover say what exists. Steps done:
+**24 October 2026, v0.10.0.** Milestone 1 is done but for one step, Milestone 2 is nearly done,
+and adventurer mode has its first slice. Past that the roadmap has barely begun: Milestones 3 to
+8 have 25 of their 449 steps. Much of the work since v0.4 went into things no milestone asked
+for (gore, sound, the square-tile window, title scenes, the arena, sagas, the bestiary), which
+make forts rich to watch while their society, their world and their sieges stay thin. The
+milestone version labels below (v0.3 to v1.0) are the old plan: releases no longer mark them.
 
-| Milestone | Done |
+| Milestone | Steps done |
 |---|---|
-| 1 Forts that live to tell the tale | 61 of 62 |
-| 2 The overseer as a character | 17 of 86 |
-| 3 The fort as a society | 4 of 97 |
+| 1 Forts that live to tell the tale | 61 of 62 (OUT-19's care packages are open) |
+| 2 The overseer as a character | 80 of 87 |
+| 3 The fort as a society | 5 of 97 |
 | 4 The world comes to you | 4 of 115 |
-| 5 War in earnest | 2 of 56 |
-| 6 Deep fortress | 2 of 113 |
+| 5 War in earnest | 6 of 56 |
+| 6 Deep fortress | 4 of 113 |
 | 7 Dread | 3 of 36 |
 | 8 A world of forts | 0 of 32 |
-| Other ways to play | 2 of 9 (the arena, G01, went to Done) |
+| Other ways to play | 7 of 9 (the arena, G01, went to Done) |
 
-The rest of this section is the v0.2.0 picture that set Milestone 1's order.
+**Releases since this section was last written:**
 
-A batch of 25 overseer-run forts (`--autoplay --runs 25 --years 3 --seed 5000`, v0.2.0) gave
-**no survivors after three years**, and most fell within the first year. The build before
-the planned layouts did the same (0 of the 15 it finished), so this is long-standing, not new.
+- **v0.4.0** (19 October): the Milestone 1 release batch; gods, relics and omens, horrors, arts
+  and culture, sound, the arena and a bestiary of 278 animals.
+- **v0.5.0** (19 October): Milestone 1 closed out with river cisterns, the Reckless levy,
+  Warlord sallies and the shelter that sings; drills in the barracks; the square-tile window.
+- **v0.6.0** (19 October): sagas, plans that fit the land (O02), and sworn hosts that avenge a
+  proud overseer's sallies.
+- **v0.7.0** (20 October): Milestone 2's first waves (a mortal overseer with faith and
+  succession, last words, orders that think, a miner's craft) and adventurer mode's foundations.
+- **v0.8.0** (21 October): engraved halls and statues, the trap hall, the family tree, cave-ins,
+  masters and apprentices; gore that changes fights; a hero made, walking the road, entering
+  sites and fallen forts, and fighting as a person.
+- **v0.9.0** (21 October): defences named in legend, towers and pits, blueprints, automatons;
+  heroes who talk and hear rumours, win fame and a saga, save and load, and share one world
+  file with later forts; the adventure bot (`--adventure-trial`).
+- **v0.10.0** (24 October): the square-tile window is the default (`--terminal` for the
+  terminal) with a font screen (`Ctrl+F`); 64 title scenes; heroes climb ramps and dig with a
+  pick.
 
-S01's report on the same batch (saved as `batches/baseline-v0.2.0.json`):
+**Still open:**
 
-- **Standing:** 13 forts after year 1, 3 after year 2, 1 after year 3 (a Warlord fort).
-- **Deaths (451):** bled to death 45%, struck down 35%, fell on an expedition 10%, starvation
-  6%, thirst 4%.
-- **Killers:** goblins 55% of all deaths; cave horrors, troglodytes, the walking dead, dragons
-  and wolves about 5% each.
-- **Where:** 58% died during a siege, 36% under the open sky, and **32% inside the shelter**:
-  the alert burrow doesn't keep goblins out (the bridge went up in only 22% of first sieges).
-- **Sieges:** about five goblins each. The first kills 5.5 dwarves on average and the second
-  8.5, while dwarves kill fewer than one goblin per siege.
+- Balance hasn't been measured since 19 October (`batches/warlord.json`): Milestone 2's waves
+  and gore that does harm landed without a batch.
+- A sally rarely breaks an army outright, and Warlord forts fall a season after their pride is
+  paid for, not at the gate.
+- Only 4 of 20 adventure heroes come home; quests, companions and the nemesis (A8, A9, A12) are
+  empty stubs.
+- No yearly world tick, no siege AI, no drink or tavern night, no night in the fort, and nobles
+  and justice that never push back.
 
-**The fights up close** (the arena, `cargo test arena -- --ignored --nocapture`; the blow counts
-in the batch report; and a tick-by-tick replay, `SEED=5005 STYLE=steady SIEGE=2 cargo test
-siege_replay -- --ignored --nocapture`):
+The v0.2.0 picture that set Milestone 1's order (no fort of 25 standing after three years) is
+in `batches/baseline-v0.2.0.json` and in this file's history.
 
-- A one-on-one fight is over in 70–100 ticks. Bare-handed, with a pick or with a copper axe a
-  dwarf loses to a goblin 76–100% of the time; an iron axe with helm, mail and shield wins
-  75–88%, a trained veteran 81–99%. 85–100% of the losers bleed out, within a hundred ticks.
-- In real sieges goblins struck civilians 2,130 times (65% drew blood) and soldiers 1,362 times
-  (22%: armour works). Soldiers drew blood with 68% of 474 blows but killed fewer than one goblin
-  a siege: they swing **wooden crossbows** (1.8 damage, blunt, barely bleeds), and fired only 92
-  bolts in 31 sieges.
-- When the first siege came, most squads held wooden crossbows and no armour while 10–32 pieces
-  of armour lay in stock; three Warlord forts had **no soldiers at all**, lost on expeditions.
-- The replay of a typical massacre: the alert sends every civilian into the shelter within 100
-  ticks, but **the gate has only one door on a two-tile corridor** (the overseer marks the gate
-  done when either door is placed) and no drawbridge (never built for want of mechanisms), so
-  all five goblins walk in by tick 200 and kill the cornered civilians one at a time, four or
-  five to a dwarf.
-
-So the order is clear: the shelter and the bridge (S04), dwarves who fight back (S04), the
-bleeding (S02), and expeditions that cost a tenth of all deaths (a new item below, S06).
-
-What's strong now: the world map and its history, varied sites, planned fortress layouts, the
-overseer's ambitions and brain, festivals, heroes, mysteries, legends and the chronicle.
+What's strong now: the world map and its history, planned and walled forts, overseers with a
+character, sieges with traps and sallies, gore, sagas, legends and the chronicle, and the
+director camera that tells it all.
 
 ## Roadmap
 
@@ -210,7 +202,7 @@ their pride is paid for, not at the gate.
 - **Steps:** [x] the overseer sends expeditions only with a strong, armed squad and spare
   dwarves at home (e54ad30) · [x] odds are shown before sending, and a squad that's losing comes home early
   with its wounded (e54ad30)
-- **From the Bay 12 review:** [x] Companions turn back ([OUT-17](ideas/world-and-overseer.md)) (e54ad30) · [x] Field rations and care packages ([OUT-19](ideas/world-and-overseer.md)) (e54ad30) · [x] The tactician matters ([OUT-20](ideas/world-and-overseer.md)) (e54ad30)
+- **From the Bay 12 review:** [x] Companions turn back ([OUT-17](ideas/world-and-overseer.md)) (e54ad30) · [ ] Field rations and care packages ([OUT-19](ideas/world-and-overseer.md); partly: an expedition always packs rations, e54ad30; nothing sends care packages to a squad in the field. Was ticked; unticked by the 23 October audit) · [x] The tactician matters ([OUT-20](ideas/world-and-overseer.md)) (e54ad30)
 - **Done when:** expedition deaths fall below 5% of all deaths in the batch.
 
 #### S05 Food and water a fort can rely on (S)
@@ -302,9 +294,11 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
   notes in its voice (e79d14e: six openings a trait; its halls, feasts and eulogies too; 6892e14:
   notes tagged by kind with openings per trait and kind, and it mourns, sneers or frets over deaths
   and sieges by its traits)
-- **From the Bay 12 review:** [x] Watch and nudge ([OVR-24](ideas/world-and-overseer.md); 6892e14: its
+- **From the Bay 12 review:** [ ] Watch and nudge ([OVR-24](ideas/world-and-overseer.md); partly, 6892e14: its
   next step in the top bar and brain, and danger cards offer b raise the bridge · s shelter · m muster
-  · d stand down, which it obeys for half a day; a stubborn one sometimes won't be told)
+  · d stand down, which it obeys for half a day; a stubborn one sometimes won't be told. Open: stand down only
+  cancels earlier orders, it never lowers the bridge or ends the alert as `Command::StandDown` says.
+  Was ticked; unticked by the 23 October audit)
 - **Done when:** two overseers with the same style but different traits build visibly different
   forts from the same seed.
 
@@ -332,7 +326,7 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
   from a deed done there, 6567979; naming.rs, this commit: a great hall is named for the fort's
   hero or noble, and renamed for a leader or beast slain in it, three dead in a day, a stand or
   a wedding; the gate for its first held siege; announced, noted, in legends and chronicle)
-- **From the Bay 12 review:** [x] Trophies of war ([CRF-01](ideas/economy.md), this commit: the skulls of dragons, named beasts, horrors and siege generals, set up on displays in the great hall and admired; their people come back for them) · [x] Named weapons ([CRF-02](ideas/economy.md), this commit: a weapon is named at its fifth kill, with a legend, and its great kills go into the legends) · [x] Inscriptions and maker's marks ([CRF-06](ideas/economy.md), this commit: superior work bears its maker's mark, exceptional work an inscription) · [ ] Name creator ([CRF-08](ideas/economy.md); partly: battles, places, taverns, instruments and weapons get names) · [x] Jeweler and decorations ([CRF-13](ideas/economy.md), this commit: the craftsdwarf sets cut gems into furniture and figurines; a rich overseer orders it) · [x] Gems in engravings, engraved built walls ([CRF-12](ideas/economy.md), this commit) · [x] Statues and figurines of things ([CRF-21](ideas/economy.md); statues and crafts show the fort's legends and heroes, f6ad60c; this commit: and the beasts it has met, its animals, the generals at its gate, its drawbridge, well and monument) · [x] Places named for what happened there ([WLD-02](ideas/world-and-overseer.md), 6567979)
+- **From the Bay 12 review:** [x] Trophies of war ([CRF-01](ideas/economy.md), this commit: the skulls of dragons, named beasts, horrors and siege generals, set up on displays in the great hall and admired; their people come back for them) · [x] Named weapons ([CRF-02](ideas/economy.md), this commit: a weapon is named at its fifth kill, with a legend, and its great kills go into the legends) · [x] Inscriptions and maker's marks ([CRF-06](ideas/economy.md), this commit: superior work bears its maker's mark, exceptional work an inscription) · [x] Name creator ([CRF-08](ideas/economy.md); names.rs `coin` names halls, weapons and automatons; battles, places, taverns and instruments get names too) · [x] Jeweler and decorations ([CRF-13](ideas/economy.md), this commit: the craftsdwarf sets cut gems into furniture and figurines; a rich overseer orders it) · [x] Gems in engravings, engraved built walls ([CRF-12](ideas/economy.md), this commit) · [x] Statues and figurines of things ([CRF-21](ideas/economy.md); statues and crafts show the fort's legends and heroes, f6ad60c; this commit: and the beasts it has met, its animals, the generals at its gate, its drawbridge, well and monument) · [x] Places named for what happened there ([WLD-02](ideas/world-and-overseer.md), 6567979)
 - **Done when:** a three-year fort has smoothed main halls, furnished bedrooms and named halls.
 
 #### O04 Defences in the plan (M)
@@ -400,7 +394,7 @@ Goal: the fort runs on its own politics and feelings. Dwarves remember, grieve, 
 
 #### C02 Grief and vengeance (L)
 - **Why:** A death should ripple through the fort: mourners who wander, vows against the killer, panic at the sight of the place it happened.
-- **Steps:** [ ] Grief needs a body ([MND-21](ideas/body-and-mind.md)) · [ ] Grief wandering ([MND-11](ideas/body-and-mind.md)) · [ ] Last words ([MND-12](ideas/body-and-mind.md)) · [ ] Vengeance vow ([MND-05](ideas/body-and-mind.md)) · [ ] Traumatic triggers ([MND-07](ideas/body-and-mind.md)) · [ ] Buried resentment ([MND-17](ideas/body-and-mind.md)) · [ ] Coming home ([MND-37](ideas/body-and-mind.md))
+- **Steps:** [ ] Grief needs a body ([MND-21](ideas/body-and-mind.md)) · [ ] Grief wandering ([MND-11](ideas/body-and-mind.md)) · [x] Last words ([MND-12](ideas/body-and-mind.md); built as UI-02 in O05, lastwords.rs) · [ ] Vengeance vow ([MND-05](ideas/body-and-mind.md)) · [ ] Traumatic triggers ([MND-07](ideas/body-and-mind.md)) · [ ] Buried resentment ([MND-17](ideas/body-and-mind.md)) · [ ] Coming home ([MND-37](ideas/body-and-mind.md))
 - **Done when:** A dwarf whose spouse was killed swears vengeance and seeks out that enemy in the next siege.
 
 #### C03 Feuds and factions (L)
@@ -549,12 +543,12 @@ Goal: sieges are never the same twice. Invaders adapt and the fort adapts back; 
 
 #### A01 Sieges with surprises (M)
 - **Why:** Sieges come on the first day of a season and play out alike; they should vary, and the fort should answer each one.
-- **Steps:** [ ] Unpredictable arrival ([SIE-02](ideas/war.md)) · [ ] Ambush vs open siege ([SIE-42](ideas/war.md); partly: now and then an army comes unseen, 537cc17) · [x] Freeing the caged ([SIE-04](ideas/war.md), 5cd7dd7) · [x] Victory cheer and feast ([SIE-03](ideas/war.md), c1a411a) · [ ] Traps jammed with bodies ([SIE-19](ideas/war.md)) · [ ] Drowning the invaders ([SIE-20](ideas/war.md))
+- **Steps:** [ ] Unpredictable arrival ([SIE-02](ideas/war.md)) · [ ] Ambush vs open siege ([SIE-42](ideas/war.md); partly: now and then an army comes unseen, 537cc17) · [x] Freeing the caged ([SIE-04](ideas/war.md), 5cd7dd7) · [x] Victory cheer and feast ([SIE-03](ideas/war.md), c1a411a) · [x] Traps jammed with bodies ([SIE-19](ideas/war.md); built as ENG-01 in O04, traps.rs `jammed`) · [ ] Drowning the invaders ([SIE-20](ideas/war.md); partly: foes drown in the pond pit under the bridge, ENG-03 in O04, pits.rs `drown_tick`; no flooding through floodgates)
 - **Done when:** Sieges arrive at varied times and from varied edges, and a broken siege lifts the fort's mood.
 
 #### A02 Blood and nerve (L)
 - **Why:** Fights should be decided by courage as well as hit points: routs, rallies, levies and prisoners.
-- **Steps:** [ ] Morale, fear and rout ([MIL-06](ideas/war.md); partly: armies rout when the leader falls or half are caged; beasts lose nerve, 8cc661b) · [ ] A leader's fall cuts both ways ([MIL-09](ideas/war.md)) · [ ] Rallying charge ([MIL-10](ideas/war.md)) · [ ] Emergency levy and martial law ([MIL-07](ideas/war.md)) · [ ] Cornered civilians fight back ([MIL-08](ideas/war.md)) · [ ] Bystanders choose sides ([MIL-17](ideas/war.md)) · [ ] Yielding and prisoners of war ([MIL-16](ideas/war.md)) · [ ] Mutiny and desertion ([MIL-15](ideas/war.md))
+- **Steps:** [ ] Morale, fear and rout ([MIL-06](ideas/war.md); partly: armies rout when the leader falls or half are caged; beasts lose nerve, 8cc661b) · [ ] A leader's fall cuts both ways ([MIL-09](ideas/war.md)) · [ ] Rallying charge ([MIL-10](ideas/war.md)) · [ ] Emergency levy and martial law ([MIL-07](ideas/war.md); partly: a Reckless overseer arms a levy against armies and beasts, levy.rs; no martial law) · [ ] Cornered civilians fight back ([MIL-08](ideas/war.md)) · [ ] Bystanders choose sides ([MIL-17](ideas/war.md)) · [ ] Yielding and prisoners of war ([MIL-16](ideas/war.md)) · [ ] Mutiny and desertion ([MIL-15](ideas/war.md))
 - **Done when:** A squad routs when its leader falls, and a broken goblin can yield and be taken prisoner.
 
 #### W20 Attributes and skill decay (M)
@@ -564,7 +558,7 @@ Goal: sieges are never the same twice. Invaders adapt and the fort adapts back; 
 
 #### A03 Legends of the blade (M)
 - **Why:** Battles and weapons should be remembered: named weapons, kill tallies, veterans with reputations.
-- **Steps:** [ ] Named battles and a fight log ([MIL-12](ideas/war.md); partly: named battles, 15be5b2; a fight log only in the arena) · [ ] Weapons that earn names ([MIL-11](ideas/war.md)) · [ ] Per-dwarf kill records ([MIL-67](ideas/war.md)) · [ ] Revenge and nemesis ([MIL-13](ideas/war.md)) · [ ] One appointed champion ([MIL-44](ideas/war.md)) · [ ] Favourite weapons ([MIL-41](ideas/war.md))
+- **Steps:** [ ] Named battles and a fight log ([MIL-12](ideas/war.md); partly: named battles, 15be5b2; a fight log only in the arena) · [x] Weapons that earn names ([MIL-11](ideas/war.md); built as CRF-02 in O03: named at the fifth kill, its owner attached to it, crafts.rs `weapon_blooded`) · [ ] Per-dwarf kill records ([MIL-67](ideas/war.md); partly: `Dwarf.kills` counts kills and the life story says "slew N"; a list of who was slain only in the arena) · [ ] Revenge and nemesis ([MIL-13](ideas/war.md)) · [ ] One appointed champion ([MIL-44](ideas/war.md)) · [ ] Favourite weapons ([MIL-41](ideas/war.md))
 - **Done when:** A weapon that has killed a named enemy gets a name and a history.
 
 #### A04 Squad life (L)
@@ -613,7 +607,7 @@ Goal: the deep places are dangerous and worth it.
 - **Why:** pumps, water wheels and magma channels are DF's great engineering projects.
 - **Steps:** [ ] screw pumps lift water or magma a level · [ ] aquifer tools: pumping a shaft dry,
   and a warning before embarking on a heavy aquifer · [ ] magma creatures in the sea
-- **From the Bay 12 review:** [ ] Wells and cisterns inside ([ENG-18](ideas/economy.md); partly: cistern.rs, 0b0db40, but no fort finds a site) · [ ] Warm and damp warnings, aquifer tools ([ENG-15](ideas/economy.md)) · [ ] Screw pumps ([ENG-21](ideas/economy.md)) · [ ] Magma works ([ENG-27](ideas/economy.md)) · [ ] Fresh, salt and stagnant water ([ENG-37](ideas/economy.md)) · [ ] More water sources ([ENG-38](ideas/economy.md)) · [ ] Power ([ENG-28](ideas/economy.md)) · [ ] Eruptions and surges ([ENG-26](ideas/economy.md)) · [ ] Volcanoes refill ([ENG-40](ideas/economy.md))
+- **From the Bay 12 review:** [x] Wells and cisterns inside ([ENG-18](ideas/economy.md); cistern.rs, 0b0db40: a well sunk inside the shelter or a cistern filled through a floodgate; since the M1 close-out 32 of 40 non-Reckless forts fill one from a river, S05) · [ ] Warm and damp warnings, aquifer tools ([ENG-15](ideas/economy.md)) · [ ] Screw pumps ([ENG-21](ideas/economy.md)) · [ ] Magma works ([ENG-27](ideas/economy.md)) · [ ] Fresh, salt and stagnant water ([ENG-37](ideas/economy.md)) · [ ] More water sources ([ENG-38](ideas/economy.md)) · [ ] Power ([ENG-28](ideas/economy.md)) · [ ] Eruptions and surges ([ENG-26](ideas/economy.md)) · [ ] Volcanoes refill ([ENG-40](ideas/economy.md))
 - **Done when:** a pump stack drains a flooded shaft.
 
 #### D01 The living caverns (M)
@@ -643,7 +637,7 @@ Goal: the deep places are dangerous and worth it.
 
 #### D06 Harsh world (M)
 - **Why:** The surface and the deep should both hurt: sun sickness, cold, heat, bad air.
-- **Steps:** [ ] Sun sickness ([HLT-05](ideas/body-and-mind.md)) · [ ] Surviving cave-ins ([HLT-12](ideas/body-and-mind.md)) · [ ] Burning dwarves react ([HLT-13](ideas/body-and-mind.md)) · [ ] Falls that hurt ([HLT-23](ideas/body-and-mind.md)) · [ ] Cold injuries and frostbite ([HLT-22](ideas/body-and-mind.md)) · [ ] Blind in the dark ([HLT-36](ideas/body-and-mind.md))
+- **Steps:** [ ] Sun sickness ([HLT-05](ideas/body-and-mind.md)) · [x] Surviving cave-ins ([HLT-12](ideas/body-and-mind.md); built as DIG-07 in O10: caught dwarves are wounded and maybe buried, then dug out, disasters.rs `bury`) · [ ] Burning dwarves react ([HLT-13](ideas/body-and-mind.md)) · [ ] Falls that hurt ([HLT-23](ideas/body-and-mind.md)) · [ ] Cold injuries and frostbite ([HLT-22](ideas/body-and-mind.md)) · [ ] Blind in the dark ([HLT-36](ideas/body-and-mind.md))
 - **Done when:** Dwarves raised underground falter in the sun until they grow used to it.
 
 #### D07 Marked for life (L)
@@ -711,12 +705,12 @@ Goal: a fort's fall is the start of the next story. The world remembers ruins, r
 
 #### P01 Fallen forts live on (L)
 - **Why:** A lost fort is only a save slot today; it should become a ruin in the world that a later fort can reclaim, with survivors who come back.
-- **Steps:** [ ] Fallen forts enter the world ([WLD-10](ideas/world-and-overseer.md); partly: a fallen fort's sagas go into the world's legends, and `n` on the game-over screen founds a new fort in the same world, which reads them on its Sagas screen; bde720d) · [ ] Time passes between forts ([WLD-25](ideas/world-and-overseer.md)) · [ ] What old forts leave behind ([OUT-11](ideas/world-and-overseer.md)) · [ ] Survivors come back as migrants ([OUT-10](ideas/world-and-overseer.md)) · [ ] Reclaim a fallen fort ([OUT-09](ideas/world-and-overseer.md)) · [ ] Retire and unretire ([OUT-32](ideas/world-and-overseer.md))
+- **Steps:** [ ] Fallen forts enter the world ([WLD-10](ideas/world-and-overseer.md); partly: a fallen fort's sagas go into the world's legends, and `n` on the game-over screen founds a new fort in the same world, which reads them on its Sagas screen; bde720d; and a fallen fort is marked on the travel map with its killer moved in, merged into the shared world file: A5, A19) · [ ] Time passes between forts ([WLD-25](ideas/world-and-overseer.md)) · [ ] What old forts leave behind ([OUT-11](ideas/world-and-overseer.md)) · [ ] Survivors come back as migrants ([OUT-10](ideas/world-and-overseer.md)) · [ ] Reclaim a fallen fort ([OUT-09](ideas/world-and-overseer.md)) · [ ] Retire and unretire ([OUT-32](ideas/world-and-overseer.md))
 - **Done when:** A batch plays three forts in one world, and the third reclaims the first's ruin.
 
 #### P02 Crown and succession (L)
 - **Why:** The fort's place in the realm: a monarch, a barony, heirs and claims.
-- **Steps:** [ ] Noble deaths matter ([NOB-08](ideas/society.md)) · [ ] Succession in play ([NOB-32](ideas/society.md)) · [ ] Offerings to the ruler ([NOB-44](ideas/society.md)) · [ ] Monarch arrives ([NOB-30](ideas/society.md)) · [ ] Serving the crown ([NOB-31](ideas/society.md)) · [ ] Food riots ([NOB-18](ideas/society.md)) · [ ] Martial law ([NOB-36](ideas/society.md)) · [ ] Pleas for help ([NOB-35](ideas/society.md))
+- **Steps:** [ ] Noble deaths matter ([NOB-08](ideas/society.md)) · [ ] Succession in play ([NOB-32](ideas/society.md)) · [ ] Offerings to the ruler ([NOB-44](ideas/society.md)) · [ ] Monarch arrives ([NOB-30](ideas/society.md)) · [ ] Serving the crown ([NOB-31](ideas/society.md)) · [ ] Food riots ([NOB-18](ideas/society.md); partly: hunger and low faith in the overseer set up to three stressed dwarves rioting, reign.rs `food_riot`; no looting, no noble larders, no guards) · [ ] Martial law ([NOB-36](ideas/society.md)) · [ ] Pleas for help ([NOB-35](ideas/society.md))
 - **Done when:** A happy, rich fort is visited by the monarch, who demands a throne room.
 
 #### P03 Roads and outposts (L)
@@ -756,7 +750,7 @@ Goal: the same world and simulation, seen from other seats.
   8's fallen forts (ruins to explore).
 - **Steps:** [x] make a character (race, skills, gear) and start at a site (A1, this commit) · [x] travel the
   world map; enter sites as local maps (towns, ruins, lairs, caves) (sites built on entry from the legends, with site memory: A4 3769753; the road with its travel log, night, weather, encounters, camps and wounds that bleed on the way: A3 31a02ad; saved and loaded whole, the road's encounters and a fallen fort's halls too (Esc menu, F5/F9, autosaves going in and out of sites and at each dawn on the road): A11 a90bc86; up and down as in DF, walking onto a ramp climbs it, `<` `>` on ramps too, a "Here:" line saying what the hero's tile allows and the ways up and down that work drawn bright, and digging with a pick in hand (`D`: tunnels, stairs down and up, steps out of a pit, remembered by the site and written back to a fallen fort): climb, this commit) · [ ] talk: hear news and
-  rumours (`k`: greeted by fame, news, rumours of fallen forts, lairs, ruins and bones marked `!` on the travel map, the old tales as each people tells them this year, directions: A7 dfb75b6, this commit), take jobs, hire companions · [x] fight with the same body and wounds as fortress
+  rumours (`k`: greeted by fame, news, rumours of fallen forts, lairs, ruins and bones marked `!` on the travel map, the old tales as each people tells them this year, directions: A7 dfb75b6, this commit), take jobs, hire companions (open: quests.rs and company.rs are empty stubs, A8, A9) · [x] fight with the same body and wounds as fortress
   mode; loot; rest and heal (aimed blows and called shots at the eyes and teeth, crossbow bolts seen to fly, binding wounds, the dead's gear taken, the fight's blood drawn on the adventure map: A6, this commit) · [x] fame and infamy in the legends (deeds counted after every act: beasts of legend slain, names won, ruins dared, treasure taken and brought home; townsfolk murdered for infamy; each a chapter of the hero's Wander saga, the great ones legends: A10, this commit); visit or reclaim your old
   forts (visit: a fallen fort entered from its own save, its killer moved in, its saga, journal
   and walls to read, and looting written back to the save after a backup: A5 df2b3d8) · [x] death ends it, and the world remembers (the end page leads with the hero's saga; the hero a figure of the legends, their bones and gear left where they fell for the next hero to find; `n` a fort in this world, `a` another hero; `S` then `R` retires a hero in a friendly town: A10, this commit; and every later fort or adventure in that world hears of it, through the shared world file `saves/<World>.world.json`, merged by every game that saves or ends in the world and listed with `≈` in Load game to found a new fort there: A19, this commit)
@@ -793,7 +787,7 @@ above; the [idea catalogue](ideas/README.md) holds hundreds more.
 - Diagnosis and surgery (DF's fuller medicine, after S02).
 - Forbidding by area from the designation menu.
 - Murky puddle water should feel worse than river water.
-- Adventure mode: explore the generated world. Out of scope until fortress mode is deep.
+- Adventure mode: explore the generated world. Out of scope until fortress mode is deep. (Since taken up: G03 under Other ways to play.)
 
 ## Done
 

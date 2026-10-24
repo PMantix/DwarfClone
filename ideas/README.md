@@ -15,6 +15,12 @@ Planned / Missing), a size (S one session, M a few, L a big system) and how much
 be in an overseer-run fort (★ to ★★★). The **Roadmap** column names the WISHLIST item that will
 build it; 562 of the 932 ideas are placed, the rest wait here.
 
+**Status** was brought up to date on 24 October 2026 (v0.10.0) from the WISHLIST: an idea
+whose step is ticked is Have, one whose step says "partly" is Partial, and a few more were
+checked in the code. That gives 117 Have, 318 Partial, 123 Planned and 374 Missing. Rows no
+step touches were last checked on 17 October; the 23 October audit's sample found about one in
+six of those marked Missing or Planned built at least in part since.
+
 **[atlas.html](atlas.html)** shows all of it in a browser: the roadmap with each item's ideas,
 Dwarf Fortress and DwarfClone compared domain by domain, and every idea, searchable and filterable.
 Open it straight from disk; it needs no server.
