@@ -21,6 +21,24 @@ mod snapshot;
 mod siege;
 mod tavern;
 mod winter;
+// Set B: underground, industry and dread.
+mod b_kit;
+mod b_cavein;
+mod b_drowned;
+mod b_clockwork;
+mod b_smelter;
+mod b_engraver;
+mod b_traphall;
+mod b_pitbridge;
+mod b_beast;
+mod b_spider;
+mod b_crypt;
+mod b_ghosts;
+mod b_tantrum;
+mod b_mood;
+mod b_mushroom;
+mod b_ambush;
+mod b_thief;
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -70,7 +88,7 @@ struct Scene {
     taglines: &'static [&'static str],
 }
 
-const SCENES: [Scene; 16] = [
+const SCENES: &[Scene] = &[
     Scene { name: "fortress", draw: fortress::draw, taglines: fortress::TAGLINES },
     Scene { name: "siege", draw: siege::draw, taglines: siege::TAGLINES },
     Scene { name: "dragon", draw: dragon::draw, taglines: dragon::TAGLINES },
@@ -87,6 +105,23 @@ const SCENES: [Scene; 16] = [
     Scene { name: "festival", draw: festival::draw, taglines: festival::TAGLINES },
     Scene { name: "gorge", draw: gorge::draw, taglines: gorge::TAGLINES },
     Scene { name: "flood", draw: flood::draw, taglines: flood::TAGLINES },
+    // Set B: underground, industry and dread.
+    Scene { name: "cavein", draw: b_cavein::draw, taglines: b_cavein::TAGLINES },
+    Scene { name: "drowned", draw: b_drowned::draw, taglines: b_drowned::TAGLINES },
+    Scene { name: "clockwork", draw: b_clockwork::draw, taglines: b_clockwork::TAGLINES },
+    Scene { name: "smelter", draw: b_smelter::draw, taglines: b_smelter::TAGLINES },
+    Scene { name: "engraver", draw: b_engraver::draw, taglines: b_engraver::TAGLINES },
+    Scene { name: "traphall", draw: b_traphall::draw, taglines: b_traphall::TAGLINES },
+    Scene { name: "pitbridge", draw: b_pitbridge::draw, taglines: b_pitbridge::TAGLINES },
+    Scene { name: "beast", draw: b_beast::draw, taglines: b_beast::TAGLINES },
+    Scene { name: "spider", draw: b_spider::draw, taglines: b_spider::TAGLINES },
+    Scene { name: "crypt", draw: b_crypt::draw, taglines: b_crypt::TAGLINES },
+    Scene { name: "ghosts", draw: b_ghosts::draw, taglines: b_ghosts::TAGLINES },
+    Scene { name: "tantrum", draw: b_tantrum::draw, taglines: b_tantrum::TAGLINES },
+    Scene { name: "mood", draw: b_mood::draw, taglines: b_mood::TAGLINES },
+    Scene { name: "mushroom", draw: b_mushroom::draw, taglines: b_mushroom::TAGLINES },
+    Scene { name: "ambush", draw: b_ambush::draw, taglines: b_ambush::TAGLINES },
+    Scene { name: "thief", draw: b_thief::draw, taglines: b_thief::TAGLINES },
 ];
 
 /// How many scenes there are to choose from.
@@ -614,7 +649,7 @@ mod tests {
 
     #[test]
     fn the_scenes_are_all_there_and_named_once() {
-        assert_eq!(SCENE_COUNT, 16);
+        assert_eq!(SCENE_COUNT, 32);
         for (i, a) in SCENES.iter().enumerate() {
             assert!(SCENES.iter().skip(i + 1).all(|b| b.name != a.name), "{} twice", a.name);
         }
