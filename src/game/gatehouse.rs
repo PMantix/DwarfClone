@@ -124,6 +124,8 @@ impl Game {
             let want = any && (((at_gate || inside) && !let_in) || waited || shut_in) && !(long && !at_gate && o.raised_at > 0) && !self.sallying();
             // Or because you said so, from a card (commands.rs).
             let want = want || (o.ordered(super::commands::Command::RaiseBridge, self.tick) && !self.sallying());
+            // Told to stand down, it lowers the bridge.
+            let want = want && !o.stood_down(self.tick, self.last_siege_tick());
             let bridges = self.gate_bridges(base);
             let raised = bridges.iter().any(|id| self.buildings.get(id).map_or(false, |b| b.raised));
             // (Letting them in, the lever behind the hall shuts them in.)
@@ -236,14 +238,17 @@ impl Game {
                 for id in &unlinked {
                     let _ = self.link_lever(lever, *id);
                 }
-                if !unlinked.is_empty() && !o.did("linked") {
+                // (Only once it works both halves: a link wants a spare
+                // mechanism, and an overseer that thought its bridge linked
+                // without one stopped asking for them, and never raised it.)
+                if !unlinked.is_empty() && !o.did("linked") && self.gate_links_missing(base) == 0 {
                     o.done.push("linked".into());
                     Self::note_as(o, self.tick, NoteKind::Gate, "Linked the lever to the drawbridge. The gate can be shut fast.".into());
                 }
             }
         }
         // Traps once the bridge is begun: it needs the mechanisms more.
-        if o.did("bridge") && !o.did("traps") && self.stock_of(ItemKind::Mechanism) >= 2 && self.stock_of(ItemKind::Cage) >= 2 {
+        if o.did("bridge") && !self.gate_first(o) && !o.did("traps") && self.stock_of(ItemKind::Mechanism) >= 2 && self.stock_of(ItemKind::Cage) >= 2 {
             let mut n = 0;
             for dx in 4..8 {
                 for dy in 0..2 {
@@ -287,6 +292,9 @@ impl Game {
     /// once a siege is over the bodies jamming its traps carried off (ENG-01).
     pub(super) fn ov_trap_hall(&mut self, o: &mut Overseer) {
         let Some(base) = o.base else { return };
+        if self.gate_first(o) {
+            return;
+        }
         if o.gate_stage == 0 {
             if !self.trap_hall_due(o) {
                 return;
@@ -522,13 +530,29 @@ impl Game {
     }
 
     /// Parts of the gate's drawbridge and lever not standing built (a half
-    /// lost to a siege, say), each needing a mechanism to put back.
+    /// lost to a siege, say), and halves standing that the lever doesn't
+    /// work, each needing a mechanism to put back or link.
     pub(super) fn gate_parts_missing(&self, o: &Overseer) -> usize {
         let Some(base) = o.base else { return 0 };
-        [(BuildingKind::Bridge, base.offset(2, 0, 0)), (BuildingKind::Bridge, base.offset(2, 1, 0)), (BuildingKind::Lever, base.offset(3, 1, 0))]
+        let lost = [(BuildingKind::Bridge, base.offset(2, 0, 0)), (BuildingKind::Bridge, base.offset(2, 1, 0)), (BuildingKind::Lever, base.offset(3, 1, 0))]
             .iter()
             .filter(|&&(k, p)| !self.buildings.values().any(|b| b.kind == k && b.pos == p && b.built))
-            .count()
+            .count();
+        lost + self.gate_links_missing(base)
+    }
+
+    /// Whether the gate's drawbridge and lever still want mechanisms (to
+    /// build, or link): they have the first of them, before traps, the trap
+    /// hall, the pit or the cistern take any.
+    pub(super) fn gate_first(&self, o: &Overseer) -> bool {
+        o.style != Style::Reckless && o.base.is_some() && (!o.did("linked") || self.gate_parts_missing(o) > 0)
+    }
+
+    /// Built halves of the gate's drawbridge that its lever (built) doesn't
+    /// work yet.
+    pub(super) fn gate_links_missing(&self, base: Pos) -> usize {
+        let Some(lever) = self.gate_lever(base) else { return 0 };
+        self.gate_bridges(base).iter().filter(|id| self.buildings.get(id).map_or(false, |b| b.built) && !self.buildings[&lever].links.contains(id)).count()
     }
 
     /// Whether `p` is in the gatehouse's walls (two deep on each side of the
@@ -579,6 +603,43 @@ mod tests {
             let said = g.command_overseer(Command::RaiseBridge);
             assert!(g.overseer.as_ref().unwrap().notes.iter().any(|n| n.1 == said), "{}", said);
         }
+    }
+
+    /// A lever is linked to the drawbridge only with a spare mechanism for
+    /// each half. Without one the overseer doesn't count the gate linked:
+    /// it keeps asking for mechanisms, and nothing else takes them first
+    /// (it once thought it linked, stopped asking, and never raised it).
+    #[test]
+    fn the_gate_is_not_linked_without_the_mechanisms() {
+        let (found, passed) = super::super::overseer::fort_where(Style::Steady, 5000, 12, 20, |g| g.overseer.as_ref().map_or(false, |o| o.did("linked")));
+        let Some((seed, mut g)) = found else { panic!("no fort from 5000 on had its gate linked by day 20 (passed over {:?})", passed) };
+        let mut o = g.overseer.take().unwrap();
+        let base = o.base.unwrap();
+        let lever = g.gate_lever(base).expect("no gate lever");
+        assert_eq!(g.gate_bridges(base).len(), 2);
+        assert_eq!(g.gate_parts_missing(&o), 0, "seed {}", seed);
+        // Unlinked, with no mechanism to spare.
+        g.buildings.get_mut(&lever).unwrap().links.clear();
+        o.done.retain(|d| d != "linked");
+        g.items.retain(|_, it| it.kind != ItemKind::Mechanism);
+        g.ov_defences(&mut o);
+        assert!(!o.did("linked"), "seed {}: counted linked with no mechanism to link it", seed);
+        assert_eq!(g.gate_parts_missing(&o), 2);
+        assert!(g.gate_first(&o));
+        // Unlinked though it once was (a half rebuilt): still the gate first.
+        o.done.push("linked".into());
+        assert!(g.gate_first(&o));
+        o.done.retain(|d| d != "linked");
+        // With two to spare, it links both halves, and says so.
+        let e = g.embark;
+        for _ in 0..2 {
+            g.spawn_item(ItemKind::Mechanism, Mat::Granite, e);
+        }
+        g.ov_defences(&mut o);
+        assert!(o.did("linked"), "seed {}", seed);
+        assert_eq!(g.gate_parts_missing(&o), 0);
+        assert!(!g.gate_first(&o));
+        g.overseer = Some(o);
     }
 
     /// A Warlord fort whose gate is linked, with the parts for the trap hall

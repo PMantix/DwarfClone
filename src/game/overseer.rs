@@ -1103,7 +1103,8 @@ impl Game {
         if danger && self.creatures.values().any(|c| c.alive && c.siege && !c.legendary() && c.hostile()) {
             o.last_siege = self.tick;
         }
-        let shelter = danger || o.ordered(super::commands::Command::Shelter, self.tick);
+        // (Told to stand down, it lets the shelter out: commands.rs.)
+        let shelter = (danger && !o.stood_down(self.tick, self.last_siege_tick())) || o.ordered(super::commands::Command::Shelter, self.tick);
         if o.style != Style::Reckless && self.alert_burrow.is_some() && shelter != self.civ_alert {
             let _ = self.toggle_civ_alert();
         }
@@ -2014,7 +2015,11 @@ mod tests {
                 let gobs: Vec<Pos> = g.creatures.values().filter(|c| c.alive && c.siege && !c.legendary()).map(|c| c.pos).collect();
                 let near_gate = gobs.iter().filter(|p| (p.x - top.x).abs() <= 12 && (p.y - top.y).abs() <= 12).count();
                 let inside = gobs.iter().filter(|p| in_shelter(**p)).count();
-                let bridge = g.buildings.values().filter(|b| matches!(b.kind, BuildingKind::Bridge | BuildingKind::Lever) && (b.pos.x - base.x).abs() <= 4 && (b.pos.y - base.y).abs() <= 2).map(|b| format!("{:?} raised {} pull {}", b.kind, b.raised, b.pull)).collect::<Vec<_>>();
+                let bridge = g.buildings.values().filter(|b| matches!(b.kind, BuildingKind::Bridge | BuildingKind::Lever) && (b.pos.x - base.x).abs() <= 20 && (b.pos.y - base.y).abs() <= 2 && b.pos.z == base.z).map(|b| format!("{:?}@{},{} built {} raised {} pull {} worker {:?}", b.kind, b.pos.x - base.x, b.pos.y - base.y, b.built, b.raised, b.pull, b.worker)).collect::<Vec<_>>();
+                let ov = g.overseer.as_ref().unwrap();
+                eprintln!("    linked {} let_in {} army_since {} raised_at {} sally {} stage {} | in shelter at {:?} | foes at {:?}", ov.did("linked"), g.lets_them_in(ov), ov.army_since, ov.raised_at, g.sallying(), ov.gate_stage,
+                    gobs.iter().filter(|p| in_shelter(**p)).take(3).map(|p| (p.x - base.x, p.y - base.y, p.z - base.z)).collect::<Vec<_>>(),
+                    gobs.iter().take(6).map(|p| (p.x - base.x, p.y - base.y, p.z - base.z)).collect::<Vec<_>>());
                 let nearest = gobs.iter().map(|p| (p.x - top.x).abs().max((p.y - top.y).abs())).min().unwrap_or(-1);
                 let _ = nearest;
                 eprintln!(

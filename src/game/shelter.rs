@@ -68,6 +68,7 @@ impl Game {
             return;
         }
         self.gate_out_of_shelter(base);
+        self.seal_gate_sides(o, base);
         self.wall_up_ways_in(o, base);
         self.ov_larder_in_shelter(o, base);
     }
@@ -83,6 +84,7 @@ impl Game {
                 self.shelter.alert_since = self.tick;
                 self.shelter.sang = false;
                 self.gate_out_of_shelter(base);
+                self.seal_gate_sides(o, base);
                 self.shelter.ways_checked = self.tick;
                 self.wall_up_ways_in(o, base);
             }
@@ -272,6 +274,36 @@ impl Game {
         // (Counted on the daily round only.)
         if open > 0 && !self.civ_alert {
             self.count("shelter_ways_open", open as u32);
+        }
+        n
+    }
+
+    /// The gate's working tiles: the foot of the stair (and the stair's
+    /// last step beside it), the doors and the bridge.
+    const GATE_WAY: [(i32, i32); 7] = [(-1, 0), (0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)];
+
+    /// Wall up any floor dug open in the gate's own rock beside its way in:
+    /// a raised bridge kept nobody out while a tile dug beside it let an
+    /// army step round it, on the diagonal past the doors, and on into the
+    /// shelter (seed 5030, Steady: twenty of the sheltered killed with the
+    /// bridge up). How many walls were planned.
+    fn seal_gate_sides(&mut self, o: &mut Overseer, base: Pos) -> usize {
+        if self.knob("shelter.seal_gate", 1.0) <= 0.0 {
+            return 0;
+        }
+        let open: Vec<Pos> = Self::gate_tiles(base)
+            .filter(|&p| !Self::GATE_WAY.contains(&(p.x - base.x, p.y - base.y)))
+            .filter(|&p| self.world.get(p).map_or(false, |t| t.kind == TileKind::Floor) && !self.world.outside(p) && self.can_construct(p, ConstructKind::Wall))
+            .collect();
+        let mut n = 0;
+        for p in open {
+            if self.plan_constructions(p, p, ConstructKind::Wall, BuildMat::Any) > 0 {
+                n += 1;
+            }
+        }
+        if n > 0 {
+            self.count("shelter_gate_sealed", n as u32);
+            Self::note_ov(o, self.tick, format!("Ordered {} tile{} dug beside the gate walled up, so nothing gets round the bridge.", n, if n == 1 { "" } else { "s" }));
         }
         n
     }
@@ -494,6 +526,32 @@ mod tests {
             }
         }
         panic!("no Steady fort from 5000 on has its shelter by day 30");
+    }
+
+    /// A tile dug beside the bridge, in the gate's own rock, is walled up:
+    /// an army stepped round the raised bridge that way, on the diagonal
+    /// past the doors. The gate's own way (stair, doors, bridge) is left be.
+    #[test]
+    fn a_way_dug_beside_the_bridge_is_walled_up() {
+        let (mut g, mut o) = sheltered_fort();
+        let base = o.base.unwrap();
+        let side = [base.offset(2, -1, 0), base.offset(2, -2, 0)];
+        for q in side {
+            g.designate(q, q, crate::world::Desig::None);
+            let t = g.world.t_mut(q);
+            t.kind = TileKind::Floor;
+            t.dug = true;
+            t.revealed = true;
+        }
+        g.dig_version += 1;
+        assert!(g.seal_gate_sides(&mut o, base) >= 1);
+        assert!(g.construction_at(side[0]).map_or(false, |c| c.kind == ConstructKind::Wall), "the tile beside the bridge wasn't walled");
+        // (Outside the gate's rock, the tile beyond is the shelter's business.)
+        for (dx, dy) in Game::GATE_WAY {
+            assert!(g.construction_at(base.offset(dx, dy, 0)).is_none(), "the gate's way at {:?} was walled", (dx, dy));
+        }
+        // Planned once, not again.
+        assert_eq!(g.seal_gate_sides(&mut o, base), 0);
     }
 
     /// The gate is no part of the shelter, and someone called in from the
