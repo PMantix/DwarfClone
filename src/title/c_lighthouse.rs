@@ -39,7 +39,7 @@ pub(super) fn draw(cv: &mut Canvas) {
 
     // The headland, and the tower on it.
     let cw = ((w as f32 * 0.24) as i32).max(6);
-    let rock_top = |x: i32| -> i32 { sea - 1 - ((1.0 - x as f32 / cw as f32).max(0.0).powf(0.7) * sky as f32 * 0.35) as i32 + (hash(x, 9) % 2) as i32 };
+    let rock_top = |x: i32| -> i32 { sea - 1 - ((1.0 - x as f32 / cw as f32).max(0.0).powf(0.7) * sky as f32 * 0.2) as i32 + (hash(x, 9) % 2) as i32 };
     for x in 0..cw + 2 {
         let s = rock_top(x);
         for y in s.max(0)..h {
@@ -51,7 +51,7 @@ pub(super) fn draw(cv: &mut Canvas) {
     let tw = if big { 2 } else { 1 }; // half-width
     let tx = (cw as f32 * 0.4) as i32;
     let base = rock_top(tx).min(rock_top(tx - tw)).min(rock_top(tx + tw));
-    let tall = ((sky as f32 * 0.62) as i32).min(base - 4).max(2);
+    let tall = ((sky as f32 * 0.62) as i32).min(base - 3).max(2);
     for k in 0..tall {
         let y = base - 1 - k;
         let band = (k / 2) % 2 == 0;

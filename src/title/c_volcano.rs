@@ -63,7 +63,7 @@ pub(super) fn draw(cv: &mut Canvas) {
             let dens = ((1.3 - d) * 0.9 + (n - 0.5)).clamp(0.0, 1.0);
             if dens > 0.15 {
                 let under = (1.0 - up / peak_y.max(1) as f32).max(0.0) * fury;
-                let c = lerp(lerp((60, 54, 56), (30, 26, 30), n), (220, 80, 30), under * 0.6);
+                let c = lerp(lerp((120, 110, 112), (52, 46, 52), n), (230, 90, 30), under * 0.7);
                 cv.glow(x, y, c, dens * 0.92);
             }
         }
@@ -79,7 +79,6 @@ pub(super) fn draw(cv: &mut Canvas) {
     }
 
     // The cone, glowing cracks and lava runs on its flanks.
-    let runs: Vec<i32> = (0..3).map(|k| (hash(k, salt) % (half as u32 * 2)) as i32 - half).collect();
     for x in (cx - half - 1)..=(cx + half + 1) {
         let s = surface(x);
         for y in s.max(0)..=sea {
@@ -89,27 +88,22 @@ pub(super) fn draw(cv: &mut Canvas) {
             cv.put(x, y, ch, rgb((56, 40, 36)), Some(rgb(rock)));
         }
     }
-    for (k, &r) in runs.iter().enumerate() {
-        // From the crater lip down to the sea, wandering a little.
-        let mut x = cx + if r < 0 { -crater } else { crater };
-        let dir = if r < 0 { -1 } else { 1 };
-        let reach = ((t as f32 * 0.05 + k as f32 * 30.0) % (sea - peak_y + 12) as f32) as i32 + 4;
-        for y in (peak_y + 1)..=sea {
-            if y - peak_y > reach {
-                break;
-            }
-            let goal = cx + r;
-            if (x - goal).abs() > 0 && hash(y, k as i32 + salt) % 2 == 0 {
-                x += dir.min(1).max(-1) * if (goal - x).signum() == dir { 1 } else { 0 };
-            }
-            let s = surface(x);
-            let yy = y.max(s);
-            let heat = 0.5 + 0.5 * (tf * 0.2 - y as f32 * 0.6 + k as f32).sin();
-            cv.put(x, yy, if heat > 0.7 { '≈' } else { '~' }, mix((255, 220, 90), (255, 90, 20), heat), Some(mix((200, 60, 10), (140, 30, 10), heat)));
-            if yy >= sea {
+    // Lava running down the flanks to the sea, each run creeping
+    // further until it reaches the water, then starting again.
+    for k in 0..3i32 {
+        let dir = if k % 2 == 0 { 1 } else { -1 };
+        let under = if k == 2 { 2 } else { 0 };
+        let span = half - crater + 1;
+        let reach = ((tf * 0.08 + k as f32 * 23.0) % (span as f32 + 18.0)) as i32;
+        for i in 0..=span.min(reach) {
+            let x = cx + dir * (crater + i);
+            let y = (surface(x) + under).min(sea);
+            let heat = 0.5 + 0.5 * (tf * 0.2 - i as f32 * 0.5 + k as f32).sin();
+            cv.put(x, y, if heat > 0.7 { '≈' } else { '~' }, mix((255, 220, 90), (255, 90, 20), heat), Some(mix((200, 60, 10), (140, 30, 10), heat)));
+            if y >= sea {
                 // Steam where it meets the sea.
-                for j in 0..4 {
-                    let age = ((t / 3) as i32 + j * 4 + k as i32 * 5) % 16;
+                for j in 0..5 {
+                    let age = ((t / 3) as i32 + j * 4 + k * 5) % 16;
                     cv.glyph(x + (age / 4) * dir, sea - 1 - age / 3, if age < 8 { '░' } else { '·' }, mix((235, 235, 240), bot, age as f32 / 16.0));
                 }
                 break;

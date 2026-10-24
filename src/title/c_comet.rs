@@ -82,7 +82,7 @@ pub(super) fn draw(cv: &mut Canvas) {
     for x in 0..w {
         let s = surf(x);
         for y in s.max(0)..h {
-            let lit = 0.12 * (1.0 - ((x as f32 - hx).abs() / w as f32));
+            let lit = 0.06 * (1.0 - ((x as f32 - hx).abs() / w as f32));
             let ch = if hash(x + salt, y) % 9 == 0 { '"' } else { ' ' };
             cv.put(x, y, ch, rgb((30, 40, 40)), Some(rgb(lerp(land, tail, lit))));
         }

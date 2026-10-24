@@ -135,10 +135,10 @@ pub(super) fn draw(cv: &mut Canvas) {
     // The torn wing, spread back over the tail.
     let shx = x0 + (len as f32 * 0.55) as i32;
     let shy = gy - thick(shx - x0);
-    let span = (gy as f32 * 0.8).max(3.0);
+    let span = (gy as f32 * 0.6).max(3.0);
     let bones: Vec<(i32, i32)> = (0..5)
         .map(|k| {
-            let (ang, l) = (1.62 + k as f32 * 0.36, span * (1.0 - k as f32 * 0.07));
+            let (ang, l) = (1.95 + k as f32 * 0.28, span * (1.0 - k as f32 * 0.06));
             (shx + (ang.cos() * l * 2.0) as i32, (shy - (ang.sin() * l) as i32).min(gy - 2))
         })
         .collect();
@@ -152,8 +152,9 @@ pub(super) fn draw(cv: &mut Canvas) {
             for x in xmin..=xmax {
                 let (d1, d2, d3) = (side(a, b, (x, y)), side(b, c, (x, y)), side(c, a, (x, y)));
                 let inside = (d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0);
-                if inside && hash(x + salt, y) % 6 != 0 && y < gy - 1 {
-                    cv.put(x, y, '░', rgb(lerp(membrane, bot, 0.3)), Some(rgb(membrane)));
+                if inside && hash(x + salt, y) % 4 != 0 && y < gy - 1 {
+                    let torn = hash(x, y + salt) % 3 == 0;
+                    cv.put(x, y, if torn { '░' } else { ' ' }, rgb(lerp(membrane, bot, 0.5)), Some(rgb(membrane)));
                 }
             }
         }
