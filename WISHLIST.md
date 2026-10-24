@@ -294,10 +294,10 @@ Goal: watching a fort, you can tell which overseer built it, and its halls look 
   notes in its voice (e79d14e: six openings a trait; its halls, feasts and eulogies too; 6892e14:
   notes tagged by kind with openings per trait and kind, and it mourns, sneers or frets over deaths
   and sieges by its traits)
-- **From the Bay 12 review:** [ ] Watch and nudge ([OVR-24](ideas/world-and-overseer.md); partly, 6892e14: its
+- **From the Bay 12 review:** [x] Watch and nudge ([OVR-24](ideas/world-and-overseer.md); 6892e14: its
   next step in the top bar and brain, and danger cards offer b raise the bridge · s shelter · m muster
-  · d stand down, which it obeys for half a day; a stubborn one sometimes won't be told. Open: stand down only
-  cancels earlier orders, it never lowers the bridge or ends the alert as `Command::StandDown` says.
+  · d stand down, which it obeys for half a day; a stubborn one sometimes won't be told. Stand down lowers
+  the bridge and lets the shelter out for half a day, until a new army comes: c0eece4.
   Was ticked; unticked by the 23 October audit)
 - **Done when:** two overseers with the same style but different traits build visibly different
   forts from the same seed.
