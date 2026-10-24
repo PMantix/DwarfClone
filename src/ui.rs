@@ -1678,6 +1678,10 @@ fn unit_view(g: &Game, d: &Dwarf, sel: usize) -> Vec<Line<'static>> {
     if let Some(o) = g.omen_of(d.id) {
         v.push(plain(o, Color::Rgb(190, 160, 255)));
     }
+    // M3: drunk, vowed, mourning, a side taken (society.rs).
+    for (t, c) in g.society_lines(d) {
+        v.push(plain(t, Color::Rgb(c.0, c.1, c.2)));
+    }
     let hurt = health::part_lines(d, "  ", false);
     if !hurt.is_empty() || d.body.bleeding > 0 {
         v.push(Line::default());

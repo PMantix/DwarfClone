@@ -146,6 +146,11 @@ pub mod clockwork;
 mod gatehouse;
 mod fit;
 mod m2;
+// Milestone 3: the fort as a society.
+pub mod society;
+pub mod grief;
+pub mod bottle;
+pub mod feuds;
 pub mod lastwords;
 pub mod sound_reports;
 pub mod crafts;
@@ -637,6 +642,9 @@ pub struct Game {
     /// What the year did to the world's lore, for the chronicle (`tales.rs`).
     #[serde(default)]
     pub lore: tales::Lore,
+    /// Grief, vows, drink, brawls and factions (`society.rs`, M3).
+    #[serde(default)]
+    pub society: society::Society,
 }
 
 impl Game {
@@ -762,6 +770,7 @@ impl Game {
             inspirations: Default::default(),
             pits: Default::default(),
             ov_fell: None,
+            society: Default::default(),
             zone_over: HashMap::new(),
             beasts_seen: Vec::new(),
             beast_layers: 0,
@@ -1699,7 +1708,9 @@ impl Game {
         }
 
         self.psyche_tick(d);
-        if self.in_a_fit(d) {
+        // M3: what drink does to them (society.rs).
+        self.society_dwarf(d);
+        if !d.alive || self.in_a_fit(d) {
             return;
         }
         // A mad dwarf still sips and picks at food when it's that bad (or
@@ -1815,6 +1826,10 @@ impl Game {
         if self.festival_activity(d) {
             return;
         }
+        // M3: a grave to visit, sorrows to drown (society.rs).
+        if self.society_leisure(d) {
+            return;
+        }
         if self.seek_need_zone(d) {
             return;
         }
@@ -1877,24 +1892,8 @@ impl Game {
         let tick = self.tick;
         d.died = Some(tick);
         d.due = None;
-        let dead = d.id;
-        let (spouse, parents) = (d.spouse, d.parents);
-        for o in self.dwarves.iter_mut().filter(|o| o.alive) {
-            let regard = o.regard(dead);
-            if spouse == Some(o.id) {
-                o.think(&format!("lost their spouse {}", name), 140, tick);
-            } else if parents.map_or(false, |(m, f)| m == o.id || f == o.id) {
-                o.think(&format!("lost their child {}", name), 150, tick);
-            } else if o.family_of(dead) {
-                o.think(&format!("lost their parent {}", name), 110, tick);
-            } else if regard >= 30 {
-                o.think(&format!("lost their dear friend {}", name), 90, tick);
-            } else if regard <= -40 {
-                o.think(&format!("felt satisfied at the death of {}", name), -10, tick);
-            } else {
-                o.think(&format!("grieved over the death of {}", name), 25, tick);
-            }
-        }
+        // Who grieves, now or once the body is found (grief.rs).
+        self.grieve(d, cause);
         self.end_mood(d);
         d.noble = None;
         self.pause_request = true;
@@ -3070,6 +3069,7 @@ impl Game {
                         d.thirst = 0;
                         d.task = Task::Idle;
                         d.think("enjoyed a drink of stoutcap ale", -15, self.tick);
+                        self.imbibe(d);
                         d.satisfy(dwarf::NeedKind::Drink, 500);
                         if self.has_zone_kind(d.pos, ZoneKind::Tavern) {
                             d.satisfy(dwarf::NeedKind::Party, 150);

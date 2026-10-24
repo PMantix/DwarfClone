@@ -147,10 +147,15 @@ pub enum Sense {
     Ore,
     /// A dwarf has an inspiration worth building (O12, `inspire.rs`).
     Inspired,
+    // Milestone 3: the fort as a society (`society.rs`).
+    /// Fresh deaths, mourned.
+    Mourning,
+    /// Brawls, feuds and factions.
+    Discord,
 }
 
 impl Sense {
-    pub const ALL: [Sense; 21] = [
+    pub const ALL: [Sense; 23] = [
         Sense::Temper,
         Sense::Leaning,
         Sense::Hunger,
@@ -172,6 +177,8 @@ impl Sense {
         Sense::Doubt,
         Sense::Ore,
         Sense::Inspired,
+        Sense::Mourning,
+        Sense::Discord,
     ];
 
     pub fn name(self) -> &'static str {
@@ -197,6 +204,8 @@ impl Sense {
             Sense::Doubt => "Doubt",
             Sense::Ore => "Ore",
             Sense::Inspired => "Inspired",
+            Sense::Mourning => "Mourning",
+            Sense::Discord => "Discord",
         }
     }
 }
@@ -279,6 +288,8 @@ impl Game {
             (Sense::Doubt, 0.0),
             (Sense::Ore, 0.0),
             (Sense::Inspired, 0.0),
+            (Sense::Mourning, 0.0),
+            (Sense::Discord, 0.0),
         ];
         for &(s, level, _) in &extra {
             if let Some(x) = senses.iter_mut().find(|x| x.0 == s) {

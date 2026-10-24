@@ -169,13 +169,17 @@ impl Game {
     }
 
     /// A mug from the stores, if there's any left.
-    fn festival_drink(&mut self, d: &mut Dwarf, kind: FestivalKind) {
+    pub(super) fn festival_drink(&mut self, d: &mut Dwarf, kind: FestivalKind) {
+        if !self.will_drink(d) {
+            return;
+        }
         let Some(id) = self.items.values().find(|it| it.kind == ItemKind::Drink && it.free()).map(|it| it.id) else { return };
         self.items.remove(&id);
         d.thirst = 0;
         d.satisfy(NeedKind::Drink, 400);
         let tick = self.tick;
         d.think(&format!("drank deep at the {}", kind.name()), -3, tick);
+        self.imbibe(d);
         let f = self.festival.as_mut().unwrap();
         match f.mugs.iter_mut().find(|(id, _)| *id == d.id) {
             Some(m) => m.1 += 1,

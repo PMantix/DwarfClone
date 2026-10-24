@@ -49,6 +49,9 @@ impl Game {
         if tick % 100 == 85 { self.battlefield_tick(); }
         // O12: a dreamer at a table over the plans, and plans gathering dust (inspire.rs).
         if tick % 100 == 90 { self.inspire_tick(); }
+        // M3: brawls, bodies found, graves visited (society.rs).
+        if tick % 10 == 7 { self.society_tick(); }
+        if tick % DAY == DAY / 2 + 11 { self.society_daily(); }
     }
 
     /// After the dwarves and creatures have moved: wildlife, the day's

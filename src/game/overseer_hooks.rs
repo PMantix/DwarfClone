@@ -50,6 +50,8 @@ impl Game {
         self.ov_inspirations(o);
         // O12: automatons and trinkets from the mechanic (clockwork.rs).
         self.ov_clockwork(o);
+        // M3: the vowed drafted, feuding squadmates parted (society.rs).
+        self.ov_society(o);
         let _ = o;
     }
 
@@ -97,6 +99,8 @@ impl Game {
         senses.push(self.ore_sense());
         // O12: a dwarf's plans for a great work pull toward Architect.
         senses.push(self.inspired_sense(o));
+        // M3: mourning and discord (society.rs).
+        senses.extend(self.society_senses(o));
         let _ = o;
         senses
     }
