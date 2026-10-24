@@ -20,7 +20,7 @@ use super::super::*;
 use super::sitegen::town::{FOLK, GUARD};
 use super::talk::Person;
 use super::travel::cheb;
-use super::{Adventure, Calling, Hero, SiteKey, HERO_ID};
+use super::{Adventure, Calling, Hero, HERO_ID};
 use crate::overworld::Race;
 use crate::path::astar;
 use serde::{Deserialize, Serialize};
@@ -118,6 +118,10 @@ impl Adventure {
         }
         let standing = p.civ.and_then(|c| self.fame.by_civ.get(&c)).copied().unwrap_or(0) + self.fame.renown / 3;
         if self.fame.infamy >= 9 && p.race != Race::Goblin {
+            return None;
+        }
+        // One who gave the hero work waits at home for word of it.
+        if self.quests.iter().any(|q| q.giver == p.name && q.at_site == p.home && matches!(q.state, super::QuestState::Open | super::QuestState::Won)) {
             return None;
         }
         if standing >= caution {
@@ -524,6 +528,7 @@ mod tests {
     use super::super::sitegen::town::tests::{visit, world};
     use super::super::talk::Topic;
     use super::super::turn::Action;
+    use super::super::SiteKey;
     use super::*;
     use crate::creature::Species;
     use crate::overworld::SiteKind;

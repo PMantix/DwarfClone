@@ -246,7 +246,8 @@ impl Adventure {
             QuestKind::Clear => &CLEAR,
         };
         let plea = fill(stories::pick(h(p, 3), 3, t[race_idx(p.race)]), &[("place", &o.place), ("target", &o.target), ("killer", &o.killer), ("reward", &reward.to_string())]);
-        let plea = cap(&plea);
+        // (A killer named mid-plea may begin a sentence: "...halls. Something nobody saw...")
+        let plea = plea.split(". ").map(cap).collect::<Vec<_>>().join(". ");
         Some(Quest {
             id: self.quests.iter().map(|q| q.id + 1).max().unwrap_or(1),
             kind: o.kind,
