@@ -438,6 +438,10 @@ pub fn screenshot(args: &[String]) -> Result<()> {
     if adventure && args.iter().any(|a| a == "--talk") {
         app.adventure_talk();
     }
+    // (`--quests`: quests sworn and a companion hired, the log up, A8/A9.)
+    if adventure && args.iter().any(|a| a == "--quests") {
+        app.adventure_quests();
+    }
     // (`--climb`: on a hillside, the ways up and down shown.)
     if adventure && args.iter().any(|a| a == "--climb") {
         app.adventure_hillside();

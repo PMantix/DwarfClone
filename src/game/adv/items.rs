@@ -16,6 +16,8 @@ use std::collections::HashMap;
 /// is returned) and their pack joins `g.items`, carried, under fresh ids.
 pub fn carry_in(g: &mut Game, h: &mut Hero, at: Pos) -> usize {
     let mut d = std::mem::take(&mut h.dwarf);
+    // (The shell keeps the id, so `leave` knows a companion again.)
+    h.dwarf.id = d.id;
     let pack = std::mem::take(&mut h.pack);
     let mut ids: HashMap<u32, u32> = HashMap::new();
     for mut it in pack {

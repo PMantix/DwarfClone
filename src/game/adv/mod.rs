@@ -74,6 +74,9 @@ pub struct Adventure {
     pub quests: Vec<Quest>,
     #[serde(default)]
     pub nemesis: Option<Nemesis>,
+    /// What the companions have been through together (A9).
+    #[serde(default)]
+    pub band: company::Band,
     #[serde(default)]
     pub weather: Weather,
     /// The travel log; a visit uses its `Game`'s.
@@ -179,7 +182,7 @@ pub enum View {
     Inventory { sel: usize },
     Status,
     Quests,
-    Company,
+    Company { sel: usize },
     Saga,
     Dead,
     Menu { sel: usize },
@@ -252,6 +255,27 @@ pub struct Quest {
     pub target: String,
     pub reward: u32,
     pub state: QuestState,
+    /// Where the deed is to be done (A8).
+    #[serde(default)]
+    pub key: Option<SiteKey>,
+    /// That place's world cell, for the way there.
+    #[serde(default)]
+    pub cell: (i32, i32),
+    /// That place's name.
+    #[serde(default)]
+    pub place: String,
+    /// The figure of the legends to slay, if it is one.
+    #[serde(default)]
+    pub figure: Option<u32>,
+    /// The giver's people, who will think better of the hero for it.
+    #[serde(default)]
+    pub civ: Option<u32>,
+    /// The giver's words when they gave it.
+    #[serde(default)]
+    pub plea: String,
+    /// The year it was sworn.
+    #[serde(default)]
+    pub year: i32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -266,6 +290,8 @@ pub enum QuestKind {
 pub enum QuestState {
     #[default]
     Open,
+    /// The deed is done: the reward waits with the giver (A8).
+    Won,
     Done,
     Failed,
 }
@@ -330,6 +356,7 @@ impl Adventure {
             fame: Fame::default(),
             quests: Vec::new(),
             nemesis: None,
+            band: company::Band::default(),
             weather: Weather::Clear,
             log: Vec::new(),
             knobs: Knobs::default(),

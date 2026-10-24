@@ -122,6 +122,8 @@ pub(super) fn draw(f: &mut Frame, app: &App) {
         View::Status => draw_status(f, area, &s.adv),
         View::Menu { sel } => draw_menu(f, area, sel),
         View::Talk { sel, .. } => super::adv_talk::draw(f, area, s, sel),
+        View::Quests => super::adv_quests::draw_quests(f, area, s),
+        View::Company { sel } => super::adv_quests::draw_company(f, area, s, sel),
         _ => {}
     }
     if let Some((kind, ids)) = &s.pick {
@@ -587,17 +589,22 @@ fn draw_side(f: &mut Frame, r: Rect, s: &AdvScreen, sight: &Sight) {
             v.push(Line::from(vec![Span::styled("☺ ", Style::default().fg(rgb(o.color))), Span::styled(o.name.clone(), Style::default().fg(TEXT))]));
         }
     }
-    if !a.company.is_empty() {
+    let band = a.companions();
+    if !band.is_empty() {
         v.push(Line::default());
-        v.push(header("Company"));
-        for c in &a.company {
-            v.push(plain(c.dwarf.name.clone(), TEXT));
+        v.push(header("Company (c)"));
+        for (_, c) in band.iter().take(3) {
+            let (w, col) = if !c.alive { ("dead", Color::Rgb(235, 70, 60)) } else if c.body.badly_hurt() { ("badly hurt", WARN) } else { ("", MUTED) };
+            v.push(Line::from(vec![Span::styled("☺ ", Style::default().fg(KEY)), Span::styled(c.name.clone(), Style::default().fg(TEXT)), Span::styled(format!(" {}", w), Style::default().fg(col))]));
         }
     }
-    if let Some(q) = a.quests.iter().find(|q| q.state == QuestState::Open) {
+    if let Some(q) = a.quests.iter().rev().find(|q| matches!(q.state, QuestState::Open | QuestState::Won)) {
         v.push(Line::default());
-        v.push(header("Quest"));
-        v.push(plain(format!("{:?}: {}", q.kind, q.target), TEXT));
+        v.push(header("Quest (j)"));
+        let col = if q.state == QuestState::Won { Color::Rgb(150, 220, 140) } else { TEXT };
+        for l in wrap_words(&q.ask(), r.width.saturating_sub(3) as usize).into_iter().take(2) {
+            v.push(plain(l, col));
+        }
     }
     // The keys, along the bottom.
     let inner_h = r.height.saturating_sub(2) as usize;
@@ -909,7 +916,8 @@ fn draw_help(f: &mut Frame, area: Rect) {
         ("f", "fire the crossbow: a foe in sight, then where"),
         ("b", "bind your bleeding wounds (cloth from the pack, or your shirt)"),
         ("l", "look: a cursor over the map"),
-        ("k", "talk to someone near"),
+        ("k", "talk to someone near (news, work, company)"),
+        ("j c", "your quests · your company: follow, wait, attack, send home"),
         ("g d", "get what lies here (* all the dead's gear) · drop something"),
         ("i", "inventory"),
         ("R", "read a book here, or the engraved walls around"),

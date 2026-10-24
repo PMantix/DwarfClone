@@ -60,6 +60,8 @@ pub(super) fn draw(f: &mut Frame, area: Rect, s: &AdvScreen) {
     match &s.view {
         View::Menu { sel } => draw_menu(f, area, *sel),
         View::Dead => draw_end(f, area, a),
+        View::Quests => super::adv_quests::draw_quests(f, area, s),
+        View::Company { sel } => super::adv_quests::draw_company(f, area, s, *sel),
         _ => {}
     }
     if s.help {
@@ -319,9 +321,16 @@ fn draw_side(f: &mut Frame, r: Rect, s: &AdvScreen) {
     v.extend(body_block(d, 10));
     if !a.company.is_empty() {
         v.push(Line::default());
-        v.push(header("Company"));
+        v.push(header("Company (c)"));
         for c in &a.company {
             v.push(plain(c.dwarf.name.clone(), if c.dwarf.alive { TEXT } else { MUTED }));
+        }
+    }
+    if let Some(q) = a.quests.iter().rev().find(|q| matches!(q.state, crate::game::adv::QuestState::Open | crate::game::adv::QuestState::Won)) {
+        v.push(Line::default());
+        v.push(header("Quest (j)"));
+        for l in wrap_words(&q.ask(), r.width.saturating_sub(3) as usize).into_iter().take(2) {
+            v.push(plain(l, TEXT));
         }
     }
     v.push(Line::default());
@@ -435,6 +444,7 @@ fn draw_help(f: &mut Frame, area: Rect) {
         ("Enter >", "go into the place here, or the wild land"),
         ("Z", "make camp until dawn (heals; the night may bring foes)"),
         ("s", "keep to cover: slower, fewer encounters, easier to slip away"),
+        ("j c", "your quests · your company"),
         ("F5 F9", "save · back to the last save (autosaved at each dawn)"),
         ("Esc", "menu: save, save and quit"),
         ("", ""),
