@@ -17,6 +17,8 @@ impl Game {
         self.tower_kill(d, c);
         self.story_kill(d, c);
         self.weapon_blooded(d, c);
+        // M3: a vow of vengeance kept (grief.rs).
+        self.vow_kill(d, c);
         let what = c.title();
         if c.species == crate::creature::Species::Undead && c.general.is_some() {
             self.earn_epithet(d, "Deathbane", RANK_BEAST + 1, &format!("destroyed {}", what));

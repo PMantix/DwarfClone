@@ -49,6 +49,9 @@ impl Game {
         if tick % 100 == 85 { self.battlefield_tick(); }
         // O12: a dreamer at a table over the plans, and plans gathering dust (inspire.rs).
         if tick % 100 == 90 { self.inspire_tick(); }
+        // M3: brawls, bodies found, graves visited (society.rs).
+        if tick % 10 == 7 { self.society_tick(); }
+        if tick % DAY == DAY / 2 + 11 { self.society_daily(); }
     }
 
     /// After the dwarves and creatures have moved: wildlife, the day's
@@ -157,9 +160,9 @@ mod tests {
         let deaths: Vec<(u64, &str, &str)> = t.deaths.iter().map(|d| (d.tick, d.name.as_str(), d.cause.as_str())).collect();
         assert_eq!(deaths, vec![(205807, "Dorna Stonebeard", "struck down"), (302569, "Nothar Hammermantle", "struck down"), (302880, "Hilda Frostfist", "bled to death"), (380460, "Borra Coalhelm", "fell on an expedition")]);
         let sieges: Vec<(u64, &str, u32, &str)> = t.sieges.iter().map(|s| (s.tick, s.foe.as_str(), s.size, s.outcome.as_str())).collect();
-        assert_eq!(sieges, vec![(205695, "goblins", 3, "withdrew")]);
-        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (10, 51599, 30));
-        assert_eq!(t.ambitions, ["Delve", "Muster", "Revel", "Provision", "Muster", "Revel", "Muster", "Revel", "Provision", "Fortify", "Revel", "Architect", "Provision"]);
+        assert_eq!(sieges, vec![(203295, "goblins", 3, "withdrew"), (303395, "goblins", 8, "routed")]);
+        assert_eq!((t.alive, t.peak_wealth, t.story.len()), (15, 31530, 32));
+        assert_eq!(t.ambitions, ["Delve", "Muster", "Revel", "Provision", "Muster", "Revel", "Muster", "Revel", "Provision", "Fortify", "Architect", "Revel", "Muster", "Provision", "Prosper", "Provision", "Architect"]);
     }
 
     /// The survival items' tasks save and load by name, and a dwarf given one

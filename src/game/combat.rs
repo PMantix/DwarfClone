@@ -534,6 +534,8 @@ impl Game {
             self.archer_awareness(d);
             if !threats.is_empty() && !matches!(d.task, Task::Attack { .. }) && self.alert {
                 let nearest = threats.iter().min_by_key(|(_, p)| dist2(*p, d.pos)).unwrap().0;
+                // (The foe they swore vengeance on, first: grief.rs.)
+                let nearest = self.vow_target(d, &threats).unwrap_or(nearest);
                 if !d.task.is_need() || d.task == Task::Flee {
                     self.release_task(d);
                 }
@@ -541,6 +543,10 @@ impl Game {
                     d.task = Task::Attack { target: nearest };
                 }
             }
+            return;
+        }
+        // An armed civilian charges the foe they swore vengeance on (grief.rs).
+        if !threats.is_empty() && self.vow_charge(d, &threats) {
             return;
         }
         // Desperate thirst or hunger outweighs fear.
