@@ -77,6 +77,14 @@ impl Overseer {
         self.commands.iter().rev().take_while(|(k, _)| *k != Command::StandDown).any(|&(k, at)| k == c && tick < at + holds(self, c))
     }
 
+    /// Whether it was told to stand down within the time a command holds,
+    /// and given no order since: the bridge comes down and the shelter is
+    /// let out, whatever it would do of its own accord. (`since`: when the
+    /// latest siege came; a new army calls off the stand-down.)
+    pub fn stood_down(&self, tick: u64, since: u64) -> bool {
+        self.commands.last().map_or(false, |&(k, at)| k == Command::StandDown && tick < at + holds(self, k) && since <= at)
+    }
+
     /// What it means to do next, in a few words: "Next: a tavern (Revel)",
     /// "Next: the drawbridge, once 2 more mechanisms are made".
     pub fn intent(&self, g: &Game) -> String {
@@ -115,6 +123,11 @@ impl Overseer {
 }
 
 impl Game {
+    /// When the latest siege came (0 if none has).
+    pub(super) fn last_siege_tick(&self) -> u64 {
+        self.annals.sieges.last().map_or(0, |s| s.tick)
+    }
+
     /// Give the overseer a command from a card or a key; what it says back
     /// (also in its notes). It obeys for half a day, but a stubborn one
     /// won't be told one time in three.
@@ -154,8 +167,9 @@ impl Game {
             }
         }
         Self::note_as(&mut o, tick, NoteKind::Command, reply.clone());
-        // Sheltering is at once: no waiting for the alert check.
-        let shelter = !refuse && c == Command::Shelter && self.alert_burrow.is_some() && !self.civ_alert;
+        // Sheltering is at once: no waiting for the alert check; and so is
+        // standing down (the bridge follows at the gate's next check).
+        let shelter = !refuse && ((c == Command::Shelter && self.alert_burrow.is_some() && !self.civ_alert) || (c == Command::StandDown && self.civ_alert));
         self.overseer = Some(o);
         if shelter {
             let _ = self.toggle_civ_alert();
@@ -191,6 +205,37 @@ mod tests {
         // Stood down, it isn't.
         g.command_overseer(Command::StandDown);
         assert!(!g.overseer.as_ref().unwrap().ordered(Command::RaiseBridge, g.tick));
+    }
+
+    /// OVR-24: standing down lowers a raised gate bridge and lets the
+    /// shelter out, even with an army on its way; a new army calls it off.
+    #[test]
+    fn standing_down_lowers_the_bridge_and_ends_the_alert() {
+        let (found, _) = super::super::overseer::fort_where(Style::Steady, 5, 30, 200, |g| g.overseer.as_ref().map_or(false, |o| o.did("linked")) && g.alert_burrow.is_some());
+        let (seed, mut g) = found.expect("a fort with a linked bridge and a shelter");
+        let (top, base) = { let o = g.overseer.as_ref().unwrap(); (o.top.unwrap(), o.base.unwrap()) };
+        let lever = g.gate_lever(base).expect("no gate lever");
+        let raised = |g: &Game| g.gate_bridges(base).iter().any(|b| g.buildings[b].raised);
+        // The bridge up and the shelter called, an army on its way.
+        if !raised(&g) {
+            g.pull_lever(lever);
+        }
+        if !g.civ_alert {
+            let _ = g.toggle_civ_alert();
+        }
+        assert!(raised(&g) && g.civ_alert, "seed {}", seed);
+        // Told to stand down (a stubborn overseer can't refuse it), it does at once...
+        let said = g.command_overseer(Command::StandDown);
+        assert!(!g.civ_alert, "{}", said);
+        // ...and the gate's next look sends word to lower the bridge, army or no.
+        let mut o = g.overseer.take().unwrap();
+        g.ov_gate_alert(&mut o, top, base, true);
+        assert!(g.buildings[&lever].pull || !raised(&g), "seed {}: the bridge wasn't called down", seed);
+        // A new army calls the stand-down off.
+        assert!(o.stood_down(g.tick, g.last_siege_tick()));
+        assert!(!o.stood_down(g.tick, g.tick + 1));
+        assert!(!o.stood_down(g.tick + DAY, g.last_siege_tick()), "it holds half a day");
+        g.overseer = Some(o);
     }
 
     #[test]

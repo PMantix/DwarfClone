@@ -124,6 +124,8 @@ impl Game {
             let want = any && (((at_gate || inside) && !let_in) || waited || shut_in) && !(long && !at_gate && o.raised_at > 0) && !self.sallying();
             // Or because you said so, from a card (commands.rs).
             let want = want || (o.ordered(super::commands::Command::RaiseBridge, self.tick) && !self.sallying());
+            // Told to stand down, it lowers the bridge.
+            let want = want && !o.stood_down(self.tick, self.last_siege_tick());
             let bridges = self.gate_bridges(base);
             let raised = bridges.iter().any(|id| self.buildings.get(id).map_or(false, |b| b.raised));
             // (Letting them in, the lever behind the hall shuts them in.)
