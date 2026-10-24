@@ -1655,7 +1655,7 @@ impl Overworld {
         fig.cause = Some(cause);
     }
 
-    fn simulate_year(&mut self, rng: &mut Rng, year: i32) {
+    pub(crate) fn simulate_year(&mut self, rng: &mut Rng, year: i32) {
         let civ_ids: Vec<u32> = self.civs.iter().filter(|c| c.alive).map(|c| c.id).collect();
         for &c in &civ_ids {
             let race = self.civs[c as usize].race;

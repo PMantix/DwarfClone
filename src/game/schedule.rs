@@ -82,6 +82,8 @@ impl Game {
             self.prospect_daily();
             // O12: automatons wear and are wound, trinkets find their rooms (clockwork.rs).
             self.clockwork_daily();
+            // M4 B01: armies on the march come nearer (worldturn.rs).
+            self.world_daily();
         }
         if tick % SEASON == 0 { self.season_turns(); }
         // Interface flair: the highlight reel films its next frame.
@@ -103,6 +105,8 @@ impl Game {
         // O09: a new age and the old tales retold, before the chronicle tells them (tales.rs).
         if season == 0 { self.lore_new_year(); }
         if season == 0 { self.write_chronicle(); self.new_year(); }
+        // M4 B17: the world's history rolls on a year, and the fort hears of it (worldturn.rs).
+        if season == 0 { self.world_yearly(); }
         self.seasonal_ice(season);
         if season == 1 || season == 2 { self.migrants(); }
         self.regrow_shrubs();

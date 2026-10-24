@@ -457,6 +457,20 @@ pub fn screenshot(args: &[String]) -> Result<()> {
     for _ in 0..if adventure { 0 } else { days * crate::game::DAY } {
         app.game.step();
     }
+    // (`--atlas`: on until an army marches on the fort, a day into its
+    // march, and the atlas open on it: M4 B01.)
+    if args.iter().any(|a| a == "--atlas") {
+        let limit = app.game.tick + 3 * crate::game::YEAR;
+        while app.game.worldturn.parties.is_empty() && app.game.tick < limit {
+            app.game.step();
+        }
+        for _ in 0..crate::game::DAY {
+            app.game.step();
+        }
+        let (x, y) = app.game.worldturn.parties.first().map_or(app.game.site, |p| p.at(app.game.tick));
+        app.mode = crate::app::Mode::Atlas { x: (x + app.game.site.0) / 2, y: (y + app.game.site.1) / 2 };
+        app.game.spotlights.clear();
+    }
     // (`--plan`: down on the main level of halls, the plan shown over it;
     // `--halls`: the same view without the plan, to see the halls as built.)
     let halls = args.iter().any(|a| a == "--halls");
